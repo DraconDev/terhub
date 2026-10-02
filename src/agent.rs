@@ -198,19 +198,21 @@ impl CompiledManifest {
     /// line decides, so current output overrides stale scrollback (an old
     /// "error:" in prose can't pin Error forever while the agent works).
     /// Within one line, error beats waiting beats working.
-    pub fn classify(&self, screen: &str) -> Option<AgentState> {
+    /// Freshest matching line wins; the returned summary is that line,
+    /// cleaned for the Summary column.
+    pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
         let tail: Vec<&str> = screen.lines().rev().take(15).collect();
-        let mut state = None;
+        let mut hit = None;
         for line in tail.iter().rev() {
             if self.error.iter().any(|r| r.is_match(line)) {
-                state = Some(AgentState::Error);
+                hit = Some((AgentState::Error, screen_summary_line(line)));
             } else if self.waiting.iter().any(|r| r.is_match(line)) {
-                state = Some(AgentState::Waiting);
+                hit = Some((AgentState::Waiting, screen_summary_line(line)));
             } else if self.working.iter().any(|r| r.is_match(line)) {
-                state = Some(AgentState::Working);
+                hit = Some((AgentState::Working, screen_summary_line(line)));
             }
         }
-        state
+        hit
     }
 }
 
