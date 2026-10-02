@@ -329,6 +329,26 @@ pub fn compile_all_lossy(manifests: &[Manifest]) -> (Vec<CompiledManifest>, Vec<
     (ok, warnings)
 }
 
+/// A classifier hit: optional identity, a state, and the winning line —
+/// the prompt or error text behind the Summary column.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenHit {
+    pub agent: Option<String>,
+    pub state: AgentState,
+    pub summary: String,
+}
+
+/// A raw screen line, cleaned for one-line display: trim, collapse runs
+/// of whitespace (indented prompts, box art), cap the length.
+pub fn screen_summary_line(line: &str) -> String {
+    const MAX: usize = 80;
+    let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= MAX {
+        return flat;
+    }
+    flat.chars().take(MAX.saturating_sub(1)).collect::<String>() + "…"
+}
+
 /// Identify the agent for a pane and classify its screen. A command match
 /// pins the agent; otherwise patterns still yield a state, but the agent
 /// stays unnamed unless the screen mentions it — a bare spinner is a
@@ -338,17 +358,25 @@ pub fn classify_screen(
     manifests: &[CompiledManifest],
     command: &str,
     screen: &str,
-) -> Option<(Option<String>, AgentState)> {
+) -> Option<ScreenHit> {
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
-        return m.classify(screen).map(|s| (Some(m.agent.clone()), s));
+        return m.classify(screen).map(|(state, summary)| ScreenHit {
+            agent: Some(m.agent.clone()),
+            state,
+            summary,
+        });
     }
     let flat = screen.to_lowercase();
     for m in manifests {
-        if let Some(s) = m.classify(screen) {
+        if let Some((state, summary)) = m.classify(screen) {
             let agent = flat
                 .contains(m.agent.to_lowercase().as_str())
                 .then(|| m.agent.clone());
-            return Some((agent, s));
+            return Some(ScreenHit {
+                agent,
+                state,
+                summary,
+            });
         }
     }
     None
