@@ -743,6 +743,8 @@ mod tests {
         assert_eq!(rec.state, AgentState::Working);
         assert_eq!(rec.source, Source::Proc);
         assert_eq!((rec.cpu_ticks, rec.cpu_still_since), (100, now));
+        // Working rows stay summary-free: spinner text is noise.
+        assert!(rec.summary.is_empty());
     }
 
     #[test]
@@ -760,6 +762,7 @@ mod tests {
         assert_eq!(rec.agent, "pi");
         assert_eq!(rec.state, AgentState::Waiting);
         assert_eq!(rec.source, Source::Proc);
+        assert_eq!(rec.summary, "Approve? [y/n]");
     }
 
     #[test]
@@ -789,6 +792,7 @@ mod tests {
         assert_eq!(rec.state, AgentState::Error);
         assert_eq!(rec.source, Source::Screen);
         assert_eq!((rec.cpu_ticks, rec.cpu_still_since), (0, 0));
+        assert_eq!(rec.summary, "Error: rate limit reached");
     }
 
     #[test]
@@ -824,6 +828,27 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn waiting_summary_tracks_prompt_text() {
+        // Same waiting state, new prompt line: the clock stays (no
+        // renotify) but the summary follows the fresh line.
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Waiting, 500, now - 60, now - 300);
+        old.summary = "Approve? [y/n]".to_string();
+        let rec = merge_record(
+            Some(&old),
+            false,
+            screen_hit(Some("pi"), AgentState::Waiting, "❯ Try asking me instead"),
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.state_since, now - 300);
+        assert_eq!(rec.summary, "❯ Try asking me instead");
     }
 
     #[test]
