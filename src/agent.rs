@@ -425,6 +425,14 @@ mod tests {
         compile_all(&builtin_manifests()).unwrap()
     }
 
+    fn hit(agent: Option<&str>, state: AgentState, summary: &str) -> Option<ScreenHit> {
+        Some(ScreenHit {
+            agent: agent.map(str::to_string),
+            state,
+            summary: summary.to_string(),
+        })
+    }
+
     #[test]
     fn state_parse_aliases() {
         assert_eq!(AgentState::parse("working"), Some(AgentState::Working));
