@@ -66,10 +66,15 @@ status bar, no modes except small popups:
   immediately, `Enter` attaches, `n` new, `r` rename, `x` kill (with
   confirm), `d` detach, `q` quit, `?` shows the current bindings.
 - **Table: panes.** Every pane on the server (or the bar session's):
-  attention marker (`!` needs you, `*` active), pane id, session (hidden
-  when filtered), window, command, repo dir, agent, state, source
-  (`hook` = agent-reported fact, `proc` = agent binary found, `scr` =
-  screen guess), age, activity, summary.
+  attention marker (`!` needs you; `*` marks the focused pane, but only
+  in windows with several panes, where focus is ambiguous), pane id,
+  session (hidden when filtered), window (a `:[N]` suffix appears only
+  when the window holds several panes), command, repo dir, agent, state,
+  source (`hook` = agent-reported fact, `proc` = agent binary found, `scr` =
+  screen guess), age, activity, summary. The summary shows the prompt or
+  error line that decided a waiting/error state (hook reports and the
+  stuck explanation show up here too); working rows stay blank, since
+  spinner text is noise, not information.
   `↑`/`↓` moves, `Enter` jumps to the pane, `x` kills it (with confirm),
   `a` attends, `Esc` steps back to the session bar. Long lists scroll;
   the selection is always kept in view.
