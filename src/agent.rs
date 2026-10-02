@@ -622,7 +622,11 @@ mod tests {
         let screen = "◆ docs + gate + install\n──────────\n❯\n";
         assert_eq!(
             classify_screen(&m, "claude", screen),
-            hit(Some("claude"), AgentState::Waiting, "◆ docs + gate + install")
+            hit(
+                Some("claude"),
+                AgentState::Waiting,
+                "◆ docs + gate + install"
+            )
         );
         // Nothing textual above: keep the thin line, honestly.
         let screen = "──────────\n❯\n";
