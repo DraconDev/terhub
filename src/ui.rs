@@ -769,7 +769,8 @@ mod tests {
         // Same name, other window: must not merge.
         let mut c = Pane::test("%3", "w", "pi");
         c.window_id = "@2".to_string();
-        let counts = window_pane_counts(&[a, b, c]);
+        let panes = [a, b, c];
+        let counts = window_pane_counts(&panes);
         assert_eq!(counts.get("@1"), Some(&2));
         assert_eq!(counts.get("@2"), Some(&1));
     }

@@ -395,10 +395,10 @@ fn merge_record(
             (pa.to_string(), hit.state, Source::Proc)
         }
         (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
-        (None, Some(hit)) => match &hit.agent {
-            Some(sa) => (sa.clone(), hit.state, Source::Screen),
-            None => return None,
-        },
+        (None, Some(hit)) => {
+            let sa = hit.agent.as_ref()?;
+            (sa.clone(), hit.state, Source::Screen)
+        }
         (None, None) => return None,
     };
     // A lapsed hook record still seeds continuity: same state keeps its
