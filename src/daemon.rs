@@ -1,0 +1,897 @@
+//! terhubd: Unix-socket daemon holding the agent registry.
+//!
+//! The daemon merges three signals per pane: authoritative hook events pushed
+//! by agents (`terhub hook ...`), process-tree agent identification, and
+//! screen-pattern classification of hook-less panes from periodic
+//! `capture-pane` polls. Clients talk newline-delimited JSON over the
+//! socket; see [`Request`].
+use crate::agent::{
+    AgentRecord, AgentState, CompiledManifest, HookEvent, Source, apply_event_to,
+    builtin_manifests, classify_screen, compile_all_lossy, is_harness_command, is_shell_command,
+    load_manifests, now_unix,
+};
+use crate::attend::{detect_transitions, notify_transition};
+use crate::config;
+use crate::history;
+use crate::tmux::{Pane, Tmux};
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader as TokioBufReader};
+use tokio::net::{UnixListener, UnixStream as TokioUnixStream};
+
+pub const POLL_SECS: u64 = 2;
+
+/// Hook records lapse back to screen classification after 30min of silence.
+pub const HOOK_STALE_SECS: u64 = 1800;
+
+/// A working agent whose process tree burns no CPU for this long is stuck,
+/// not busy.
+pub const STUCK_SECS: u64 = 600;
+
+/// Runtime dir: explicit override (tests) → XDG runtime → per-user /tmp.
+/// Empty variables are ignored so a blank `export` can't redirect us to `/`.
+pub fn runtime_dir() -> PathBuf {
+    if let Ok(d) = std::env::var("TERHUB_RUNTIME_DIR")
+        && !d.is_empty()
+    {
+        return PathBuf::from(d);
+    }
+    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR")
+        && !d.is_empty()
+    {
+        return PathBuf::from(d).join("terhub");
+    }
+    let user = std::env::var("USER").unwrap_or_else(|_| "shared".to_string());
+    std::env::temp_dir().join(format!("terhub-{user}"))
+}
+
+pub fn socket_path() -> PathBuf {
+    runtime_dir().join("terhubd.sock")
+}
+
+pub fn pid_path() -> PathBuf {
+    runtime_dir().join("terhubd.pid")
+}
+
+/// Daemon stderr goes here (manifest warnings, bind errors, panics).
+pub fn log_path() -> PathBuf {
+    runtime_dir().join("terhubd.log")
+}
+
+/// Lock the registry, recovering the data when a panicked holder poisoned it.
+fn lock_registry(
+    registry: &Mutex<HashMap<String, AgentRecord>>,
+) -> std::sync::MutexGuard<'_, HashMap<String, AgentRecord>> {
+    registry.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "cmd", rename_all = "lowercase")]
+pub enum Request {
+    Ping,
+    Snapshot,
+    Event { event: HookEvent },
+    Shutdown,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Response {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<Snapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl Response {
+    fn ok() -> Self {
+        Response {
+            ok: true,
+            snapshot: None,
+            error: None,
+        }
+    }
+
+    fn err(msg: String) -> Self {
+        Response {
+            ok: false,
+            snapshot: None,
+            error: Some(msg),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Snapshot {
+    #[serde(default)]
+    pub agents: Vec<AgentRecord>,
+    #[serde(default)]
+    pub updated_at: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
+
+pub struct Server {
+    runtime: PathBuf,
+    registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
+    manifests: Arc<Vec<CompiledManifest>>,
+    shutdown: Arc<AtomicBool>,
+}
+
+impl Server {
+    pub fn load(runtime: PathBuf) -> Result<Self> {
+        std::fs::create_dir_all(&runtime)
+            .with_context(|| format!("create runtime dir {}", runtime.display()))?;
+        let mut manifests = builtin_manifests();
+        manifests.extend(load_manifests(&config::manifests_dir()));
+        let (compiled, warnings) = compile_all_lossy(&manifests);
+        for w in &warnings {
+            eprintln!("terhubd: broken manifest skipped ({w})");
+        }
+        let registry = load_registry(&runtime.join("registry.json"));
+        history::prune(&history::ledger_path(), now_unix(), 90);
+        Ok(Server {
+            runtime,
+            registry: Arc::new(Mutex::new(registry)),
+            manifests: Arc::new(compiled),
+            shutdown: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    pub async fn run(&self) -> Result<()> {
+        let sock = self.runtime.join("terhubd.sock");
+        let pid_file = self.runtime.join("terhubd.pid");
+        if std::os::unix::net::UnixStream::connect(&sock).is_ok() {
+            anyhow::bail!("a daemon is already listening on {}", sock.display());
+        }
+        let _ = std::fs::remove_file(&sock); // stale socket from a crash
+        std::fs::write(&pid_file, std::process::id().to_string())?;
+        let listener =
+            UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
+
+        let reg = self.registry.clone();
+        let manifests = self.manifests.clone();
+        let runtime = self.runtime.clone();
+        tokio::spawn(async move { poll_loop(reg, manifests, runtime).await });
+
+        loop {
+            if self.shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+            let accepted =
+                tokio::time::timeout(Duration::from_millis(500), listener.accept()).await;
+            let (stream, _) = match accepted {
+                Ok(Ok(s)) => s,
+                _ => continue,
+            };
+            let reg = self.registry.clone();
+            let runtime = self.runtime.clone();
+            let shutdown = self.shutdown.clone();
+            tokio::spawn(async move { handle_conn(stream, reg, runtime, shutdown).await });
+        }
+
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_file(&pid_file);
+        Ok(())
+    }
+}
+
+async fn handle_conn(
+    stream: TokioUnixStream,
+    registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
+    runtime: PathBuf,
+    shutdown: Arc<AtomicBool>,
+) {
+    let (reader, mut writer) = stream.into_split();
+    let mut lines = TokioBufReader::new(reader).lines();
+    let line = match tokio::time::timeout(Duration::from_secs(10), lines.next_line()).await {
+        Ok(Ok(Some(l))) => l,
+        _ => return,
+    };
+    let req: Request = match serde_json::from_str(&line) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = write_response(&mut writer, &Response::err(format!("bad request: {e}"))).await;
+            return;
+        }
+    };
+    let resp = match req {
+        Request::Ping => Response::ok(),
+        Request::Shutdown => {
+            shutdown.store(true, Ordering::SeqCst);
+            Response::ok()
+        }
+        Request::Snapshot => {
+            let agents = {
+                let reg = lock_registry(&registry);
+                let mut v: Vec<AgentRecord> = reg.values().cloned().collect();
+                v.sort_by(|a, b| a.pane.cmp(&b.pane));
+                v
+            };
+            Response {
+                ok: true,
+                snapshot: Some(Snapshot {
+                    agents,
+                    updated_at: now_unix(),
+                }),
+                error: None,
+            }
+        }
+        Request::Event { event } => {
+            {
+                let mut reg = lock_registry(&registry);
+                let before = reg.clone();
+                let now = now_unix();
+                apply_event_to(&mut reg, &event, now);
+                save_registry(&runtime.join("registry.json"), &reg);
+                for t in detect_transitions(&before, &reg) {
+                    log_entry(&history::Entry::transition(now, &t));
+                    notify_transition(&t);
+                }
+            }
+            Response::ok()
+        }
+    };
+    let _ = write_response(&mut writer, &resp).await;
+}
+
+async fn write_response(
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    resp: &Response,
+) -> Result<()> {
+    let mut line = serde_json::to_string(resp)?;
+    line.push('\n');
+    writer.write_all(line.as_bytes()).await?;
+    Ok(())
+}
+
+async fn poll_loop(
+    registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
+    manifests: Arc<Vec<CompiledManifest>>,
+    runtime: PathBuf,
+) {
+    let mut tick = tokio::time::interval(Duration::from_secs(POLL_SECS));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut prev_sessions: Option<std::collections::HashSet<String>> = None;
+    let mut prev_foreground: Option<Option<String>> = None;
+    loop {
+        tick.tick().await;
+        let prev = lock_registry(&registry).clone();
+        let manifests = manifests.clone();
+        let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests)).await;
+        match next {
+            Ok((next, transitions, sessions, foreground)) => {
+                {
+                    let mut reg = lock_registry(&registry);
+                    *reg = next;
+                    save_registry(&runtime.join("registry.json"), &reg);
+                }
+                let now = now_unix();
+                for t in &transitions {
+                    log_entry(&history::Entry::transition(now, t));
+                    notify_transition(t);
+                }
+                let sessions: std::collections::HashSet<String> = sessions.into_iter().collect();
+                if let Some(prev) = prev_sessions.replace(sessions.clone()) {
+                    for opened in sessions.difference(&prev) {
+                        log_entry(&history::Entry::session_event(now, opened, true));
+                    }
+                    for closed in prev.difference(&sessions) {
+                        log_entry(&history::Entry::session_event(now, closed, false));
+                    }
+                }
+                if let Some(prev) = prev_foreground.replace(foreground.clone())
+                    && prev != foreground
+                {
+                    log_entry(&history::Entry::human_focus(now, foreground.as_deref()));
+                }
+                run_automation(&registry).await;
+            }
+            Err(_) => break, // runtime shutting down
+        }
+    }
+}
+
+fn log_entry(entry: &history::Entry) {
+    let _ = history::append_entry(&history::ledger_path(), entry);
+}
+
+/// Evaluate automation rules against the current registry and carry out
+/// firings. Awaited (not detached) so guardrails can't double-fire on
+/// overlapping ticks; rule actions are expected to be fast.
+async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
+    let rules = crate::automation::load_rules();
+    if !rules.iter().any(|r| r.enabled) {
+        return;
+    }
+    let reg = lock_registry(registry).clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        let ledger = history::ledger_path();
+        let fires = history::read_rule_fires(&ledger);
+        let now = now_unix();
+        let tmux = Tmux::new().ok();
+        for (fire, rec) in crate::automation::evaluate(&rules, &reg, &fires, now) {
+            let desc = match crate::automation::execute(tmux.as_ref(), &fire, &rec) {
+                Ok(d) => d,
+                Err(e) => format!("FAILED: {e:?}"),
+            };
+            let _ = history::append_entry(
+                &ledger,
+                &history::Entry::rule_fire(&fire.rule, &rec, &desc, now),
+            );
+        }
+    })
+    .await;
+}
+
+/// Split the previous record into (authoritative, expired). A hook record
+/// nobody refreshed recently has lapsed: screen classification takes over,
+/// but the expired record still seeds state continuity so a pane that kept
+/// its state doesn't renotify.
+fn split_prev(rec: Option<&AgentRecord>, now: u64) -> (Option<&AgentRecord>, Option<&AgentRecord>) {
+    match rec {
+        Some(r)
+            if r.source == Source::Hook && now.saturating_sub(r.updated_at) > HOOK_STALE_SECS =>
+        {
+            (None, Some(r))
+        }
+        other => (other, None),
+    }
+}
+
+/// One poll pass (blocking tmux calls; runs on a blocking thread).
+/// Carry last-known state only while it has recent evidence behind it.
+/// Screen records on harness panes are ghosts by construction (screen
+/// classification never runs there) and drop immediately instead of
+/// lingering out their 30 minutes.
+fn carry_record(old: &AgentRecord, pane: &Pane, now: u64) -> bool {
+    if old.source == Source::Screen && is_harness_command(&pane.command) {
+        return false;
+    }
+    now.saturating_sub(old.updated_at) <= HOOK_STALE_SECS
+}
+
+/// Advance the stuck clock for `ticks` observed under `agent`: an
+/// unchanged sum keeps the old still-time, anything else (moved sum,
+/// restarted agent, new agent) restarts it. Never trips on first sight.
+fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, now: u64) -> (u64, u64) {
+    if o.agent.eq_ignore_ascii_case(agent) && o.cpu_ticks == ticks && o.cpu_still_since > 0 {
+        (ticks, o.cpu_still_since)
+    } else {
+        (ticks, now)
+    }
+}
+
+/// Merge one poll's evidence into a record. Identity priority: process tree
+/// beats screen guess (a `pi` binary is a fact; screen text is a hint).
+/// State priority: screen waiting/error beats everything here (fresh hooks
+/// never reach this function); a live agent with an unreadable screen is
+/// working; a working agent with a long-still CPU sum is stuck. Anonymous
+/// screen states (patterns, no name) only survive paired with a process
+/// hit — otherwise a micro `>` bar would impersonate an agent. Returns
+/// None when nothing claims the pane.
+fn merge_record(
+    carried: Option<&AgentRecord>,
+    lapsed: bool,
+    screen: Option<(Option<String>, AgentState)>,
+    proc_hit: Option<(&str, u64)>,
+    pane: &Pane,
+    now: u64,
+) -> Option<AgentRecord> {
+    use AgentState::{Error, Waiting, Working};
+    let (agent, state, source) = match (proc_hit, screen) {
+        (Some((pa, _)), Some((_, s))) if s == Waiting || s == Error => {
+            (pa.to_string(), s, Source::Proc)
+        }
+        (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
+        (None, Some((Some(sa), s))) => (sa, s, Source::Screen),
+        (None, Some((None, _))) | (None, None) => return None,
+    };
+    // A lapsed hook record still seeds continuity: same state keeps its
+    // clock (no renotify) but drops its summary — hook text from 30+
+    // minutes ago is rot, not information.
+    let (mut since, mut summary) = match carried {
+        Some(o) if o.state == state && o.agent == agent => (
+            o.state_since,
+            if lapsed {
+                String::new()
+            } else {
+                o.summary.clone()
+            },
+        ),
+        _ => (now, String::new()),
+    };
+    let (ticks, still) = match proc_hit {
+        Some((pa, t)) => carried
+            .map(|o| track_cpu(o, pa, t, now))
+            .unwrap_or((t, now)),
+        None => (0, 0),
+    };
+    let mut final_state = state;
+    if final_state == Working
+        && proc_hit.is_some()
+        && still > 0
+        && now.saturating_sub(still) >= STUCK_SECS
+    {
+        final_state = AgentState::Stuck;
+        since = match carried {
+            Some(o) if o.state == AgentState::Stuck && o.agent == agent => o.state_since,
+            _ => now,
+        };
+        summary = format!(
+            "no cpu for {}",
+            crate::history::fmt_dur(now.saturating_sub(still))
+        );
+    }
+    Some(AgentRecord {
+        pane: pane.id.clone(),
+        agent,
+        state: final_state,
+        source,
+        summary,
+        session: pane.session.clone(),
+        window: pane.window_name.clone(),
+        command: pane.command.clone(),
+        updated_at: now,
+        state_since: since,
+        cpu_ticks: ticks,
+        cpu_still_since: still,
+    })
+}
+
+/// Returns the new registry, attention transitions to notify, the live
+/// session list for open/close detection, and the foreground pane.
+fn poll_sync(
+    prev: HashMap<String, AgentRecord>,
+    manifests: &[CompiledManifest],
+) -> (
+    HashMap<String, AgentRecord>,
+    Vec<crate::attend::Transition>,
+    Vec<String>,
+    Option<String>,
+) {
+    let prev_session_list: Vec<String> = prev
+        .values()
+        .map(|r| r.session.clone())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let now = now_unix();
+    let tmux = match Tmux::new() {
+        // tmux gone: keep stale rather than wipe
+        Ok(t) => t,
+        Err(_) => return (prev, Vec::new(), prev_session_list, None),
+    };
+    let panes = match tmux.list_all_panes() {
+        Ok(p) => p,
+        Err(_) => return (prev, Vec::new(), prev_session_list, None),
+    };
+    // One process view shared by every pane: /proc is walked once per poll.
+    let snap = crate::proc::Snapshot::capture();
+    let mut next = HashMap::new();
+    for pane in &panes {
+        let (old, stale) = split_prev(prev.get(&pane.id), now);
+        let proc_hit = snap.detect_agent(pane.pid);
+        // Hook records stay authoritative; poll only refreshes their metadata.
+        // NOTE: updated_at is deliberately NOT bumped here: it measures hook
+        // freshness (time since the last event), and refreshing it every poll
+        // would make stale hooks live forever instead of lapsing.
+        if let Some(rec) = old
+            && rec.source == Source::Hook
+        {
+            let mut r = rec.clone();
+            r.session.clone_from(&pane.session);
+            r.window.clone_from(&pane.window_name);
+            r.command.clone_from(&pane.command);
+            // CPU tracking runs through the hook's life (state untouched) so
+            // stuck evaluation is seamless when the hook lapses.
+            match &proc_hit {
+                Some(h) => {
+                    let t = snap.subtree_ticks(h.pid);
+                    (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &h.agent, t, now);
+                }
+                None => {
+                    r.cpu_ticks = 0;
+                    r.cpu_still_since = 0;
+                }
+            }
+            next.insert(pane.id.clone(), r);
+            continue;
+        }
+        // Skip idle shells nobody has claimed yet — unless a process hit
+        // claims them (an agent behind a shell prompt is still an agent).
+        if old.is_none() && proc_hit.is_none() && is_shell_command(&pane.command) {
+            continue;
+        }
+        // Harness dashboards name agents without running them: no capture,
+        // no classification. A real agent process inside still claims the
+        // pane via the process hit below.
+        let screen_hit = if is_harness_command(&pane.command) {
+            None
+        } else {
+            let screen = tmux.capture_pane(&pane.id, 30).unwrap_or_default();
+            classify_screen(manifests, &pane.command, &screen)
+        };
+        let proc_pair = proc_hit
+            .as_ref()
+            .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid)));
+        let carried = old.or(stale);
+        let lapsed = old.is_none() && stale.is_some();
+        if let Some(rec) = merge_record(carried, lapsed, screen_hit, proc_pair, pane, now) {
+            next.insert(pane.id.clone(), rec);
+        } else if let Some(o) = old {
+            // Pane alive but nothing matches: keep last known state only
+            // while it has recent evidence behind it, else drop it rather
+            // than show a state nobody can confirm anymore. (updated_at is
+            // evidence time, deliberately not refreshed by the poll. The CPU
+            // trackers reset: this poll found no agent process.)
+            if carry_record(o, pane, now) {
+                let mut r = o.clone();
+                r.session.clone_from(&pane.session);
+                r.window.clone_from(&pane.window_name);
+                r.command.clone_from(&pane.command);
+                r.cpu_ticks = 0;
+                r.cpu_still_since = 0;
+                next.insert(pane.id.clone(), r);
+            }
+        }
+    }
+    let transitions = detect_transitions(&prev, &next);
+    let mut sessions: Vec<String> = panes.iter().map(|p| p.session.clone()).collect();
+    sessions.sort();
+    sessions.dedup();
+    let foreground = tmux.foreground_pane();
+    (next, transitions, sessions, foreground)
+}
+
+fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(_) => return HashMap::new(),
+    };
+    let agents: Vec<AgentRecord> = match serde_json::from_str(&text) {
+        Ok(a) => a,
+        Err(_) => return HashMap::new(),
+    };
+    agents.into_iter().map(|a| (a.pane.clone(), a)).collect()
+}
+
+fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
+    let agents: Vec<&AgentRecord> = registry.values().collect();
+    if let Ok(text) = serde_json::to_string_pretty(&agents) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sync client (CLI + TUI)
+// ---------------------------------------------------------------------------
+
+pub fn send_request(req: &Request, timeout: Duration) -> Result<Response> {
+    let sock = socket_path();
+    let mut stream =
+        UnixStream::connect(&sock).with_context(|| format!("connect {}", sock.display()))?;
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout))?;
+    let mut line = serde_json::to_string(req)?;
+    line.push('\n');
+    stream.write_all(line.as_bytes())?;
+    stream.flush()?;
+    let mut reader = BufReader::new(stream);
+    let mut resp = String::new();
+    reader.read_line(&mut resp)?;
+    serde_json::from_str(&resp).context("bad daemon response")
+}
+
+pub fn fetch_snapshot(timeout: Duration) -> Result<Snapshot> {
+    let resp = send_request(&Request::Snapshot, timeout)?;
+    resp.snapshot.context("daemon returned no snapshot")
+}
+
+pub fn send_event(ev: &HookEvent, timeout: Duration) -> Result<()> {
+    let resp = send_request(&Request::Event { event: ev.clone() }, timeout)?;
+    if resp.ok {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            resp.error
+                .unwrap_or_else(|| "daemon rejected event".to_string())
+        )
+    }
+}
+
+pub fn daemon_alive() -> bool {
+    send_request(&Request::Ping, Duration::from_millis(300))
+        .map(|r| r.ok)
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::AgentState;
+
+    fn hook_record(updated_at: u64) -> AgentRecord {
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "claude".to_string(),
+            state: AgentState::Waiting,
+            source: Source::Hook,
+            summary: String::new(),
+            session: "s".to_string(),
+            window: "w".to_string(),
+            command: "claude".to_string(),
+            updated_at,
+            state_since: updated_at,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+        }
+    }
+
+    #[test]
+    fn fresh_hook_stays_authoritative() {
+        let now = 10_000;
+        let rec = hook_record(now - 60);
+        let (old, stale) = split_prev(Some(&rec), now);
+        assert!(old.is_some());
+        assert!(stale.is_none());
+    }
+
+    #[test]
+    fn lapsed_hook_expires_but_seeds_continuity() {
+        let now = 10_000;
+        let rec = hook_record(now - HOOK_STALE_SECS - 1);
+        let (old, stale) = split_prev(Some(&rec), now);
+        assert!(old.is_none());
+        assert!(stale.is_some());
+    }
+
+    #[test]
+    fn screen_records_pass_through() {
+        let now = 10_000;
+        let mut rec = hook_record(0);
+        rec.source = Source::Screen;
+        let (old, stale) = split_prev(Some(&rec), now);
+        assert!(old.is_some());
+        assert!(stale.is_none());
+    }
+
+    fn carried(agent: &str, state: AgentState, ticks: u64, still: u64, since: u64) -> AgentRecord {
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: agent.to_string(),
+            state,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "a".to_string(),
+            window: "w".to_string(),
+            command: "pi".to_string(),
+            updated_at: since,
+            state_since: since,
+            cpu_ticks: ticks,
+            cpu_still_since: still,
+        }
+    }
+
+    fn test_pane() -> crate::tmux::Pane {
+        crate::tmux::Pane::test("%1", "w", "pi")
+    }
+
+    #[test]
+    fn harness_screen_records_drop_as_ghosts() {
+        let now = 100_000;
+        let mut old = carried("claude", AgentState::Working, 0, 0, now - 60);
+        old.source = Source::Screen;
+        let mut harness = test_pane();
+        harness.command = "muxa".to_string();
+        assert!(!carry_record(&old, &harness, now));
+        // Same record on a normal pane carries while fresh …
+        assert!(carry_record(&old, &test_pane(), now));
+        // … and drops once stale.
+        assert!(!carry_record(&old, &test_pane(), now + HOOK_STALE_SECS + 1));
+        // Proc records on harnesses still carry (the agent may return).
+        let mut proc_old = carried("claude", AgentState::Working, 500, now - 60, now - 60);
+        proc_old.source = Source::Proc;
+        assert!(carry_record(&proc_old, &harness, now));
+    }
+
+    #[test]
+    fn proc_identity_beats_screen_guess() {
+        // Screen says claude, process tree says pi: trust the tree.
+        let now = 100_000;
+        let rec = merge_record(
+            None,
+            false,
+            Some((Some("claude".to_string()), AgentState::Working)),
+            Some(("pi", 100)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.source, Source::Proc);
+        assert_eq!((rec.cpu_ticks, rec.cpu_still_since), (100, now));
+    }
+
+    #[test]
+    fn screen_waiting_wins_state_proc_keeps_identity() {
+        let now = 100_000;
+        let rec = merge_record(
+            None,
+            false,
+            Some((Some("claude".to_string()), AgentState::Waiting)),
+            Some(("pi", 50)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.source, Source::Proc);
+    }
+
+    #[test]
+    fn proc_without_screen_is_working() {
+        // The %192 case: agent binary alive, screen unreadable.
+        let now = 100_000;
+        let rec = merge_record(None, false, None, Some(("pi", 50)), &test_pane(), now)
+            .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.source, Source::Proc);
+    }
+
+    #[test]
+    fn screen_only_record_keeps_screen_source() {
+        let now = 100_000;
+        let rec = merge_record(
+            None,
+            false,
+            Some((Some("codex".to_string()), AgentState::Error)),
+            None,
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "codex");
+        assert_eq!(rec.state, AgentState::Error);
+        assert_eq!(rec.source, Source::Screen);
+        assert_eq!((rec.cpu_ticks, rec.cpu_still_since), (0, 0));
+    }
+
+    #[test]
+    fn nothing_claiming_returns_none() {
+        assert!(merge_record(None, false, None, None, &test_pane(), 100_000).is_none());
+    }
+
+    #[test]
+    fn anonymous_waiting_pairs_with_proc_or_drops() {
+        let now = 100_000;
+        // Approve prompt, no name, live pi: that agent waiting.
+        let rec = merge_record(
+            None,
+            false,
+            Some((None, AgentState::Waiting)),
+            Some(("pi", 50)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.source, Source::Proc);
+        // Same screen, no process: a micro bar impersonating nobody.
+        assert!(
+            merge_record(
+                None,
+                false,
+                Some((None, AgentState::Waiting)),
+                None,
+                &test_pane(),
+                now,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn stuck_after_still_cpu() {
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Stuck);
+        assert_eq!(rec.state_since, now);
+        assert_eq!(rec.summary, "no cpu for 10m");
+        assert!(rec.state.needs_attention());
+    }
+
+    #[test]
+    fn stuck_keeps_clock_while_still() {
+        let now = 100_000;
+        let old = carried("pi", AgentState::Stuck, 500, now - 660, now - 660);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Stuck);
+        assert_eq!(rec.state_since, now - 660);
+        assert_eq!(rec.summary, "no cpu for 11m");
+    }
+
+    #[test]
+    fn cpu_movement_clears_stuck() {
+        let now = 100_000;
+        let old = carried("pi", AgentState::Stuck, 500, now - 900, now - 900);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 750)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.state_since, now);
+        assert_eq!(rec.cpu_still_since, now);
+    }
+
+    #[test]
+    fn restarted_agent_resets_clock() {
+        // Shrunk sum = new process, not stillness: never stuck on sight.
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 100)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.cpu_still_since, now);
+    }
+
+    #[test]
+    fn waiting_clears_stuck_with_fresh_clock() {
+        let now = 100_000;
+        let old = carried("pi", AgentState::Stuck, 500, now - 900, now - 900);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            Some((Some("pi".to_string()), AgentState::Waiting)),
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.state_since, now);
+    }
+}
