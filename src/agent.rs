@@ -201,7 +201,8 @@ impl CompiledManifest {
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
-        let tail: Vec<&str> = screen.lines().rev().take(15).collect::<Vec<_>>().into_iter().rev().collect();
+        let mut tail: Vec<&str> = screen.lines().rev().take(15).collect();
+        tail.reverse();
         let mut hit = None;
         for (i, line) in tail.iter().enumerate() {
             if self.error.iter().any(|r| r.is_match(line)) {
@@ -611,6 +612,23 @@ mod tests {
                 AgentState::Error,
                 "Error: rate limit reached"
             )
+        );
+    }
+
+    #[test]
+    fn bare_prompt_borrows_context_line() {
+        let m = compiled();
+        // Empty prompt: the task line above, not the box rule, not "❯".
+        let screen = "◆ docs + gate + install\n──────────\n❯\n";
+        assert_eq!(
+            classify_screen(&m, "claude", screen),
+            hit(Some("claude"), AgentState::Waiting, "◆ docs + gate + install")
+        );
+        // Nothing textual above: keep the thin line, honestly.
+        let screen = "──────────\n❯\n";
+        assert_eq!(
+            classify_screen(&m, "claude", screen),
+            hit(Some("claude"), AgentState::Waiting, "❯")
         );
     }
 
