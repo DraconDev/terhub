@@ -2,6 +2,7 @@
 //! the session rows and pane rows so the event loop can map mouse clicks.
 use crate::app::{App, Focus, Mode, SortKey};
 use crate::tmux::Pane;
+use std::collections::HashMap;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -205,6 +206,39 @@ fn truncate(s: &str, n: usize) -> String {
         out.push('…');
     }
     out
+}
+
+/// Panes per window, keyed by (session, window): drives the conditional
+/// `:[N]` suffix and `*` mark — both are noise in single-pane windows.
+fn window_pane_counts(panes: &[Pane]) -> HashMap<(&str, &str), usize> {
+    let mut counts = HashMap::new();
+    for p in panes {
+        *counts
+            .entry((p.session.as_str(), p.window_name.as_str()))
+            .or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Bare name in single-pane windows; `name:[N]` where panes share one.
+pub fn window_label(window_name: &str, index: u32, panes_in_window: usize) -> String {
+    if panes_in_window > 1 {
+        format!("{window_name}:[{index}]")
+    } else {
+        window_name.to_string()
+    }
+}
+
+/// `!` needs you; `*` is the focused pane, shown only where a window
+/// holds several panes and focus is actually ambiguous.
+pub fn row_mark(is_needy: bool, active: bool, panes_in_window: usize) -> &'static str {
+    if is_needy {
+        "!"
+    } else if active && panes_in_window > 1 {
+        "*"
+    } else {
+        " "
+    }
 }
 
 /// One selector segment's text parts: (marker, name, counts, attached).
