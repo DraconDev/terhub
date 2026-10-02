@@ -208,14 +208,12 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
-/// Panes per window, keyed by (session, window): drives the conditional
+/// Panes per window, keyed by tmux window id: drives the conditional
 /// `:[N]` suffix and `*` mark — both are noise in single-pane windows.
-fn window_pane_counts(panes: &[Pane]) -> HashMap<(&str, &str), usize> {
+fn window_pane_counts(panes: &[Pane]) -> HashMap<&str, usize> {
     let mut counts = HashMap::new();
     for p in panes {
-        *counts
-            .entry((p.session.as_str(), p.window_name.as_str()))
-            .or_insert(0) += 1;
+        *counts.entry(p.window_id.as_str()).or_insert(0) += 1;
     }
     counts
 }
@@ -422,10 +420,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         .map(|(i, p)| {
             let rec = app.agents.get(&p.id);
             let is_needy = rec.is_some_and(|r| r.state.needs_attention());
-            let siblings = counts
-                .get(&(p.session.as_str(), p.window_name.as_str()))
-                .copied()
-                .unwrap_or(1);
+            let siblings = counts.get(p.window_id.as_str()).copied().unwrap_or(1);
             let mark = row_mark(is_needy, p.active, siblings);
             let mark_style = if is_needy {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
@@ -741,5 +736,41 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         let cx = inner.x + (plen as u16) + (app.cursor as u16);
         let cx = cx.min(inner.x + inner.width.saturating_sub(1));
         frame.set_cursor_position(ratatui::layout::Position::new(cx, inner.y));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_label_hides_lone_suffix() {
+        assert_eq!(window_label("chat", 1, 1), "chat");
+        assert_eq!(window_label("chat", 1, 2), "chat:[1]");
+        assert_eq!(window_label("chat", 2, 2), "chat:[2]");
+    }
+
+    #[test]
+    fn row_mark_rules() {
+        assert_eq!(row_mark(true, false, 1), "!");
+        assert_eq!(row_mark(true, true, 2), "!");
+        assert_eq!(row_mark(false, true, 2), "*");
+        assert_eq!(row_mark(false, false, 2), " ");
+        // Focused but alone in its window: nothing to disambiguate.
+        assert_eq!(row_mark(false, true, 1), " ");
+    }
+
+    #[test]
+    fn counts_key_on_window_id() {
+        let mut a = Pane::test("%1", "w", "pi");
+        a.window_id = "@1".to_string();
+        let mut b = Pane::test("%2", "w", "pi");
+        b.window_id = "@1".to_string();
+        // Same name, other window: must not merge.
+        let mut c = Pane::test("%3", "w", "pi");
+        c.window_id = "@2".to_string();
+        let counts = window_pane_counts(&[a, b, c]);
+        assert_eq!(counts.get("@1"), Some(&2));
+        assert_eq!(counts.get("@2"), Some(&1));
     }
 }
