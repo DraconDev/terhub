@@ -201,18 +201,32 @@ impl CompiledManifest {
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
-        let tail: Vec<&str> = screen.lines().rev().take(15).collect();
+        let tail: Vec<&str> = screen.lines().rev().take(15).collect::<Vec<_>>().into_iter().rev().collect();
         let mut hit = None;
-        for line in tail.iter().rev() {
+        for (i, line) in tail.iter().enumerate() {
             if self.error.iter().any(|r| r.is_match(line)) {
-                hit = Some((AgentState::Error, screen_summary_line(line)));
+                hit = Some((AgentState::Error, i));
             } else if self.waiting.iter().any(|r| r.is_match(line)) {
-                hit = Some((AgentState::Waiting, screen_summary_line(line)));
+                hit = Some((AgentState::Waiting, i));
             } else if self.working.iter().any(|r| r.is_match(line)) {
-                hit = Some((AgentState::Working, screen_summary_line(line)));
+                hit = Some((AgentState::Working, i));
             }
         }
-        hit
+        hit.map(|(state, i)| {
+            let mut line = tail[i];
+            // A bare prompt ("❯") says nothing: show the nearest line
+            // above it with actual text — usually the question or the
+            // current task. Box rules and blanks carry no meaning.
+            if screen_summary_line(line).chars().count() <= 2 {
+                for above in tail[..i].iter().rev() {
+                    if above.chars().any(|c| c.is_alphanumeric()) {
+                        line = above;
+                        break;
+                    }
+                }
+            }
+            (state, screen_summary_line(line))
+        })
     }
 }
 
