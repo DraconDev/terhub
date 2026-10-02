@@ -593,6 +593,17 @@ mod tests {
     }
 
     #[test]
+    fn summary_line_is_collapsed_and_capped() {
+        assert_eq!(screen_summary_line("  Approve?   [y/n]  "), "Approve? [y/n]");
+        assert_eq!(screen_summary_line(""), "");
+        let long = format!("Error: {}", "x".repeat(200));
+        let capped = screen_summary_line(&long);
+        assert_eq!(capped.chars().count(), 80);
+        assert!(capped.ends_with('…'));
+        assert!(capped.starts_with("Error: xxx"));
+    }
+
+    #[test]
     fn lowercase_error_is_prose() {
         let m = compiled();
         let screen = "one of them was reporting an error: a retry would be a no-op\n";

@@ -384,19 +384,22 @@ fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, now: u64) -> (u64, u64) {
 fn merge_record(
     carried: Option<&AgentRecord>,
     lapsed: bool,
-    screen: Option<(Option<String>, AgentState)>,
+    screen: Option<ScreenHit>,
     proc_hit: Option<(&str, u64)>,
     pane: &Pane,
     now: u64,
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Waiting, Working};
-    let (agent, state, source) = match (proc_hit, screen) {
-        (Some((pa, _)), Some((_, s))) if s == Waiting || s == Error => {
-            (pa.to_string(), s, Source::Proc)
+    let (agent, state, source) = match (proc_hit, screen.as_ref()) {
+        (Some((pa, _)), Some(hit)) if hit.state == Waiting || hit.state == Error => {
+            (pa.to_string(), hit.state, Source::Proc)
         }
         (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
-        (None, Some((Some(sa), s))) => (sa, s, Source::Screen),
-        (None, Some((None, _))) | (None, None) => return None,
+        (None, Some(hit)) => match &hit.agent {
+            Some(sa) => (sa.clone(), hit.state, Source::Screen),
+            None => return None,
+        },
+        (None, None) => return None,
     };
     // A lapsed hook record still seeds continuity: same state keeps its
     // clock (no renotify) but drops its summary — hook text from 30+
@@ -412,6 +415,16 @@ fn merge_record(
         ),
         _ => (now, String::new()),
     };
+    // Waiting/error rows show the prompt (or error) line that tripped the
+    // classifier — the text you must read to act. Refreshed every poll;
+    // the clock above still decides notifications. Working rows stay
+    // summary-free: spinner text is noise, not information.
+    if matches!(state, Waiting | Error)
+        && let Some(hit) = screen.as_ref()
+        && !hit.summary.is_empty()
+    {
+        summary = hit.summary.clone();
+    }
     let (ticks, still) = match proc_hit {
         Some((pa, t)) => carried
             .map(|o| track_cpu(o, pa, t, now))
