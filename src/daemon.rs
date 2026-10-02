@@ -6,7 +6,7 @@
 //! `capture-pane` polls. Clients talk newline-delimited JSON over the
 //! socket; see [`Request`].
 use crate::agent::{
-    AgentRecord, AgentState, CompiledManifest, HookEvent, Source, apply_event_to,
+    AgentRecord, AgentState, CompiledManifest, HookEvent, ScreenHit, Source, apply_event_to,
     builtin_manifests, classify_screen, compile_all_lossy, is_harness_command, is_shell_command,
     load_manifests, now_unix,
 };
@@ -700,6 +700,14 @@ mod tests {
         crate::tmux::Pane::test("%1", "w", "pi")
     }
 
+    fn screen_hit(agent: Option<&str>, state: AgentState, summary: &str) -> Option<ScreenHit> {
+        Some(ScreenHit {
+            agent: agent.map(str::to_string),
+            state,
+            summary: summary.to_string(),
+        })
+    }
+
     #[test]
     fn harness_screen_records_drop_as_ghosts() {
         let now = 100_000;
@@ -725,7 +733,7 @@ mod tests {
         let rec = merge_record(
             None,
             false,
-            Some((Some("claude".to_string()), AgentState::Working)),
+            screen_hit(Some("claude"), AgentState::Working, "⠋ Working…"),
             Some(("pi", 100)),
             &test_pane(),
             now,
@@ -743,7 +751,7 @@ mod tests {
         let rec = merge_record(
             None,
             false,
-            Some((Some("claude".to_string()), AgentState::Waiting)),
+            screen_hit(Some("claude"), AgentState::Waiting, "Approve? [y/n]"),
             Some(("pi", 50)),
             &test_pane(),
             now,
@@ -771,7 +779,7 @@ mod tests {
         let rec = merge_record(
             None,
             false,
-            Some((Some("codex".to_string()), AgentState::Error)),
+            screen_hit(Some("codex"), AgentState::Error, "Error: rate limit reached"),
             None,
             &test_pane(),
             now,
@@ -795,7 +803,7 @@ mod tests {
         let rec = merge_record(
             None,
             false,
-            Some((None, AgentState::Waiting)),
+            screen_hit(None, AgentState::Waiting, "Save changes? confirm"),
             Some(("pi", 50)),
             &test_pane(),
             now,
@@ -809,7 +817,7 @@ mod tests {
             merge_record(
                 None,
                 false,
-                Some((None, AgentState::Waiting)),
+                screen_hit(None, AgentState::Waiting, "Save changes? confirm"),
                 None,
                 &test_pane(),
                 now,
@@ -898,7 +906,7 @@ mod tests {
         let rec = merge_record(
             Some(&old),
             false,
-            Some((Some("pi".to_string()), AgentState::Waiting)),
+            screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]"),
             Some(("pi", 500)),
             &test_pane(),
             now,
