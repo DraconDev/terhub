@@ -2,7 +2,6 @@
 //! the session rows and pane rows so the event loop can map mouse clicks.
 use crate::app::{App, Focus, Mode, SortKey};
 use crate::tmux::Pane;
-use std::collections::HashMap;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -10,6 +9,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Cell, Clear, Paragraph, Row, Table, Wrap},
 };
+use std::collections::HashMap;
 
 pub struct Palette {
     pub border: Style,

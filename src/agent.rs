@@ -493,7 +493,11 @@ mod tests {
         let screen = "⠋ Working…\nError: rate limit reached\n";
         assert_eq!(
             classify_screen(&m, "codex", screen),
-            hit(Some("codex"), AgentState::Error, "Error: rate limit reached")
+            hit(
+                Some("codex"),
+                AgentState::Error,
+                "Error: rate limit reached"
+            )
         );
     }
 
@@ -588,13 +592,20 @@ mod tests {
         let screen = "── ⠦ Working ──\nError: rate limit reached\n";
         assert_eq!(
             classify_screen(&m, "codex", screen),
-            hit(Some("codex"), AgentState::Error, "Error: rate limit reached")
+            hit(
+                Some("codex"),
+                AgentState::Error,
+                "Error: rate limit reached"
+            )
         );
     }
 
     #[test]
     fn summary_line_is_collapsed_and_capped() {
-        assert_eq!(screen_summary_line("  Approve?   [y/n]  "), "Approve? [y/n]");
+        assert_eq!(
+            screen_summary_line("  Approve?   [y/n]  "),
+            "Approve? [y/n]"
+        );
         assert_eq!(screen_summary_line(""), "");
         let long = format!("Error: {}", "x".repeat(200));
         let capped = screen_summary_line(&long);
