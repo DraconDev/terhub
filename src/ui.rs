@@ -410,6 +410,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
 
     let now = crate::agent::now_unix();
     let visible = area.height.saturating_sub(3) as usize;
+    // Window sizes come from the full pane list: stable under filtering,
+    // so a suffix never flickers when a sibling is filtered out.
+    let counts = window_pane_counts(&app.panes);
     let rows: Vec<Row> = app
         .filtered
         .iter()
@@ -419,13 +422,11 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         .map(|(i, p)| {
             let rec = app.agents.get(&p.id);
             let is_needy = rec.is_some_and(|r| r.state.needs_attention());
-            let mark = if is_needy {
-                "!"
-            } else if p.active {
-                "*"
-            } else {
-                " "
-            };
+            let siblings = counts
+                .get(&(p.session.as_str(), p.window_name.as_str()))
+                .copied()
+                .unwrap_or(1);
+            let mark = row_mark(is_needy, p.active, siblings);
             let mark_style = if is_needy {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
             } else {
@@ -455,7 +456,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             } else {
                 crate::history::fmt_dur(now.saturating_sub(p.activity))
             };
-            let window = format!("{}:[{}]", p.window_name, p.index);
+            let window = window_label(&p.window_name, p.index, siblings);
             let dir = p.path.rsplit('/').next().unwrap_or("");
             let dir = if dir.is_empty() { "—" } else { dir };
             // hook = agent-reported fact, scr = screen guess: how much to
@@ -480,7 +481,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             cells.extend([
                 Cell::from(truncate(&window, 20)),
                 Cell::from(truncate(&p.command, if compact { 16 } else { 24 })),
-                Cell::from(truncate(dir, 16)).style(pal.dim),
+                Cell::from(truncate(dir, 24)).style(pal.dim),
                 Cell::from(agent).style(agent_style),
                 Cell::from(state).style(state_style),
                 Cell::from(src).style(src_style),
@@ -528,7 +529,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     widths.extend([
         Constraint::Percentage(12),
         Constraint::Percentage(12),
-        Constraint::Percentage(9),
+        Constraint::Percentage(14),
         Constraint::Percentage(9),
         Constraint::Length(8),
         Constraint::Length(4),
@@ -538,7 +539,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !compact {
         headers.push("Summary".to_string());
         keys.push(Some(SortKey::Summary));
-        widths.push(Constraint::Percentage(18));
+        widths.push(Constraint::Percentage(13));
     }
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });
