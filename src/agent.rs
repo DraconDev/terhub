@@ -449,7 +449,11 @@ mod tests {
         let screen = "…\n❯ Try asking me to build something\n";
         assert_eq!(
             classify_screen(&m, "claude", screen),
-            Some((Some("claude".to_string()), AgentState::Waiting))
+            hit(
+                Some("claude"),
+                AgentState::Waiting,
+                "❯ Try asking me to build something"
+            )
         );
     }
 
@@ -460,7 +464,11 @@ mod tests {
         assert_eq!(
             // command unknown; patterns plus the name still claim it
             classify_screen(&m, "node", screen),
-            Some((Some("claude".to_string()), AgentState::Working))
+            hit(
+                Some("claude"),
+                AgentState::Working,
+                "⠋ Working… (esc to interrupt)"
+            )
         );
     }
 
@@ -470,12 +478,12 @@ mod tests {
         // Spinner alone: working, but nobody's …
         assert_eq!(
             classify_screen(&m, "node", "⠋ Working… (esc to interrupt)\n"),
-            Some((None, AgentState::Working))
+            hit(None, AgentState::Working, "⠋ Working… (esc to interrupt)")
         );
         // … and a micro command bar is waiting-without-identity, not gemini.
         assert_eq!(
             classify_screen(&m, "micro", "> command\nSave changes? confirm\n"),
-            Some((None, AgentState::Waiting))
+            hit(None, AgentState::Waiting, "Save changes? confirm")
         );
     }
 
@@ -485,7 +493,7 @@ mod tests {
         let screen = "⠋ Working…\nError: rate limit reached\n";
         assert_eq!(
             classify_screen(&m, "codex", screen),
-            Some((Some("codex".to_string()), AgentState::Error))
+            hit(Some("codex"), AgentState::Error, "Error: rate limit reached")
         );
     }
 
@@ -542,7 +550,11 @@ mod tests {
         let screen = "$ fix errorhandler\n0 failed builds, all green\n";
         assert_eq!(
             classify_screen(&m, "gemini", screen),
-            Some((Some("gemini".to_string()), AgentState::Error))
+            hit(
+                Some("gemini"),
+                AgentState::Error,
+                "0 failed builds, all green"
+            )
         );
     }
 
@@ -555,7 +567,11 @@ mod tests {
         let screen = "Approve this plan? [y/n]\n";
         assert_eq!(
             classify_screen(&m, "claude", screen),
-            Some((Some("claude".to_string()), AgentState::Waiting))
+            hit(
+                Some("claude"),
+                AgentState::Waiting,
+                "Approve this plan? [y/n]"
+            )
         );
     }
 
@@ -566,13 +582,13 @@ mod tests {
         let screen = "reporting an Error: timeout\n── ⠦ Working ──\n$ doing things\n";
         assert_eq!(
             classify_screen(&m, "claude", screen),
-            Some((Some("claude".to_string()), AgentState::Working))
+            hit(Some("claude"), AgentState::Working, "── ⠦ Working ──")
         );
         // Old work, fresh error at the bottom: error.
         let screen = "── ⠦ Working ──\nError: rate limit reached\n";
         assert_eq!(
             classify_screen(&m, "codex", screen),
-            Some((Some("codex".to_string()), AgentState::Error))
+            hit(Some("codex"), AgentState::Error, "Error: rate limit reached")
         );
     }
 
