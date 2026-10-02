@@ -14,7 +14,7 @@ Install: `cargo install --path .`, then `terhub`.
 
 ## Use (TUI)
 
-- One-line session bar + one huge pane table (state, source, agent, dir, age, activity, summary). Recency sort by default, click any header to sort.
+- One-line session bar + one huge pane table (state, source, agent, dir, age, activity, summary). Recency sort by default, click any header to sort. Waiting/error rows show the prompt or error line in Summary.
 - Left-click jumps, right-click toggles the fullscreen preview, double-click a session attaches.
 - `n` new, `r` rename, `x` kill, `d` detach, `a` attend, `p` preview, `t` theme, `v` density, `s` settings, `o` sort, `f` filter, `q` quit, `?` help. Up/Down move, Left/Right filter, Tab switches lists.
 - Keys + theme + density in `~/.config/terhub/config.toml` (auto-created). Themes: dark, light, dracula, nord, gruvbox, solarized.
