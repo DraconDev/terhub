@@ -73,7 +73,7 @@ enum Cmd {
         agent: String,
         #[arg(long)]
         pane: String,
-        /// working|waiting|error|idle|unknown (aliases accepted).
+        /// working|waiting|error|idle|stuck|limited|unknown (aliases accepted).
         #[arg(long)]
         state: String,
         #[arg(long)]
@@ -514,7 +514,7 @@ fn cmd_status(json: bool) -> i32 {
 
 fn cmd_hook(agent: &str, pane: &str, state: &str, summary: Option<&str>) -> i32 {
     let Some(state) = AgentState::parse(state) else {
-        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|unknown)");
+        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
         return 1;
     };
     let ev = HookEvent {

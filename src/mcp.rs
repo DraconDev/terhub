@@ -119,7 +119,7 @@ fn tools() -> Value {
     json!([
         {"name": "terhub_status", "description": "Agent states: which panes run agents, who is waiting or errored.",
          "inputSchema": {"type": "object", "properties": {
-             "state": {"type": "string", "description": "Filter: working|waiting|error|idle"}}}},
+             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|stuck|limited"}}}},
         {"name": "terhub_capture", "description": "Recent screen content of a pane.",
          "inputSchema": {"type": "object", "properties": {
              "pane": {"type": "string"}, "lines": {"type": "number"}},
@@ -234,7 +234,7 @@ fn tool_wait(args: &Value) -> Result<String, String> {
         .and_then(|s| s.as_str())
         .map(crate::agent::AgentState::parse)
         .unwrap_or(Some(crate::agent::AgentState::Waiting))
-        .ok_or_else(|| "bad state (working|waiting|error|idle)".to_string())?;
+        .ok_or_else(|| "bad state (working|waiting|error|idle|stuck|limited)".to_string())?;
     let timeout = args
         .get("timeout_secs")
         .and_then(|t| t.as_u64())

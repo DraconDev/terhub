@@ -130,10 +130,11 @@ fn state_rank(rec: Option<&AgentRecord>) -> u8 {
         Some(AgentState::Waiting) => 0,
         Some(AgentState::Stuck) => 1,
         Some(AgentState::Error) => 2,
-        Some(AgentState::Working) => 3,
-        Some(AgentState::Idle) => 4,
-        Some(AgentState::Unknown) => 5,
-        None => 6,
+        Some(AgentState::Limited) => 3,
+        Some(AgentState::Working) => 4,
+        Some(AgentState::Idle) => 5,
+        Some(AgentState::Unknown) => 6,
+        None => 7,
     }
 }
 
