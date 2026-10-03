@@ -293,8 +293,11 @@ async fn poll_loop(
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     manifests: Arc<Vec<CompiledManifest>>,
     runtime: PathBuf,
+    tunables: Tunables,
 ) {
-    let mut tick = tokio::time::interval(Duration::from_secs(POLL_SECS));
+    // A zero interval would panic; config validation keeps this >= 1, and
+    // the clamp makes direct construction safe too.
+    let mut tick = tokio::time::interval(Duration::from_secs(tunables.poll_secs.max(1)));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut prev_sessions: Option<std::collections::HashSet<String>> = None;
     let mut prev_foreground: Option<Option<String>> = None;
@@ -302,7 +305,8 @@ async fn poll_loop(
         tick.tick().await;
         let prev = lock_registry(&registry).clone();
         let manifests = manifests.clone();
-        let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests)).await;
+        let tune = tunables;
+        let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests, tune)).await;
         match next {
             Ok((next, transitions, sessions, foreground)) => {
                 {
@@ -372,11 +376,13 @@ async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
 /// nobody refreshed recently has lapsed: screen classification takes over,
 /// but the expired record still seeds state continuity so a pane that kept
 /// its state doesn't renotify.
-fn split_prev(rec: Option<&AgentRecord>, now: u64) -> (Option<&AgentRecord>, Option<&AgentRecord>) {
+fn split_prev(
+    rec: Option<&AgentRecord>,
+    now: u64,
+    stale_secs: u64,
+) -> (Option<&AgentRecord>, Option<&AgentRecord>) {
     match rec {
-        Some(r)
-            if r.source == Source::Hook && now.saturating_sub(r.updated_at) > HOOK_STALE_SECS =>
-        {
+        Some(r) if r.source == Source::Hook && now.saturating_sub(r.updated_at) > stale_secs => {
             (None, Some(r))
         }
         other => (other, None),
@@ -388,11 +394,11 @@ fn split_prev(rec: Option<&AgentRecord>, now: u64) -> (Option<&AgentRecord>, Opt
 /// Screen records on harness panes are ghosts by construction (screen
 /// classification never runs there) and drop immediately instead of
 /// lingering out their 30 minutes.
-fn carry_record(old: &AgentRecord, pane: &Pane, now: u64) -> bool {
+fn carry_record(old: &AgentRecord, pane: &Pane, now: u64, stale_secs: u64) -> bool {
     if old.source == Source::Screen && is_harness_command(&pane.command) {
         return false;
     }
-    now.saturating_sub(old.updated_at) <= HOOK_STALE_SECS
+    now.saturating_sub(old.updated_at) <= stale_secs
 }
 
 /// Advance the stuck clock for `ticks` observed under `agent`: an
