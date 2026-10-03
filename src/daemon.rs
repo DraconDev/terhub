@@ -416,16 +416,10 @@ fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, now: u64) -> (u64, u64) {
     }
 }
 
-/// FNV-1a 64-bit: deterministic screen-change hash. SipHash is randomly
-/// keyed per process, which would restart every quiet clock on each daemon
-/// upgrade; this one keeps stillness comparable across restarts.
+/// Deterministic screen-change hash, stable across restarts so quiet
+/// clocks survive daemon upgrades.
 fn screen_hash(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in s.as_bytes() {
-        h ^= *b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    h
+    crate::fnv1a(s)
 }
 
 /// Advance the visible-quiet clock: same screen hash keeps the old
