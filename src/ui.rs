@@ -682,11 +682,8 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             let (act, act_warn) = idle_cell(rec, p.activity, now, &app.config);
             if p.id == "%192" {
                 eprintln!(
-                    "WDBG state={:?} quiet={} warnflag={} stuck={} act={act} warn={act_warn}",
-                    rec.map(|r| r.state),
-                    rec.map(|r| r.quiet_since).unwrap_or(0),
-                    app.config.idle_warn,
-                    app.config.stuck_secs,
+                    "WDBG style={:?} parsed={:?} warn={act_warn}",
+                    app.config.idle_warn_style, warn_style,
                 );
             }
             let window = window_label(&p.window_name, p.index, siblings);
