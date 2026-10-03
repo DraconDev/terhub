@@ -1526,6 +1526,14 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         };
                         app.right_click(&tmux, idx);
                     }
+                    MouseEventKind::Moved => {
+                        app.hover = if in_area(mouse.column, mouse.row, areas.panes) {
+                            let idx = app.pane_scroll + (mouse.row - areas.panes.y) as usize;
+                            (idx < app.filtered.len()).then_some(idx)
+                        } else {
+                            None
+                        };
+                    }
                     _ => {}
                 }
             }
