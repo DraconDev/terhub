@@ -611,8 +611,7 @@ fn poll_sync(
                     r.cpu_still_since = 0;
                 }
             }
-            (r.screen_hash, r.quiet_since) =
-                track_quiet((r.screen_hash, r.quiet_since), hash, now);
+            (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
             next.insert(pane.id.clone(), r);
             continue;
         }
