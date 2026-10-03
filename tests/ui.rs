@@ -240,7 +240,6 @@ fn unclaimed_row_has_no_agent_state() {
 fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
-    app.daemon_up = true;
     let now = now_unix();
     // Fresh tmux activity (a repaint 5s ago) but a screen unchanged for
     // an hour: the Idle cell must show the quiet clock, not the repaint.
@@ -280,7 +279,6 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
 fn agent_color_and_idle_warn_reach_cells() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
-    app.daemon_up = true;
     app.config
         .agent_styles
         .insert("pi".to_string(), "red".to_string());
