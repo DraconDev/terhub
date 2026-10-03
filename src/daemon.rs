@@ -618,14 +618,14 @@ fn poll_sync(
         } else {
             screen
                 .as_deref()
-                .map_or(None, |s| classify_screen(manifests, &pane.command, s))
+                .and_then(|s| classify_screen(manifests, &pane.command, s))
         };
         let proc_pair = proc_hit
             .as_ref()
             .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid)));
         let carried = old.or(stale);
         let lapsed = old.is_none() && stale.is_some();
-        if let Some(rec) = merge_record(
+        if let Some(mut rec) = merge_record(
             carried,
             lapsed,
             screen_hit,
@@ -634,6 +634,10 @@ fn poll_sync(
             now,
             tune.stuck_secs,
         ) {
+            let prev_quiet = carried
+                .map(|r| (r.screen_hash, r.quiet_since))
+                .unwrap_or((0, 0));
+            (rec.screen_hash, rec.quiet_since) = track_quiet(prev_quiet, hash, now);
             next.insert(pane.id.clone(), rec);
         } else if let Some(o) = old {
             // Pane alive but nothing matches: keep last known state only
