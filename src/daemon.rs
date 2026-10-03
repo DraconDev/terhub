@@ -575,6 +575,16 @@ fn poll_sync(
     for pane in &panes {
         let (old, stale) = split_prev(prev.get(&pane.id), now, tune.stale_secs);
         let proc_hit = snap.detect_agent(pane.pid);
+        // Skip idle shells nobody has claimed yet — unless a process hit
+        // claims them (an agent behind a shell prompt is still an agent).
+        if old.is_none() && proc_hit.is_none() && is_shell_command(&pane.command) {
+            continue;
+        }
+        // One capture feeds classification and the visible-quiet clock.
+        // Harness dashboards get hash-only: their screens name agents
+        // without running them, but their pixels still go quiet.
+        let screen = tmux.capture_pane(&pane.id, 30).ok();
+        let hash = screen.as_ref().map(|s| screen_hash(s));
         // Hook records stay authoritative; poll only refreshes their metadata.
         // NOTE: updated_at is deliberately NOT bumped here: it measures hook
         // freshness (time since the last event), and refreshing it every poll
@@ -598,22 +608,17 @@ fn poll_sync(
                     r.cpu_still_since = 0;
                 }
             }
+            (r.screen_hash, r.quiet_since) =
+                track_quiet((r.screen_hash, r.quiet_since), hash, now);
             next.insert(pane.id.clone(), r);
             continue;
         }
-        // Skip idle shells nobody has claimed yet — unless a process hit
-        // claims them (an agent behind a shell prompt is still an agent).
-        if old.is_none() && proc_hit.is_none() && is_shell_command(&pane.command) {
-            continue;
-        }
-        // Harness dashboards name agents without running them: no capture,
-        // no classification. A real agent process inside still claims the
-        // pane via the process hit below.
         let screen_hit = if is_harness_command(&pane.command) {
             None
         } else {
-            let screen = tmux.capture_pane(&pane.id, 30).unwrap_or_default();
-            classify_screen(manifests, &pane.command, &screen)
+            screen
+                .as_deref()
+                .map_or(None, |s| classify_screen(manifests, &pane.command, s))
         };
         let proc_pair = proc_hit
             .as_ref()
