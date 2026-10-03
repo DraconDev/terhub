@@ -267,10 +267,14 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             error: vec![
                 // Capital E only: lowercase "an error:" is prose.
                 "\\b(?-i:E)rror:".to_string(),
-                "rate limit".to_string(),
-                "usage limit".to_string(),
                 "something went wrong".to_string(),
                 "traceback".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
+                "quota".to_string(),
+                "\\b429\\b".to_string(),
             ],
         },
         Manifest {
@@ -290,8 +294,13 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
-                "rate limit".to_string(),
                 "\\bfailed\\b".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
+                "quota".to_string(),
+                "\\b429\\b".to_string(),
             ],
         },
         Manifest {
@@ -311,7 +320,12 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
                 "\\bfailed\\b".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
                 "quota".to_string(),
+                "\\b429\\b".to_string(),
             ],
         },
     ]
