@@ -1318,7 +1318,7 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("help"), code) {
-            self.status = Some(format!(
+            let mut help = format!(
                 "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=sort {}=style tab=back {}=quit",
                 cfg.key("attach"),
                 cfg.key("kill"),
@@ -1330,7 +1330,14 @@ impl App {
                 cfg.key("sort"),
                 cfg.key("settings"),
                 cfg.key("quit"),
-            ));
+            );
+            if !cfg.commands.is_empty() {
+                help.push_str(" custom:");
+                for c in &cfg.commands {
+                    help.push_str(&format!(" {}={}", c.key, c.name));
+                }
+            }
+            self.status = Some(help);
             return None;
         }
         None
@@ -1629,6 +1636,52 @@ mod tests {
         app.select_pane(0);
         app.on_key(press(KeyCode::Char(' ')), &tmux);
         assert!(!app.marked.contains(&first));
+    }
+
+    #[test]
+    fn expand_covers_all_documented_vars() {
+        for v in crate::config::COMMAND_VARS {
+            let out = expand_command(
+                &format!("pre-{{{v}}}-post"),
+                &Pane::test("%1", "w", "sh"),
+                None,
+            );
+            assert!(
+                !out.contains('{'),
+                "var {v} did not expand: {out}"
+            );
+        }
+        // Unknown vars and escapes stay literal.
+        let out = expand_command(
+            "{bogus} {{pane}} {pane}",
+            &Pane::test("%1", "w", "sh"),
+            None,
+        );
+        assert_eq!(out, "{bogus} {pane} %1");
+    }
+
+    #[test]
+    fn custom_command_runs_and_shows_output() {
+        use crate::config::CustomCommand;
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.config.commands.push(CustomCommand {
+            name: "echo-pane".to_string(),
+            key: "G".to_string(),
+            spec: crate::config::parse_key("G"),
+            run: "echo pane-is-{pane}".to_string(),
+        });
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('g')), &tmux);
+        match &app.mode {
+            Mode::CommandOutput { name, lines, .. } => {
+                assert_eq!(name, "echo-pane");
+                assert!(lines.iter().any(|l| l.contains("pane-is-%1")), "{lines:?}");
+            }
+            m => panic!("expected output popup, got {m:?}"),
+        }
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
     }
 
     #[test]

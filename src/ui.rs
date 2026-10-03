@@ -718,6 +718,26 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 }
 
 fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
+    // Scrollable command output gets its own tall popup, not the 60x5 box.
+    if let Mode::CommandOutput { name, lines, scroll } = &app.mode {
+        let w = area.width.saturating_sub(8).max(40);
+        let h = area.height.saturating_sub(6).max(8);
+        let popup = centered(area, w, h);
+        frame.render_widget(Clear, popup);
+        let block = Block::bordered()
+            .title(Line::from(format!(" {name} (Esc closes) ")).style(pal.title))
+            .border_style(pal.border);
+        let inner = block.inner(popup);
+        frame.render_widget(block, popup);
+        let shown: Vec<Line> = lines
+            .iter()
+            .skip(*scroll)
+            .take(inner.height as usize)
+            .map(|l| Line::from(l.as_str()))
+            .collect();
+        frame.render_widget(Paragraph::new(shown).style(pal.status), inner);
+        return;
+    }
     let (heading, body, prefix) = match &app.mode {
         Mode::PromptNew => (
             " New session ".to_string(),
@@ -749,6 +769,8 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             format!("{} Enter=yes Esc=no", truncate(&ids.join(" "), 52)),
             None,
         ),
+        // Handled by the tall-popup branch above.
+        Mode::CommandOutput { .. } => return,
         Mode::Normal | Mode::Settings => return,
     };
     let popup = centered(area, 60, 5);
