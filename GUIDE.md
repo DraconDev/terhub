@@ -118,8 +118,10 @@ status bar, no modes except small popups:
 - **`Ctrl+C` always quits.** `Esc` quits from the session bar.
 - **Agent columns.** With the daemon running, rows show agent/state/for
   (time in this state) and the title bar counts how many need you. Panes
-  with no agent read `idle`, with the `Idle` column showing time since
-  last output — the fastest way to judge a `working` row.
+  with no agent read `idle`. The `Idle` column shows time since the
+  screen visibly changed (identical repaints don't count) — the fastest
+  way to judge a `working` row; unclaimed panes fall back to tmux's
+  window-activity age.
 
 Everything except arrows/mouse/Tab/Esc is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
@@ -205,14 +207,14 @@ listening"). Per pane it merges three signals:
    `stuck_secs` (default 10 minutes) becomes `stuck` (needs you), clearing
    the moment it computes again (`stuck_secs = 0` disables stuck
    detection). Fresh hooks are never second-guessed this way.
-3. **Screen patterns** — built-in manifests for claude/codex/gemini match
-   the pane's command and recent screen text. The freshest matching line
-   decides, so current output overrides stale scrollback; `waiting`/`error`
-   on screen win over the process state. Harness dashboards (muxa,
+3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse
+   match the pane's command and recent screen text. The freshest matching
+   line decides, so current output overrides stale scrollback; `waiting`/
+   `error` on screen win over the process state. Harness dashboards (muxa,
    terhub's own TUI) skip screen classification — they name agents
    without running them. A record with no supporting evidence for 30
-   minutes is dropped rather than shown. Idle shells nobody claimed are
-   skipped, so plain terminals stay invisible.
+   minutes is dropped rather than shown. Idle shells nobody claimed stay
+   unclaimed, so plain terminals read `idle` instead of guessing a state.
 
 The table's `Src` column tells you which signal each row stands on.
 
@@ -225,12 +227,16 @@ working = ["Thinking", "⠋|⠙|⠹"]
 waiting = ["confirm", "\\[y/n\\]"]
 error = ["\\berror\\b", "traceback"]
 limited = ["quota", "rate limit", "\\b429\\b"]
+waiting_unless = ["esc to interrupt"]
 ```
 
 Patterns are case-insensitive regexes; within one line the most specific
 signal wins (limited beats error beats waiting beats working), and the
 freshest matching line wins across lines. A `limited` list holds
-quota/rate-limit language so a quota wall never reads as a crash. Without
+quota/rate-limit language so a quota wall never reads as a crash.
+`waiting_unless` vetoes a waiting verdict when any of its patterns match
+the tail (an input prompt under a live task is an input box, not a plea),
+falling back to the freshest working line or no verdict. Without
 a command match, patterns still yield a
 state, but the agent stays unnamed unless the screen mentions it: a bare
 approve prompt plus a live agent process reads as that agent waiting,
