@@ -867,6 +867,31 @@ mod tests {
     }
 
     #[test]
+    fn preview_text_keeps_ansi_colors() {
+        let text = preview_text("\u{1b}[31mred\u{1b}[0m plain");
+        assert_eq!(text.lines.len(), 1);
+        let spans = &text.lines[0].spans;
+        assert_eq!(spans[0].content.as_ref(), "red");
+        assert_eq!(spans[0].style.fg, Some(Color::Red));
+        assert!(spans.iter().any(|s| s.content.as_ref() == " plain"));
+    }
+
+    #[test]
+    fn preview_text_passes_plain_through() {
+        let text = preview_text("just text\ntwo lines");
+        assert_eq!(text.lines.len(), 2);
+        assert_eq!(text.lines[0].spans[0].content.as_ref(), "just text");
+    }
+
+    #[test]
+    fn strip_ansi_removes_sequences() {
+        assert_eq!(strip_ansi("\u{1b}[31mred\u{1b}[0m"), "red");
+        assert_eq!(strip_ansi("\u{1b}[?25lhide"), "hide");
+        assert_eq!(strip_ansi("\u{1b}(Bplain"), "plain");
+        assert_eq!(strip_ansi("no escapes"), "no escapes");
+    }
+
+    #[test]
     fn counts_key_on_window_id() {
         let mut a = Pane::test("%1", "w", "pi");
         a.window_id = "@1".to_string();

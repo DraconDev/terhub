@@ -2107,6 +2107,14 @@ mod tests {
     }
 
     #[test]
+    fn hover_clears_on_list_rebuild() {
+        let mut app = app_with_panes();
+        app.hover = Some(1);
+        app.refresh_filtered();
+        assert_eq!(app.hover, None);
+    }
+
+    #[test]
     fn sort_turn_longest_last_turn_first() {
         use crate::agent::AgentState;
         let mut app = app_with_three();
