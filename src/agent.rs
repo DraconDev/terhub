@@ -558,6 +558,7 @@ mod tests {
             working: vec!["([".to_string()],
             waiting: vec![],
             error: vec![],
+            limited: vec![],
         };
         assert!(CompiledManifest::compile(&m).is_err());
     }
@@ -695,6 +696,7 @@ mod tests {
             working: vec!["([".to_string()],
             waiting: vec![],
             error: vec![],
+            limited: vec![],
         });
         let (ok, warnings) = compile_all_lossy(&manifests);
         assert_eq!(ok.len(), 3);
