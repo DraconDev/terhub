@@ -303,10 +303,15 @@ impl App {
                 });
                 self.panes = panes;
                 self.refresh_filtered();
+                // Drop marks for dead panes; survivors keep theirs.
+                let live: std::collections::HashSet<&str> =
+                    self.panes.iter().map(|p| p.id.as_str()).collect();
+                self.marked.retain(|id| live.contains(id.as_str()));
             }
             Err(e) => {
                 self.panes.clear();
                 self.filtered.clear();
+                self.marked.clear();
                 self.status = Some(format!("panes error: {e}"));
             }
         }
@@ -1181,10 +1186,30 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("kill"), code) {
-            match self.selected_pane() {
-                Some(p) => self.mode = Mode::ConfirmKillPane(p.id.clone()),
-                None => self.status = Some("no pane selected".to_string()),
+            if !self.marked.is_empty() {
+                let mut ids: Vec<String> = self.marked.iter().cloned().collect();
+                ids.sort();
+                self.mode = Mode::ConfirmKillMarked(ids);
+            } else {
+                match self.selected_pane() {
+                    Some(p) => self.mode = Mode::ConfirmKillPane(p.id.clone()),
+                    None => self.status = Some("no pane selected".to_string()),
+                }
             }
+            return None;
+        }
+        if key_matches(&cfg.spec("mark"), code) {
+            self.toggle_mark();
+            return None;
+        }
+        if key_matches(&cfg.spec("unmark"), code) {
+            let n = self.marked.len();
+            self.marked.clear();
+            self.status = Some(if n == 0 {
+                "nothing marked".to_string()
+            } else {
+                format!("cleared {n} mark(s)")
+            });
             return None;
         }
         if key_matches(&cfg.spec("attend"), code) {
