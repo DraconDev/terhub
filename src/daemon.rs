@@ -759,6 +759,21 @@ mod tests {
     }
 
     #[test]
+    fn quiet_clock_keeps_still_restarts_change() {
+        let h = screen_hash("same screen");
+        // Still screen keeps the old still-time.
+        assert_eq!(track_quiet((h, 100), Some(h), 200), (h, 100));
+        // Changed screen restarts the clock.
+        let h2 = screen_hash("new output");
+        assert_ne!(h, h2);
+        assert_eq!(track_quiet((h, 100), Some(h2), 200), (h2, 200));
+        // Failed capture preserves the clock, never resets it.
+        assert_eq!(track_quiet((h, 100), None, 200), (h, 100));
+        // First sighting starts the clock now.
+        assert_eq!(track_quiet((0, 0), Some(h), 200), (h, 200));
+    }
+
+    #[test]
     fn fresh_hook_stays_authoritative() {
         let now = 10_000;
         let rec = hook_record(now - 60);
