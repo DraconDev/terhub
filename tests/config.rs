@@ -32,3 +32,26 @@ fn corrupt_file_yields_defaults() {
     assert_eq!(cfg.key("new"), "n");
     std::fs::remove_file(path).ok();
 }
+
+#[test]
+fn style_section_parses_and_validates() {
+    use terhub::config::load_config_report;
+    let dir = std::env::temp_dir().join(format!("terhub-cfg-style-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(
+        &path,
+        "[style]\ncolor_agents = false\nagent_palette = [\"red\", \"nope\"]\nidle_warn_style = \"bold red\"\n[style.agents]\nPi = \"cyan\"\n",
+    )
+    .unwrap();
+    let (cfg, problems) = load_config_report(Some(path.clone()));
+    assert!(!cfg.color_agents);
+    assert_eq!(cfg.agent_palette, vec!["red".to_string(), "nope".to_string()]);
+    assert_eq!(cfg.agent_styles.get("pi").map(String::as_str), Some("cyan"));
+    assert_eq!(cfg.idle_warn_style, "bold red");
+    assert!(
+        problems.iter().any(|p| p.contains("agent_palette[1]")),
+        "missing problem: {problems:?}"
+    );
+    std::fs::remove_file(path).ok();
+}
