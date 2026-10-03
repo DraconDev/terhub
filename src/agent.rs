@@ -614,6 +614,53 @@ mod tests {
     }
 
     #[test]
+    fn prompt_under_live_task_is_working_not_waiting() {
+        let m = compiled();
+        // %90 shape: muse input box below a live spinner. The `❯` alone
+        // would read waiting; the interrupt offer vetoes it.
+        let screen = "◈ Calling tools (27m 24s · esc to interrupt)\n───\n❯\n";
+        assert_eq!(
+            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen),
+            hit(
+                Some("muse"),
+                AgentState::Working,
+                "◈ Calling tools (27m 24s · esc to interrupt)"
+            )
+        );
+    }
+
+    #[test]
+    fn prompt_without_live_task_is_waiting() {
+        let m = compiled();
+        // Settled muse: completed lines carry no interrupt offer, so the
+        // bare prompt reads waiting.
+        let screen = "◆ Ran 2 commands · stuff · 28s · ctrl+o\n───\n❯\n";
+        assert_eq!(
+            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen),
+            hit(
+                Some("muse"),
+                AgentState::Waiting,
+                "◆ Ran 2 commands · stuff · 28s · ctrl+o"
+            )
+        );
+    }
+
+    #[test]
+    fn veto_without_working_line_yields_no_verdict() {
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "v".to_string(),
+            commands: vec!["v".to_string()],
+            working: vec![],
+            waiting: vec!["^❯".to_string()],
+            error: vec![],
+            limited: vec![],
+            waiting_unless: vec!["busy".to_string()],
+        })
+        .unwrap();
+        assert_eq!(m.classify("busy doing things\n❯\n"), None);
+    }
+
+    #[test]
     fn error_beats_working() {
         let m = compiled();
         let screen = "⠋ Working…\nError: connection reset\n";
