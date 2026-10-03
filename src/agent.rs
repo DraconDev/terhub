@@ -186,6 +186,12 @@ pub struct Manifest {
     /// Quota/rate-limit language: reads as Limited, never Error.
     #[serde(default)]
     pub limited: Vec<String>,
+    /// Waiting veto: when any of these match the tail, a waiting verdict
+    /// falls back to the freshest working line (or no verdict). For agents
+    /// whose input prompt stays visible during work — `❯` below a live
+    /// spinner is an input box, not a plea for input.
+    #[serde(default)]
+    pub waiting_unless: Vec<String>,
 }
 
 pub struct CompiledManifest {
@@ -195,6 +201,7 @@ pub struct CompiledManifest {
     waiting: Vec<Regex>,
     error: Vec<Regex>,
     limited: Vec<Regex>,
+    waiting_unless: Vec<Regex>,
 }
 
 impl CompiledManifest {
@@ -218,6 +225,7 @@ impl CompiledManifest {
             waiting: compile_all(&m.agent, "waiting", &m.waiting)?,
             error: compile_all(&m.agent, "error", &m.error)?,
             limited: compile_all(&m.agent, "limited", &m.limited)?,
+            waiting_unless: compile_all(&m.agent, "waiting_unless", &m.waiting_unless)?,
         })
     }
 
@@ -238,16 +246,31 @@ impl CompiledManifest {
         let mut tail: Vec<&str> = screen.lines().rev().take(15).collect();
         tail.reverse();
         let mut hit = None;
+        let mut work = None;
+        let mut veto = false;
         for (i, line) in tail.iter().enumerate() {
+            if self.waiting_unless.iter().any(|r| r.is_match(line)) {
+                veto = true;
+            }
+            let is_work = self.working.iter().any(|r| r.is_match(line));
+            if is_work {
+                work = Some(i);
+            }
             if self.limited.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Limited, i));
             } else if self.error.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Error, i));
             } else if self.waiting.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Waiting, i));
-            } else if self.working.iter().any(|r| r.is_match(line)) {
+            } else if is_work {
                 hit = Some((AgentState::Working, i));
             }
+        }
+        // A vetoed prompt is an input box under a live task, not a plea:
+        // fall back to the freshest working line, or no verdict at all
+        // (the caller pairs that with process evidence, or drops it).
+        if veto && matches!(hit, Some((AgentState::Waiting, _))) {
+            hit = work.map(|i| (AgentState::Working, i));
         }
         hit.map(|(state, i)| {
             let mut line = tail[i];
