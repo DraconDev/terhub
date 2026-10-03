@@ -296,12 +296,13 @@ impl App {
             preview_width: None,
             show_preview: false,
             agents: HashMap::new(),
+            daemon_up: false,
             session_scroll: 0,
             pane_scroll: 0,
             cursor: 0,
             settings_selected: 0,
             settings_scroll: 0,
-            sort_key: SortKey::Act,
+            sort_key: SortKey::Idle,
             sort_asc: false,
             filter: String::new(),
             marked: std::collections::HashSet::new(),
@@ -405,8 +406,12 @@ impl App {
                     .into_iter()
                     .map(|a| (a.pane.clone(), a))
                     .collect();
+                self.daemon_up = true;
             }
-            Err(_) => self.agents.clear(),
+            Err(_) => {
+                self.agents.clear();
+                self.daemon_up = false;
+            }
         }
     }
 
@@ -521,11 +526,11 @@ impl App {
                 SortKey::Agent => agent_name(agents.get(&a.id)).cmp(agent_name(agents.get(&b.id))),
                 SortKey::State => state_rank(agents.get(&a.id)).cmp(&state_rank(agents.get(&b.id))),
                 SortKey::Src => src_name(agents.get(&a.id)).cmp(src_name(agents.get(&b.id))),
-                SortKey::Age => {
+                SortKey::For => {
                     age_secs(agents.get(&a.id), now).cmp(&age_secs(agents.get(&b.id), now))
                 }
                 SortKey::Turn => turn_secs(agents.get(&a.id)).cmp(&turn_secs(agents.get(&b.id))),
-                SortKey::Act => a.activity.cmp(&b.activity),
+                SortKey::Idle => a.activity.cmp(&b.activity),
                 SortKey::Summary => {
                     summary_text(agents.get(&a.id)).cmp(summary_text(agents.get(&b.id)))
                 }
