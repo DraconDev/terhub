@@ -147,6 +147,7 @@ fn title_needy_counts_visible_rows_only() {
         state_since: 1,
         cpu_ticks: 0,
         cpu_still_since: 0,
+        last_turn_secs: 0,
     };
     app.agents.insert("%1".to_string(), rec("%1"));
     app.agents.insert("%2".to_string(), rec("%2"));
@@ -177,6 +178,7 @@ fn proc_source_and_stuck_state_render() {
             state_since: 1,
             cpu_ticks: 500,
             cpu_still_since: 1,
+            last_turn_secs: 0,
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -347,6 +349,7 @@ fn agent_state_renders_in_table() {
             state_since: 1,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            last_turn_secs: 0,
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -449,6 +452,7 @@ fn src_and_dir_columns_render() {
             state_since: 1,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            last_turn_secs: 0,
         },
     );
     app.agents.insert(
@@ -466,6 +470,7 @@ fn src_and_dir_columns_render() {
             state_since: 1,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            last_turn_secs: 0,
         },
     );
     let lines = render_lines(&mut app, 140, 20);
