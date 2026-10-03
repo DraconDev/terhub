@@ -292,10 +292,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\[y/n\\]".to_string(),
                 "press enter to (send|confirm)".to_string(),
             ],
-            error: vec![
-                "\\b(?-i:E)rror\\b".to_string(),
-                "\\bfailed\\b".to_string(),
-            ],
+            error: vec!["\\b(?-i:E)rror\\b".to_string(), "\\bfailed\\b".to_string()],
             limited: vec![
                 "rate limit".to_string(),
                 "usage limit".to_string(),
@@ -317,10 +314,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\bapprove\\b".to_string(),
                 "\\bconfirm\\b".to_string(),
             ],
-            error: vec![
-                "\\b(?-i:E)rror\\b".to_string(),
-                "\\bfailed\\b".to_string(),
-            ],
+            error: vec!["\\b(?-i:E)rror\\b".to_string(), "\\bfailed\\b".to_string()],
             limited: vec![
                 "rate limit".to_string(),
                 "usage limit".to_string(),
@@ -558,7 +552,8 @@ mod tests {
         );
         // The %23 case: quota prose under an unknown command reads as
         // anonymous limited, pairable with process identity.
-        let screen = "- Three of the four asset groups are ready to generate the moment quota returns.\n";
+        let screen =
+            "- Three of the four asset groups are ready to generate the moment quota returns.\n";
         assert_eq!(
             classify_screen(&m, "node", screen),
             hit(

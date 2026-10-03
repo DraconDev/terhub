@@ -831,7 +831,11 @@ mod tests {
         let rec = merge_record(
             None,
             false,
-            screen_hit(Some("codex"), AgentState::Limited, "Error: rate limit reached"),
+            screen_hit(
+                Some("codex"),
+                AgentState::Limited,
+                "Error: rate limit reached",
+            ),
             Some(("pi", 50)),
             &test_pane(),
             now,
