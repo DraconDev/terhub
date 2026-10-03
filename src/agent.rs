@@ -245,13 +245,16 @@ impl CompiledManifest {
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
         let mut tail: Vec<&str> = screen.lines().rev().take(15).collect();
         tail.reverse();
+        // The veto scans the whole capture, not just the verdict tail:
+        // tall status regions (task lists, goal panels) can push the
+        // live-task line above the freshest 15 while the prompt stays
+        // glued below it.
+        let veto = screen
+            .lines()
+            .any(|line| self.waiting_unless.iter().any(|r| r.is_match(line)));
         let mut hit = None;
         let mut work = None;
-        let mut veto = false;
         for (i, line) in tail.iter().enumerate() {
-            if self.waiting_unless.iter().any(|r| r.is_match(line)) {
-                veto = true;
-            }
             let is_work = self.working.iter().any(|r| r.is_match(line));
             if is_work {
                 work = Some(i);
@@ -643,6 +646,21 @@ mod tests {
                 "◆ Ran 2 commands · stuff · 28s · ctrl+o"
             )
         );
+    }
+
+    #[test]
+    fn veto_reaches_above_the_verdict_tail() {
+        let m = compiled();
+        // %90 shape at its tallest: the live line sits above the
+        // freshest 15 while the prompt stays glued below. The prompt
+        // would read waiting, but the veto kills the verdict (the
+        // daemon pairs that with process evidence).
+        let mut screen = String::from("◈ Calling tools (5m 26s · esc to interrupt)\n");
+        for i in 0..20 {
+            screen.push_str(&format!("filler line {i}\n"));
+        }
+        screen.push_str("❯\n");
+        assert_eq!(classify_screen(&m, "muse-bin-1.4.2", &screen), None);
     }
 
     #[test]
