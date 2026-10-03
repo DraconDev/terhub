@@ -211,6 +211,42 @@ fn unclaimed_row_is_idle_only_with_daemon() {
 }
 
 #[test]
+fn idle_column_prefers_visible_quiet_over_tmux_activity() {
+    use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
+    let mut app = app_with_panes();
+    app.daemon_up = true;
+    let now = now_unix();
+    // Fresh tmux activity (a repaint 5s ago) but a screen unchanged for
+    // an hour: the Idle cell must show the quiet clock, not the repaint.
+    app.panes[0].activity = now - 5;
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: now,
+            state_since: now - 120,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            last_turn_secs: 0,
+            screen_hash: 7,
+            quiet_since: now - 3600,
+        },
+    );
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    let row = text.lines().find(|l| l.contains("%1")).unwrap();
+    let tokens: Vec<&str> = row.split_whitespace().collect();
+    assert!(tokens.contains(&"1h0m"), "quiet clock not shown:\n{text}");
+    assert!(!tokens.contains(&"5s"), "repaint age leaked:\n{text}");
+}
+
+#[test]
 fn resort_restarts_view_at_top() {
     let mut app = app_with_panes();
     app.select_pane(0);
