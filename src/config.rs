@@ -671,6 +671,34 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         ));
         cfg.stale_secs = crate::daemon::HOOK_STALE_SECS;
     }
+    // Row styling: bad specs degrade to plain text at render time; --check
+    // names them so typos don't silently vanish.
+    cfg.color_agents = file.style.color_agents;
+    cfg.agent_palette = file.style.agent_palette;
+    for (i, spec) in cfg.agent_palette.iter().enumerate() {
+        if !valid_style_spec(spec) {
+            problems.push(format!("style agent_palette[{i}] has bad style '{spec}'"));
+        }
+    }
+    cfg.agent_styles = file
+        .style
+        .agents
+        .into_iter()
+        .map(|(k, v)| (k.to_lowercase(), v))
+        .collect();
+    for (agent, spec) in &cfg.agent_styles {
+        if !valid_style_spec(spec) {
+            problems.push(format!("style agent '{agent}' has bad style '{spec}'"));
+        }
+    }
+    cfg.idle_warn = file.style.idle_warn;
+    cfg.idle_warn_style = file.style.idle_warn_style;
+    if !valid_style_spec(&cfg.idle_warn_style) {
+        problems.push(format!(
+            "style idle_warn_style has bad style '{}'",
+            cfg.idle_warn_style
+        ));
+    }
     // Custom commands: built-ins win every key collision (checked against
     // effective bindings, so user rebinding is respected).
     let builtin: Vec<(String, KeySpec)> = default_keys()
@@ -782,6 +810,9 @@ pub fn default_config_text() -> String {
     ));
     out.push_str(
         "\n# Custom pane commands (key must not collide with a built-in):\n# [[command]]\n# name = \"git status\"\n# key = \"G\"\n# run = \"git -C {dir} status -sb\"\n",
+    );
+    out.push_str(
+        "\n# Row styling (specs: modifiers + a color, e.g. \"bold yellow\", \"red\", \"#ff8800\"):\n# [style]\n# color_agents = true\n# agent_palette = []\n# idle_warn = true\n# idle_warn_style = \"bold yellow\"\n# [style.agents]\n# pi = \"cyan\"\n",
     );
     out
 }
