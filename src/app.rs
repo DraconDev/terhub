@@ -2067,7 +2067,7 @@ mod tests {
     #[test]
     fn default_sort_is_recency_newest_first_unknowns_last() {
         let app = app_with_three();
-        assert_eq!(app.sort_key, SortKey::Act);
+        assert_eq!(app.sort_key, SortKey::Idle);
         assert!(!app.sort_asc);
         assert_eq!(ids(&app), vec!["%2", "%1", "%10"]);
     }
@@ -2123,7 +2123,7 @@ mod tests {
             "%10".to_string(),
             record("%10", "codex", AgentState::Waiting, 200),
         );
-        app.cycle_sort(SortKey::Age);
+        app.cycle_sort(SortKey::For);
         app.refresh_filtered();
         assert!(!app.sort_asc);
         assert_eq!(ids(&app), vec!["%1", "%10", "%2"]);
@@ -2254,7 +2254,7 @@ mod tests {
         for _ in 0..SORT_CYCLE.len() {
             app.cycle_sort_key();
         }
-        assert_eq!(app.sort_key, SortKey::Act);
+        assert_eq!(app.sort_key, SortKey::Idle);
         app.cycle_sort_key();
         assert_eq!(app.sort_key, SortKey::State);
     }

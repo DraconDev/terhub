@@ -92,7 +92,7 @@ fn table_lists_panes_with_columns() {
     let lines = render_lines(&mut app, 140, 20);
     let text = lines.join("\n");
     for h in [
-        "Pane", "Session", "Window", "Cmd", "Dir", "Agent", "State", "Src", "Age", "Turn", "Act",
+        "Pane", "Session", "Window", "Cmd", "Dir", "Agent", "State", "Src", "For", "Turn", "Idle",
         "Summary",
     ] {
         assert!(text.contains(h), "missing header {h}:\n{text}");
@@ -111,7 +111,7 @@ fn table_sorts_by_recency_by_default() {
     app.refresh_filtered();
     let lines = render_lines(&mut app, 140, 20);
     let text = lines.join("\n");
-    assert!(text.contains("Act▼"), "missing recency sort mark:\n{text}");
+    assert!(text.contains("Idle▼"), "missing recency sort mark:\n{text}");
     let bash = text.find("bash").expect("missing bash row");
     let nvim = text.find("nvim").expect("missing nvim row");
     assert!(bash < nvim, "newest pane not first:\n{text}");
@@ -124,7 +124,7 @@ fn sort_arrow_follows_clicks() {
     app.refresh_filtered();
     let text = render_lines(&mut app, 140, 20).join("\n");
     assert!(text.contains("Cmd▲"), "missing asc arrow:\n{text}");
-    assert!(!text.contains("Act▼"), "stale arrow:\n{text}");
+    assert!(!text.contains("Idle▼"), "stale arrow:\n{text}");
     app.cycle_sort(SortKey::Cmd);
     app.refresh_filtered();
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -191,6 +191,22 @@ fn proc_source_and_stuck_state_render() {
 }
 
 #[test]
+fn unclaimed_row_is_idle_only_with_daemon() {
+    // Daemon up, no record: plain idle (a shell, an editor), not unknown.
+    let mut app = app_with_panes();
+    app.daemon_up = true;
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    let row = text.lines().find(|l| l.contains("%2")).unwrap();
+    assert!(row.contains("idle"), "unclaimed shell not idle:\n{text}");
+    // Daemon down: unknown, never idle.
+    let mut app = app_with_panes();
+    assert!(!app.daemon_up);
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    let row = text.lines().find(|l| l.contains("%2")).unwrap();
+    assert!(!row.contains("idle"), "idle without daemon data:\n{text}");
+}
+
+#[test]
 fn resort_restarts_view_at_top() {
     let mut app = app_with_panes();
     app.select_pane(0);
@@ -221,9 +237,9 @@ fn header_hits_align_with_labels() {
         (Some(SortKey::Agent), "Agent"),
         (Some(SortKey::State), "State"),
         (Some(SortKey::Src), "Src"),
-        (Some(SortKey::Age), "Age"),
+        (Some(SortKey::For), "For"),
         (Some(SortKey::Turn), "Turn"),
-        (Some(SortKey::Act), "Act"),
+        (Some(SortKey::Idle), "Idle"),
         (Some(SortKey::Summary), "Summary"),
     ];
     assert_eq!(areas.headers.len(), expected.len());
@@ -257,9 +273,9 @@ fn header_hits_align_with_labels() {
             Some(SortKey::Agent),
             Some(SortKey::State),
             Some(SortKey::Src),
-            Some(SortKey::Age),
+            Some(SortKey::For),
             Some(SortKey::Turn),
-            Some(SortKey::Act),
+            Some(SortKey::Idle),
         ]
     );
     for hit in &areas.headers {
