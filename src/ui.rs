@@ -1035,21 +1035,22 @@ mod tests {
         );
         assert_ne!(agent_text_style("pi", &cfg, dim), dim);
         assert_eq!(agent_text_style("", &cfg, dim), dim);
-        let mut off = AppConfig::default();
-        off.color_agents = false;
+        let off = AppConfig {
+            color_agents: false,
+            ..AppConfig::default()
+        };
         assert_eq!(agent_text_style("pi", &off, dim), dim);
         // Override wins over the hash.
         let mut custom = AppConfig::default();
         custom
             .agent_styles
             .insert("pi".to_string(), "red".to_string());
-        assert_eq!(
-            agent_text_style("pi", &custom, dim).fg,
-            Some(Color::Red)
-        );
+        assert_eq!(agent_text_style("pi", &custom, dim).fg, Some(Color::Red));
         // Custom single-entry palette pins every agent to it.
-        let mut pal = AppConfig::default();
-        pal.agent_palette = vec!["#00ff00".to_string()];
+        let pal = AppConfig {
+            agent_palette: vec!["#00ff00".to_string()],
+            ..AppConfig::default()
+        };
         assert_eq!(
             agent_text_style("pi", &pal, dim).fg,
             Some(Color::Rgb(0, 0xff, 0))
@@ -1085,7 +1086,10 @@ mod tests {
         };
         // Working + quiet past stuck_secs (600) → warn.
         let r = rec(AgentState::Working, now - 3600);
-        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("1h0m".to_string(), true));
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &cfg),
+            ("1h0m".to_string(), true)
+        );
         // Fresh work → calm.
         let r = rec(AgentState::Working, now - 5);
         assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("5s".to_string(), false));
@@ -1099,7 +1103,10 @@ mod tests {
             ("1h0m".to_string(), true)
         );
         // Unclaimed panes never warn.
-        assert_eq!(idle_cell(None, now - 3600, now, &cfg), ("1h0m".to_string(), false));
+        assert_eq!(
+            idle_cell(None, now - 3600, now, &cfg),
+            ("1h0m".to_string(), false)
+        );
         assert_eq!(idle_cell(None, 0, now, &cfg), ("—".to_string(), false));
         // Off switches: flag or stuck_secs = 0.
         let mut off = AppConfig::default();

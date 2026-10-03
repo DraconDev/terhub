@@ -46,7 +46,10 @@ fn style_section_parses_and_validates() {
     .unwrap();
     let (cfg, problems) = load_config_report(Some(path.clone()));
     assert!(!cfg.color_agents);
-    assert_eq!(cfg.agent_palette, vec!["red".to_string(), "nope".to_string()]);
+    assert_eq!(
+        cfg.agent_palette,
+        vec!["red".to_string(), "nope".to_string()]
+    );
     assert_eq!(cfg.agent_styles.get("pi").map(String::as_str), Some("cyan"));
     assert_eq!(cfg.idle_warn_style, "bold red");
     assert!(

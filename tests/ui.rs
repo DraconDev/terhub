@@ -282,7 +282,9 @@ fn agent_color_and_idle_warn_reach_cells() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
     app.daemon_up = true;
-    app.config.agent_styles.insert("pi".to_string(), "red".to_string());
+    app.config
+        .agent_styles
+        .insert("pi".to_string(), "red".to_string());
     app.config.idle_warn_style = "bold red".to_string();
     let now = now_unix();
     app.panes[0].activity = now - 3600;

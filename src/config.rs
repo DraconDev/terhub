@@ -282,9 +282,9 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
     let bytes = hex.as_bytes();
     let (r, g, b) = match bytes.len() {
         3 => (
-            hex_val(bytes[0]).and_then(|v| Some(v * 17))?,
-            hex_val(bytes[1]).and_then(|v| Some(v * 17))?,
-            hex_val(bytes[2]).and_then(|v| Some(v * 17))?,
+            hex_val(bytes[0]).map(|v| v * 17)?,
+            hex_val(bytes[1]).map(|v| v * 17)?,
+            hex_val(bytes[2]).map(|v| v * 17)?,
         ),
         6 => (
             hex_byte(bytes[0], bytes[1])?,
@@ -872,7 +872,10 @@ mod tests {
             parse_style_spec("#ff8800").fg,
             Some(Color::Rgb(0xff, 0x88, 0x00))
         );
-        assert_eq!(parse_style_spec("#f80").fg, Some(Color::Rgb(0xff, 0x88, 0x00)));
+        assert_eq!(
+            parse_style_spec("#f80").fg,
+            Some(Color::Rgb(0xff, 0x88, 0x00))
+        );
         // Unknown tokens degrade, never break.
         assert_eq!(parse_style_spec("nope"), Style::default());
         assert_eq!(parse_style_spec(""), Style::default());
