@@ -476,6 +476,9 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     cpu_ticks: 0,
                     cpu_still_since: 0,
                     last_turn_secs,
+                    // A hook event is not a screen change: carry the clock.
+                    screen_hash: old.map(|r| r.screen_hash).unwrap_or(0),
+                    quiet_since: old.map(|r| r.quiet_since).unwrap_or(0),
                 },
             );
         }

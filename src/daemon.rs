@@ -539,6 +539,9 @@ fn merge_record(
         cpu_ticks: ticks,
         cpu_still_since: still,
         last_turn_secs,
+        // Quiet is set by the poller post-merge (it owns the capture).
+        screen_hash: 0,
+        quiet_since: 0,
     })
 }
 
