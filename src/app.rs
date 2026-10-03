@@ -1308,11 +1308,14 @@ impl App {
             self.refresh(tmux);
             return None;
         }
-        for cmd in &cfg.commands {
-            if key_matches(&cmd.spec, code) {
-                self.run_custom(cmd);
-                return None;
-            }
+        let custom = cfg
+            .commands
+            .iter()
+            .find(|c| key_matches(&c.spec, code))
+            .cloned();
+        if let Some(cmd) = custom {
+            self.run_custom(&cmd);
+            return None;
         }
         if key_matches(&cfg.spec("help"), code) {
             self.status = Some(format!(
@@ -1351,6 +1354,52 @@ impl App {
                 }
                 self.cancel_modal();
             }
+            _ => {}
+        }
+        None
+    }
+
+    /// Run a `[[command]]` against the selected row: expand the template,
+    /// capture output (10s cap), show it in a scrollable popup. Blocks the
+    /// TUI while running — custom commands should be quick queries.
+    fn run_custom(&mut self, cmd: &crate::config::CustomCommand) {
+        let pane = match self.selected_pane() {
+            Some(p) => p.clone(),
+            None => {
+                self.status = Some("no pane selected".to_string());
+                return;
+            }
+        };
+        let rec = self.agents.get(&pane.id);
+        let expanded = expand_command(&cmd.run, &pane, rec);
+        match crate::automation::shell_capture(
+            &expanded,
+            &pane.id,
+            rec,
+            std::time::Duration::from_secs(10),
+        ) {
+            Ok(text) => {
+                self.mode = Mode::CommandOutput {
+                    name: cmd.name.clone(),
+                    lines: text.lines().map(str::to_string).collect(),
+                    scroll: 0,
+                };
+            }
+            Err(e) => self.status = Some(format!("{}: {e}", cmd.name)),
+        }
+    }
+
+    fn on_command_output_key(&mut self, key: KeyEvent) -> Option<AppEvent> {
+        let (len, scroll) = match &mut self.mode {
+            Mode::CommandOutput { lines, scroll, .. } => (lines.len(), scroll),
+            _ => return None,
+        };
+        match key.code {
+            KeyCode::Esc | KeyCode::Enter => self.cancel_modal(),
+            KeyCode::Up => *scroll = scroll.saturating_sub(1),
+            KeyCode::Down => *scroll = (*scroll + 1).min(len.saturating_sub(1)),
+            KeyCode::PageUp => *scroll = scroll.saturating_sub(10),
+            KeyCode::PageDown => *scroll = (*scroll + 10).min(len.saturating_sub(1)),
             _ => {}
         }
         None
