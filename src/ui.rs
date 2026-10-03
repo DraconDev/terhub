@@ -231,10 +231,8 @@ pub fn preview_text(raw: &str, width: usize) -> ratatui::text::Text<'static> {
         };
         let w = line.width();
         if w < width {
-            line.spans.push(Span::styled(
-                " ".repeat(width - w),
-                Style::default().bg(bg),
-            ));
+            line.spans
+                .push(Span::styled(" ".repeat(width - w), Style::default().bg(bg)));
         }
     }
     text
@@ -773,8 +771,8 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             &app.preview,
             app.preview_width.unwrap_or(inner.width as usize),
         ))
-            .wrap(Wrap { trim: false })
-            .style(pal.status),
+        .wrap(Wrap { trim: false })
+        .style(pal.status),
         inner,
     );
 }
@@ -1015,7 +1013,10 @@ mod tests {
 
     #[test]
     fn trailing_bg_reads_final_state() {
-        assert_eq!(trailing_bg("x\u{1b}[0m\u{1b}[48;2;1;2;3m"), Some(Color::Rgb(1, 2, 3)));
+        assert_eq!(
+            trailing_bg("x\u{1b}[0m\u{1b}[48;2;1;2;3m"),
+            Some(Color::Rgb(1, 2, 3))
+        );
         assert_eq!(trailing_bg("x\u{1b}[48;2;1;2;3m\u{1b}[49m"), None);
         assert_eq!(trailing_bg("x\u{1b}[41m"), Some(Color::Red));
         assert_eq!(trailing_bg("x\u{1b}[48;5;200m"), Some(Color::Indexed(200)));
