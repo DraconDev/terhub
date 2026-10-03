@@ -18,6 +18,9 @@ pub enum AgentState {
     /// Working, but the agent's process tree has burned no CPU for
     /// STUCK_SECS: hung, not busy.
     Stuck,
+    /// Usage/quota wall hit: the agent is paused until reset, not broken.
+    /// Quota language is telemetry about limits, never a crash report.
+    Limited,
 }
 
 impl AgentState {
@@ -30,6 +33,7 @@ impl AgentState {
             "error" | "failed" | "fail" => Some(AgentState::Error),
             "idle" | "done" | "complete" | "completed" => Some(AgentState::Idle),
             "stuck" | "hung" => Some(AgentState::Stuck),
+            "limited" | "limit" | "quota" | "capped" => Some(AgentState::Limited),
             "unknown" => Some(AgentState::Unknown),
             _ => None,
         }
@@ -43,6 +47,7 @@ impl AgentState {
             AgentState::Error => "error",
             AgentState::Idle => "idle",
             AgentState::Stuck => "stuck",
+            AgentState::Limited => "limited",
         }
     }
 
@@ -50,7 +55,7 @@ impl AgentState {
     pub fn needs_attention(self) -> bool {
         matches!(
             self,
-            AgentState::Waiting | AgentState::Error | AgentState::Stuck
+            AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
         )
     }
 }
