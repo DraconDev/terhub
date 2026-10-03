@@ -446,6 +446,12 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Some(r) => crate::history::fmt_dur(r.waiting_secs(now)),
                 None => "—".to_string(),
             };
+            let turn = match rec {
+                Some(r) if r.last_turn_secs > 0 => {
+                    crate::history::fmt_dur(r.last_turn_secs)
+                }
+                _ => "—".to_string(),
+            };
             let act = if p.activity == 0 {
                 "—".to_string()
             } else {
@@ -481,6 +487,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Cell::from(state).style(state_style),
                 Cell::from(src).style(src_style),
                 Cell::from(age).style(pal.dim),
+                Cell::from(turn).style(pal.dim),
                 Cell::from(act).style(pal.dim),
             ]);
             if !compact {
@@ -504,7 +511,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     }
     headers.extend(
         [
-            "Window", "Cmd", "Dir", "Agent", "State", "Src", "Age", "Act",
+            "Window", "Cmd", "Dir", "Agent", "State", "Src", "Age", "Turn", "Act",
         ]
         .map(str::to_string),
     );
@@ -517,6 +524,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             SortKey::State,
             SortKey::Src,
             SortKey::Age,
+            SortKey::Turn,
             SortKey::Act,
         ]
         .map(Some),
@@ -528,6 +536,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         Constraint::Percentage(9),
         Constraint::Length(8),
         Constraint::Length(4),
+        Constraint::Length(6),
         Constraint::Length(6),
         Constraint::Length(6),
     ]);
