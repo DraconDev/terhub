@@ -1157,18 +1157,48 @@ impl App {
     /// Jump to the longest-waiting agent. Works from either focus.
     fn do_attend(&mut self) -> Option<AppEvent> {
         match daemon::fetch_snapshot(Duration::from_millis(300)) {
-            Ok(snap) => match crate::attend::pick_attend(&snap.agents, None) {
-                Some(a) => Some(AppEvent::FocusPane(a.pane.clone())),
-                None => {
-                    self.status = Some(format!("all clear ({} agents)", snap.agents.len()));
-                    None
+            Ok(snap) => {
+                // Marked panes scope the search; unmarked behaves as before.
+                let agents: Vec<AgentRecord> = if self.marked.is_empty() {
+                    snap.agents
+                } else {
+                    snap.agents
+                        .into_iter()
+                        .filter(|a| self.marked.contains(&a.pane))
+                        .collect()
+                };
+                match crate::attend::pick_attend(&agents, None) {
+                    Some(a) => Some(AppEvent::FocusPane(a.pane.clone())),
+                    None => {
+                        self.status = Some(format!("all clear ({} agents)", agents.len()));
+                        None
+                    }
                 }
-            },
+            }
             Err(_) => {
                 self.status = Some("daemon not running".to_string());
                 None
             }
         }
+    }
+
+    /// Space: toggle the row's mark and step down, file-manager style, so
+    /// a run of rows marks with repeated presses.
+    fn toggle_mark(&mut self) {
+        let id = match self.selected_pane() {
+            Some(p) => p.id.clone(),
+            None => {
+                self.status = Some("no pane selected".to_string());
+                return;
+            }
+        };
+        if self.marked.remove(&id) {
+            self.status = Some(format!("unmarked {id}"));
+        } else {
+            self.marked.insert(id.clone());
+            self.status = Some(format!("marked {id}"));
+        }
+        self.move_pane_down();
     }
 
     /// Keys when the pane table has focus. Quit/refresh/help keep their
