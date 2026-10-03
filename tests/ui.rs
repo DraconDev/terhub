@@ -1,4 +1,8 @@
-use ratatui::{Terminal, backend::TestBackend};
+use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    style::{Color, Modifier},
+};
 use terhub::{
     app::{App, Mode, SortKey},
     config::AppConfig,
@@ -30,6 +34,33 @@ fn render_with_areas(app: &mut App, width: u16, height: u16) -> (Vec<String>, ui
 
 fn render_lines(app: &mut App, width: u16, height: u16) -> Vec<String> {
     render_with_areas(app, width, height).0
+}
+
+/// Full cell grid: symbol plus (fg, modifier) per cell, for style wiring.
+fn render_grid(app: &mut App, width: u16, height: u16) -> Vec<Vec<(String, Color, Modifier)>> {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            ui::render(frame, app);
+        })
+        .unwrap();
+    let buf = terminal.backend().buffer();
+    let area = buf.area;
+    (0..area.height)
+        .map(|y| {
+            (0..area.width)
+                .map(|x| {
+                    let c = &buf[(x, y)];
+                    (
+                        c.symbol().to_string(),
+                        c.fg,
+                        c.modifier - Modifier::empty(),
+                    )
+                })
+                .collect()
+        })
+        .collect()
 }
 
 fn app_with(names: &[&str]) -> App {
