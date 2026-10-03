@@ -706,7 +706,7 @@ mod tests {
     fn fresh_hook_stays_authoritative() {
         let now = 10_000;
         let rec = hook_record(now - 60);
-        let (old, stale) = split_prev(Some(&rec), now);
+        let (old, stale) = split_prev(Some(&rec), now, HOOK_STALE_SECS);
         assert!(old.is_some());
         assert!(stale.is_none());
     }
@@ -715,7 +715,7 @@ mod tests {
     fn lapsed_hook_expires_but_seeds_continuity() {
         let now = 10_000;
         let rec = hook_record(now - HOOK_STALE_SECS - 1);
-        let (old, stale) = split_prev(Some(&rec), now);
+        let (old, stale) = split_prev(Some(&rec), now, HOOK_STALE_SECS);
         assert!(old.is_none());
         assert!(stale.is_some());
     }
@@ -725,7 +725,7 @@ mod tests {
         let now = 10_000;
         let mut rec = hook_record(0);
         rec.source = Source::Screen;
-        let (old, stale) = split_prev(Some(&rec), now);
+        let (old, stale) = split_prev(Some(&rec), now, HOOK_STALE_SECS);
         assert!(old.is_some());
         assert!(stale.is_none());
     }
@@ -766,15 +766,15 @@ mod tests {
         old.source = Source::Screen;
         let mut harness = test_pane();
         harness.command = "muxa".to_string();
-        assert!(!carry_record(&old, &harness, now));
+        assert!(!carry_record(&old, &harness, now, HOOK_STALE_SECS));
         // Same record on a normal pane carries while fresh …
-        assert!(carry_record(&old, &test_pane(), now));
+        assert!(carry_record(&old, &test_pane(), now, HOOK_STALE_SECS));
         // … and drops once stale.
-        assert!(!carry_record(&old, &test_pane(), now + HOOK_STALE_SECS + 1));
+        assert!(!carry_record(&old, &test_pane(), now + HOOK_STALE_SECS + 1, HOOK_STALE_SECS));
         // Proc records on harnesses still carry (the agent may return).
         let mut proc_old = carried("claude", AgentState::Working, 500, now - 60, now - 60);
         proc_old.source = Source::Proc;
-        assert!(carry_record(&proc_old, &harness, now));
+        assert!(carry_record(&proc_old, &harness, now, HOOK_STALE_SECS));
     }
 
     #[test]
@@ -788,6 +788,7 @@ mod tests {
             Some(("pi", 100)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -808,6 +809,7 @@ mod tests {
             Some(("pi", 50)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -820,7 +822,7 @@ mod tests {
     fn proc_without_screen_is_working() {
         // The %192 case: agent binary alive, screen unreadable.
         let now = 100_000;
-        let rec = merge_record(None, false, None, Some(("pi", 50)), &test_pane(), now)
+        let rec = merge_record(None, false, None, Some(("pi", 50)), &test_pane(), now, STUCK_SECS)
             .expect("no record");
         assert_eq!(rec.agent, "pi");
         assert_eq!(rec.state, AgentState::Working);
@@ -841,6 +843,7 @@ mod tests {
             None,
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "codex");
@@ -852,7 +855,7 @@ mod tests {
 
     #[test]
     fn nothing_claiming_returns_none() {
-        assert!(merge_record(None, false, None, None, &test_pane(), 100_000).is_none());
+        assert!(merge_record(None, false, None, None, &test_pane(), 100_000, STUCK_SECS).is_none());
     }
 
     #[test]
@@ -866,6 +869,7 @@ mod tests {
             Some(("pi", 50)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -880,6 +884,7 @@ mod tests {
                 None,
                 &test_pane(),
                 now,
+                STUCK_SECS,
             )
             .is_none()
         );
@@ -899,6 +904,7 @@ mod tests {
             Some(("pi", 500)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Waiting);
@@ -917,6 +923,7 @@ mod tests {
             Some(("pi", 500)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Stuck);
@@ -936,6 +943,7 @@ mod tests {
             Some(("pi", 500)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Stuck);
@@ -954,6 +962,7 @@ mod tests {
             Some(("pi", 750)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -973,6 +982,7 @@ mod tests {
             Some(("pi", 100)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -990,6 +1000,7 @@ mod tests {
             Some(("pi", 500)),
             &test_pane(),
             now,
+            STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Waiting);
