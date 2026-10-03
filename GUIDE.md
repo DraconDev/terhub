@@ -289,7 +289,10 @@ normalized). Day boundaries are UTC. `timeline` opens at the newest entries;
 `q`/`Esc` quits, arrows/`PgUp`/`PgDn` scroll.
 
 Entry kinds: `agent` (state transitions), `session` (open/close), `rule`
-(automation firings), `human` (your focus moving between panes).
+(automation firings), `human` (your focus moving between panes). Every
+transition is logged (working and idle included), so WORK/IDLE columns
+reflect real time — but only from this version on; older ledger ranges
+logged attention states only, and show 0 there.
 
 ## Automation
 
