@@ -370,6 +370,36 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
             waiting_unless: vec![],
         },
+        Manifest {
+            // muse keeps its `❯` input box visible under a live task, so
+            // the prompt alone never proves waiting: an interrupt offer
+            // anywhere in the tail vetoes the prompt verdict.
+            agent: "muse".to_string(),
+            commands: vec!["muse".to_string()],
+            working: vec![
+                "esc to interrupt".to_string(),
+                "calling tools".to_string(),
+                "thinking \\(".to_string(),
+                "⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏".to_string(),
+            ],
+            waiting: vec![
+                "^❯".to_string(),
+                "\\[y/n\\]".to_string(),
+                "press enter to send".to_string(),
+            ],
+            waiting_unless: vec!["esc to interrupt".to_string()],
+            error: vec![
+                "\\b(?-i:E)rror\\b".to_string(),
+                "traceback".to_string(),
+                "something went wrong".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
+                "quota".to_string(),
+                "\\b429\\b".to_string(),
+            ],
+        },
     ]
 }
 
@@ -776,9 +806,10 @@ mod tests {
             waiting: vec![],
             error: vec![],
             limited: vec![],
+            waiting_unless: vec![],
         });
         let (ok, warnings) = compile_all_lossy(&manifests);
-        assert_eq!(ok.len(), 3);
+        assert_eq!(ok.len(), 4);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("broken"));
     }
