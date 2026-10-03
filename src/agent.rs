@@ -483,6 +483,8 @@ mod tests {
         assert_eq!(AgentState::parse("BLOCKED"), Some(AgentState::Waiting));
         assert_eq!(AgentState::parse("failed"), Some(AgentState::Error));
         assert_eq!(AgentState::parse("done"), Some(AgentState::Idle));
+        assert_eq!(AgentState::parse("quota"), Some(AgentState::Limited));
+        assert_eq!(AgentState::parse("CAPPED"), Some(AgentState::Limited));
         assert_eq!(AgentState::parse("bogus"), None);
     }
 
@@ -662,14 +664,10 @@ mod tests {
             hit(Some("claude"), AgentState::Working, "── ⠦ Working ──")
         );
         // Old work, fresh error at the bottom: error.
-        let screen = "── ⠦ Working ──\nError: rate limit reached\n";
+        let screen = "── ⠦ Working ──\nError: socket timeout\n";
         assert_eq!(
             classify_screen(&m, "codex", screen),
-            hit(
-                Some("codex"),
-                AgentState::Error,
-                "Error: rate limit reached"
-            )
+            hit(Some("codex"), AgentState::Error, "Error: socket timeout")
         );
     }
 

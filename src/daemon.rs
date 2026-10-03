@@ -826,6 +826,26 @@ mod tests {
     }
 
     #[test]
+    fn screen_limited_wins_state_proc_keeps_identity() {
+        let now = 100_000;
+        let rec = merge_record(
+            None,
+            false,
+            screen_hit(Some("codex"), AgentState::Limited, "Error: rate limit reached"),
+            Some(("pi", 50)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Limited);
+        assert_eq!(rec.source, Source::Proc);
+        assert_eq!(rec.summary, "Error: rate limit reached");
+        assert!(rec.state.needs_attention());
+    }
+
+    #[test]
     fn proc_without_screen_is_working() {
         // The %192 case: agent binary alive, screen unreadable.
         let now = 100_000;
