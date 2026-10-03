@@ -243,7 +243,10 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     let row = text.lines().find(|l| l.contains("%1")).unwrap();
     let tokens: Vec<&str> = row.split_whitespace().collect();
     assert!(tokens.contains(&"1h0m"), "quiet clock not shown:\n{text}");
-    assert!(!tokens.contains(&"5s"), "repaint age leaked:\n{text}");
+    assert!(
+        !tokens.contains(&"5s") && !tokens.contains(&"6s"),
+        "repaint age leaked:\n{text}"
+    );
 }
 
 #[test]
