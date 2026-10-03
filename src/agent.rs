@@ -96,6 +96,14 @@ pub struct AgentRecord {
     /// end a turn (the same turn is grinding), it just carries this.
     #[serde(default)]
     pub last_turn_secs: u64,
+    /// FNV-1a hash of the last captured screen (0 = none yet).
+    #[serde(default)]
+    pub screen_hash: u64,
+    /// When the captured screen last changed (0 = unknown). tmux activity
+    /// counts every repaint, so agent TUIs that redraw identical cells
+    /// look busy forever; this clock only restarts on visible change.
+    #[serde(default)]
+    pub quiet_since: u64,
 }
 
 /// A working turn completed: Working moved to a terminal-ish state.
