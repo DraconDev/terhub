@@ -646,7 +646,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Cell::from(src).style(src_style),
                 Cell::from(age).style(pal.dim),
                 Cell::from(turn).style(pal.dim),
-                Cell::from(act).style(pal.dim),
+                Cell::from(act).style(if act_warn { warn_style } else { pal.dim }),
             ]);
             if !compact {
                 let summary = rec.map(|r| r.summary.as_str()).unwrap_or("");
