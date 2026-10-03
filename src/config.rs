@@ -543,7 +543,10 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
             continue;
         }
         if let Some(var) = first_unknown_var(&c.run) {
-            problems.push(format!("{tag} has unknown {{{var}}} (known: {})", COMMAND_VARS.join(", ")));
+            problems.push(format!(
+                "{tag} has unknown {{{var}}} (known: {})",
+                COMMAND_VARS.join(", ")
+            ));
             continue;
         }
         taken.push(spec.clone());

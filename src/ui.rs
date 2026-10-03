@@ -719,7 +719,12 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 
 fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     // Scrollable command output gets its own tall popup, not the 60x5 box.
-    if let Mode::CommandOutput { name, lines, scroll } = &app.mode {
+    if let Mode::CommandOutput {
+        name,
+        lines,
+        scroll,
+    } = &app.mode
+    {
         let w = area.width.saturating_sub(8).max(40);
         let h = area.height.saturating_sub(6).max(8);
         let popup = centered(area, w, h);

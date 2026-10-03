@@ -1646,10 +1646,7 @@ mod tests {
                 &Pane::test("%1", "w", "sh"),
                 None,
             );
-            assert!(
-                !out.contains('{'),
-                "var {v} did not expand: {out}"
-            );
+            assert!(!out.contains('{'), "var {v} did not expand: {out}");
         }
         // Unknown vars and escapes stay literal.
         let out = expand_command(
@@ -1672,11 +1669,15 @@ mod tests {
             run: "echo pane-is-{pane}".to_string(),
         });
         let tmux = Tmux::new().unwrap();
+        let id = app.selected_pane().unwrap().id.clone();
         app.on_key(press(KeyCode::Char('g')), &tmux);
         match &app.mode {
             Mode::CommandOutput { name, lines, .. } => {
                 assert_eq!(name, "echo-pane");
-                assert!(lines.iter().any(|l| l.contains("pane-is-%1")), "{lines:?}");
+                assert!(
+                    lines.iter().any(|l| l.contains(&format!("pane-is-{id}"))),
+                    "{lines:?}"
+                );
             }
             m => panic!("expected output popup, got {m:?}"),
         }
