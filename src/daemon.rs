@@ -770,7 +770,12 @@ mod tests {
         // Same record on a normal pane carries while fresh …
         assert!(carry_record(&old, &test_pane(), now, HOOK_STALE_SECS));
         // … and drops once stale.
-        assert!(!carry_record(&old, &test_pane(), now + HOOK_STALE_SECS + 1, HOOK_STALE_SECS));
+        assert!(!carry_record(
+            &old,
+            &test_pane(),
+            now + HOOK_STALE_SECS + 1,
+            HOOK_STALE_SECS
+        ));
         // Proc records on harnesses still carry (the agent may return).
         let mut proc_old = carried("claude", AgentState::Working, 500, now - 60, now - 60);
         proc_old.source = Source::Proc;
@@ -822,8 +827,16 @@ mod tests {
     fn proc_without_screen_is_working() {
         // The %192 case: agent binary alive, screen unreadable.
         let now = 100_000;
-        let rec = merge_record(None, false, None, Some(("pi", 50)), &test_pane(), now, STUCK_SECS)
-            .expect("no record");
+        let rec = merge_record(
+            None,
+            false,
+            None,
+            Some(("pi", 50)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
         assert_eq!(rec.agent, "pi");
         assert_eq!(rec.state, AgentState::Working);
         assert_eq!(rec.source, Source::Proc);
