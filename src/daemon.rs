@@ -427,6 +427,7 @@ fn merge_record(
     proc_hit: Option<(&str, u64)>,
     pane: &Pane,
     now: u64,
+    stuck_secs: u64,
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
@@ -471,10 +472,12 @@ fn merge_record(
         None => (0, 0),
     };
     let mut final_state = state;
+    // stuck_secs = 0 disables stuck detection (the user's off switch).
     if final_state == Working
+        && stuck_secs > 0
         && proc_hit.is_some()
         && still > 0
-        && now.saturating_sub(still) >= STUCK_SECS
+        && now.saturating_sub(still) >= stuck_secs
     {
         final_state = AgentState::Stuck;
         since = match carried {
