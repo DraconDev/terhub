@@ -491,6 +491,13 @@ fn merge_record(
             crate::history::fmt_dur(now.saturating_sub(still))
         );
     }
+    let last_turn_secs = match carried {
+        Some(o) if crate::agent::turn_ended(o.state, final_state) => {
+            since.saturating_sub(o.state_since)
+        }
+        Some(o) => o.last_turn_secs,
+        None => 0,
+    };
     Some(AgentRecord {
         pane: pane.id.clone(),
         agent,
@@ -504,6 +511,7 @@ fn merge_record(
         state_since: since,
         cpu_ticks: ticks,
         cpu_still_since: still,
+        last_turn_secs,
     })
 }
 

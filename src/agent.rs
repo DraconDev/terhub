@@ -91,6 +91,20 @@ pub struct AgentRecord {
     /// When the tick sum last changed (0 = unknown); stuck clock.
     #[serde(default)]
     pub cpu_still_since: u64,
+    /// Last completed working turn, seconds (0 = none yet). A turn ends
+    /// when Working moves to waiting/error/limited/idle; stuck doesn't
+    /// end a turn (the same turn is grinding), it just carries this.
+    #[serde(default)]
+    pub last_turn_secs: u64,
+}
+
+/// A working turn completed: Working moved to a terminal-ish state.
+pub fn turn_ended(from: AgentState, to: AgentState) -> bool {
+    from == AgentState::Working
+        && matches!(
+            to,
+            AgentState::Waiting | AgentState::Error | AgentState::Limited | AgentState::Idle
+        )
 }
 
 impl AgentRecord {
@@ -433,6 +447,13 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
             // State or agent moved on: fresh clock, but keep the old pane
             // metadata so the record isn't nameless until the next poll.
             let old = registry.get(&ev.pane);
+            let last_turn_secs = match old {
+                Some(o) if turn_ended(o.state, ev.state) => {
+                    now.saturating_sub(o.state_since)
+                }
+                Some(o) => o.last_turn_secs,
+                None => 0,
+            };
             registry.insert(
                 ev.pane.clone(),
                 AgentRecord {
@@ -448,6 +469,7 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     state_since: now,
                     cpu_ticks: 0,
                     cpu_still_since: 0,
+                    last_turn_secs,
                 },
             );
         }
