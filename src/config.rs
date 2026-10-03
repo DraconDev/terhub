@@ -234,9 +234,8 @@ pub fn parse_style_spec(s: &str) -> Style {
 
 /// True when every token of the spec is known (empty means default style).
 pub fn valid_style_spec(s: &str) -> bool {
-    s.split_whitespace().all(|tok| {
-        !matches!(spec_token(tok), SpecToken::Unknown) || tok.trim().is_empty()
-    })
+    s.split_whitespace()
+        .all(|tok| !matches!(spec_token(tok), SpecToken::Unknown))
 }
 
 fn parse_color_name(t: &str) -> Option<Color> {
@@ -322,6 +321,8 @@ struct FileConfig {
     daemon: DaemonSection,
     #[serde(default)]
     command: Vec<CommandFile>,
+    #[serde(default)]
+    style: StyleSection,
 }
 
 /// One `[[command]]` entry: a user shell command on the selected pane.
@@ -421,6 +422,36 @@ fn default_stuck_secs() -> u64 {
 
 fn default_stale_secs() -> u64 {
     crate::daemon::HOOK_STALE_SECS
+}
+
+#[derive(Debug, Deserialize)]
+struct StyleSection {
+    #[serde(default = "default_true")]
+    color_agents: bool,
+    #[serde(default)]
+    agent_palette: Vec<String>,
+    #[serde(default)]
+    agents: HashMap<String, String>,
+    #[serde(default = "default_true")]
+    idle_warn: bool,
+    #[serde(default = "default_idle_warn_style")]
+    idle_warn_style: String,
+}
+
+impl Default for StyleSection {
+    fn default() -> Self {
+        StyleSection {
+            color_agents: true,
+            agent_palette: Vec::new(),
+            agents: HashMap::new(),
+            idle_warn: true,
+            idle_warn_style: default_idle_warn_style(),
+        }
+    }
+}
+
+fn default_idle_warn_style() -> String {
+    "bold yellow".to_string()
 }
 
 /// User screen-pattern manifests live next to the config file.
