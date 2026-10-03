@@ -538,6 +538,71 @@ fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
     }
 }
 
+/// Agent cell text style: per-agent override wins, else the name hashes
+/// into the palette (custom or theme default) so the same agent reads as
+/// a group; unnamed or disabled falls back to `dim`.
+fn agent_text_style(name: &str, cfg: &crate::config::AppConfig, dim: Style) -> Style {
+    if name.is_empty() || !cfg.color_agents {
+        return dim;
+    }
+    if let Some(spec) = cfg.agent_styles.get(&name.to_lowercase()) {
+        return crate::config::parse_style_spec(spec);
+    }
+    let palette = agent_palette(cfg);
+    let idx = crate::fnv1a(&name.to_lowercase()) as usize % palette.len();
+    crate::config::parse_style_spec(palette[idx])
+}
+
+/// Palette the agent hash picks from: custom list, else brights on dark
+/// themes (only `light` needs the dark set).
+fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&str> {
+    if !cfg.agent_palette.is_empty() {
+        return cfg.agent_palette.iter().map(String::as_str).collect();
+    }
+    if cfg.palette() == "light" {
+        vec!["red", "green", "blue", "magenta", "cyan", "black"]
+    } else {
+        vec![
+            "bright-cyan",
+            "bright-magenta",
+            "bright-green",
+            "bright-yellow",
+            "bright-blue",
+            "bright-red",
+        ]
+    }
+}
+
+/// Idle cell: duration text plus the stuck-smell flag — working with no
+/// visible change past the stuck threshold. Waiting is quiet by nature,
+/// so only working warns.
+fn idle_cell(
+    rec: Option<&crate::agent::AgentRecord>,
+    activity: u64,
+    now: u64,
+    cfg: &crate::config::AppConfig,
+) -> (String, bool) {
+    let (text, age) = match rec {
+        Some(r) if r.quiet_since > 0 => {
+            let age = now.saturating_sub(r.quiet_since);
+            (crate::history::fmt_dur(age), Some(age))
+        }
+        _ if activity == 0 => ("—".to_string(), None),
+        _ => {
+            let age = now.saturating_sub(activity);
+            (crate::history::fmt_dur(age), Some(age))
+        }
+    };
+    let warn = cfg.idle_warn
+        && cfg.stuck_secs > 0
+        && matches!(
+            rec.map(|r| r.state),
+            Some(crate::agent::AgentState::Working)
+        )
+        && age.is_some_and(|a| a > cfg.stuck_secs);
+    (text, warn)
+}
+
 fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rect, Vec<HeaderHit>) {
     let compact = app.config.compact();
     // Filtered to one session: its column would repeat on every row.
