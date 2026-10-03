@@ -208,6 +208,53 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
+/// Preview text with embedded ANSI colors. tmux `-e` captures carry SGR
+/// styling; unparseable input falls back to stripped plain text so raw
+/// escapes never leak onto the screen.
+pub fn preview_text(raw: &str) -> ratatui::text::Text<'static> {
+    match raw.as_bytes().into_text() {
+        Ok(text) => text,
+        Err(_) => ratatui::text::Text::from(strip_ansi(raw)),
+    }
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\x1b' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            Some('[') => {
+                chars.next();
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            Some('(') | Some(')') => {
+                chars.next();
+                chars.next();
+            }
+            Some(_) => {
+                chars.next();
+            }
+            None => {}
+        }
+    }
+    out
+}
+
+/// Mouse-hover row style: bold only, no background — safe on every theme
+/// (a bg would swallow dim cells on dark themes) and distinct from the
+/// bg-based selection.
+fn hover_style() -> Style {
+    Style::default().add_modifier(Modifier::BOLD)
+}
+
 /// Panes per window, keyed by tmux window id: drives the conditional
 /// `:[N]` suffix and `*` mark — both are noise in single-pane windows.
 fn window_pane_counts(panes: &[Pane]) -> HashMap<&str, usize> {
@@ -506,6 +553,8 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             let mut row = Row::new(cells);
             if i == app.pane_selected {
                 row = row.style(pal.selected);
+            } else if Some(i) == app.hover {
+                row = row.style(hover_style());
             }
             row
         })
@@ -620,7 +669,7 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
     frame.render_widget(
-        Paragraph::new(app.preview.as_str())
+        Paragraph::new(preview_text(&app.preview))
             .wrap(Wrap { trim: false })
             .style(pal.status),
         inner,
