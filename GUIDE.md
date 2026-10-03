@@ -76,7 +76,9 @@ status bar, no modes except small popups:
   error line that decided a waiting/error state — a bare prompt borrows
   the nearest text line above it (hook reports and the stuck explanation
   show up here too); working rows stay blank, since spinner text is
-  noise, not information.
+  noise, not information. Turn is the last completed working turn (a turn
+  ends when working moves to waiting/error/limited/idle; stuck never ends
+  one — the same turn is grinding).
   `↑`/`↓` moves, `Enter` jumps to the pane, `x` kills it (with confirm),
   `a` attends, `Esc` steps back to the session bar. Long lists scroll;
   the selection is always kept in view.
