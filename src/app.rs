@@ -155,6 +155,15 @@ fn src_name(rec: Option<&AgentRecord>) -> &'static str {
     }
 }
 
+/// Idle timestamp the column displays: the visible-quiet clock when the
+/// daemon knows it, else window activity (0 = unknown, sorts stalest).
+fn idle_secs(rec: Option<&AgentRecord>, activity: u64) -> u64 {
+    match rec {
+        Some(r) if r.quiet_since > 0 => r.quiet_since,
+        _ => activity,
+    }
+}
+
 fn age_secs(rec: Option<&AgentRecord>, now: u64) -> u64 {
     rec.map(|r| r.waiting_secs(now)).unwrap_or(0)
 }
@@ -530,7 +539,8 @@ impl App {
                     age_secs(agents.get(&a.id), now).cmp(&age_secs(agents.get(&b.id), now))
                 }
                 SortKey::Turn => turn_secs(agents.get(&a.id)).cmp(&turn_secs(agents.get(&b.id))),
-                SortKey::Idle => a.activity.cmp(&b.activity),
+                SortKey::Idle => idle_secs(agents.get(&a.id), a.activity)
+                    .cmp(&idle_secs(agents.get(&b.id), b.activity)),
                 SortKey::Summary => {
                     summary_text(agents.get(&a.id)).cmp(summary_text(agents.get(&b.id)))
                 }
