@@ -709,6 +709,7 @@ mod tests {
             state_since: updated_at,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            last_turn_secs: 0,
         }
     }
 
@@ -754,6 +755,7 @@ mod tests {
             state_since: since,
             cpu_ticks: ticks,
             cpu_still_since: still,
+            last_turn_secs: 0,
         }
     }
 

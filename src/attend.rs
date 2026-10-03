@@ -255,6 +255,7 @@ mod tests {
             state_since: since,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            last_turn_secs: 0,
         }
     }
 

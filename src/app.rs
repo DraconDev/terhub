@@ -1674,6 +1674,7 @@ mod tests {
                 state_since: 1,
                 cpu_ticks: 0,
                 cpu_still_since: 0,
+                last_turn_secs: 0,
             },
         );
         let counts = app.session_counts();
@@ -1699,6 +1700,7 @@ mod tests {
             state_since,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            last_turn_secs: 0,
         }
     }
 
