@@ -608,6 +608,9 @@ pub fn default_config_text() -> String {
         crate::daemon::STUCK_SECS,
         crate::daemon::HOOK_STALE_SECS
     ));
+    out.push_str(
+        "\n# Custom pane commands (key must not collide with a built-in):\n# [[command]]\n# name = \"git status\"\n# key = \"G\"\n# run = \"git -C {dir} status -sb\"\n",
+    );
     out
 }
 
@@ -695,6 +698,29 @@ mod tests {
         assert_eq!(cfg.stale_secs, crate::daemon::HOOK_STALE_SECS);
         // stuck_secs = 0 is the documented off switch, not an error.
         assert_eq!(cfg.stuck_secs, 0);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn custom_commands_validate() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("commands.toml");
+        std::fs::write(
+            &path,
+            "[[command]]\nname = \"gs\"\nkey = \"G\"\nrun = \"git -C {dir} status\"\n\n\
+             [[command]]\nname = \"bad\"\nkey = \"n\"\nrun = \"echo x\"\n\n\
+             [[command]]\nname = \"bogus\"\nkey = \"B\"\nrun = \"echo {bogus}\"\n\n\
+             [[command]]\nname = \"\"\nkey = \"E\"\nrun = \"echo x\"\n",
+        )
+        .unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(cfg.commands.len(), 1);
+        assert_eq!(cfg.commands[0].name, "gs");
+        assert_eq!(problems.len(), 3);
+        assert!(problems.iter().any(|p| p.contains("collides")));
+        assert!(problems.iter().any(|p| p.contains("{bogus}")));
+        assert!(problems.iter().any(|p| p.contains("no name")));
         std::fs::remove_file(path).ok();
     }
 
