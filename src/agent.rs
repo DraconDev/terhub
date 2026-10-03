@@ -321,6 +321,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            waiting_unless: vec![],
         },
         Manifest {
             agent: "codex".to_string(),
@@ -344,6 +345,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            waiting_unless: vec![],
         },
         Manifest {
             agent: "gemini".to_string(),
@@ -366,6 +368,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            waiting_unless: vec![],
         },
     ]
 }
