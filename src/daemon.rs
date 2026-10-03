@@ -652,6 +652,10 @@ fn poll_sync(
                 r.command.clone_from(&pane.command);
                 r.cpu_ticks = 0;
                 r.cpu_still_since = 0;
+                // Quiet is screen evidence, not agent evidence: keep the
+                // clock running through the carry.
+                (r.screen_hash, r.quiet_since) =
+                    track_quiet((r.screen_hash, r.quiet_since), hash, now);
                 next.insert(pane.id.clone(), r);
             }
         }

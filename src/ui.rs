@@ -611,10 +611,15 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Some(r) if r.last_turn_secs > 0 => crate::history::fmt_dur(r.last_turn_secs),
                 _ => "—".to_string(),
             };
-            let act = if p.activity == 0 {
-                "—".to_string()
-            } else {
-                crate::history::fmt_dur(now.saturating_sub(p.activity))
+            // Claimed panes use the visible-quiet clock: tmux activity
+            // counts every repaint, so animated agent screens would read
+            // busy forever. Unclaimed panes fall back to window activity.
+            let act = match rec {
+                Some(r) if r.quiet_since > 0 => {
+                    crate::history::fmt_dur(now.saturating_sub(r.quiet_since))
+                }
+                _ if p.activity == 0 => "—".to_string(),
+                _ => crate::history::fmt_dur(now.saturating_sub(p.activity)),
             };
             let window = window_label(&p.window_name, p.index, siblings);
             let dir = p.path.rsplit('/').next().unwrap_or("");
