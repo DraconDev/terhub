@@ -859,6 +859,41 @@ mod tests {
     }
 
     #[test]
+    fn style_spec_parses_modifiers_colors_hex() {
+        let st = parse_style_spec("bold yellow");
+        assert_eq!(st.fg, Some(Color::Yellow));
+        assert!(st.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(parse_style_spec("red").fg, Some(Color::Red));
+        assert_eq!(parse_style_spec("BOLD BLUE").fg, Some(Color::Blue));
+        assert_eq!(parse_style_spec("bright-cyan").fg, Some(Color::LightCyan));
+        assert_eq!(parse_style_spec("light-black").fg, Some(Color::DarkGray));
+        assert_eq!(parse_style_spec("grey").fg, Some(Color::Gray));
+        assert_eq!(
+            parse_style_spec("#ff8800").fg,
+            Some(Color::Rgb(0xff, 0x88, 0x00))
+        );
+        assert_eq!(parse_style_spec("#f80").fg, Some(Color::Rgb(0xff, 0x88, 0x00)));
+        // Unknown tokens degrade, never break.
+        assert_eq!(parse_style_spec("nope"), Style::default());
+        assert_eq!(parse_style_spec(""), Style::default());
+        let st = parse_style_spec("bold nope red");
+        assert_eq!(st.fg, Some(Color::Red));
+        assert!(st.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn style_spec_validity_flags_unknown_tokens() {
+        assert!(valid_style_spec(""));
+        assert!(valid_style_spec("bold yellow"));
+        assert!(valid_style_spec("#abc123"));
+        assert!(valid_style_spec("none"));
+        assert!(!valid_style_spec("nope"));
+        assert!(!valid_style_spec("bold nope"));
+        assert!(!valid_style_spec("#xyz"));
+        assert!(!valid_style_spec("#12345"));
+    }
+
+    #[test]
     fn partial_config_merges_over_defaults() {
         let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
