@@ -672,6 +672,7 @@ mod tests {
             waiting: vec![],
             error: vec![],
             limited: vec![],
+            waiting_unless: vec![],
         };
         assert!(CompiledManifest::compile(&m).is_err());
     }
