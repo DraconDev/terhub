@@ -70,6 +70,7 @@ pub enum SortKey {
     State,
     Src,
     Age,
+    Turn,
     Act,
     Summary,
 }
@@ -78,7 +79,7 @@ impl SortKey {
     /// Direction a fresh click (or the `o` key) starts with: attention and
     /// recency put the most urgent first, text reads A→Z.
     fn default_asc(self) -> bool {
-        !matches!(self, SortKey::Age | SortKey::Act)
+        !matches!(self, SortKey::Age | SortKey::Turn | SortKey::Act)
     }
 }
 
@@ -87,6 +88,7 @@ const SORT_CYCLE: &[SortKey] = &[
     SortKey::Act,
     SortKey::State,
     SortKey::Age,
+    SortKey::Turn,
     SortKey::Agent,
     SortKey::Session,
     SortKey::Window,
@@ -149,6 +151,11 @@ fn src_name(rec: Option<&AgentRecord>) -> &'static str {
 
 fn age_secs(rec: Option<&AgentRecord>, now: u64) -> u64 {
     rec.map(|r| r.waiting_secs(now)).unwrap_or(0)
+}
+
+/// Last completed turn; 0 (none yet) sinks in the default descending order.
+fn turn_secs(rec: Option<&AgentRecord>) -> u64 {
+    rec.map(|r| r.last_turn_secs).unwrap_or(0)
 }
 
 /// Case-insensitive substring match across every text column. `q` must
@@ -433,6 +440,9 @@ impl App {
                 SortKey::Src => src_name(agents.get(&a.id)).cmp(src_name(agents.get(&b.id))),
                 SortKey::Age => {
                     age_secs(agents.get(&a.id), now).cmp(&age_secs(agents.get(&b.id), now))
+                }
+                SortKey::Turn => {
+                    turn_secs(agents.get(&a.id)).cmp(&turn_secs(agents.get(&b.id)))
                 }
                 SortKey::Act => a.activity.cmp(&b.activity),
                 SortKey::Summary => {
