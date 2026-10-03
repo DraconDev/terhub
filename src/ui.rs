@@ -970,7 +970,7 @@ mod tests {
 
     #[test]
     fn preview_text_keeps_ansi_colors() {
-        let text = preview_text("\u{1b}[31mred\u{1b}[0m plain");
+        let text = preview_text("\u{1b}[31mred\u{1b}[0m plain", 80);
         assert_eq!(text.lines.len(), 1);
         let spans = &text.lines[0].spans;
         assert_eq!(spans[0].content.as_ref(), "red");
@@ -980,9 +980,49 @@ mod tests {
 
     #[test]
     fn preview_text_passes_plain_through() {
-        let text = preview_text("just text\ntwo lines");
+        let text = preview_text("just text\ntwo lines", 80);
         assert_eq!(text.lines.len(), 2);
         assert_eq!(text.lines[0].spans[0].content.as_ref(), "just text");
+    }
+
+    #[test]
+    fn preview_eol_fill_extends_trailing_bg() {
+        // tmux `-e` orphan tail: trimmed erase-painted EOL cells.
+        let raw = "\u{1b}[48;2;37;65;49mhi\u{1b}[0m\u{1b}[48;2;37;65;49m";
+        let text = preview_text(raw, 20);
+        let line = &text.lines[0];
+        assert_eq!(line.width(), 20);
+        let pad = line.spans.last().unwrap();
+        assert_eq!(pad.content.as_ref(), " ".repeat(18));
+        assert_eq!(pad.style.bg, Some(Color::Rgb(37, 65, 49)));
+    }
+
+    #[test]
+    fn preview_eol_fill_closed_tail_stays_ragged() {
+        // `49m` closes the run: content is complete, no fill.
+        let raw = "\u{1b}[48;2;37;65;49mhi\u{1b}[49m";
+        let text = preview_text(raw, 20);
+        assert_eq!(text.lines[0].width(), 2);
+    }
+
+    #[test]
+    fn preview_eol_fill_blank_line_stays_dark() {
+        let text = preview_text("a\n\nb", 20);
+        assert_eq!(text.lines.len(), 3);
+        assert_eq!(text.lines[1].width(), 0);
+        assert!(text.lines[1].spans.iter().all(|s| s.style.bg.is_none()));
+    }
+
+    #[test]
+    fn trailing_bg_reads_final_state() {
+        assert_eq!(trailing_bg("x\u{1b}[0m\u{1b}[48;2;1;2;3m"), Some(Color::Rgb(1, 2, 3)));
+        assert_eq!(trailing_bg("x\u{1b}[48;2;1;2;3m\u{1b}[49m"), None);
+        assert_eq!(trailing_bg("x\u{1b}[41m"), Some(Color::Red));
+        assert_eq!(trailing_bg("x\u{1b}[48;5;200m"), Some(Color::Indexed(200)));
+        assert_eq!(trailing_bg("plain"), None);
+        assert_eq!(trailing_bg(""), None);
+        // Non-SGR tail breaks the run: no fill.
+        assert_eq!(trailing_bg("x\u{1b}[48;2;1;2;3m "), None);
     }
 
     #[test]

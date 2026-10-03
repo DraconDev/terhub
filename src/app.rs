@@ -249,6 +249,8 @@ pub struct App {
     pub filtered: Vec<Pane>,
     pub pane_selected: usize,
     pub preview: String,
+    /// Width of the previewed pane in columns (for EOL background fill).
+    pub preview_width: Option<usize>,
     /// Fullscreen preview open (captured on demand, never by default).
     pub show_preview: bool,
     /// Latest daemon snapshot by pane id (empty when the daemon is down).
@@ -288,6 +290,7 @@ impl App {
             filtered: Vec::new(),
             pane_selected: 0,
             preview: String::new(),
+            preview_width: None,
             show_preview: false,
             agents: HashMap::new(),
             session_scroll: 0,
@@ -548,10 +551,22 @@ impl App {
     fn capture_preview(&mut self, tmux: &Tmux) {
         match self.selected_pane().map(|p| p.id.clone()) {
             Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_LINES) {
-                Ok(text) => self.preview = text,
-                Err(_) => self.preview = "(capture failed)".to_string(),
+                Ok(text) => {
+                    self.preview = text;
+                    self.preview_width = tmux
+                        .display(&id, "#{pane_width}")
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok());
+                }
+                Err(_) => {
+                    self.preview = "(capture failed)".to_string();
+                    self.preview_width = None;
+                }
             },
-            None => self.preview.clear(),
+            None => {
+                self.preview.clear();
+                self.preview_width = None;
+            }
         }
     }
 
