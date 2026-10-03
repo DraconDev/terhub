@@ -61,10 +61,16 @@ fn daemon_hook_snapshot_expire_shutdown() {
     std::fs::create_dir_all(&runtime).unwrap();
     let data = std::env::temp_dir().join(format!("terhubd-data-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&data);
+    // Point at a missing config so the daemon runs on defaults no matter
+    // what the developer tuned locally (a custom poll_secs would skew the
+    // expiry waits below).
+    let config = std::env::temp_dir().join(format!("terhubd-cfg-{}.toml", std::process::id()));
+    let _ = std::fs::remove_file(&config);
     // SAFETY: this test binary runs this single test; nothing else reads the vars.
     unsafe {
         std::env::set_var("TERHUB_RUNTIME_DIR", &runtime);
         std::env::set_var("TERHUB_DATA_DIR", &data);
+        std::env::set_var("TERHUB_CONFIG", &config);
     }
     let _daemon = TestDaemon::start();
 
