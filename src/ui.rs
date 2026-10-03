@@ -680,12 +680,6 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             // counts every repaint, so animated agent screens would read
             // busy forever. Unclaimed panes fall back to window activity.
             let (act, act_warn) = idle_cell(rec, p.activity, now, &app.config);
-            if p.id == "%192" {
-                eprintln!(
-                    "WDBG style={:?} parsed={:?} warn={act_warn}",
-                    app.config.idle_warn_style, warn_style,
-                );
-            }
             let window = window_label(&p.window_name, p.index, siblings);
             let dir = p.path.rsplit('/').next().unwrap_or("");
             let dir = if dir.is_empty() { "—" } else { dir };
