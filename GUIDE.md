@@ -45,9 +45,10 @@ from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
 - **Session / window / pane** are tmux's own. terhub never wraps or renames
   them; pane ids look like `%69`.
 - **Agent** is anything running in a pane that behaves like a coding agent
-  (claude, codex, gemini, pi, …). terhub tracks each agent pane in one of six
-  states: `working`, `waiting` (needs you), `error` (needs you), `idle`,
-  `stuck` (needs you: no CPU for 10+ minutes), `unknown`.
+  (claude, codex, gemini, pi, …). terhub tracks each agent pane in one of
+  seven states: `working`, `waiting` (needs you), `error` (needs you),
+  `idle`, `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
+  you: quota/rate wall, paused until reset — never a crash), `unknown`.
 - **Daemon (`terhubd`)** holds the live agent registry. Hook events from
   agents are authoritative; agent identity comes from the process tree and
   states from screen patterns, re-polled every 2 seconds.
@@ -164,9 +165,10 @@ and MCP. One daemon per runtime dir (a second start refuses with "already
 listening"). Per pane it merges three signals:
 
 1. **Hook events** (`terhub hook …`, see below) — authoritative while fresh.
-   A hook record with no new event for 30 minutes lapses back to automatic
-   classification, keeping its clock if the state didn't change (no
-   renotify for a pane that sat still) but dropping its stale summary.
+   A hook record with no new event for `stale_secs` (default 30 minutes)
+   lapses back to automatic classification, keeping its clock if the state
+   didn't change (no renotify for a pane that sat still) but dropping its
+   stale summary.
 2. **Process tree** — the pane's descendants are matched against the agent
    catalog (claude, codex, gemini, pi, muse, aider, crush, opencode, …),
    seeing
@@ -174,9 +176,10 @@ listening"). Per pane it merges three signals:
    (muxa, tmux) are transparent: detection looks *through* them for the
    real agent. This decides
    *who* the agent is; a live agent with an unreadable screen reads as
-   `working`. Its subtree CPU is tracked: `working` with no CPU for 10
-   minutes becomes `stuck` (needs you), clearing the moment it computes
-   again. Fresh hooks are never second-guessed this way.
+   `working`. Its subtree CPU is tracked: `working` with no CPU for
+   `stuck_secs` (default 10 minutes) becomes `stuck` (needs you), clearing
+   the moment it computes again (`stuck_secs = 0` disables stuck
+   detection). Fresh hooks are never second-guessed this way.
 3. **Screen patterns** — built-in manifests for claude/codex/gemini match
    the pane's command and recent screen text. The freshest matching line
    decides, so current output overrides stale scrollback; `waiting`/`error`
@@ -198,8 +201,11 @@ waiting = ["confirm", "\\[y/n\\]"]
 error = ["\\berror\\b", "traceback"]
 ```
 
-Patterns are case-insensitive regexes; error beats working beats waiting
-order inside one manifest. Without a command match, patterns still yield a
+Patterns are case-insensitive regexes; within one line the most specific
+signal wins (limited beats error beats waiting beats working), and the
+freshest matching line wins across lines. A `limited` list holds
+quota/rate-limit language so a quota wall never reads as a crash. Without
+a command match, patterns still yield a
 state, but the agent stays unnamed unless the screen mentions it: a bare
 approve prompt plus a live agent process reads as that agent waiting,
 while the same prompt with no process behind it claims nobody. A manifest
@@ -214,9 +220,10 @@ Hooks are fire-and-forget, made for agent lifecycle scripts:
 terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
 ```
 
-- `--state` accepts `working|waiting|error|idle|stuck|unknown` plus
-  aliases: `work/busy/running/start`, `wait/input/attention/blocked/
-  needs-input/stop`, `failed/fail`, `done/complete/completed`, `hung`.
+- `--state` accepts `working|waiting|error|idle|stuck|limited|unknown`
+  plus aliases: `work/busy/running/start`, `wait/input/attention/blocked/
+  needs-input/stop`, `failed/fail`, `done/complete/completed`, `hung`,
+  `limit/quota/capped`.
   `start`/`stop` match the lifecycle states that spawning harnesses emit.
 - `--pane` is the pane id (`%N`); inside tmux, `$TMUX_PANE` has it.
 - `--summary` is free text shown in peek/status and matchable by rules.
@@ -406,8 +413,8 @@ daemon start; only the ledger is long-term memory.
 - **Pane shows no agent**: idle shells are skipped until a hook, a known
   agent process, or a screen pattern claims them. Add a manifest or emit
   hooks from the agent; unknown agent binaries are a feature request.
-- **Agent stuck in a state**: hooks go stale after 30 minutes of silence and
-  fall back to screen classification; check the agent still emits hooks.
+- **Agent stuck in a state**: hooks go stale after `stale_secs` of silence
+  and fall back to screen classification; check the agent still emits hooks.
 - **Rule never fires**: `terhub automation list` shows validation problems
   and recent counts; `automation test <name>` dry-runs against live state.
   Remember delay + cooldown + cap all apply.
