@@ -87,13 +87,13 @@ status bar, no modes except small popups:
   survive sort/filter and show as a count in the title bar. Long lists scroll;
   the selection is always kept in view.
 - **Preview on demand.** Nothing is previewed by default: right-click a
-  row or press `p` to open the pane's screen fullscreen; right-click
-  again (anywhere) or `Esc`/`p` closes it, left-click/`Enter` jumps to
-  the previewed pane.
+  row or press `p` to open the pane's screen fullscreen, with the pane's
+  own ANSI colors; right-click again (anywhere) or `Esc`/`p` closes it,
+  left-click/`Enter` jumps to the previewed pane.
 - **Mouse.** Left-click a row jumps to the pane (press and release must
   land on the same cell, so text drags never jump), right-click toggles
   the fullscreen preview, click a session segment to filter, double-click
-  a session to attach.
+  a session to attach. The row under the cursor highlights (bold).
 - **Sorting.** The table sorts by recency (`Act`, the window's last
   activity) by default. Click any header to sort by it, click again to
   flip direction; `o` cycles columns from the keyboard. The `▲`/`▼` mark
