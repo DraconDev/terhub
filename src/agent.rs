@@ -533,15 +533,44 @@ mod tests {
     #[test]
     fn error_beats_working() {
         let m = compiled();
+        let screen = "⠋ Working…\nError: connection reset\n";
+        assert_eq!(
+            classify_screen(&m, "codex", screen),
+            hit(Some("codex"), AgentState::Error, "Error: connection reset")
+        );
+    }
+
+    #[test]
+    fn quota_wall_reads_limited() {
+        let m = compiled();
+        // "Error: rate limit" is a quota wall, not a crash — limited wins
+        // over error within the line.
         let screen = "⠋ Working…\nError: rate limit reached\n";
         assert_eq!(
             classify_screen(&m, "codex", screen),
             hit(
                 Some("codex"),
-                AgentState::Error,
+                AgentState::Limited,
                 "Error: rate limit reached"
             )
         );
+        // The %23 case: quota prose under an unknown command reads as
+        // anonymous limited, pairable with process identity.
+        let screen = "- Three of the four asset groups are ready to generate the moment quota returns.\n";
+        assert_eq!(
+            classify_screen(&m, "node", screen),
+            hit(
+                None,
+                AgentState::Limited,
+                "- Three of the four asset groups are ready to generate the moment quota returns."
+            )
+        );
+        // Bare 429 likewise.
+        assert_eq!(
+            classify_screen(&m, "node", "HTTP 429 slow down\n"),
+            hit(None, AgentState::Limited, "HTTP 429 slow down")
+        );
+        assert!(AgentState::Limited.needs_attention());
     }
 
     #[test]
