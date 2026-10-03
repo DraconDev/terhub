@@ -952,6 +952,65 @@ mod tests {
     }
 
     #[test]
+    fn stuck_disabled_when_zero() {
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 3600, now - 3600);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            0,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+    }
+
+    #[test]
+    fn custom_stuck_threshold_honored() {
+        // 601s of stillness trips at 600 but not at 3600.
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            3600,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+    }
+
+    #[test]
+    fn custom_stale_lapses_early() {
+        let now = 10_000;
+        let rec = hook_record(now - 61);
+        let (old, stale) = split_prev(Some(&rec), now, 60);
+        assert!(old.is_none());
+        assert!(stale.is_some());
+        // … but stays fresh under the default window.
+        let (old, stale) = split_prev(Some(&rec), now, HOOK_STALE_SECS);
+        assert!(old.is_some());
+        assert!(stale.is_none());
+    }
+
+    #[test]
+    fn tunables_clamp_zero_poll() {
+        let mut cfg = config::AppConfig::default();
+        cfg.poll_secs = 0;
+        cfg.stale_secs = 0;
+        let tune = Tunables::from_config(&cfg);
+        assert_eq!(tune.poll_secs, 1);
+        assert_eq!(tune.stale_secs, 1);
+        assert_eq!(tune.stuck_secs, STUCK_SECS);
+    }
+
+    #[test]
     fn cpu_movement_clears_stuck() {
         let now = 100_000;
         let old = carried("pi", AgentState::Stuck, 500, now - 900, now - 900);
