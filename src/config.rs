@@ -1,6 +1,7 @@
 //! Config: theme + keybindings as TOML. Not vim, customizable.
 use anyhow::{Context, Result};
 use crossterm::event::KeyCode;
+use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
@@ -63,6 +64,16 @@ pub struct AppConfig {
     pub stale_secs: u64,
     /// Validated `[[command]]` entries (invalid ones become problems).
     pub commands: Vec<CustomCommand>,
+    /// Hash-color Agent cells so the same agent reads as a group.
+    pub color_agents: bool,
+    /// Style specs the agent hash picks from; empty = theme default.
+    pub agent_palette: Vec<String>,
+    /// Per-agent style-spec overrides, keyed by lowercase agent name.
+    pub agent_styles: HashMap<String, String>,
+    /// Tint Idle when working + quiet past `stuck_secs` (the stuck smell).
+    pub idle_warn: bool,
+    /// Style spec for that tint.
+    pub idle_warn_style: String,
 }
 
 impl Default for AppConfig {
@@ -77,6 +88,11 @@ impl Default for AppConfig {
             stuck_secs: crate::daemon::STUCK_SECS,
             stale_secs: crate::daemon::HOOK_STALE_SECS,
             commands: Vec::new(),
+            color_agents: true,
+            agent_palette: Vec::new(),
+            agent_styles: HashMap::new(),
+            idle_warn: true,
+            idle_warn_style: "bold yellow".to_string(),
         }
     }
 }
