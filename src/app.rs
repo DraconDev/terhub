@@ -264,9 +264,6 @@ pub struct App {
     pub show_preview: bool,
     /// Latest daemon snapshot by pane id (empty when the daemon is down).
     pub agents: HashMap<String, AgentRecord>,
-    /// Last snapshot fetch succeeded: distinguishes "daemon says no agent"
-    /// (idle) from "no daemon data" (unknown).
-    pub daemon_up: bool,
     /// First visible row of each list (the UI keeps these in view).
     pub session_scroll: usize,
     pub pane_scroll: usize,
@@ -305,7 +302,6 @@ impl App {
             preview_width: None,
             show_preview: false,
             agents: HashMap::new(),
-            daemon_up: false,
             session_scroll: 0,
             pane_scroll: 0,
             cursor: 0,
@@ -415,12 +411,8 @@ impl App {
                     .into_iter()
                     .map(|a| (a.pane.clone(), a))
                     .collect();
-                self.daemon_up = true;
             }
-            Err(_) => {
-                self.agents.clear();
-                self.daemon_up = false;
-            }
+            Err(_) => self.agents.clear(),
         }
     }
 

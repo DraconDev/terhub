@@ -222,19 +222,18 @@ fn proc_source_and_stuck_state_render() {
 }
 
 #[test]
-fn unclaimed_row_is_idle_only_with_daemon() {
-    // Daemon up, no record: plain idle (a shell, an editor), not unknown.
+fn unclaimed_row_has_no_agent_state() {
+    // No record, no agent-state: a shell was never expected to work on
+    // its own, so it reads blank — never "idle" like a done agent.
     let mut app = app_with_panes();
-    app.daemon_up = true;
     let text = render_lines(&mut app, 140, 20).join("\n");
     let row = text.lines().find(|l| l.contains("%2")).unwrap();
-    assert!(row.contains("idle"), "unclaimed shell not idle:\n{text}");
-    // Daemon down: unknown, never idle.
-    let mut app = app_with_panes();
-    assert!(!app.daemon_up);
-    let text = render_lines(&mut app, 140, 20).join("\n");
-    let row = text.lines().find(|l| l.contains("%2")).unwrap();
-    assert!(!row.contains("idle"), "idle without daemon data:\n{text}");
+    let cells: Vec<&str> = row.split_whitespace().collect();
+    assert!(cells.contains(&"—"), "unclaimed shell has a state:\n{text}");
+    assert!(
+        !cells.contains(&"idle"),
+        "shell reads as agent-idle:\n{text}"
+    );
 }
 
 #[test]
