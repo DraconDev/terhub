@@ -52,11 +52,7 @@ fn render_grid(app: &mut App, width: u16, height: u16) -> Vec<Vec<(String, Color
             (0..area.width)
                 .map(|x| {
                     let c = &buf[(x, y)];
-                    (
-                        c.symbol().to_string(),
-                        c.fg,
-                        c.modifier - Modifier::empty(),
-                    )
+                    (c.symbol().to_string(), c.fg, c.modifier)
                 })
                 .collect()
         })
