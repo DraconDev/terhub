@@ -89,7 +89,9 @@ status bar, no modes except small popups:
 - **Preview on demand.** Nothing is previewed by default: right-click a
   row or press `p` to open the pane's screen fullscreen, with the pane's
   own ANSI colors; right-click again (anywhere) or `Esc`/`p` closes it,
-  left-click/`Enter` jumps to the previewed pane.
+  left-click/`Enter` jumps to the previewed pane. Background fills reach
+  the pane edge (tmux trims the painted EOL cells; the preview rebuilds
+  them from the leftover style codes).
 - **Mouse.** Left-click a row jumps to the pane (press and release must
   land on the same cell, so text drags never jump), right-click toggles
   the fullscreen preview, click a session segment to filter, double-click
