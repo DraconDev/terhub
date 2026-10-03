@@ -160,10 +160,18 @@ stuck_secs = 600     # still-CPU → stuck (0 disables)
 stale_secs = 1800    # evidence staleness for carry + hook lapse
 ```
 
+Custom pane commands run a shell template against the selected row:
+`[[command]]` with `name`, `key` (must not collide with a built-in), and
+`run`. `{pane} {session} {window} {dir} {cmd} {agent} {state}` expand per
+row (`{{` escapes a brace); output shows in a scrollable popup (10s cap,
+stderr kept and marked). The same `TERHUB_*` environment as automation
+rules is set. Example: `name = "git status"`, `key = "G"`,
+`run = "git -C {dir} status -sb"`.
+
 Key names: single characters, `enter`, `esc`, `tab`, `f5`, … Unknown keys
 fall back to defaults. Notifications gate the desktop popups on agent state
 changes. `terhub config --check` validates the file and names every problem
-(unknown theme/density/keys, TOML syntax errors); the TUI also surfaces the
+(unknown theme/density/keys, bad `[[command]]` entries, TOML syntax errors); the TUI also surfaces the
 first problem in its status bar instead of silently running on defaults.
 
 ## The daemon and agent awareness
