@@ -1504,6 +1504,41 @@ mod tests {
     }
 
     #[test]
+    fn space_toggles_mark_and_steps_down() {
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        let tmux = Tmux::new().unwrap();
+        let first = app.selected_pane().unwrap().id.clone();
+        app.on_key(press(KeyCode::Char(' ')), &tmux);
+        assert!(app.marked.contains(&first));
+        assert_eq!(app.pane_selected, 1);
+        // Toggle off from the same row.
+        app.select_pane(0);
+        app.on_key(press(KeyCode::Char(' ')), &tmux);
+        assert!(!app.marked.contains(&first));
+    }
+
+    #[test]
+    fn kill_with_marks_opens_bulk_confirm() {
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.marked.insert("%1".to_string());
+        app.marked.insert("%2".to_string());
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('x')), &tmux);
+        assert_eq!(
+            app.mode,
+            Mode::ConfirmKillMarked(vec!["%1".to_string(), "%2".to_string()])
+        );
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        // Marks survive a cancelled kill.
+        assert_eq!(app.marked.len(), 2);
+        app.on_key(press(KeyCode::Char('u')), &tmux);
+        assert!(app.marked.is_empty());
+    }
+
+    #[test]
     fn ctrl_c_quits_anywhere() {
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();

@@ -227,11 +227,19 @@ pub fn window_label(window_name: &str, index: u32, panes_in_window: usize) -> St
     }
 }
 
-/// `!` needs you; `*` is the focused pane, shown only where a window
-/// holds several panes and focus is actually ambiguous.
-pub fn row_mark(is_needy: bool, active: bool, panes_in_window: usize) -> &'static str {
+/// `!` needs you; `+` is space-marked for bulk ops; `*` is the focused
+/// pane, shown only where a window holds several panes and focus is
+/// actually ambiguous. Attention always wins over the mark.
+pub fn row_mark(
+    is_needy: bool,
+    marked: bool,
+    active: bool,
+    panes_in_window: usize,
+) -> &'static str {
     if is_needy {
         "!"
+    } else if marked {
+        "+"
     } else if active && panes_in_window > 1 {
         "*"
     } else {
@@ -397,6 +405,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if needy > 0 {
         title.push_str(&format!(" · {needy} need you"));
     }
+    if !app.marked.is_empty() {
+        title.push_str(&format!(" · {} marked", app.marked.len()));
+    }
     if !app.filter.is_empty() {
         title.push_str(&format!(" · filter: {}", truncate(&app.filter, 24)));
     }
@@ -421,7 +432,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             let rec = app.agents.get(&p.id);
             let is_needy = rec.is_some_and(|r| r.state.needs_attention());
             let siblings = counts.get(p.window_id.as_str()).copied().unwrap_or(1);
-            let mark = row_mark(is_needy, p.active, siblings);
+            let mark = row_mark(is_needy, app.marked.contains(&p.id), p.active, siblings);
             let mark_style = if is_needy {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
             } else {
@@ -768,12 +779,14 @@ mod tests {
 
     #[test]
     fn row_mark_rules() {
-        assert_eq!(row_mark(true, false, 1), "!");
-        assert_eq!(row_mark(true, true, 2), "!");
-        assert_eq!(row_mark(false, true, 2), "*");
-        assert_eq!(row_mark(false, false, 2), " ");
+        assert_eq!(row_mark(true, false, false, 1), "!");
+        assert_eq!(row_mark(true, true, true, 2), "!");
+        assert_eq!(row_mark(false, true, false, 1), "+");
+        assert_eq!(row_mark(false, true, true, 2), "+");
+        assert_eq!(row_mark(false, false, true, 2), "*");
+        assert_eq!(row_mark(false, false, false, 2), " ");
         // Focused but alone in its window: nothing to disambiguate.
-        assert_eq!(row_mark(false, true, 1), " ");
+        assert_eq!(row_mark(false, false, true, 1), " ");
     }
 
     #[test]
