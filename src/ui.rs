@@ -594,8 +594,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 ),
                 None => ("—".to_string(), pal.dim),
             };
+            // No daemon record: the daemon looked and found no agent, so
+            // the pane is plain idle (a shell, an editor, a build tool) —
+            // but only when the daemon is actually up; with no snapshot
+            // the state is unknown, not idle.
             let (state, state_style) = match rec {
                 Some(r) => (r.state.label().to_string(), state_style(r.state, pal)),
+                None if app.daemon_up => ("idle".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };
             let age = match rec {
@@ -667,7 +672,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     }
     headers.extend(
         [
-            "Window", "Cmd", "Dir", "Agent", "State", "Src", "Age", "Turn", "Act",
+            "Window", "Cmd", "Dir", "Agent", "State", "Src", "For", "Turn", "Idle",
         ]
         .map(str::to_string),
     );
@@ -679,9 +684,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             SortKey::Agent,
             SortKey::State,
             SortKey::Src,
-            SortKey::Age,
+            SortKey::For,
             SortKey::Turn,
-            SortKey::Act,
+            SortKey::Idle,
         ]
         .map(Some),
     );
