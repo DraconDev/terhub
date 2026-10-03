@@ -246,6 +246,7 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     // Fresh tmux activity (a repaint 5s ago) but a screen unchanged for
     // an hour: the Idle cell must show the quiet clock, not the repaint.
     app.panes[0].activity = now - 5;
+    app.refresh_filtered();
     app.agents.insert(
         "%1".to_string(),
         AgentRecord {
@@ -273,6 +274,54 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     assert!(
         !tokens.contains(&"5s") && !tokens.contains(&"6s"),
         "repaint age leaked:\n{text}"
+    );
+}
+
+#[test]
+fn agent_color_and_idle_warn_reach_cells() {
+    use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
+    let mut app = app_with_panes();
+    app.daemon_up = true;
+    app.config.agent_styles.insert("pi".to_string(), "red".to_string());
+    app.config.idle_warn_style = "bold red".to_string();
+    let now = now_unix();
+    app.panes[0].activity = now - 3600;
+    app.refresh_filtered();
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: now,
+            state_since: now - 100,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            last_turn_secs: 0,
+            screen_hash: 7,
+            quiet_since: now - 3600,
+        },
+    );
+    let grid = render_grid(&mut app, 140, 20);
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains("Agent")).unwrap();
+    // Byte offsets lie before multibyte borders: count cells instead.
+    let ax = hdr[..hdr.find("Agent").unwrap()].chars().count();
+    let ix = hdr[..hdr.find("Idle").unwrap()].chars().count();
+    let row = text.iter().position(|l| l.contains("%1")).unwrap();
+    assert_eq!(grid[row][ax].1, Color::Red, "agent override color missing");
+    assert_eq!(grid[row][ix].1, Color::Red, "idle warn color missing");
+    assert!(
+        grid[row][ix].2.contains(Modifier::BOLD),
+        "idle warn bold missing"
     );
 }
 
