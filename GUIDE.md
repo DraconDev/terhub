@@ -116,8 +116,10 @@ status bar, no modes except small popups:
   `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc` cancels).
   Kills ask for confirmation (`Enter`/`y` yes, `Esc`/`n` no).
 - **`Ctrl+C` always quits.** `Esc` quits from the session bar.
-- **Agent columns.** With the daemon running, rows show agent/state/age
-  and the title bar counts how many need you.
+- **Agent columns.** With the daemon running, rows show agent/state/for
+  (time in this state) and the title bar counts how many need you. Panes
+  with no agent read `idle`, with the `Idle` column showing time since
+  last output — the fastest way to judge a `working` row.
 
 Everything except arrows/mouse/Tab/Esc is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
