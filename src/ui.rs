@@ -527,11 +527,15 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         ]
         .map(Some),
     );
+    // Window/Cmd/Dir/Agent = 43%; with Session 9% + Summary 13% the
+    // percentage columns total 65%, so with the fixed columns + spacing
+    // the table fits a 140-column terminal exactly. Keep it there:
+    // overflow squeezes Summary (last column absorbs the deficit).
     widths.extend([
-        Constraint::Percentage(12),
-        Constraint::Percentage(12),
-        Constraint::Percentage(14),
-        Constraint::Percentage(9),
+        Constraint::Percentage(11),
+        Constraint::Percentage(11),
+        Constraint::Percentage(13),
+        Constraint::Percentage(8),
         Constraint::Length(8),
         Constraint::Length(4),
         Constraint::Length(6),
