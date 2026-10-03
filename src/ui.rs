@@ -659,13 +659,12 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 }
                 None => ("—".to_string(), pal.dim),
             };
-            // No daemon record: the daemon looked and found no agent, so
-            // the pane is plain idle (a shell, an editor, a build tool) —
-            // but only when the daemon is actually up; with no snapshot
-            // the state is unknown, not idle.
+            // No daemon record: no agent, no agent-state. A shell is not
+            // "idle" the way a done agent is — it was never expected to
+            // work on its own — so plain panes stay blank here. (Activity
+            // still shows in Idle; only state is agent-only.)
             let (state, state_style) = match rec {
                 Some(r) => (r.state.label().to_string(), state_style(r.state, pal)),
-                None if app.daemon_up => ("idle".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };
             let age = match rec {
