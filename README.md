@@ -42,7 +42,7 @@ pane table; Enter on a pane jumps to it, `x` kills it (with confirm),
 
 ```
 terhub daemon start|stop|status
-terhub status [--json]     # which agents are waiting / errored
+terhub status [--json]     # which agents need you (waiting/error/stuck/limited)
 terhub hook --agent claude --pane %1 --state waiting --summary "..."
 ```
 

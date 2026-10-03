@@ -145,6 +145,11 @@ filter = "f"
 
 [notifications]
 enabled = true
+
+[daemon]
+poll_secs = 2        # re-poll cadence (restart daemon to apply)
+stuck_secs = 600     # still-CPU → stuck (0 disables)
+stale_secs = 1800    # evidence staleness for carry + hook lapse
 ```
 
 Key names: single characters, `enter`, `esc`, `tab`, `f5`, … Unknown keys
@@ -199,6 +204,7 @@ commands = ["myagent", "ma"]
 working = ["Thinking", "⠋|⠙|⠹"]
 waiting = ["confirm", "\\[y/n\\]"]
 error = ["\\berror\\b", "traceback"]
+limited = ["quota", "rate limit", "\\b429\\b"]
 ```
 
 Patterns are case-insensitive regexes; within one line the most specific
