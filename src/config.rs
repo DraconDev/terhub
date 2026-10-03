@@ -188,6 +188,128 @@ pub fn key_matches(spec: &KeySpec, code: KeyCode) -> bool {
     }
 }
 
+/// One token of a style spec: a modifier, a foreground color, an explicit
+/// reset, or something unknown (ignored by the parser, flagged by `--check`).
+enum SpecToken {
+    Mod(Modifier),
+    Fg(Color),
+    Reset,
+    Unknown,
+}
+
+fn spec_token(tok: &str) -> SpecToken {
+    let t = tok.to_lowercase();
+    match t.as_str() {
+        "bold" => SpecToken::Mod(Modifier::BOLD),
+        "dim" => SpecToken::Mod(Modifier::DIM),
+        "italic" => SpecToken::Mod(Modifier::ITALIC),
+        "underlined" | "underline" => SpecToken::Mod(Modifier::UNDERLINED),
+        "reverse" | "reversed" | "invert" => SpecToken::Mod(Modifier::REVERSED),
+        "crossed" | "crossed-out" | "strikethrough" => SpecToken::Mod(Modifier::CROSSED_OUT),
+        "blink" => SpecToken::Mod(Modifier::SLOW_BLINK),
+        "none" | "default" | "plain" => SpecToken::Reset,
+        _ => match parse_color_name(&t) {
+            Some(c) => SpecToken::Fg(c),
+            None => SpecToken::Unknown,
+        },
+    }
+}
+
+/// Parse a style spec (`"bold yellow"`, `"red"`, `"#ff8800"`): optional
+/// modifiers plus a foreground color, case-insensitive. Unknown tokens are
+/// ignored so a typo degrades to plainer text instead of breaking the UI;
+/// `config --check` names them.
+pub fn parse_style_spec(s: &str) -> Style {
+    let mut st = Style::default();
+    for tok in s.split_whitespace() {
+        match spec_token(tok) {
+            SpecToken::Mod(m) => st = st.add_modifier(m),
+            SpecToken::Fg(c) => st = st.fg(c),
+            SpecToken::Reset => st = Style::default(),
+            SpecToken::Unknown => {}
+        }
+    }
+    st
+}
+
+/// True when every token of the spec is known (empty means default style).
+pub fn valid_style_spec(s: &str) -> bool {
+    s.split_whitespace().all(|tok| {
+        !matches!(spec_token(tok), SpecToken::Unknown) || tok.trim().is_empty()
+    })
+}
+
+fn parse_color_name(t: &str) -> Option<Color> {
+    if let Some(hex) = t.strip_prefix('#') {
+        return parse_hex_color(hex);
+    }
+    let (bright, base) = match t
+        .strip_prefix("bright-")
+        .or_else(|| t.strip_prefix("light-"))
+    {
+        Some(b) => (true, b),
+        None => (false, t),
+    };
+    let normal = match base {
+        "black" => Color::Black,
+        "red" => Color::Red,
+        "green" => Color::Green,
+        "yellow" => Color::Yellow,
+        "blue" => Color::Blue,
+        "magenta" => Color::Magenta,
+        "cyan" => Color::Cyan,
+        "gray" | "grey" => Color::Gray,
+        "white" => Color::White,
+        _ => return None,
+    };
+    Some(if bright {
+        match normal {
+            Color::Black => Color::DarkGray,
+            Color::Red => Color::LightRed,
+            Color::Green => Color::LightGreen,
+            Color::Yellow => Color::LightYellow,
+            Color::Blue => Color::LightBlue,
+            Color::Magenta => Color::LightMagenta,
+            Color::Cyan => Color::LightCyan,
+            Color::Gray | Color::White => Color::White,
+            _ => normal,
+        }
+    } else {
+        normal
+    })
+}
+
+fn parse_hex_color(hex: &str) -> Option<Color> {
+    let bytes = hex.as_bytes();
+    let (r, g, b) = match bytes.len() {
+        3 => (
+            hex_val(bytes[0]).and_then(|v| Some(v * 17))?,
+            hex_val(bytes[1]).and_then(|v| Some(v * 17))?,
+            hex_val(bytes[2]).and_then(|v| Some(v * 17))?,
+        ),
+        6 => (
+            hex_byte(bytes[0], bytes[1])?,
+            hex_byte(bytes[2], bytes[3])?,
+            hex_byte(bytes[4], bytes[5])?,
+        ),
+        _ => return None,
+    };
+    Some(Color::Rgb(r, g, b))
+}
+
+fn hex_val(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
+    Some(hex_val(hi)? * 16 + hex_val(lo)?)
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct FileConfig {
     #[serde(default)]
