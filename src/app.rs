@@ -75,9 +75,9 @@ pub enum SortKey {
     Agent,
     State,
     Src,
-    Age,
+    For,
     Turn,
-    Act,
+    Idle,
     Summary,
 }
 
@@ -85,15 +85,15 @@ impl SortKey {
     /// Direction a fresh click (or the `o` key) starts with: attention and
     /// recency put the most urgent first, text reads A→Z.
     fn default_asc(self) -> bool {
-        !matches!(self, SortKey::Age | SortKey::Turn | SortKey::Act)
+        !matches!(self, SortKey::For | SortKey::Turn | SortKey::Idle)
     }
 }
 
 /// `o` key cycle order: most useful sorts first.
 const SORT_CYCLE: &[SortKey] = &[
-    SortKey::Act,
+    SortKey::Idle,
     SortKey::State,
-    SortKey::Age,
+    SortKey::For,
     SortKey::Turn,
     SortKey::Agent,
     SortKey::Session,
@@ -255,6 +255,9 @@ pub struct App {
     pub show_preview: bool,
     /// Latest daemon snapshot by pane id (empty when the daemon is down).
     pub agents: HashMap<String, AgentRecord>,
+    /// Last snapshot fetch succeeded: distinguishes "daemon says no agent"
+    /// (idle) from "no daemon data" (unknown).
+    pub daemon_up: bool,
     /// First visible row of each list (the UI keeps these in view).
     pub session_scroll: usize,
     pub pane_scroll: usize,
