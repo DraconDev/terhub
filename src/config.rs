@@ -264,6 +264,12 @@ pub fn manifests_dir() -> PathBuf {
 }
 
 pub fn config_path() -> PathBuf {
+    // Test seam (and power-user escape hatch): point terhub at any file.
+    if let Ok(p) = env::var("TERHUB_CONFIG")
+        && !p.is_empty()
+    {
+        return PathBuf::from(p);
+    }
     let base = env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .ok()
@@ -447,6 +453,25 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.highlight_attached = file.ui.highlight_attached;
     cfg.notifications_enabled = file.notifications.enabled;
+    // Zero poll/stale would wedge or blind the daemon; stuck_secs = 0 is a
+    // legitimate "off switch" and stays.
+    cfg.poll_secs = file.daemon.poll_secs;
+    if cfg.poll_secs == 0 {
+        problems.push(format!(
+            "poll_secs must be >= 1 (using default {})",
+            crate::daemon::POLL_SECS
+        ));
+        cfg.poll_secs = crate::daemon::POLL_SECS;
+    }
+    cfg.stuck_secs = file.daemon.stuck_secs;
+    cfg.stale_secs = file.daemon.stale_secs;
+    if cfg.stale_secs == 0 {
+        problems.push(format!(
+            "stale_secs must be >= 1 (using default {})",
+            crate::daemon::HOOK_STALE_SECS
+        ));
+        cfg.stale_secs = crate::daemon::HOOK_STALE_SECS;
+    }
     (cfg, problems)
 }
 
@@ -470,6 +495,12 @@ pub fn default_config_text() -> String {
         out.push_str(&format!("{k} = \"{v}\"\n"));
     }
     out.push_str("\n[notifications]\nenabled = true\n");
+    out.push_str(&format!(
+        "\n[daemon]\n# Restart the daemon to apply. stuck_secs = 0 disables stuck detection.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\n",
+        crate::daemon::POLL_SECS,
+        crate::daemon::STUCK_SECS,
+        crate::daemon::HOOK_STALE_SECS
+    ));
     out
 }
 
@@ -524,6 +555,39 @@ mod tests {
         assert_eq!(cfg.key("new"), "c");
         assert_eq!(cfg.key("kill"), "x");
         assert_eq!(cfg.theme, "dark");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn daemon_section_parses_with_defaults() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("daemon.toml");
+        std::fs::write(&path, "[daemon]\nstuck_secs = 60\n").unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert!(problems.is_empty());
+        assert_eq!(cfg.stuck_secs, 60);
+        assert_eq!(cfg.poll_secs, crate::daemon::POLL_SECS);
+        assert_eq!(cfg.stale_secs, crate::daemon::HOOK_STALE_SECS);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn zero_poll_and_stale_fall_back_with_problems() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("daemon-zero.toml");
+        std::fs::write(
+            &path,
+            "[daemon]\npoll_secs = 0\nstuck_secs = 0\nstale_secs = 0\n",
+        )
+        .unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(problems.len(), 2);
+        assert_eq!(cfg.poll_secs, crate::daemon::POLL_SECS);
+        assert_eq!(cfg.stale_secs, crate::daemon::HOOK_STALE_SECS);
+        // stuck_secs = 0 is the documented off switch, not an error.
+        assert_eq!(cfg.stuck_secs, 0);
         std::fs::remove_file(path).ok();
     }
 
