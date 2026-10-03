@@ -510,6 +510,7 @@ fn merge_record(
 fn poll_sync(
     prev: HashMap<String, AgentRecord>,
     manifests: &[CompiledManifest],
+    tune: Tunables,
 ) -> (
     HashMap<String, AgentRecord>,
     Vec<crate::attend::Transition>,
@@ -535,7 +536,7 @@ fn poll_sync(
     let snap = crate::proc::Snapshot::capture();
     let mut next = HashMap::new();
     for pane in &panes {
-        let (old, stale) = split_prev(prev.get(&pane.id), now);
+        let (old, stale) = split_prev(prev.get(&pane.id), now, tune.stale_secs);
         let proc_hit = snap.detect_agent(pane.pid);
         // Hook records stay authoritative; poll only refreshes their metadata.
         // NOTE: updated_at is deliberately NOT bumped here: it measures hook
