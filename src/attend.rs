@@ -184,23 +184,22 @@ pub struct Transition {
     pub summary: String,
 }
 
-/// Records that newly entered an attention state since the previous registry.
-pub fn detect_transitions(
+/// Every state change between registries (new panes read as
+/// Unknown → state). The ledger logs all of these; only the attention
+/// subset notifies.
+pub fn detect_all_transitions(
     prev: &HashMap<String, AgentRecord>,
     next: &HashMap<String, AgentRecord>,
 ) -> Vec<Transition> {
     let mut out = Vec::new();
     for (pane, rec) in next {
-        if !rec.state.needs_attention() {
+        if prev.get(pane).is_some_and(|o| o.state == rec.state) {
             continue;
         }
         let from = prev
             .get(pane)
             .map(|o| o.state)
             .unwrap_or(AgentState::Unknown);
-        if prev.get(pane).is_some_and(|o| o.state == rec.state) {
-            continue;
-        }
         out.push(Transition {
             pane: pane.clone(),
             agent: rec.agent.clone(),
@@ -213,6 +212,17 @@ pub fn detect_transitions(
     }
     out.sort_by(|a, b| a.pane.cmp(&b.pane));
     out
+}
+
+/// Records that newly entered an attention state since the previous registry.
+pub fn detect_transitions(
+    prev: &HashMap<String, AgentRecord>,
+    next: &HashMap<String, AgentRecord>,
+) -> Vec<Transition> {
+    detect_all_transitions(prev, next)
+        .into_iter()
+        .filter(|t| t.to.needs_attention())
+        .collect()
 }
 
 pub fn notify_transition(t: &Transition) {
@@ -304,6 +314,25 @@ mod tests {
         // Same state again: silent.
         let t2 = detect_transitions(&next, &next);
         assert!(t2.is_empty());
+    }
+
+    #[test]
+    fn all_transitions_include_quiet_states() {
+        let mut prev = HashMap::new();
+        prev.insert("%1".to_string(), rec("%1", AgentState::Waiting, 100));
+        prev.insert("%2".to_string(), rec("%2", AgentState::Working, 100));
+        let mut next = HashMap::new();
+        // Waiting → working (a turn started): logged, never notified.
+        next.insert("%1".to_string(), rec("%1", AgentState::Working, 200));
+        // Working → idle: logged, never notified.
+        next.insert("%2".to_string(), rec("%2", AgentState::Idle, 200));
+        // Brand-new pane reads as Unknown → state.
+        next.insert("%3".to_string(), rec("%3", AgentState::Working, 200));
+        let all = detect_all_transitions(&prev, &next);
+        assert_eq!(all.len(), 3);
+        assert!(all.iter().any(|t| t.from == AgentState::Unknown));
+        // The attention subset stays empty: nothing here needs you.
+        assert!(detect_transitions(&prev, &next).is_empty());
     }
 
     #[test]

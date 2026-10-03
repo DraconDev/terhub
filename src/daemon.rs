@@ -10,7 +10,7 @@ use crate::agent::{
     builtin_manifests, classify_screen, compile_all_lossy, is_harness_command, is_shell_command,
     load_manifests, now_unix,
 };
-use crate::attend::{detect_transitions, notify_transition};
+use crate::attend::{detect_all_transitions, notify_transition};
 use crate::config;
 use crate::history;
 use crate::tmux::{Pane, Tmux};
@@ -268,9 +268,11 @@ async fn handle_conn(
                 let now = now_unix();
                 apply_event_to(&mut reg, &event, now);
                 save_registry(&runtime.join("registry.json"), &reg);
-                for t in detect_transitions(&before, &reg) {
+                for t in detect_all_transitions(&before, &reg) {
                     log_entry(&history::Entry::transition(now, &t));
-                    notify_transition(&t);
+                    if t.to.needs_attention() {
+                        notify_transition(&t);
+                    }
                 }
             }
             Response::ok()
@@ -317,7 +319,9 @@ async fn poll_loop(
                 let now = now_unix();
                 for t in &transitions {
                     log_entry(&history::Entry::transition(now, t));
-                    notify_transition(t);
+                    if t.to.needs_attention() {
+                        notify_transition(t);
+                    }
                 }
                 let sessions: std::collections::HashSet<String> = sessions.into_iter().collect();
                 if let Some(prev) = prev_sessions.replace(sessions.clone()) {
@@ -620,7 +624,7 @@ fn poll_sync(
             }
         }
     }
-    let transitions = detect_transitions(&prev, &next);
+    let transitions = detect_all_transitions(&prev, &next);
     let mut sessions: Vec<String> = panes.iter().map(|p| p.session.clone()).collect();
     sessions.sort();
     sessions.dedup();
