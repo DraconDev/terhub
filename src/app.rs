@@ -17,6 +17,11 @@ pub enum Mode {
     ConfirmKill(String),
     ConfirmKillPane(String),
     ConfirmKillMarked(Vec<String>),
+    CommandOutput {
+        name: String,
+        lines: Vec<String>,
+        scroll: usize,
+    },
     Settings,
 }
 
@@ -157,6 +162,58 @@ fn age_secs(rec: Option<&AgentRecord>, now: u64) -> u64 {
 /// Last completed turn; 0 (none yet) sinks in the default descending order.
 fn turn_secs(rec: Option<&AgentRecord>) -> u64 {
     rec.map(|r| r.last_turn_secs).unwrap_or(0)
+}
+
+/// Expand a custom command template against the selected row. Unknown
+/// `{var}`s stay literal (config validation rejects them at load; this is
+/// the belt-and-braces path for programmatically built configs).
+pub fn expand_command(
+    template: &str,
+    pane: &crate::tmux::Pane,
+    rec: Option<&AgentRecord>,
+) -> String {
+    let agent = rec.map(|r| r.agent.as_str()).unwrap_or("");
+    let state = rec.map(|r| r.state.label()).unwrap_or("");
+    let value = |var: &str| -> Option<&str> {
+        match var {
+            "pane" => Some(pane.id.as_str()),
+            "session" => Some(pane.session.as_str()),
+            "window" => Some(pane.window_name.as_str()),
+            "dir" => Some(pane.path.as_str()),
+            "cmd" => Some(pane.command.as_str()),
+            "agent" => Some(agent),
+            "state" => Some(state),
+            _ => None,
+        }
+    };
+    let chars: Vec<char> = template.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '{' {
+            if chars.get(i + 1) == Some(&'{') {
+                out.push('{');
+                i += 2;
+                continue;
+            }
+            if let Some(end) = chars[i..].iter().position(|c| *c == '}') {
+                let var: String = chars[i + 1..i + end].iter().collect();
+                match value(&var) {
+                    Some(v) => out.push_str(v),
+                    None => {
+                        out.push('{');
+                        out.push_str(&var);
+                        out.push('}');
+                    }
+                }
+                i += end + 1;
+                continue;
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
 }
 
 /// Case-insensitive substring match across every text column. `q` must
@@ -633,6 +690,7 @@ impl App {
             Mode::ConfirmKill(_) => self.on_confirm_key(key, tmux),
             Mode::ConfirmKillPane(_) => self.on_confirm_pane_key(key, tmux),
             Mode::ConfirmKillMarked(_) => self.on_confirm_marked_key(key, tmux),
+            Mode::CommandOutput { .. } => self.on_command_output_key(key),
             Mode::Settings => self.on_settings_key(key),
             Mode::Normal => self.on_normal_key(key, tmux),
         }
@@ -1249,6 +1307,12 @@ impl App {
         if key_matches(&cfg.spec("refresh"), code) {
             self.refresh(tmux);
             return None;
+        }
+        for cmd in &cfg.commands {
+            if key_matches(&cmd.spec, code) {
+                self.run_custom(cmd);
+                return None;
+            }
         }
         if key_matches(&cfg.spec("help"), code) {
             self.status = Some(format!(
