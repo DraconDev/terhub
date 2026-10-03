@@ -505,7 +505,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if show_session {
         headers.push("Session".to_string());
         keys.push(Some(SortKey::Session));
-        widths.push(Constraint::Percentage(11));
+        widths.push(Constraint::Percentage(9));
     }
     headers.extend(
         [
