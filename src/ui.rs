@@ -1095,7 +1095,7 @@ mod tests {
         assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("5s".to_string(), false));
         // Waiting is quiet by nature → calm even when old.
         let r = rec(AgentState::Waiting, now - 3600);
-        assert_eq!(idle_cell(Some(&r), 0, now, &cfg).1, false);
+        assert!(!idle_cell(Some(&r), 0, now, &cfg).1);
         // No quiet clock → window activity age, still warns when stale.
         let r = rec(AgentState::Working, 0);
         assert_eq!(
@@ -1109,12 +1109,16 @@ mod tests {
         );
         assert_eq!(idle_cell(None, 0, now, &cfg), ("—".to_string(), false));
         // Off switches: flag or stuck_secs = 0.
-        let mut off = AppConfig::default();
-        off.idle_warn = false;
+        let off = AppConfig {
+            idle_warn: false,
+            ..AppConfig::default()
+        };
         let r = rec(AgentState::Working, now - 3600);
         assert!(!idle_cell(Some(&r), 0, now, &off).1);
-        let mut nostuck = AppConfig::default();
-        nostuck.stuck_secs = 0;
+        let nostuck = AppConfig {
+            stuck_secs: 0,
+            ..AppConfig::default()
+        };
         assert!(!idle_cell(Some(&r), 0, now, &nostuck).1);
     }
 
