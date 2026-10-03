@@ -279,6 +279,85 @@ pub fn evaluate(
 /// Shell-action wall clock: a hanging command must not stall the daemon.
 pub const SHELL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Run a shell command and capture fuller output for interactive display
+/// (custom TUI commands). Same TERHUB_* environment as rule actions, but
+/// stderr is kept (marked) and output caps at 4000 chars, not one line.
+pub fn shell_capture(
+    command: &str,
+    pane: &str,
+    rec: Option<&AgentRecord>,
+    timeout: std::time::Duration,
+) -> Result<String, String> {
+    let (agent, session, window, state) = match rec {
+        Some(r) => (
+            r.agent.as_str(),
+            r.session.as_str(),
+            r.window.as_str(),
+            r.state.label(),
+        ),
+        None => ("", "", "", ""),
+    };
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .env("TERHUB_PANE", pane)
+        .env("TERHUB_AGENT", agent)
+        .env("TERHUB_SESSION", session)
+        .env("TERHUB_WINDOW", window)
+        .env("TERHUB_STATE", state)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) => {}
+            Err(e) => return Err(format!("wait failed: {e}")),
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("timed out after {}s", timeout.as_secs()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    if let Some(mut o) = child.stdout.take() {
+        use std::io::Read;
+        let _ = o.read_to_end(&mut out);
+    }
+    if let Some(mut e) = child.stderr.take() {
+        use std::io::Read;
+        let _ = e.read_to_end(&mut err);
+    }
+    let mut text = String::from_utf8_lossy(&out).trim().to_string();
+    let err_text = String::from_utf8_lossy(&err);
+    let err_text = err_text.trim();
+    if !err_text.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str("[stderr]\n");
+        text.push_str(err_text);
+    }
+    if text.is_empty() {
+        text = if status.success() {
+            "ok".to_string()
+        } else {
+            format!("exit {}", status.code().unwrap_or(-1));
+        };
+    } else if !status.success() {
+        text = format!("exit {}\n{text}", status.code().unwrap_or(-1));
+    }
+    if text.chars().count() > 4000 {
+        text = text.chars().take(3999).collect::<String>() + "…";
+    }
+    Ok(text)
+}
+
 /// Carry out one firing. Returns a one-line description for the ledger.
 pub fn execute(tmux: Option<&Tmux>, fire: &Fire, rec: &AgentRecord) -> Result<String> {
     execute_with_timeout(tmux, fire, rec, SHELL_TIMEOUT)

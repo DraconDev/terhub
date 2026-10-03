@@ -61,6 +61,8 @@ pub struct AppConfig {
     pub poll_secs: u64,
     pub stuck_secs: u64,
     pub stale_secs: u64,
+    /// Validated `[[command]]` entries (invalid ones become problems).
+    pub commands: Vec<CustomCommand>,
 }
 
 impl Default for AppConfig {
@@ -74,6 +76,7 @@ impl Default for AppConfig {
             poll_secs: crate::daemon::POLL_SECS,
             stuck_secs: crate::daemon::STUCK_SECS,
             stale_secs: crate::daemon::HOOK_STALE_SECS,
+            commands: Vec::new(),
         }
     }
 }
@@ -179,7 +182,32 @@ struct FileConfig {
     notifications: NotificationsSection,
     #[serde(default)]
     daemon: DaemonSection,
+    #[serde(default)]
+    command: Vec<CommandFile>,
 }
+
+/// One `[[command]]` entry: a user shell command on the selected pane.
+#[derive(Debug, Deserialize, Default)]
+struct CommandFile {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    run: String,
+}
+
+/// Validated custom command. `{pane} {session} {window} {dir} {cmd}
+/// {agent} {state}` expand against the selected row.
+#[derive(Debug, Clone)]
+pub struct CustomCommand {
+    pub name: String,
+    pub key: String,
+    pub spec: KeySpec,
+    pub run: String,
+}
+
+pub const COMMAND_VARS: &[&str] = &["pane", "session", "window", "dir", "cmd", "agent", "state"];
 
 #[derive(Debug, Deserialize)]
 struct NotificationsSection {
