@@ -377,7 +377,7 @@ fn render_selector(
 fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
     use crate::agent::AgentState;
     match state {
-        AgentState::Waiting | AgentState::Error | AgentState::Stuck => {
+        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited => {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         }
         AgentState::Working => Style::default().fg(Color::Green),

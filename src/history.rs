@@ -394,7 +394,7 @@ pub fn stats(spans: &[Span], since: Option<u64>, group: GroupBy) -> Vec<StatsRow
         match s.state {
             AgentState::Working => row.work += dur,
             AgentState::Waiting => row.wait += dur,
-            AgentState::Error | AgentState::Stuck => row.err += dur,
+            AgentState::Error | AgentState::Stuck | AgentState::Limited => row.err += dur,
             AgentState::Idle => row.idle += dur,
             AgentState::Unknown => {}
         }
@@ -436,7 +436,7 @@ impl TimelineView {
 fn state_style(state: AgentState) -> ratatui::style::Style {
     use ratatui::style::{Color, Modifier, Style};
     match state {
-        AgentState::Waiting | AgentState::Error | AgentState::Stuck => {
+        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited => {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         }
         AgentState::Working => Style::default().fg(Color::Green),

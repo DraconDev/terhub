@@ -414,7 +414,7 @@ fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, now: u64) -> (u64, u64) {
 
 /// Merge one poll's evidence into a record. Identity priority: process tree
 /// beats screen guess (a `pi` binary is a fact; screen text is a hint).
-/// State priority: screen waiting/error beats everything here (fresh hooks
+/// State priority: screen waiting/error/limited beats everything here (fresh hooks
 /// never reach this function); a live agent with an unreadable screen is
 /// working; a working agent with a long-still CPU sum is stuck. Anonymous
 /// screen states (patterns, no name) only survive paired with a process
@@ -429,9 +429,11 @@ fn merge_record(
     now: u64,
     stuck_secs: u64,
 ) -> Option<AgentRecord> {
-    use AgentState::{Error, Waiting, Working};
+    use AgentState::{Error, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
-        (Some((pa, _)), Some(hit)) if hit.state == Waiting || hit.state == Error => {
+        (Some((pa, _)), Some(hit))
+            if hit.state == Waiting || hit.state == Error || hit.state == Limited =>
+        {
             (pa.to_string(), hit.state, Source::Proc)
         }
         (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
@@ -459,7 +461,7 @@ fn merge_record(
     // classifier — the text you must read to act. Refreshed every poll;
     // the clock above still decides notifications. Working rows stay
     // summary-free: spinner text is noise, not information.
-    if matches!(state, Waiting | Error)
+    if matches!(state, Waiting | Error | Limited)
         && let Some(hit) = screen.as_ref()
         && !hit.summary.is_empty()
     {

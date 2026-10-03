@@ -16,7 +16,8 @@ pub struct Rule {
     pub name: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// State that arms the rule: waiting|error|working|idle.
+    /// State that arms the rule: waiting|error|working|idle|stuck|limited
+    /// (aliases accepted, see `AgentState::parse`).
     pub on: String,
     /// Optional agent-name substring filter (case-insensitive).
     #[serde(default)]
