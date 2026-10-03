@@ -583,7 +583,15 @@ fn poll_sync(
             .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid)));
         let carried = old.or(stale);
         let lapsed = old.is_none() && stale.is_some();
-        if let Some(rec) = merge_record(carried, lapsed, screen_hit, proc_pair, pane, now) {
+        if let Some(rec) = merge_record(
+            carried,
+            lapsed,
+            screen_hit,
+            proc_pair,
+            pane,
+            now,
+            tune.stuck_secs,
+        ) {
             next.insert(pane.id.clone(), rec);
         } else if let Some(o) = old {
             // Pane alive but nothing matches: keep last known state only
@@ -591,7 +599,7 @@ fn poll_sync(
             // than show a state nobody can confirm anymore. (updated_at is
             // evidence time, deliberately not refreshed by the poll. The CPU
             // trackers reset: this poll found no agent process.)
-            if carry_record(o, pane, now) {
+            if carry_record(o, pane, now, tune.stale_secs) {
                 let mut r = o.clone();
                 r.session.clone_from(&pane.session);
                 r.window.clone_from(&pane.window_name);
