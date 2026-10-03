@@ -563,6 +563,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     ));
 
     let now = crate::agent::now_unix();
+    let warn_style = crate::config::parse_style_spec(&app.config.idle_warn_style);
     let visible = area.height.saturating_sub(3) as usize;
     // Window sizes come from the full pane list: stable under filtering,
     // so a suffix never flickers when a sibling is filtered out.
@@ -584,14 +585,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 pal.dim
             };
             let (agent, agent_style) = match rec {
-                Some(r) => (
-                    r.agent.clone(),
+                Some(r) => {
+                    let mut st = agent_text_style(&r.agent, &app.config, pal.dim);
                     if is_needy {
-                        Style::default().add_modifier(Modifier::BOLD)
-                    } else {
-                        pal.dim
-                    },
-                ),
+                        st = st.add_modifier(Modifier::BOLD);
+                    }
+                    (r.agent.clone(), st)
+                }
                 None => ("—".to_string(), pal.dim),
             };
             // No daemon record: the daemon looked and found no agent, so
@@ -614,13 +614,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             // Claimed panes use the visible-quiet clock: tmux activity
             // counts every repaint, so animated agent screens would read
             // busy forever. Unclaimed panes fall back to window activity.
-            let act = match rec {
-                Some(r) if r.quiet_since > 0 => {
-                    crate::history::fmt_dur(now.saturating_sub(r.quiet_since))
-                }
-                _ if p.activity == 0 => "—".to_string(),
-                _ => crate::history::fmt_dur(now.saturating_sub(p.activity)),
-            };
+            let (act, act_warn) = idle_cell(rec, p.activity, now, &app.config);
             let window = window_label(&p.window_name, p.index, siblings);
             let dir = p.path.rsplit('/').next().unwrap_or("");
             let dir = if dir.is_empty() { "—" } else { dir };
