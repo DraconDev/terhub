@@ -733,6 +733,11 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             "This closes that pane only. Enter=yes Esc=no".to_string(),
             None,
         ),
+        Mode::ConfirmKillMarked(ids) => (
+            format!(" Kill {} marked pane(s)? ", ids.len()),
+            format!("{} Enter=yes Esc=no", truncate(&ids.join(" "), 52)),
+            None,
+        ),
         Mode::Normal | Mode::Settings => return,
     };
     let popup = centered(area, 60, 5);

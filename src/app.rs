@@ -632,6 +632,7 @@ impl App {
             Mode::PromptFilter => self.on_filter_key(key, tmux),
             Mode::ConfirmKill(_) => self.on_confirm_key(key, tmux),
             Mode::ConfirmKillPane(_) => self.on_confirm_pane_key(key, tmux),
+            Mode::ConfirmKillMarked(_) => self.on_confirm_marked_key(key, tmux),
             Mode::Settings => self.on_settings_key(key),
             Mode::Normal => self.on_normal_key(key, tmux),
         }
@@ -1251,11 +1252,13 @@ impl App {
         }
         if key_matches(&cfg.spec("help"), code) {
             self.status = Some(format!(
-                "panes: {}=jump {}=kill {}=preview {}=attend {}=filter {}=sort {}=style tab=back {}=quit",
+                "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=sort {}=style tab=back {}=quit",
                 cfg.key("attach"),
                 cfg.key("kill"),
                 cfg.key("preview"),
                 cfg.key("attend"),
+                cfg.key("mark"),
+                cfg.key("unmark"),
                 cfg.key("filter"),
                 cfg.key("sort"),
                 cfg.key("settings"),
@@ -1277,10 +1280,45 @@ impl App {
                 match tmux.kill_pane(&id) {
                     Ok(_) => {
                         self.status = Some(format!("killed pane {id}"));
+                        self.marked.remove(&id);
                         self.refresh(tmux);
                     }
                     Err(e) => self.status = Some(format!("kill failed: {e}")),
                 }
+                self.cancel_modal();
+            }
+            _ => {}
+        }
+        None
+    }
+
+    /// One confirmation for the whole marked set: kill each, keep going
+    /// past failures, report the tally.
+    fn on_confirm_marked_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
+        let ids = match &self.mode {
+            Mode::ConfirmKillMarked(ids) => ids.clone(),
+            _ => return None,
+        };
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => self.cancel_modal(),
+            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let mut killed = 0;
+                let mut failed = 0;
+                for id in &ids {
+                    match tmux.kill_pane(id) {
+                        Ok(_) => {
+                            killed += 1;
+                            self.marked.remove(id);
+                        }
+                        Err(_) => failed += 1,
+                    }
+                }
+                self.status = Some(if failed == 0 {
+                    format!("killed {killed} marked pane(s)")
+                } else {
+                    format!("killed {killed}, {failed} failed")
+                });
+                self.refresh(tmux);
                 self.cancel_modal();
             }
             _ => {}
