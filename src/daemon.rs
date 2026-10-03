@@ -37,6 +37,35 @@ pub const HOOK_STALE_SECS: u64 = 1800;
 /// not busy.
 pub const STUCK_SECS: u64 = 600;
 
+/// Daemon timing knobs from the `[daemon]` config section (restart to
+/// apply). `stuck_secs = 0` disables stuck detection entirely.
+#[derive(Debug, Clone, Copy)]
+pub struct Tunables {
+    pub poll_secs: u64,
+    pub stuck_secs: u64,
+    pub stale_secs: u64,
+}
+
+impl Default for Tunables {
+    fn default() -> Self {
+        Tunables {
+            poll_secs: POLL_SECS,
+            stuck_secs: STUCK_SECS,
+            stale_secs: HOOK_STALE_SECS,
+        }
+    }
+}
+
+impl Tunables {
+    pub fn from_config(cfg: &config::AppConfig) -> Self {
+        Tunables {
+            poll_secs: cfg.poll_secs.max(1),
+            stuck_secs: cfg.stuck_secs,
+            stale_secs: cfg.stale_secs.max(1),
+        }
+    }
+}
+
 /// Runtime dir: explicit override (tests) → XDG runtime → per-user /tmp.
 /// Empty variables are ignored so a blank `export` can't redirect us to `/`.
 pub fn runtime_dir() -> PathBuf {
@@ -127,6 +156,7 @@ pub struct Server {
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     manifests: Arc<Vec<CompiledManifest>>,
     shutdown: Arc<AtomicBool>,
+    tunables: Tunables,
 }
 
 impl Server {
@@ -141,11 +171,13 @@ impl Server {
         }
         let registry = load_registry(&runtime.join("registry.json"));
         history::prune(&history::ledger_path(), now_unix(), 90);
+        let tunables = Tunables::from_config(&config::load_config(None));
         Ok(Server {
             runtime,
             registry: Arc::new(Mutex::new(registry)),
             manifests: Arc::new(compiled),
             shutdown: Arc::new(AtomicBool::new(false)),
+            tunables,
         })
     }
 
@@ -163,7 +195,8 @@ impl Server {
         let reg = self.registry.clone();
         let manifests = self.manifests.clone();
         let runtime = self.runtime.clone();
-        tokio::spawn(async move { poll_loop(reg, manifests, runtime).await });
+        let tunables = self.tunables;
+        tokio::spawn(async move { poll_loop(reg, manifests, runtime, tunables).await });
 
         loop {
             if self.shutdown.load(Ordering::SeqCst) {
