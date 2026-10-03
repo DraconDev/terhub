@@ -16,6 +16,7 @@ pub enum Mode {
     PromptFilter,
     ConfirmKill(String),
     ConfirmKillPane(String),
+    ConfirmKillMarked(Vec<String>),
     Settings,
 }
 
@@ -203,6 +204,9 @@ pub struct App {
     pub sort_asc: bool,
     /// Free-text row filter (case-insensitive substring, empty = off).
     pub filter: String,
+    /// Space-marked pane ids for bulk kill/attend. Survives sort/filter;
+    /// pruned to live panes on every refresh.
+    pub marked: std::collections::HashSet<String>,
 }
 
 impl App {
@@ -229,6 +233,7 @@ impl App {
             sort_key: SortKey::Act,
             sort_asc: false,
             filter: String::new(),
+            marked: std::collections::HashSet::new(),
         }
     }
 
