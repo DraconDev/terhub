@@ -1014,9 +1014,11 @@ mod tests {
 
     #[test]
     fn tunables_clamp_zero_poll() {
-        let mut cfg = config::AppConfig::default();
-        cfg.poll_secs = 0;
-        cfg.stale_secs = 0;
+        let cfg = config::AppConfig {
+            poll_secs: 0,
+            stale_secs: 0,
+            ..config::AppConfig::default()
+        };
         let tune = Tunables::from_config(&cfg);
         assert_eq!(tune.poll_secs, 1);
         assert_eq!(tune.stale_secs, 1);
