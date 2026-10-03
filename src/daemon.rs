@@ -962,6 +962,56 @@ mod tests {
     }
 
     #[test]
+    fn completed_turn_records_duration() {
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 60, now - 300);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]"),
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.last_turn_secs, 300);
+    }
+
+    #[test]
+    fn stuck_carries_turn_without_ending_it() {
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
+        old.last_turn_secs = 120;
+        let stuck = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(stuck.state, AgentState::Stuck);
+        assert_eq!(stuck.last_turn_secs, 120);
+        // Stuck → waiting: the grinding episode never completed, so the
+        // previous completed turn still stands.
+        let waiting = merge_record(
+            Some(&stuck),
+            false,
+            screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]"),
+            Some(("pi", 500)),
+            &test_pane(),
+            now + 10,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(waiting.last_turn_secs, 120);
+    }
+
+    #[test]
     fn stuck_after_still_cpu() {
         let now = 100_000;
         let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);

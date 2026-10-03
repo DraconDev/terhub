@@ -770,6 +770,29 @@ mod tests {
     }
 
     #[test]
+    fn hook_turn_end_records_duration() {
+        let mut reg = HashMap::new();
+        let work = HookEvent {
+            pane: "%1".to_string(),
+            agent: "claude".to_string(),
+            state: AgentState::Working,
+            summary: "a".to_string(),
+        };
+        apply_event_to(&mut reg, &work, 100);
+        apply_event_to(&mut reg, &work, 200);
+        let wait = HookEvent {
+            state: AgentState::Waiting,
+            summary: "b".to_string(),
+            ..work
+        };
+        apply_event_to(&mut reg, &wait, 400);
+        assert_eq!(reg["%1"].last_turn_secs, 300);
+        // Same-state repeats don't rewrite it.
+        apply_event_to(&mut reg, &wait, 500);
+        assert_eq!(reg["%1"].last_turn_secs, 300);
+    }
+
+    #[test]
     fn event_merge_keeps_state_since() {
         let mut reg = HashMap::new();
         let ev = HookEvent {
