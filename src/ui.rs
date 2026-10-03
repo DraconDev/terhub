@@ -1024,6 +1024,94 @@ mod tests {
     }
 
     #[test]
+    fn agent_text_style_groups_names_and_honors_overrides() {
+        use crate::config::AppConfig;
+        let cfg = AppConfig::default();
+        let dim = Style::default().fg(Color::DarkGray);
+        // Same name, same style (case-insensitive); unnamed/disabled → dim.
+        assert_eq!(
+            agent_text_style("pi", &cfg, dim),
+            agent_text_style("PI", &cfg, dim)
+        );
+        assert_ne!(agent_text_style("pi", &cfg, dim), dim);
+        assert_eq!(agent_text_style("", &cfg, dim), dim);
+        let mut off = AppConfig::default();
+        off.color_agents = false;
+        assert_eq!(agent_text_style("pi", &off, dim), dim);
+        // Override wins over the hash.
+        let mut custom = AppConfig::default();
+        custom
+            .agent_styles
+            .insert("pi".to_string(), "red".to_string());
+        assert_eq!(
+            agent_text_style("pi", &custom, dim).fg,
+            Some(Color::Red)
+        );
+        // Custom single-entry palette pins every agent to it.
+        let mut pal = AppConfig::default();
+        pal.agent_palette = vec!["#00ff00".to_string()];
+        assert_eq!(
+            agent_text_style("pi", &pal, dim).fg,
+            Some(Color::Rgb(0, 0xff, 0))
+        );
+        assert_eq!(
+            agent_text_style("muse", &pal, dim).fg,
+            Some(Color::Rgb(0, 0xff, 0))
+        );
+    }
+
+    #[test]
+    fn idle_cell_warns_only_on_stale_working() {
+        use crate::agent::{AgentRecord, AgentState, Source};
+        use crate::config::AppConfig;
+        let cfg = AppConfig::default();
+        let now = 10_000;
+        let rec = |state: AgentState, quiet_since: u64| AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state,
+            source: Source::Proc,
+            summary: String::new(),
+            session: String::new(),
+            window: String::new(),
+            command: String::new(),
+            updated_at: now,
+            state_since: now - 100,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            last_turn_secs: 0,
+            screen_hash: 1,
+            quiet_since,
+        };
+        // Working + quiet past stuck_secs (600) → warn.
+        let r = rec(AgentState::Working, now - 3600);
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("1h0m".to_string(), true));
+        // Fresh work → calm.
+        let r = rec(AgentState::Working, now - 5);
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("5s".to_string(), false));
+        // Waiting is quiet by nature → calm even when old.
+        let r = rec(AgentState::Waiting, now - 3600);
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg).1, false);
+        // No quiet clock → window activity age, still warns when stale.
+        let r = rec(AgentState::Working, 0);
+        assert_eq!(
+            idle_cell(Some(&r), now - 3600, now, &cfg),
+            ("1h0m".to_string(), true)
+        );
+        // Unclaimed panes never warn.
+        assert_eq!(idle_cell(None, now - 3600, now, &cfg), ("1h0m".to_string(), false));
+        assert_eq!(idle_cell(None, 0, now, &cfg), ("—".to_string(), false));
+        // Off switches: flag or stuck_secs = 0.
+        let mut off = AppConfig::default();
+        off.idle_warn = false;
+        let r = rec(AgentState::Working, now - 3600);
+        assert!(!idle_cell(Some(&r), 0, now, &off).1);
+        let mut nostuck = AppConfig::default();
+        nostuck.stuck_secs = 0;
+        assert!(!idle_cell(Some(&r), 0, now, &nostuck).1);
+    }
+
+    #[test]
     fn row_mark_rules() {
         assert_eq!(row_mark(true, false, false, 1), "!");
         assert_eq!(row_mark(true, true, true, 2), "!");
