@@ -291,6 +291,14 @@ impl Tmux {
         self.run(&["capture-pane", "-p", "-t", pane, "-S", &start])
     }
 
+    /// Capture with escape sequences preserved, for color preview display.
+    /// Never feed this to the screen classifier: SGR garbage would pollute
+    /// state matching and summaries. Preview rendering only.
+    pub fn capture_pane_styled(&self, pane: &str, lines: u32) -> Result<String> {
+        let start = format!("-{lines}");
+        self.run(&["capture-pane", "-p", "-e", "-t", pane, "-S", &start])
+    }
+
     pub fn kill_pane(&self, pane: &str) -> Result<()> {
         self.run(&["kill-pane", "-t", pane]).map(|_| ())
     }

@@ -269,6 +269,9 @@ pub struct App {
     /// Space-marked pane ids for bulk kill/attend. Survives sort/filter;
     /// pruned to live panes on every refresh.
     pub marked: std::collections::HashSet<String>,
+    /// Filtered-list index under the mouse cursor, if any. Cleared on
+    /// every list rebuild (an index can't survive a reorder).
+    pub hover: Option<usize>,
 }
 
 impl App {
@@ -296,6 +299,7 @@ impl App {
             sort_asc: false,
             filter: String::new(),
             marked: std::collections::HashSet::new(),
+            hover: None,
         }
     }
 
@@ -423,6 +427,7 @@ impl App {
     /// Rebuild the visible table rows from the sidebar filter, keeping the
     /// selected pane when it survives the filter.
     pub fn refresh_filtered(&mut self) {
+        self.hover = None;
         let keep = self.selected_pane().map(|p| p.id.clone());
         let session = self.side_session().map(|s| s.name.clone());
         self.filtered = match session {
@@ -542,7 +547,7 @@ impl App {
 
     fn capture_preview(&mut self, tmux: &Tmux) {
         match self.selected_pane().map(|p| p.id.clone()) {
-            Some(id) => match tmux.capture_pane(&id, PREVIEW_LINES) {
+            Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_LINES) {
                 Ok(text) => self.preview = text,
                 Err(_) => self.preview = "(capture failed)".to_string(),
             },
