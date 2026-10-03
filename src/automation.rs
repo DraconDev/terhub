@@ -347,7 +347,7 @@ pub fn shell_capture(
         text = if status.success() {
             "ok".to_string()
         } else {
-            format!("exit {}", status.code().unwrap_or(-1));
+            format!("exit {}", status.code().unwrap_or(-1))
         };
     } else if !status.success() {
         text = format!("exit {}\n{text}", status.code().unwrap_or(-1));
