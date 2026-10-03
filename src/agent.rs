@@ -161,6 +161,9 @@ pub struct Manifest {
     pub waiting: Vec<String>,
     #[serde(default)]
     pub error: Vec<String>,
+    /// Quota/rate-limit language: reads as Limited, never Error.
+    #[serde(default)]
+    pub limited: Vec<String>,
 }
 
 pub struct CompiledManifest {
@@ -169,6 +172,7 @@ pub struct CompiledManifest {
     working: Vec<Regex>,
     waiting: Vec<Regex>,
     error: Vec<Regex>,
+    limited: Vec<Regex>,
 }
 
 impl CompiledManifest {
@@ -191,6 +195,7 @@ impl CompiledManifest {
             working: compile_all(&m.agent, "working", &m.working)?,
             waiting: compile_all(&m.agent, "waiting", &m.waiting)?,
             error: compile_all(&m.agent, "error", &m.error)?,
+            limited: compile_all(&m.agent, "limited", &m.limited)?,
         })
     }
 
@@ -202,7 +207,9 @@ impl CompiledManifest {
     /// Classify screen text. The freshest signal wins: the newest matching
     /// line decides, so current output overrides stale scrollback (an old
     /// "error:" in prose can't pin Error forever while the agent works).
-    /// Within one line, error beats waiting beats working.
+    /// Within one line, the most specific signal wins: limited beats error
+    /// beats waiting beats working ("Error: rate limit reached" is a quota
+    /// wall, not a crash).
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
@@ -210,7 +217,9 @@ impl CompiledManifest {
         tail.reverse();
         let mut hit = None;
         for (i, line) in tail.iter().enumerate() {
-            if self.error.iter().any(|r| r.is_match(line)) {
+            if self.limited.iter().any(|r| r.is_match(line)) {
+                hit = Some((AgentState::Limited, i));
+            } else if self.error.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Error, i));
             } else if self.waiting.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Waiting, i));
