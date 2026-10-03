@@ -121,7 +121,9 @@ status bar, no modes except small popups:
   with no agent read `idle`. The `Idle` column shows time since the
   screen visibly changed (identical repaints don't count) — the fastest
   way to judge a `working` row; unclaimed panes fall back to tmux's
-  window-activity age.
+  window-activity age. Agent cells share one color per agent name (see
+  `[style]`), and `Idle` tints when a row is `working` but quiet past
+  `stuck_secs` — the stuck smell, without relabeling the state.
 
 Everything except arrows/mouse/Tab/Esc is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
@@ -164,6 +166,15 @@ enabled = true
 poll_secs = 2        # re-poll cadence (restart daemon to apply)
 stuck_secs = 600     # still-CPU → stuck (0 disables)
 stale_secs = 1800    # evidence staleness for carry + hook lapse
+
+[style]
+color_agents = true  # hash-color Agent cells so one agent reads as a group
+agent_palette = []   # style specs for the hash; empty = theme default
+idle_warn = true     # tint Idle when working + quiet past stuck_secs
+idle_warn_style = "bold yellow"
+
+[style.agents]        # per-agent overrides (style specs)
+pi = "cyan"
 ```
 
 Custom pane commands run a shell template against the selected row:
@@ -176,8 +187,14 @@ rules is set. Example: `name = "git status"`, `key = "G"`,
 
 Key names: single characters, `enter`, `esc`, `tab`, `f5`, … Unknown keys
 fall back to defaults. Notifications gate the desktop popups on agent state
-changes. `terhub config --check` validates the file and names every problem
-(unknown theme/density/keys, bad `[[command]]` entries, TOML syntax errors); the TUI also surfaces the
+changes. A style spec is optional modifiers plus a color (`"bold yellow"`,
+`"red"`, `"#ff8800"`; modifiers `bold dim italic underlined reverse crossed
+blink`, colors `black red green yellow blue magenta cyan white gray` with
+`bright-`/`light-` variants, `#rgb`/`#rrggbb`, or `none` for plain). Unknown
+spec tokens degrade to plainer text at render time. `terhub config --check`
+validates the file and names every problem
+(unknown theme/density/keys, bad `[[command]]` entries, bad style specs,
+TOML syntax errors); the TUI also surfaces the
 first problem in its status bar instead of silently running on defaults.
 
 ## The daemon and agent awareness
