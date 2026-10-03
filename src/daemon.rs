@@ -416,6 +416,29 @@ fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, now: u64) -> (u64, u64) {
     }
 }
 
+/// FNV-1a 64-bit: deterministic screen-change hash. SipHash is randomly
+/// keyed per process, which would restart every quiet clock on each daemon
+/// upgrade; this one keeps stillness comparable across restarts.
+fn screen_hash(s: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in s.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// Advance the visible-quiet clock: same screen hash keeps the old
+/// still-time, a new hash restarts it, and no capture (`None`) preserves
+/// the clock rather than resetting it on a transient failure.
+fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
+    match hash {
+        None => prev,
+        Some(h) if h == prev.0 => prev,
+        Some(h) => (h, now),
+    }
+}
+
 /// Merge one poll's evidence into a record. Identity priority: process tree
 /// beats screen guess (a `pi` binary is a fact; screen text is a hint).
 /// State priority: screen waiting/error/limited beats everything here (fresh hooks
