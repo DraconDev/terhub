@@ -80,7 +80,11 @@ status bar, no modes except small popups:
   ends when working moves to waiting/error/limited/idle; stuck never ends
   one — the same turn is grinding).
   `↑`/`↓` moves, `Enter` jumps to the pane, `x` kills it (with confirm),
-  `a` attends, `Esc` steps back to the session bar. Long lists scroll;
+  `a` attends, `Esc` steps back to the session bar. `Space` toggles a `+`
+  mark on the row and steps down (file-manager style), `u` clears all
+  marks; with marks set, `x` kills the whole marked set under one
+  confirmation and `a` attends the longest-waiting marked pane. Marks
+  survive sort/filter and show as a count in the title bar. Long lists scroll;
   the selection is always kept in view.
 - **Preview on demand.** Nothing is previewed by default: right-click a
   row or press `p` to open the pane's screen fullscreen; right-click
@@ -144,6 +148,8 @@ density = "v"
 settings = "s"
 sort = "o"
 filter = "f"
+mark = "space"
+unmark = "u"
 
 [notifications]
 enabled = true
