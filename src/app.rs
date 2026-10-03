@@ -1797,6 +1797,22 @@ mod tests {
     }
 
     #[test]
+    fn sort_turn_longest_last_turn_first() {
+        use crate::agent::AgentState;
+        let mut app = app_with_three();
+        let mut r1 = record("%1", "claude", AgentState::Waiting, 100);
+        r1.last_turn_secs = 60;
+        app.agents.insert("%1".to_string(), r1);
+        let mut r10 = record("%10", "codex", AgentState::Waiting, 200);
+        r10.last_turn_secs = 600;
+        app.agents.insert("%10".to_string(), r10);
+        app.cycle_sort(SortKey::Turn);
+        app.refresh_filtered();
+        assert!(!app.sort_asc);
+        assert_eq!(ids(&app), vec!["%10", "%1", "%2"]);
+    }
+
+    #[test]
     fn resort_restarts_at_top_row() {
         let mut app = app_with_three();
         app.select_pane(2);

@@ -72,7 +72,7 @@ status bar, no modes except small popups:
   session (hidden when filtered), window (a `:[N]` suffix appears only
   when the window holds several panes), command, repo dir, agent, state,
   source (`hook` = agent-reported fact, `proc` = agent binary found, `scr` =
-  screen guess), age, activity, summary. The summary shows the prompt or
+  screen guess), age, last-turn duration, activity, summary. The summary shows the prompt or
   error line that decided a waiting/error state — a bare prompt borrows
   the nearest text line above it (hook reports and the stuck explanation
   show up here too); working rows stay blank, since spinner text is
