@@ -54,6 +54,11 @@ pub struct AppConfig {
     pub density: String,
     pub highlight_attached: bool,
     pub notifications_enabled: bool,
+    /// Daemon tunables (restart the daemon to apply): poll cadence, stuck
+    /// threshold (`0` disables stuck detection), evidence staleness.
+    pub poll_secs: u64,
+    pub stuck_secs: u64,
+    pub stale_secs: u64,
 }
 
 impl Default for AppConfig {
@@ -64,6 +69,9 @@ impl Default for AppConfig {
             density: DEFAULT_DENSITY.to_string(),
             highlight_attached: true,
             notifications_enabled: true,
+            poll_secs: crate::daemon::POLL_SECS,
+            stuck_secs: crate::daemon::STUCK_SECS,
+            stale_secs: crate::daemon::HOOK_STALE_SECS,
         }
     }
 }
@@ -167,6 +175,8 @@ struct FileConfig {
     keys: HashMap<String, String>,
     #[serde(default)]
     notifications: NotificationsSection,
+    #[serde(default)]
+    daemon: DaemonSection,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,6 +221,38 @@ fn default_density() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+#[derive(Debug, Deserialize)]
+struct DaemonSection {
+    #[serde(default = "default_poll_secs")]
+    poll_secs: u64,
+    #[serde(default = "default_stuck_secs")]
+    stuck_secs: u64,
+    #[serde(default = "default_stale_secs")]
+    stale_secs: u64,
+}
+
+impl Default for DaemonSection {
+    fn default() -> Self {
+        DaemonSection {
+            poll_secs: default_poll_secs(),
+            stuck_secs: default_stuck_secs(),
+            stale_secs: default_stale_secs(),
+        }
+    }
+}
+
+fn default_poll_secs() -> u64 {
+    crate::daemon::POLL_SECS
+}
+
+fn default_stuck_secs() -> u64 {
+    crate::daemon::STUCK_SECS
+}
+
+fn default_stale_secs() -> u64 {
+    crate::daemon::HOOK_STALE_SECS
 }
 
 /// User screen-pattern manifests live next to the config file.
