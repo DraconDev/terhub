@@ -212,10 +212,109 @@ fn truncate(s: &str, n: usize) -> String {
 /// Preview text with embedded ANSI colors. tmux `-e` captures carry SGR
 /// styling; unparseable input falls back to stripped plain text so raw
 /// escapes never leak onto the screen.
-pub fn preview_text(raw: &str) -> ratatui::text::Text<'static> {
-    match raw.as_bytes().into_text() {
+///
+/// Lines whose trailing SGR tail leaves a background open are padded with
+/// that background out to `width`: tmux trims erase-painted EOL cells but
+/// leaves the transition codes behind, so without the pad the fill renders
+/// as a ragged bar instead of reaching the pane edge like the real pane.
+pub fn preview_text(raw: &str, width: usize) -> ratatui::text::Text<'static> {
+    let mut text = match raw.as_bytes().into_text() {
         Ok(text) => text,
-        Err(_) => ratatui::text::Text::from(strip_ansi(raw)),
+        Err(_) => return ratatui::text::Text::from(strip_ansi(raw)),
+    };
+    if width == 0 {
+        return text;
+    }
+    for (line, raw_line) in text.lines.iter_mut().zip(raw.lines()) {
+        let Some(bg) = trailing_bg(raw_line) else {
+            continue;
+        };
+        let w = line.width();
+        if w < width {
+            line.spans.push(Span::styled(
+                " ".repeat(width - w),
+                Style::default().bg(bg),
+            ));
+        }
+    }
+    text
+}
+
+/// Background left open by a line's trailing SGR-only tail (`Some`), or
+/// `None` when the tail closes the background (`0`/`49`) or there is no
+/// SGR tail at all. Only the suffix matters: a reset earlier in the tail
+/// is superseded by a later bg set, matching terminal state semantics.
+fn trailing_bg(line: &str) -> Option<Color> {
+    let bytes = line.as_bytes();
+    let mut end = bytes.len();
+    let mut codes: Vec<&str> = Vec::new();
+    loop {
+        if end == 0 || bytes[end - 1] != b'm' {
+            break;
+        }
+        let mut i = end - 1;
+        while i > 0 && (bytes[i - 1].is_ascii_digit() || bytes[i - 1] == b';') {
+            i -= 1;
+        }
+        if i < 2 || bytes[i - 2] != 0x1b || bytes[i - 1] != b'[' {
+            break;
+        }
+        codes.push(&line[i..end - 1]);
+        end = i - 2;
+    }
+    codes.reverse();
+    let mut bg: Option<Color> = None;
+    for params in codes {
+        let nums: Vec<u16> = if params.is_empty() {
+            vec![0]
+        } else {
+            params.split(';').map(|p| p.parse().unwrap_or(0)).collect()
+        };
+        let mut j = 0;
+        while j < nums.len() {
+            match nums[j] {
+                0 => bg = None,
+                49 => bg = None,
+                40..=47 => bg = Some(ansi_bg(nums[j] - 40)),
+                100..=107 => bg = Some(ansi_bg(nums[j] - 100 + 8)),
+                48 if j + 4 < nums.len() && nums[j + 1] == 2 => {
+                    bg = Some(Color::Rgb(
+                        nums[j + 2].min(255) as u8,
+                        nums[j + 3].min(255) as u8,
+                        nums[j + 4].min(255) as u8,
+                    ));
+                    j += 4;
+                }
+                48 if j + 2 < nums.len() && nums[j + 1] == 5 => {
+                    bg = Some(Color::Indexed(nums[j + 2].min(255) as u8));
+                    j += 2;
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+    }
+    bg
+}
+
+fn ansi_bg(n: u16) -> Color {
+    match n {
+        0 => Color::Black,
+        1 => Color::Red,
+        2 => Color::Green,
+        3 => Color::Yellow,
+        4 => Color::Blue,
+        5 => Color::Magenta,
+        6 => Color::Cyan,
+        7 => Color::Gray,
+        8 => Color::DarkGray,
+        9 => Color::LightRed,
+        10 => Color::LightGreen,
+        11 => Color::LightYellow,
+        12 => Color::LightBlue,
+        13 => Color::LightMagenta,
+        14 => Color::LightCyan,
+        _ => Color::White,
     }
 }
 
@@ -670,7 +769,10 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
     frame.render_widget(
-        Paragraph::new(preview_text(&app.preview))
+        Paragraph::new(preview_text(
+            &app.preview,
+            app.preview_width.unwrap_or(inner.width as usize),
+        ))
             .wrap(Wrap { trim: false })
             .style(pal.status),
         inner,
