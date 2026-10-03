@@ -92,7 +92,8 @@ fn table_lists_panes_with_columns() {
     let lines = render_lines(&mut app, 140, 20);
     let text = lines.join("\n");
     for h in [
-        "Pane", "Session", "Window", "Cmd", "Dir", "Agent", "State", "Src", "Age", "Act", "Summary",
+        "Pane", "Session", "Window", "Cmd", "Dir", "Agent", "State", "Src", "Age", "Turn", "Act",
+        "Summary",
     ] {
         assert!(text.contains(h), "missing header {h}:\n{text}");
     }
@@ -221,6 +222,7 @@ fn header_hits_align_with_labels() {
         (Some(SortKey::State), "State"),
         (Some(SortKey::Src), "Src"),
         (Some(SortKey::Age), "Age"),
+        (Some(SortKey::Turn), "Turn"),
         (Some(SortKey::Act), "Act"),
         (Some(SortKey::Summary), "Summary"),
     ];
@@ -256,6 +258,7 @@ fn header_hits_align_with_labels() {
             Some(SortKey::State),
             Some(SortKey::Src),
             Some(SortKey::Age),
+            Some(SortKey::Turn),
             Some(SortKey::Act),
         ]
     );

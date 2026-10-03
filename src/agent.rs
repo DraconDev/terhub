@@ -448,9 +448,7 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
             // metadata so the record isn't nameless until the next poll.
             let old = registry.get(&ev.pane);
             let last_turn_secs = match old {
-                Some(o) if turn_ended(o.state, ev.state) => {
-                    now.saturating_sub(o.state_since)
-                }
+                Some(o) if turn_ended(o.state, ev.state) => now.saturating_sub(o.state_since),
                 Some(o) => o.last_turn_secs,
                 None => 0,
             };

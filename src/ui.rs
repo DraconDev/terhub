@@ -447,9 +447,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 None => "—".to_string(),
             };
             let turn = match rec {
-                Some(r) if r.last_turn_secs > 0 => {
-                    crate::history::fmt_dur(r.last_turn_secs)
-                }
+                Some(r) if r.last_turn_secs > 0 => crate::history::fmt_dur(r.last_turn_secs),
                 _ => "—".to_string(),
             };
             let act = if p.activity == 0 {

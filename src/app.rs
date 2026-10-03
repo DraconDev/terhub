@@ -441,9 +441,7 @@ impl App {
                 SortKey::Age => {
                     age_secs(agents.get(&a.id), now).cmp(&age_secs(agents.get(&b.id), now))
                 }
-                SortKey::Turn => {
-                    turn_secs(agents.get(&a.id)).cmp(&turn_secs(agents.get(&b.id)))
-                }
+                SortKey::Turn => turn_secs(agents.get(&a.id)).cmp(&turn_secs(agents.get(&b.id))),
                 SortKey::Act => a.activity.cmp(&b.activity),
                 SortKey::Summary => {
                     summary_text(agents.get(&a.id)).cmp(summary_text(agents.get(&b.id)))
