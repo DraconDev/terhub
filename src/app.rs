@@ -190,6 +190,11 @@ pub fn expand_command(
     let mut out = String::new();
     let mut i = 0;
     while i < chars.len() {
+        if chars[i] == '}' && chars.get(i + 1) == Some(&'}') {
+            out.push('}');
+            i += 2;
+            continue;
+        }
         if chars[i] == '{' {
             if chars.get(i + 1) == Some(&'{') {
                 out.push('{');
