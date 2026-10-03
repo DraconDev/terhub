@@ -502,7 +502,84 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         ));
         cfg.stale_secs = crate::daemon::HOOK_STALE_SECS;
     }
+    // Custom commands: built-ins win every key collision (checked against
+    // effective bindings, so user rebinding is respected).
+    let builtin: Vec<(String, KeySpec)> = default_keys()
+        .into_keys()
+        .map(|a| {
+            let spec = cfg.spec(&a);
+            (a, spec)
+        })
+        .collect();
+    let mut taken: Vec<KeySpec> = Vec::new();
+    for (i, c) in file.command.iter().enumerate() {
+        let tag = if c.name.is_empty() {
+            format!("command #{i}")
+        } else {
+            format!("command '{}'", c.name)
+        };
+        if c.name.is_empty() {
+            problems.push(format!("{tag} has no name"));
+            continue;
+        }
+        if c.run.is_empty() {
+            problems.push(format!("{tag} has no run template"));
+            continue;
+        }
+        let spec = parse_key(&c.key);
+        if spec == KeySpec::None {
+            problems.push(format!("{tag} has bad key '{}'", c.key));
+            continue;
+        }
+        if let Some((action, _)) = builtin.iter().find(|(_, s)| *s == spec) {
+            problems.push(format!(
+                "{tag} key '{}' collides with built-in '{action}'",
+                c.key
+            ));
+            continue;
+        }
+        if taken.contains(&spec) {
+            problems.push(format!("{tag} key '{}' is already used", c.key));
+            continue;
+        }
+        if let Some(var) = first_unknown_var(&c.run) {
+            problems.push(format!("{tag} has unknown {{{var}}} (known: {})", COMMAND_VARS.join(", ")));
+            continue;
+        }
+        taken.push(spec.clone());
+        cfg.commands.push(CustomCommand {
+            name: c.name.clone(),
+            key: c.key.clone(),
+            spec,
+            run: c.run.clone(),
+        });
+    }
     (cfg, problems)
+}
+
+/// First `{var}` in the template that isn't a known expansion, if any.
+/// `{{` escapes a literal brace.
+fn first_unknown_var(run: &str) -> Option<String> {
+    let chars: Vec<char> = run.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '{' {
+            if chars.get(i + 1) == Some(&'{') {
+                i += 2;
+                continue;
+            }
+            if let Some(end) = chars[i..].iter().position(|c| *c == '}') {
+                let var: String = chars[i + 1..i + end].iter().collect();
+                if !COMMAND_VARS.contains(&var.as_str()) {
+                    return Some(var);
+                }
+                i += end + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    None
 }
 
 fn known_keys() -> String {
