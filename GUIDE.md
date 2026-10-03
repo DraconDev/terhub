@@ -118,7 +118,8 @@ status bar, no modes except small popups:
 - **`Ctrl+C` always quits.** `Esc` quits from the session bar.
 - **Agent columns.** With the daemon running, rows show agent/state/for
   (time in this state) and the title bar counts how many need you. Panes
-  with no agent read `idle`. The `Idle` column shows time since the
+  with no agent show no state (`—`): a shell was never expected to work
+  on its own, so only agents get working/waiting/idle. The `Idle` column shows time since the
   screen visibly changed (identical repaints don't count) — the fastest
   way to judge a `working` row; unclaimed panes fall back to tmux's
   window-activity age. Agent cells share one color per agent name (see
@@ -231,7 +232,7 @@ listening"). Per pane it merges three signals:
    terhub's own TUI) skip screen classification — they name agents
    without running them. A record with no supporting evidence for 30
    minutes is dropped rather than shown. Idle shells nobody claimed stay
-   unclaimed, so plain terminals read `idle` instead of guessing a state.
+   unclaimed, so plain terminals show no state instead of guessing one.
 
 The table's `Src` column tells you which signal each row stands on.
 
