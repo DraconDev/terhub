@@ -122,28 +122,19 @@ pub fn ssh_run(target: &str, args: &[&str], timeout_secs: u64) -> Result<String>
         .stderr(std::process::Stdio::piped())
         .spawn()
         .context("failed to run ssh")?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs.max(1));
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
+    let drained = match crate::automation::wait_drained(
+        &mut child,
+        std::time::Duration::from_secs(timeout_secs.max(1)),
+    ) {
+        Ok(d) => d,
+        Err(crate::automation::DrainError::Timeout) => {
+            bail!("ssh {target}: timed out after {timeout_secs}s")
         }
-        if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            bail!("ssh {target}: timed out after {timeout_secs}s");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        Err(crate::automation::DrainError::WaitFailed(e)) => bail!("{e}"),
     };
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    if let Some(mut out) = child.stdout.take() {
-        use std::io::Read;
-        let _ = out.read_to_end(&mut stdout);
-    }
-    if let Some(mut err) = child.stderr.take() {
-        use std::io::Read;
-        let _ = err.read_to_end(&mut stderr);
-    }
+    let status = drained.status;
+    let stdout = drained.stdout;
+    let stderr = drained.stderr;
     if !status.success() {
         let err = String::from_utf8_lossy(&stderr).trim().to_string();
         bail!(if err.is_empty() {

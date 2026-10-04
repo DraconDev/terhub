@@ -371,30 +371,16 @@ pub fn shell_capture(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("spawn failed: {e}"))?;
-    let deadline = std::time::Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => {}
-            Err(e) => return Err(format!("wait failed: {e}")),
+    let drained = match wait_drained(&mut child, timeout) {
+        Ok(d) => d,
+        Err(DrainError::Timeout) => {
+            return Err(format!("timed out after {}s", timeout.as_secs()))
         }
-        if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("timed out after {}s", timeout.as_secs()));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        Err(DrainError::WaitFailed(e)) => return Err(format!("wait failed: {e}")),
     };
-    let mut out = Vec::new();
-    let mut err = Vec::new();
-    if let Some(mut o) = child.stdout.take() {
-        use std::io::Read;
-        let _ = o.read_to_end(&mut out);
-    }
-    if let Some(mut e) = child.stderr.take() {
-        use std::io::Read;
-        let _ = e.read_to_end(&mut err);
-    }
+    let status = drained.status;
+    let out = drained.stdout;
+    let err = drained.stderr;
     let mut text = String::from_utf8_lossy(&out).trim().to_string();
     let err_text = String::from_utf8_lossy(&err);
     let err_text = err_text.trim();
@@ -454,26 +440,16 @@ pub fn execute_with_timeout(
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
                 .spawn()?;
-            let deadline = std::time::Instant::now() + timeout;
-            let status = loop {
-                if let Some(status) = child.try_wait()? {
-                    break status;
+            let drained = match wait_drained(&mut child, timeout) {
+                Ok(d) => d,
+                Err(DrainError::Timeout) => {
+                    anyhow::bail!("shell '{}' timed out", truncate(command, 40))
                 }
-                if std::time::Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    anyhow::bail!("shell '{}' timed out", truncate(command, 40));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                Err(DrainError::WaitFailed(e)) => anyhow::bail!("{e}"),
             };
-            let mut raw = Vec::new();
-            if let Some(mut out) = child.stdout.take() {
-                use std::io::Read;
-                let _ = out.read_to_end(&mut raw);
-            }
             let out = std::process::Output {
-                status,
-                stdout: raw,
+                status: drained.status,
+                stdout: drained.stdout,
                 stderr: Vec::new(),
             };
             let stdout_text = String::from_utf8_lossy(&out.stdout);
