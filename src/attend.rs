@@ -184,9 +184,9 @@ pub struct Transition {
     pub summary: String,
 }
 
-/// Every state change between registries (new panes read as
-/// Unknown → state). The ledger logs all of these; only the attention
-/// subset notifies.
+/// Every state change between registries (new panes read as Unknown →
+/// state, removed panes as state → Unknown). The ledger logs all of these;
+/// only the attention subset notifies.
 pub fn detect_all_transitions(
     prev: &HashMap<String, AgentRecord>,
     next: &HashMap<String, AgentRecord>,
@@ -208,6 +208,23 @@ pub fn detect_all_transitions(
             session: rec.session.clone(),
             window: rec.window.clone(),
             summary: rec.summary.clone(),
+        });
+    }
+    // Panes present before but gone now (killed, session closed): the ledger
+    // records the departure as a move to Unknown. Unknown never notifies,
+    // so this is history only.
+    for (pane, old) in prev {
+        if next.contains_key(pane) {
+            continue;
+        }
+        out.push(Transition {
+            pane: pane.clone(),
+            agent: old.agent.clone(),
+            from: old.state,
+            to: AgentState::Unknown,
+            session: old.session.clone(),
+            window: old.window.clone(),
+            summary: old.summary.clone(),
         });
     }
     out.sort_by(|a, b| a.pane.cmp(&b.pane));
@@ -334,6 +351,22 @@ mod tests {
         assert_eq!(all.len(), 3);
         assert!(all.iter().any(|t| t.from == AgentState::Unknown));
         // The attention subset stays empty: nothing here needs you.
+        assert!(detect_transitions(&prev, &next).is_empty());
+    }
+
+    #[test]
+    fn removed_panes_log_a_departure() {
+        let mut prev = HashMap::new();
+        prev.insert("%1".to_string(), rec("%1", AgentState::Working, 100));
+        prev.insert("%2".to_string(), rec("%2", AgentState::Waiting, 100));
+        let mut next = HashMap::new();
+        next.insert("%1".to_string(), rec("%1", AgentState::Working, 200));
+        let all = detect_all_transitions(&prev, &next);
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].pane, "%2");
+        assert_eq!(all[0].from, AgentState::Waiting);
+        assert_eq!(all[0].to, AgentState::Unknown);
+        // Departures are history, never a ping.
         assert!(detect_transitions(&prev, &next).is_empty());
     }
 
