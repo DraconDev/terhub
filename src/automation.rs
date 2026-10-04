@@ -641,4 +641,45 @@ mod tests {
             execute_with_timeout(None, &fire, &rec, std::time::Duration::from_secs(1)).unwrap_err();
         assert!(format!("{err:?}").contains("timed out"), "{err:?}");
     }
+
+    #[test]
+    fn wait_drained_reports_timeout() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let err = wait_drained(&mut child, std::time::Duration::from_millis(200)).unwrap_err();
+        assert!(matches!(err, DrainError::Timeout));
+    }
+
+    #[test]
+    fn shell_action_survives_pipe_filling_output() {
+        // ~230KB: far past the 64KB pipe buffer that used to wedge the
+        // wait loop until the timeout. Must complete, not time out.
+        let fire = Fire {
+            rule: "r".to_string(),
+            pane: "%1".to_string(),
+            action: Action::Shell {
+                command: "seq 1 30000".to_string(),
+            },
+        };
+        let rec = rec("%1", AgentState::Waiting, 0, "");
+        let out = execute_with_timeout(None, &fire, &rec, std::time::Duration::from_secs(10))
+            .expect("verbose shell action must not time out");
+        assert!(out.contains("shell 'seq 1 30000'"), "{out}");
+    }
+
+    #[test]
+    fn shell_capture_survives_pipe_filling_output() {
+        let out = shell_capture(
+            "seq 1 30000",
+            "%1",
+            None,
+            std::time::Duration::from_secs(10),
+        )
+        .expect("verbose capture must not time out");
+        assert!(out.starts_with("1\n2\n3"), "{out:.100}");
+    }
 }
