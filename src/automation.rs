@@ -280,6 +280,7 @@ pub fn evaluate(
 pub const SHELL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// A child process reaped with its pipes drained.
+#[derive(Debug)]
 pub struct DrainedChild {
     pub status: std::process::ExitStatus,
     pub stdout: Vec<u8>,
