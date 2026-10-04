@@ -303,42 +303,44 @@ pub fn wait_drained(
     timeout: std::time::Duration,
 ) -> Result<DrainedChild, DrainError> {
     use std::io::Read;
-    let mut out = child.stdout.take();
-    let mut err = child.stderr.take();
-    std::thread::scope(|s| {
-        let out_reader = s.spawn(|| {
+    // Detached (not scoped) readers: on the timeout path grandchildren may
+    // still hold the pipes open, so joining there would block past the
+    // deadline — the old code returned without draining, and so do we.
+    let out_reader = child.stdout.take().map(|mut o| {
+        std::thread::spawn(move || {
             let mut buf = Vec::new();
-            if let Some(o) = out.as_mut() {
-                let _ = o.read_to_end(&mut buf);
-            }
+            let _ = o.read_to_end(&mut buf);
             buf
-        });
-        let err_reader = s.spawn(|| {
-            let mut buf = Vec::new();
-            if let Some(e) = err.as_mut() {
-                let _ = e.read_to_end(&mut buf);
-            }
-            buf
-        });
-        let deadline = std::time::Instant::now() + timeout;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(st)) => break st,
-                Ok(None) => {}
-                Err(e) => return Err(DrainError::WaitFailed(e.to_string())),
-            }
-            if std::time::Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(DrainError::Timeout);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        };
-        Ok(DrainedChild {
-            status,
-            stdout: out_reader.join().unwrap_or_default(),
-            stderr: err_reader.join().unwrap_or_default(),
         })
+    });
+    let err_reader = child.stderr.take().map(|mut e| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = e.read_to_end(&mut buf);
+            buf
+        })
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) => {}
+            Err(e) => return Err(DrainError::WaitFailed(e.to_string())),
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(DrainError::Timeout);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let joined = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
+        h.map(|j| j.join().unwrap_or_default()).unwrap_or_default()
+    };
+    Ok(DrainedChild {
+        status,
+        stdout: joined(out_reader),
+        stderr: joined(err_reader),
     })
 }
 
