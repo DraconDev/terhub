@@ -313,6 +313,23 @@ mod tests {
     }
 
     #[test]
+    fn oversize_frame_does_not_swallow_next_frame() {
+        // Body over the cap ending in a fake Content-Length whose window
+        // spans past the body end: without the drain, the reader parses
+        // the fake header and eats the real frame as "body" bytes.
+        let pad = "A".repeat(MAX_FRAME_BYTES);
+        let body1 = format!("{pad}\r\nContent-Length: 500\r\n\r\n{}", "B".repeat(60));
+        let mut input =
+            format!("Content-Length: {}\r\n\r\n{body1}", body1.len()).into_bytes();
+        let real = r#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#;
+        input.extend_from_slice(&framed(real));
+        let mut cur = Cursor::new(input);
+        let v = read_frame(&mut cur).expect("read").expect("frame");
+        assert_eq!(v.get("method").and_then(|m| m.as_str()), Some("ping"));
+        assert_eq!(v.get("id").and_then(|i| i.as_u64()), Some(7));
+    }
+
+    #[test]
     fn truncated_body_stops_quietly() {
         let mut full = framed(r#"{"jsonrpc":"2.0","id":2}"#);
         full.truncate(full.len() - 5);
