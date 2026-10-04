@@ -376,9 +376,7 @@ pub fn shell_capture(
         .map_err(|e| format!("spawn failed: {e}"))?;
     let drained = match wait_drained(&mut child, timeout) {
         Ok(d) => d,
-        Err(DrainError::Timeout) => {
-            return Err(format!("timed out after {}s", timeout.as_secs()))
-        }
+        Err(DrainError::Timeout) => return Err(format!("timed out after {}s", timeout.as_secs())),
         Err(DrainError::WaitFailed(e)) => return Err(format!("wait failed: {e}")),
     };
     let status = drained.status;

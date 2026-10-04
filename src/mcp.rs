@@ -319,8 +319,7 @@ mod tests {
         // the fake header and eats the real frame as "body" bytes.
         let pad = "A".repeat(MAX_FRAME_BYTES);
         let body1 = format!("{pad}\r\nContent-Length: 500\r\n\r\n{}", "B".repeat(60));
-        let mut input =
-            format!("Content-Length: {}\r\n\r\n{body1}", body1.len()).into_bytes();
+        let mut input = format!("Content-Length: {}\r\n\r\n{body1}", body1.len()).into_bytes();
         let real = r#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#;
         input.extend_from_slice(&framed(real));
         let mut cur = Cursor::new(input);

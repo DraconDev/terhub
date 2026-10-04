@@ -48,7 +48,9 @@ fn command_keys_collide_case_insensitively() {
     .unwrap();
     let (cfg, problems) = load_config_report(Some(path.clone()));
     assert!(
-        problems.iter().any(|p| p.contains("collides with built-in 'quit'")),
+        problems
+            .iter()
+            .any(|p| p.contains("collides with built-in 'quit'")),
         "missing collision: {problems:?}"
     );
     assert_eq!(cfg.commands.len(), 1);
