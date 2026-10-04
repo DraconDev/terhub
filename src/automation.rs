@@ -229,7 +229,7 @@ pub fn dry_run(
                 out.push((
                     rule.name.clone(),
                     rec.pane.clone(),
-                    Verdict::Cooldown(rule.cooldown_secs - (now - t)),
+                    Verdict::Cooldown(rule.cooldown_secs - now.saturating_sub(t)),
                 ));
                 continue;
             }
@@ -552,6 +552,17 @@ mod tests {
         capped.cooldown_secs = 60;
         let out = dry_run(&[capped], &reg, &fires, 1400);
         assert!(matches!(out[0].2, Verdict::Capped), "{out:?}");
+    }
+
+    #[test]
+    fn future_dated_fire_cools_down_without_panic() {
+        let rules = vec![rule()];
+        let reg = registry();
+        // Clock stepped back (or a hand-edited ledger): the last fire is in
+        // the future. Must read as "just fired", not panic on `now - t`.
+        let fires = vec![("resume".to_string(), "%1".to_string(), 1500)];
+        let out = dry_run(&rules, &reg, &fires, 1400);
+        assert!(matches!(out[0].2, Verdict::Cooldown(3600)), "{out:?}");
     }
 
     #[test]
