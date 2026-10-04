@@ -835,6 +835,32 @@ mod tests {
         assert!(stale.is_none());
     }
 
+    #[test]
+    fn mid_poll_hooks_survive_the_write_back() {
+        let poll_start = 50_000;
+        // The poll classified %1 from its stale pre-poll clone...
+        let mut next = HashMap::new();
+        next.insert(
+            "%1".to_string(),
+            carried("claude", AgentState::Working, 0, 0, poll_start - 100),
+        );
+        // ...but a hook event landed mid-poll (live registry only).
+        let mut live = HashMap::new();
+        let mut fresh = hook_record(poll_start + 1);
+        fresh.summary = "Approve plan?".to_string();
+        live.insert("%1".to_string(), fresh);
+        // An older hook the poll already saw must not be resurrected.
+        let mut old_hook = hook_record(poll_start - 10);
+        old_hook.pane = "%2".to_string();
+        live.insert("%2".to_string(), old_hook);
+
+        merge_mid_poll_hooks(&mut next, &live, poll_start);
+
+        assert_eq!(next["%1"].state, AgentState::Waiting);
+        assert_eq!(next["%1"].summary, "Approve plan?");
+        assert!(!next.contains_key("%2"));
+    }
+
     fn carried(agent: &str, state: AgentState, ticks: u64, still: u64, since: u64) -> AgentRecord {
         AgentRecord {
             pane: "%1".to_string(),
