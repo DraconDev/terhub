@@ -7,7 +7,7 @@
 //! Only framed responses go to stdout; diagnostics go to stderr.
 use anyhow::Result;
 use serde_json::{Value, json};
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 use std::time::{Duration, Instant};
 
 pub fn run() -> Result<()> {
@@ -59,6 +59,14 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
         };
         if n > MAX_FRAME_BYTES {
             eprintln!("terhub mcp: frame too large ({n} bytes), skipping");
+            // Drain the body so the next read starts at a frame boundary;
+            // without this the body bytes parse as headers and every later
+            // frame misaligns (a fake Content-Length inside the body can
+            // even swallow the next real frame whole).
+            let mut body = reader.by_ref().take(n as u64);
+            if std::io::copy(&mut body, &mut std::io::sink()).is_err() {
+                return Ok(None);
+            }
             continue;
         }
         let mut buf = vec![0u8; n];
