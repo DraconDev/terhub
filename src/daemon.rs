@@ -347,7 +347,18 @@ async fn poll_loop(
                 {
                     log_entry(&history::Entry::human_focus(now, foreground.as_deref()));
                 }
-                run_automation(&registry).await;
+                // Automation runs detached so a slow shell action can't stall
+                // polls; the in-flight guard means passes never overlap, so
+                // guardrails still can't double-fire (a tick that finds a
+                // pass running just skips — the running pass covers it).
+                if !automation_busy.swap(true, Ordering::SeqCst) {
+                    let reg = Arc::clone(&registry);
+                    let busy = Arc::clone(&automation_busy);
+                    tokio::spawn(async move {
+                        run_automation(&reg).await;
+                        busy.store(false, Ordering::SeqCst);
+                    });
+                }
             }
             Err(_) => break, // runtime shutting down
         }
@@ -358,9 +369,29 @@ fn log_entry(entry: &history::Entry) {
     let _ = history::append_entry(&history::ledger_path(), entry);
 }
 
+/// Fold hook events that landed in the live registry *during* a poll back
+/// into the poll result. `poll_sync` only saw the pre-poll clone, so a blind
+/// write-back would silently discard them (lost update); the hook handler
+/// already logged their transitions, so these merge silently. Only hook
+/// records at least as fresh as `poll_start` (the second the clone was
+/// taken) merge — older hooks were already carried or lapsed by the poll
+/// itself and must not be resurrected.
+fn merge_mid_poll_hooks(
+    next: &mut HashMap<String, AgentRecord>,
+    live: &HashMap<String, AgentRecord>,
+    poll_start: u64,
+) {
+    for (pane, rec) in live {
+        if rec.source == Source::Hook && rec.updated_at >= poll_start {
+            next.insert(pane.clone(), rec.clone());
+        }
+    }
+}
+
 /// Evaluate automation rules against the current registry and carry out
-/// firings. Awaited (not detached) so guardrails can't double-fire on
-/// overlapping ticks; rule actions are expected to be fast.
+/// firings. The poll loop detaches this with an in-flight guard instead of
+/// awaiting it, so a slow shell action delays automation, never polls —
+/// while passes still never overlap and guardrails can't double-fire.
 async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
     let rules = crate::automation::load_rules();
     if !rules.iter().any(|r| r.enabled) {
