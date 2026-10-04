@@ -188,6 +188,22 @@ pub fn key_matches(spec: &KeySpec, code: KeyCode) -> bool {
     }
 }
 
+/// Collision check mirroring [`key_matches`]: alphabetic chars collide
+/// case-insensitively (a custom `G` steals builtin `g` at runtime), so an
+/// exact `KeySpec` equality here would bless bindings that can never fire.
+fn spec_conflicts(a: &KeySpec, b: &KeySpec) -> bool {
+    match (a, b) {
+        (KeySpec::Char(x), KeySpec::Char(y)) => {
+            if x.is_ascii_alphabetic() && y.is_ascii_alphabetic() {
+                x.eq_ignore_ascii_case(y)
+            } else {
+                x == y
+            }
+        }
+        _ => a == b,
+    }
+}
+
 /// One token of a style spec: a modifier, a foreground color, an explicit
 /// reset, or something unknown (ignored by the parser, flagged by `--check`).
 enum SpecToken {
@@ -728,14 +744,14 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
             problems.push(format!("{tag} has bad key '{}'", c.key));
             continue;
         }
-        if let Some((action, _)) = builtin.iter().find(|(_, s)| *s == spec) {
+        if let Some((action, _)) = builtin.iter().find(|(_, s)| spec_conflicts(s, &spec)) {
             problems.push(format!(
                 "{tag} key '{}' collides with built-in '{action}'",
                 c.key
             ));
             continue;
         }
-        if taken.contains(&spec) {
+        if taken.iter().any(|t| spec_conflicts(t, &spec)) {
             problems.push(format!("{tag} key '{}' is already used", c.key));
             continue;
         }

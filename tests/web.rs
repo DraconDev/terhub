@@ -111,10 +111,15 @@ fn web_dashboard_and_apis() {
     assert!(body.contains("<title>terhub</title>"), "no dashboard");
     assert!(body.contains("api/status"), "no api wiring");
 
-    // No daemon yet: API degrades to 503, not 500.
+    // No daemon yet: live status degrades to 503, not 500 — while
+    // stats/timeline keep serving ledger history (frozen, not stale).
     let (code, body) = server.get("/api/status");
     assert_eq!(code, 503);
     assert!(body.contains("daemon not running"), "body: {body}");
+    let (code, _) = server.get("/api/stats?since=all&group=agent");
+    assert_eq!(code, 200);
+    let (code, _) = server.get("/api/timeline?since=all&limit=10");
+    assert_eq!(code, 200);
 
     let mut daemon = Command::new(env!("CARGO_BIN_EXE_terhubd"))
         .stdin(Stdio::null())

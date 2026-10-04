@@ -96,8 +96,8 @@ status bar, no modes except small popups:
   land on the same cell, so text drags never jump), right-click toggles
   the fullscreen preview, click a session segment to filter, double-click
   a session to attach. The row under the cursor highlights (bold).
-- **Sorting.** The table sorts by recency (`Act`, the window's last
-  activity) by default. Click any header to sort by it, click again to
+- **Sorting.** The table sorts by the `Idle` column (longest-quiet first)
+  by default. Click any header to sort by it, click again to
   flip direction; `o` cycles columns from the keyboard. The `▲`/`▼` mark
   shows the active sort. Unknowns (no daemon record yet) sink to the
   bottom.
@@ -277,8 +277,9 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
   `start`/`stop` match the lifecycle states that spawning harnesses emit.
 - `--pane` is the pane id (`%N`); inside tmux, `$TMUX_PANE` has it.
 - `--summary` is free text shown in peek/status and matchable by rules.
-- Unknown states are rejected; if the daemon is down the hook fails loudly
-  (exit 1) instead of vanishing.
+- Unknown states are rejected; if the daemon is down the hook warns on
+  stderr but still exits 0 — fire-and-forget, so a hook can never break
+  the agent lifecycle script that called it.
 
 State changes from hooks are logged to the ledger and fire desktop
 notifications (unless disabled).
@@ -379,8 +380,9 @@ today's stats, and the timeline, refreshing every couple of seconds.
 JSON API for scripts: `GET /api/status`, `GET /api/stats?since=&group=`,
 `GET /api/timeline?since=&session=&agent=&limit=` (newest-first windowing),
 `GET /api/capture?pane=&lines=`, `POST /api/send {pane, text, submit?}`,
-`POST /api/interrupt {pane}`. Status/stats/timeline answer 503 when the
-daemon is down rather than serving stale data.
+`POST /api/interrupt {pane}`. Status answers 503 when the daemon is down;
+stats/timeline serve ledger history (frozen while the daemon is down) and
+stay 200.
 
 ## Fleet (multiple hosts)
 

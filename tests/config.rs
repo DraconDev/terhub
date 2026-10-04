@@ -34,6 +34,29 @@ fn corrupt_file_yields_defaults() {
 }
 
 #[test]
+fn command_keys_collide_case_insensitively() {
+    use terhub::config::load_config_report;
+    let dir = std::env::temp_dir().join(format!("terhub-cfg-keys-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    // "Q" steals builtin quit "q" at runtime (matching is case-insensitive),
+    // so validation must flag it; "G" has no builtin rival and loads clean.
+    std::fs::write(
+        &path,
+        "[[command]]\nname = \"quit-clone\"\nkey = \"Q\"\nrun = \"echo {pane}\"\n[[command]]\nname = \"git-status\"\nkey = \"G\"\nrun = \"git -C {dir} status -sb\"\n",
+    )
+    .unwrap();
+    let (cfg, problems) = load_config_report(Some(path.clone()));
+    assert!(
+        problems.iter().any(|p| p.contains("collides with built-in 'quit'")),
+        "missing collision: {problems:?}"
+    );
+    assert_eq!(cfg.commands.len(), 1);
+    assert_eq!(cfg.commands[0].name, "git-status");
+    std::fs::remove_file(path).ok();
+}
+
+#[test]
 fn style_section_parses_and_validates() {
     use terhub::config::load_config_report;
     let dir = std::env::temp_dir().join(format!("terhub-cfg-style-{}", std::process::id()));
