@@ -303,19 +303,29 @@ async fn poll_loop(
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut prev_sessions: Option<std::collections::HashSet<String>> = None;
     let mut prev_foreground: Option<Option<String>> = None;
+    let automation_busy = Arc::new(AtomicBool::new(false));
     loop {
         tick.tick().await;
+        let poll_start = now_unix();
         let prev = lock_registry(&registry).clone();
         let manifests = manifests.clone();
         let tune = tunables;
         let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests, tune)).await;
         match next {
-            Ok((next, transitions, sessions, foreground)) => {
-                {
+            Ok((mut next, _, sessions, foreground)) => {
+                // Fold the poll result back under one lock hold: hooks that
+                // landed during the poll are in the live registry but were
+                // never in the pre-poll clone poll_sync saw, so merging them
+                // here (and diffing against live, not the clone) is what
+                // keeps the write-back from silently discarding them.
+                let transitions = {
                     let mut reg = lock_registry(&registry);
+                    merge_mid_poll_hooks(&mut next, &reg, poll_start);
+                    let t = detect_all_transitions(&reg, &next);
                     *reg = next;
                     save_registry(&runtime.join("registry.json"), &reg);
-                }
+                    t
+                };
                 let now = now_unix();
                 for t in &transitions {
                     log_entry(&history::Entry::transition(now, t));
