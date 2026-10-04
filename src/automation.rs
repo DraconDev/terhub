@@ -279,6 +279,68 @@ pub fn evaluate(
 /// Shell-action wall clock: a hanging command must not stall the daemon.
 pub const SHELL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// A child process reaped with its pipes drained.
+pub struct DrainedChild {
+    pub status: std::process::ExitStatus,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+/// Why [`wait_drained`] gave up.
+#[derive(Debug)]
+pub enum DrainError {
+    Timeout,
+    WaitFailed(String),
+}
+
+/// Wait for a piped child with a deadline while draining stdout/stderr on
+/// reader threads. Draining *during* the wait (not after exit) is
+/// load-bearing: a child that fills the 64KB pipe buffer would otherwise
+/// wedge until the timeout even though it was ready to finish.
+pub fn wait_drained(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+) -> Result<DrainedChild, DrainError> {
+    use std::io::Read;
+    let mut out = child.stdout.take();
+    let mut err = child.stderr.take();
+    std::thread::scope(|s| {
+        let out_reader = s.spawn(|| {
+            let mut buf = Vec::new();
+            if let Some(o) = out.as_mut() {
+                let _ = o.read_to_end(&mut buf);
+            }
+            buf
+        });
+        let err_reader = s.spawn(|| {
+            let mut buf = Vec::new();
+            if let Some(e) = err.as_mut() {
+                let _ = e.read_to_end(&mut buf);
+            }
+            buf
+        });
+        let deadline = std::time::Instant::now() + timeout;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(st)) => break st,
+                Ok(None) => {}
+                Err(e) => return Err(DrainError::WaitFailed(e.to_string())),
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(DrainError::Timeout);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        Ok(DrainedChild {
+            status,
+            stdout: out_reader.join().unwrap_or_default(),
+            stderr: err_reader.join().unwrap_or_default(),
+        })
+    })
+}
+
 /// Run a shell command and capture fuller output for interactive display
 /// (custom TUI commands). Same TERHUB_* environment as rule actions, but
 /// stderr is kept (marked) and output caps at 4000 chars, not one line.
