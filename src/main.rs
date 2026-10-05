@@ -497,18 +497,7 @@ fn cmd_status(json: bool) -> i32 {
     if agents.is_empty() {
         return 0;
     }
-    print_out("PANE  AGENT    STATE    FOR   SESSION   SUMMARY");
-    for a in &agents {
-        print_out(&format!(
-            "{:<5} {:<8} {:<8} {:<5} {:<9} {}",
-            a.pane,
-            a.agent,
-            a.state.label(),
-            fmt_dur(a.waiting_secs(now)),
-            a.session,
-            a.summary,
-        ));
-    }
+    print_out(terhub::attend::status_table(&agents, now).trim_end());
     0
 }
 
