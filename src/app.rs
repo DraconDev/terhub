@@ -1656,6 +1656,21 @@ mod tests {
     }
 
     #[test]
+    fn help_names_the_settings_key() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        // Panes focus.
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        let panes = app.status.clone().unwrap_or_default();
+        assert!(panes.contains("s=settings"), "panes help: {panes}");
+        // Sessions focus.
+        app.focus = Focus::Sessions;
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        let sessions = app.status.clone().unwrap_or_default();
+        assert!(sessions.contains("s=settings"), "sessions help: {sessions}");
+    }
+
+    #[test]
     fn tab_without_panes_stays_put() {
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
