@@ -251,6 +251,9 @@ pub struct App {
     pub mode: Mode,
     pub input: String,
     pub status: Option<String>,
+    /// When `status` was set via [`App::set_status`] (`None` = sticky direct
+    /// write, e.g. startup errors — never expires).
+    status_since: Option<std::time::Instant>,
     pub focus: Focus,
     /// Every pane on the server, sorted by session/window/index.
     pub panes: Vec<Pane>,
@@ -264,6 +267,9 @@ pub struct App {
     pub show_preview: bool,
     /// Latest daemon snapshot by pane id (empty when the daemon is down).
     pub agents: HashMap<String, AgentRecord>,
+    /// Last snapshot fetch succeeded. False reads as "daemon down" in the
+    /// title — an empty `agents` alone can't tell down from idle.
+    pub agents_live: bool,
     /// First visible row of each list (the UI keeps these in view).
     pub session_scroll: usize,
     pub pane_scroll: usize,
@@ -294,6 +300,7 @@ impl App {
             mode: Mode::Normal,
             input: String::new(),
             status: None,
+            status_since: None,
             focus: Focus::Panes,
             panes: Vec::new(),
             filtered: Vec::new(),
@@ -302,6 +309,7 @@ impl App {
             preview_width: None,
             show_preview: false,
             agents: HashMap::new(),
+            agents_live: true,
             session_scroll: 0,
             pane_scroll: 0,
             cursor: 0,
