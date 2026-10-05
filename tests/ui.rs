@@ -521,6 +521,18 @@ fn settings_selection_stays_visible() {
 }
 
 #[test]
+fn kill_marked_confirm_keeps_hint_visible() {
+    let mut app = app_with_panes();
+    let ids: Vec<String> = (1..=20).map(|i| format!("%{i}")).collect();
+    app.mode = Mode::ConfirmKillMarked(ids);
+    let text = render_lines(&mut app, 160, 20).join("\n");
+    assert!(
+        text.contains("Enter=yes Esc=no"),
+        "hint clipped off the modal:\n{text}"
+    );
+}
+
+#[test]
 fn preview_title_uses_attach_binding() {
     let mut app = app_with_panes();
     app.config
