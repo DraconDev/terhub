@@ -1028,7 +1028,7 @@ impl App {
         }
         if key_matches(&cfg.spec("help"), code) {
             self.status = Some(format!(
-                "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=style {}=quit",
+                "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=quit",
                 cfg.key("new"),
                 cfg.key("rename"),
                 cfg.key("kill"),
@@ -1381,7 +1381,7 @@ impl App {
         }
         if key_matches(&cfg.spec("help"), code) {
             let mut help = format!(
-                "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=sort {}=style tab=back {}=quit",
+                "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=sort {}=settings tab=back {}=quit",
                 cfg.key("attach"),
                 cfg.key("kill"),
                 cfg.key("preview"),
@@ -1643,21 +1643,15 @@ mod tests {
         app.on_key(press(KeyCode::Char('r')), &tmux);
         assert!(matches!(app.mode, Mode::PromptRename(_)));
         app.on_key(press(KeyCode::Esc), &tmux);
-        // Detach outside tmux reports instead of acting.
-        let saved = std::env::var("TMUX").ok();
-        // SAFETY: restored below; parallel tests don't touch TMUX here.
-        unsafe { std::env::remove_var("TMUX") };
-        app.on_key(press(KeyCode::Char('d')), &tmux);
-        assert_eq!(
-            app.status.as_deref(),
-            Some("not inside tmux (nothing to detach)")
-        );
-        // SAFETY: restoring the saved value.
-        unsafe {
-            match saved {
-                Some(v) => std::env::set_var("TMUX", v),
-                None => std::env::remove_var("TMUX"),
-            }
+        // Detach routes from pane focus too — but only pressed without TMUX:
+        // with it set, 'd' would really detach the test runner's client, and
+        // mutating the env here would race parallel tests either way.
+        if std::env::var("TMUX").is_err() {
+            app.on_key(press(KeyCode::Char('d')), &tmux);
+            assert_eq!(
+                app.status.as_deref(),
+                Some("not inside tmux (nothing to detach)")
+            );
         }
     }
 
