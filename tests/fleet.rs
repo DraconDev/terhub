@@ -88,6 +88,18 @@ fn fleet_and_zellij_against_fakes() {
     assert!(f::remove_host("dev").unwrap());
     assert!(!f::remove_host("dev").unwrap());
 
+    // Corrupt file: reads fail loudly and add/remove refuse to touch it.
+    let fleet_file = f::fleet_path();
+    std::fs::write(&fleet_file, "host = [unclosed\n").unwrap();
+    assert!(f::load_hosts().is_err());
+    assert!(f::add_host("new", "t", f::Mode::Observe).is_err());
+    assert!(f::remove_host("obs").is_err());
+    assert_eq!(
+        std::fs::read_to_string(&fleet_file).unwrap(),
+        "host = [unclosed\n",
+        "corrupt file must survive, byte-identical"
+    );
+
     // Zellij baseline parses the fake list.
     assert!(terhub::zellij::available());
     let sessions = terhub::zellij::list_sessions().unwrap();
