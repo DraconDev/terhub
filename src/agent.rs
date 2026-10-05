@@ -585,6 +585,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn manifests_load_in_filename_order() {
+        // First-match-wins classification needs deterministic order:
+        // files created z-to-a must still load a-to-z.
+        let dir = std::env::temp_dir().join(format!("terhub-manifests-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["h", "g", "f", "e", "d", "c", "b", "a"] {
+            std::fs::write(
+                dir.join(format!("{name}.toml")),
+                format!("agent = \"{name}\"\nwaiting = [\"{name} waiting\"]\n"),
+            )
+            .unwrap();
+        }
+        let (manifests, warnings) = load_manifests(&dir);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let agents: Vec<&str> = manifests.iter().map(|m| m.agent.as_str()).collect();
+        assert_eq!(agents, ["a", "b", "c", "d", "e", "f", "g", "h"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn compiled() -> Vec<CompiledManifest> {
         compile_all(&builtin_manifests()).unwrap()
     }
