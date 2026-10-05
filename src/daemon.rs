@@ -474,6 +474,17 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
     }
 }
 
+/// Terminal editors an agent summons via $EDITOR: with agent context in
+/// the tree, an editor in the foreground means awaiting input, not working.
+/// Plain user editing never matches — the rule needs a process hit.
+const EDITOR_COMMANDS: &[&str] = &[
+    "micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx",
+];
+
+fn is_editor_command(command: &str) -> bool {
+    EDITOR_COMMANDS.contains(&command.to_lowercase().as_str())
+}
+
 /// Merge one poll's evidence into a record. Identity priority: process tree
 /// beats screen guess (a `pi` binary is a fact; screen text is a hint).
 /// State priority: screen waiting/error/limited beats everything here (fresh hooks
@@ -497,6 +508,10 @@ fn merge_record(
             if hit.state == Waiting || hit.state == Error || hit.state == Limited =>
         {
             (pa.to_string(), hit.state, Source::Proc)
+        }
+        // Agent summoned $EDITOR: the foreground program awaits keystrokes.
+        (Some((pa, _)), _) if is_editor_command(&pane.command) => {
+            (pa.to_string(), Waiting, Source::Proc)
         }
         (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
         (None, Some(hit)) => {
