@@ -91,6 +91,11 @@ pub struct AgentRecord {
     /// When the tick sum last changed (0 = unknown); stuck clock.
     #[serde(default)]
     pub cpu_still_since: u64,
+    /// starttime (stat field 22) of the agent process behind `cpu_ticks`
+    /// (0 = unknown, e.g. pre-upgrade registries). Compared on carry so a
+    /// recycled pid never inherits the previous owner's still-clock.
+    #[serde(default)]
+    pub agent_start: u64,
     /// Last completed working turn, seconds (0 = none yet). A turn ends
     /// when Working moves to waiting/error/limited/idle; stuck doesn't
     /// end a turn (the same turn is grinding), it just carries this.

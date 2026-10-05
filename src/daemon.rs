@@ -1351,6 +1351,51 @@ mod tests {
     }
 
     #[test]
+    fn pid_reuse_restarts_still_clock() {
+        // Same agent name, same tick sum — but a different starttime, so the
+        // pid was recycled: the new process must not inherit the old clock.
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 50, now - 600, now - 600);
+        old.agent_start = 100;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 50, 200)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.cpu_ticks, 50);
+        assert_eq!(rec.cpu_still_since, now);
+        assert_eq!(rec.agent_start, 200);
+    }
+
+    #[test]
+    fn same_process_keeps_still_clock() {
+        // Same agent, same ticks, same starttime: one continuing process.
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 50, now - 600, now - 600);
+        old.agent_start = 100;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 50, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.cpu_ticks, 50);
+        assert_eq!(rec.cpu_still_since, now - 600);
+        assert_eq!(rec.agent_start, 100);
+    }
+
+    #[test]
     fn registry_round_trip_is_atomic_and_tolerant() {
         let dir = std::env::temp_dir().join(format!("terhub-reg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
