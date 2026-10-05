@@ -1140,6 +1140,45 @@ mod tests {
     }
 
     #[test]
+    fn editor_foreground_with_agent_means_waiting() {
+        let now = 100_000;
+        // pi summoned $EDITOR (micro foreground): awaiting input, not working.
+        let mut ed = test_pane();
+        ed.command = "micro".to_string();
+        let rec = merge_record(None, false, None, Some(("pi", 50)), &ed, now, STUCK_SECS)
+            .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.source, Source::Proc);
+        // Same editor, no agent anywhere: not our business.
+        assert!(merge_record(None, false, None, None, &ed, now, STUCK_SECS).is_none());
+        // Same agent, non-editor foreground: still working.
+        let rec = merge_record(
+            None,
+            false,
+            None,
+            Some(("pi", 50)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        // An error on screen still wins over the editor foreground.
+        let rec = merge_record(
+            None,
+            false,
+            screen_hit(None, AgentState::Error, "boom"),
+            Some(("pi", 50)),
+            &ed,
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Error);
+    }
+
+    #[test]
     fn waiting_summary_tracks_prompt_text() {
         // Same waiting state, new prompt line: the clock stays (no
         // renotify) but the summary follows the fresh line.
