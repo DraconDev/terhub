@@ -46,6 +46,32 @@ const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 const MAX_HEADER_LINES: usize = 64;
 const MAX_HEADER_LINE_BYTES: usize = 16 * 1024;
 
+/// Content-Length parsed from raw header bytes (works even on lines that
+/// will later fail UTF-8 conversion or flood caps): skipping a frame still
+/// has to drain its body to hold the frame boundary.
+fn content_length_raw(line: &[u8]) -> Option<usize> {
+    let colon = line.iter().position(|b| *b == b':')?;
+    let (k, v) = line.split_at(colon);
+    let key: Vec<u8> = k.iter().filter(|b| !b.is_ascii_whitespace()).copied().collect();
+    if !key.eq_ignore_ascii_case(b"content-length") {
+        return None;
+    }
+    let val: Vec<u8> = v[1..].iter().filter(|b| !b.is_ascii_whitespace()).copied().collect();
+    std::str::from_utf8(&val).ok()?.parse().ok()
+}
+
+/// Drain a skipped frame's body so the next read starts at a frame
+/// boundary; without this the body bytes parse as headers and every later
+/// frame misaligns (a fake Content-Length inside the body can even swallow
+/// the next real frame whole). EOF mid-drain ends the stream.
+fn drain_body(reader: &mut impl BufRead, n: usize) -> Result<bool> {
+    let mut body = reader.by_ref().take(n as u64);
+    match std::io::copy(&mut body, &mut std::io::sink()) {
+        Ok(got) => Ok(got == n as u64),
+        Err(_) => Ok(false),
+    }
+}
+
 fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
     loop {
         // Headers arrive as bytes first: a non-UTF8 line abandons the frame
@@ -53,6 +79,7 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
         // UTF-8 error exiting the whole server.
         let mut raw_headers = Vec::new();
         let mut flooded = false;
+        let mut body_len = None;
         loop {
             let mut raw = Vec::new();
             let n = reader
@@ -68,6 +95,9 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
             if raw.iter().all(|b| b.is_ascii_whitespace()) {
                 break;
             }
+            if body_len.is_none() {
+                body_len = content_length_raw(&raw);
+            }
             // Flooded lines drain to the blank line without accumulating.
             if !flooded {
                 raw_headers.push(raw);
@@ -75,6 +105,11 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
         }
         if flooded {
             eprintln!("terhub mcp: header flood, skipping frame");
+            if let Some(n) = body_len
+                && !drain_body(reader, n)?
+            {
+                return Ok(None);
+            }
             continue;
         }
         let mut headers = Vec::with_capacity(raw_headers.len());
@@ -90,6 +125,11 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
         }
         if !utf8_ok {
             eprintln!("terhub mcp: non-utf8 header, skipping frame");
+            if let Some(n) = body_len
+                && !drain_body(reader, n)?
+            {
+                return Ok(None);
+            }
             continue;
         }
         let Some(n) = content_length(&headers) else {
@@ -97,12 +137,7 @@ fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
         };
         if n > MAX_FRAME_BYTES {
             eprintln!("terhub mcp: frame too large ({n} bytes), skipping");
-            // Drain the body so the next read starts at a frame boundary;
-            // without this the body bytes parse as headers and every later
-            // frame misaligns (a fake Content-Length inside the body can
-            // even swallow the next real frame whole).
-            let mut body = reader.by_ref().take(n as u64);
-            if std::io::copy(&mut body, &mut std::io::sink()).is_err() {
+            if !drain_body(reader, n)? {
                 return Ok(None);
             }
             continue;
@@ -379,9 +414,10 @@ mod tests {
 
     #[test]
     fn non_utf8_header_skips_frame() {
-        // Garbage bytes in the headers abandon one frame; the server keeps
-        // serving instead of exiting on read_line's UTF-8 error.
-        let mut input = b"\xff\xfe\n\n".to_vec();
+        // Garbage bytes in the headers abandon one frame (body drained to
+        // hold the boundary); the server keeps serving instead of exiting
+        // on read_line's UTF-8 error.
+        let mut input = b"\xff\xfe\nContent-Length: 2\r\n\r\n{}".to_vec();
         input.extend_from_slice(&framed(r#"{"jsonrpc":"2.0","id":9}"#));
         let mut cur = Cursor::new(input);
         let v = read_frame(&mut cur).expect("server exited").expect("no frame");
