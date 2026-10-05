@@ -1632,6 +1632,36 @@ mod tests {
     }
 
     #[test]
+    fn session_keys_work_from_pane_focus() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        assert_eq!(app.focus, Focus::Panes);
+        app.on_key(press(KeyCode::Char('n')), &tmux);
+        assert_eq!(app.mode, Mode::PromptNew);
+        app.on_key(press(KeyCode::Esc), &tmux);
+        app.select(1); // session "a"
+        app.on_key(press(KeyCode::Char('r')), &tmux);
+        assert!(matches!(app.mode, Mode::PromptRename(_)));
+        app.on_key(press(KeyCode::Esc), &tmux);
+        // Detach outside tmux reports instead of acting.
+        let saved = std::env::var("TMUX").ok();
+        // SAFETY: restored below; parallel tests don't touch TMUX here.
+        unsafe { std::env::remove_var("TMUX") };
+        app.on_key(press(KeyCode::Char('d')), &tmux);
+        assert_eq!(
+            app.status.as_deref(),
+            Some("not inside tmux (nothing to detach)")
+        );
+        // SAFETY: restoring the saved value.
+        unsafe {
+            match saved {
+                Some(v) => std::env::set_var("TMUX", v),
+                None => std::env::remove_var("TMUX"),
+            }
+        }
+    }
+
+    #[test]
     fn tab_without_panes_stays_put() {
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
