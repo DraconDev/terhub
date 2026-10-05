@@ -473,6 +473,95 @@ mod tests {
     }
 
     #[test]
+    fn substr_needles_need_token_boundaries() {
+        // /bin/pip is not /bin/pi.
+        let dir = fake_proc(
+            "notpip",
+            &[("800", "1", "pip", "/bin/pip install foo", 0, 0, 8000)],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.detect_agent(800), None);
+        let _ = fs::remove_dir_all(&dir);
+        // A filename merely mentioning an agent binary is not the agent.
+        let dir = fake_proc(
+            "notnotes",
+            &[("801", "1", "nvim", "nvim muse-bin-notes.txt", 0, 0, 8001)],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.detect_agent(801), None);
+        let _ = fs::remove_dir_all(&dir);
+        // A URL path segment is not a local program.
+        let dir = fake_proc(
+            "noturl",
+            &[(
+                "802",
+                "1",
+                "curl",
+                "curl https://example.com/claude-code",
+                0,
+                0,
+                8002,
+            )],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.detect_agent(802), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn substr_needles_keep_true_wrappers() {
+        // Versioned wrapper binaries still resolve.
+        let dir = fake_proc(
+            "stillver",
+            &[(
+                "803",
+                "1",
+                "muse-bin-1.4.2-R4684.1",
+                "/home/u/.local/bin/muse-bin-1.4.2-R4684.1 --resume",
+                1,
+                1,
+                8003,
+            )],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(
+            snap.detect_agent(803).map(|h| h.agent),
+            Some("muse".to_string())
+        );
+        let _ = fs::remove_dir_all(&dir);
+        // pi patch-loader paths still resolve.
+        let dir = fake_proc(
+            "stillpatch",
+            &[(
+                "804",
+                "1",
+                "node",
+                "node --import /home/u/.pi/agent/patches/x.mjs script.js",
+                1,
+                1,
+                8004,
+            )],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(
+            snap.detect_agent(804).map(|h| h.agent),
+            Some("pi".to_string())
+        );
+        let _ = fs::remove_dir_all(&dir);
+        // The claude-code binary itself still resolves.
+        let dir = fake_proc(
+            "stillcc",
+            &[("805", "1", "claude-code", "claude-code --resume", 1, 1, 8005)],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(
+            snap.detect_agent(805).map(|h| h.agent),
+            Some("claude".to_string())
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn nearest_agent_wins() {
         // Deep codex under the first child, shallow pi under the second:
         // breadth-first finds pi despite the higher pid.
