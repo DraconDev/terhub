@@ -1229,6 +1229,31 @@ mod tests {
     }
 
     #[test]
+    fn registry_round_trip_is_atomic_and_tolerant() {
+        let dir = std::env::temp_dir().join(format!("terhub-reg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("registry.json");
+        // One corrupt record must not sink the good one.
+        let good = carried("pi", AgentState::Working, 1, 2, 100);
+        let text = format!(
+            "[{}, {{\"pane\":42}}]",
+            serde_json::to_string(&good).unwrap()
+        );
+        std::fs::write(&path, &text).unwrap();
+        let loaded = load_registry(&path);
+        assert_eq!(loaded.len(), 1);
+        assert!(loaded.contains_key(&good.pane));
+        // Atomic save round-trips and leaves no tmp litter.
+        let mut reg = HashMap::new();
+        reg.insert(good.pane.clone(), good);
+        save_registry(&path, &reg);
+        assert_eq!(load_registry(&path).len(), 1);
+        assert!(!path.with_extension("json.tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn working_carry_drops_stale_summary() {
         let now = 100_000;
         // A prompt line borrowed while waiting is rot once the agent
