@@ -71,14 +71,14 @@ impl Pane {
 /// separator collides with tabs inside window names, paths, and session
 /// names, shifting every later field; 0x1f passes through tmux untouched
 /// and never appears in names.
-const SEP: char = '';
+const SEP: char = '\x1f';
 
 /// Field counts of the two formats below: more parts than this means a
 /// separator smuggled inside a field, and the line is skipped.
 const PANE_FIELDS: usize = 13;
 const SESSION_FIELDS: usize = 5;
 
-const PANE_FORMAT: &str = "#{pane_id}#{window_id}#{window_name}#{window_active}#{pane_index}#{pane_current_command}#{pane_current_path}#{pane_active}#{pane_width}#{pane_height}#{session_name}#{window_activity}#{pane_pid}";
+const PANE_FORMAT: &str = "#{pane_id}\x1f#{window_id}\x1f#{window_name}\x1f#{window_active}\x1f#{pane_index}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_active}\x1f#{pane_width}\x1f#{pane_height}\x1f#{session_name}\x1f#{window_activity}\x1f#{pane_pid}";
 
 fn parse_panes(out: &str) -> Vec<Pane> {
     let mut panes = Vec::new();
@@ -205,7 +205,7 @@ impl Tmux {
         let out = match self.run(&[
             "list-sessions",
             "-F",
-            "#{session_name}\t#{session_windows}\t#{session_attached}\t#{t:session_created}\t#{t:session_activity}",
+            "#{session_name}\x1f#{session_windows}\x1f#{session_attached}\x1f#{t:session_created}\x1f#{t:session_activity}",
         ]) {
             Ok(o) => o,
             Err(e) => {
@@ -452,14 +452,14 @@ mod tests {
 
     #[test]
     fn parse_panes_reads_window_activity() {
-        let line = "%9\t@3\tedit\t1\t0\tnvim\t/home/u\t1\t120\t40\tdev\t1790940000\t4242";
+        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242";
         let panes = parse_panes(line);
         assert_eq!(panes.len(), 1);
         assert_eq!(panes[0].session, "dev");
         assert_eq!(panes[0].activity, 1790940000);
         assert_eq!(panes[0].pid, 4242);
         // Short lines (older tmux without the field) still parse.
-        let legacy = "%9\t@3\tedit\t1\t0\tnvim\t/home/u\t1\t120\t40\tdev";
+        let legacy = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev";
         assert_eq!(parse_panes(legacy)[0].activity, 0);
         assert_eq!(parse_panes(legacy)[0].pid, 0);
     }
