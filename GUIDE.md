@@ -128,7 +128,9 @@ status bar, no modes except small popups:
 
 Everything except arrows/mouse/Tab/Esc is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
-bindings.
+bindings (press `?` again for the legend: marks, `Src`, `For`/`Turn`/`Idle`).
+Footer confirmations fade after a few seconds; the title names a dead
+daemon instead of silently emptying the agent columns.
 
 ## Configuration
 
