@@ -1168,7 +1168,7 @@ mod tests {
         let registry = Arc::new(Mutex::new(HashMap::new()));
         let shutdown = Arc::new(AtomicBool::new(false));
         let dir = std::env::temp_dir().join(format!("terhub-bigreq-{}", std::process::id()));
-        let (server, mut client) = tokio::net::UnixStream::pair().unwrap();
+        let (server, client) = tokio::net::UnixStream::pair().unwrap();
         let reg = registry.clone();
         let rt = dir.clone();
         let handle = tokio::spawn(async move { handle_conn(server, reg, rt, shutdown).await });
@@ -1182,9 +1182,14 @@ mod tests {
         })
         .unwrap();
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-        client.write_all(big.as_bytes()).await.unwrap();
-        client.write_all(b"\n").await.unwrap();
-        let mut lines = tokio::io::BufReader::new(client).lines();
+        let (rd, mut wr) = client.into_split();
+        // The write may stall once the server stops draining (that's the
+        // cap working); abort it after the verdict instead of joining.
+        let write_task = tokio::spawn(async move {
+            let _ = wr.write_all(big.as_bytes()).await;
+            let _ = wr.write_all(b"\n").await;
+        });
+        let mut lines = tokio::io::BufReader::new(rd).lines();
         let resp: Response = serde_json::from_str(
             &tokio::time::timeout(Duration::from_secs(5), lines.next_line())
                 .await
@@ -1193,6 +1198,7 @@ mod tests {
                 .expect("empty response"),
         )
         .unwrap();
+        write_task.abort();
         assert!(!resp.ok, "oversize request accepted");
         assert!(lock_registry(&registry).is_empty(), "truncated event applied");
         handle.await.unwrap();
