@@ -419,9 +419,9 @@ impl App {
                 self.marked.retain(|id| live.contains(id.as_str()));
             }
             Err(e) => {
-                self.panes.clear();
-                self.filtered.clear();
-                self.marked.clear();
+                // Non-destructive: a failed tick keeps stale rows, the
+                // filter view, and the mark set — the error shows in the
+                // status line and the next good tick refreshes everything.
                 self.set_status(format!("panes error: {e}"));
             }
         }
@@ -1717,18 +1717,20 @@ mod tests {
 
     #[test]
     fn bulk_kill_skips_own_pane() {
+        // Kills fail (bogus binary) — but the own pane must not even be
+        // attempted: failed keeps its mark, skipped does not.
         let mut app = app_with(&["a"]);
         app.own_pane = Some("%1".to_string());
         app.marked.insert("%1".to_string());
         app.marked.insert("%2".to_string());
         app.mode = Mode::ConfirmKillMarked(vec!["%1".to_string(), "%2".to_string()]);
-        // /bin/true "kills" everything: without the guard both report killed.
-        let tmux = Tmux::test("/bin/true".into());
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
         app.on_key(press(KeyCode::Enter), &tmux);
-        assert!(app.marked.is_empty());
+        assert_eq!(app.marked.len(), 1);
+        assert!(app.marked.contains("%2"));
         let status = app.status.as_deref().unwrap_or("");
-        assert!(status.contains("killed 1"), "{status}");
-        assert!(status.contains("own pane"), "{status}");
+        assert!(status.contains("0, 1 failed"), "{status}");
+        assert!(status.contains("own pane skipped"), "{status}");
     }
 
     #[test]
