@@ -75,6 +75,10 @@ pub fn is_launcher_wrapper(name: &str) -> bool {
     CMD_WRAPPERS.contains(&name)
 }
 
+/// Auth-prompt companions (polkit, askpass) that ride along as extra
+/// children of a wrapper: never the payload, ignored when descending.
+const HELPER_PROCS: &[&str] = &["pkttyagent", "ssh-askpass", "systemd-ask-password"];
+
 /// argv[0] basename of a raw cmdline (`\0`- or space-separated).
 fn argv0_base(cmdline: &str) -> &str {
     cmdline
@@ -207,9 +211,18 @@ impl Snapshot {
         }
         let mut chain = vec![pid];
         while chain.len() < 9 {
+            // Exactly one real child: helpers (polkit, askpass) don't count.
             let kid = match self.kids.get(&pid) {
-                Some(k) if k.len() == 1 && !chain.contains(&k[0]) => k[0],
-                _ => break,
+                Some(k) => {
+                    let mut live = k
+                        .iter()
+                        .filter(|k| !chain.contains(*k) && !self.is_helper(***k));
+                    match (live.next(), live.next()) {
+                        (Some(&kid), None) => kid,
+                        _ => break,
+                    }
+                }
+                None => break,
             };
             chain.push(kid);
             pid = kid;
@@ -245,6 +258,13 @@ impl Snapshot {
         self.procs.get(&pid).is_some_and(|info| {
             CMD_WRAPPERS.contains(&info.comm.as_str())
                 || CMD_WRAPPERS.contains(&argv0_base(&info.cmdline))
+        })
+    }
+
+    fn is_helper(&self, pid: u32) -> bool {
+        self.procs.get(&pid).is_some_and(|info| {
+            HELPER_PROCS.contains(&info.comm.as_str())
+                || HELPER_PROCS.contains(&argv0_base(&info.cmdline))
         })
     }
 
