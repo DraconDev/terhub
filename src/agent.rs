@@ -424,7 +424,7 @@ pub fn load_manifests(dir: &Path) -> (Vec<Manifest>, Vec<String>) {
     // read_dir order is filesystem-dependent; classification is
     // first-match-wins, so sort by file name for deterministic matches.
     let mut entries: Vec<_> = entries.flatten().collect();
-    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("toml") {
@@ -593,7 +593,8 @@ mod tests {
     fn manifests_load_in_filename_order() {
         // First-match-wins classification needs deterministic order:
         // files created z-to-a must still load a-to-z.
-        let dir = std::env::temp_dir().join(format!("terhub-manifests-order-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("terhub-manifests-order-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         for name in ["h", "g", "f", "e", "d", "c", "b", "a"] {
