@@ -44,6 +44,7 @@ fn default_keys() -> HashMap<String, String> {
         ("filter", "f"),
         ("mark", "space"),
         ("unmark", "u"),
+        ("hide_shells", "h"),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

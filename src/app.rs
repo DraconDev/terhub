@@ -1049,6 +1049,10 @@ impl App {
             self.open_filter();
             return None;
         }
+        if key_matches(&self.config.spec("hide_shells"), code) {
+            self.toggle_hide_quiet_shells();
+            return None;
+        }
         // Fullscreen preview owns the screen: Enter jumps to the previewed
         // pane from either focus (like left-click), instead of attaching to
         // a session bar the preview covers up.
@@ -1220,6 +1224,21 @@ impl App {
         self.mode = Mode::PromptFilter;
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
+    }
+
+    /// `h` key: flip the quiet-shell filter, reporting the hidden count.
+    fn toggle_hide_quiet_shells(&mut self) {
+        self.hide_quiet_shells = !self.hide_quiet_shells;
+        self.refresh_filtered();
+        if self.hide_quiet_shells {
+            let key = self.config.key("hide_shells").to_string();
+            self.set_status(format!(
+                "hiding {} quiet shell(s) ({key} to show)",
+                self.hidden_quiet
+            ));
+        } else {
+            self.set_status("showing all rows".to_string());
+        }
     }
 
     /// Live re-filter while typing; restarts at the top row.
