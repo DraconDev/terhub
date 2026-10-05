@@ -395,4 +395,80 @@ mod tests {
         assert_eq!(empty.detect_agent(500), None);
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn unwraps_inhibit_chain_to_agent() {
+        // The screenshot shape: zsh → systemd-inhibit → node /bin/pi.
+        let dir = fake_proc(
+            "unwrap",
+            &[
+                ("100", "1", "zsh", "-zsh", 10, 5, 1000),
+                (
+                    "101",
+                    "100",
+                    "systemd-inhibit",
+                    "systemd-inhibit --who=pi --mode=block node /bin/pi --approve",
+                    0,
+                    0,
+                    1001,
+                ),
+                (
+                    "102",
+                    "101",
+                    "node",
+                    "node /home/u/.npm-global/bin/pi --approve",
+                    400,
+                    60,
+                    1002,
+                ),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.display_command(100, "systemd-inhibit"), "pi");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn display_command_keeps_shells_and_ambiguity() {
+        let dir = fake_proc(
+            "keep",
+            &[
+                // Foreground shell with a background job: never dive in.
+                ("200", "1", "zsh", "-zsh", 0, 0, 2000),
+                ("201", "200", "sleep", "sleep 100", 0, 0, 2001),
+                // Wrapper with two children: ambiguous, keep tmux's word.
+                ("300", "1", "systemd-inhibit", "systemd-inhibit", 0, 0, 3000),
+                ("301", "300", "pi", "pi", 0, 0, 3001),
+                ("302", "300", "codex", "codex", 0, 0, 3002),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.display_command(200, "zsh"), "zsh");
+        assert_eq!(
+            snap.display_command(300, "systemd-inhibit"),
+            "systemd-inhibit"
+        );
+        assert_eq!(snap.display_command(999, "whatever"), "whatever");
+        assert_eq!(snap.display_command(0, "zsh"), "zsh");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn display_command_shows_non_agent_payload() {
+        // sudo → micro: no agent anywhere, argv[0] of the payload wins.
+        let dir = fake_proc(
+            "payload",
+            &[
+                ("400", "1", "zsh", "-zsh", 0, 0, 4000),
+                ("401", "400", "sudo", "sudo micro note.md", 0, 0, 4001),
+                ("402", "401", "micro", "micro note.md", 0, 0, 4002),
+                ("500", "1", "timeout", "timeout 3600 pi", 0, 0, 5000),
+                ("501", "500", "pi", "pi", 0, 0, 5001),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.display_command(400, "sudo"), "micro");
+        assert_eq!(snap.display_command(500, "timeout"), "pi");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
