@@ -103,6 +103,30 @@ fn parse_panes(out: &str) -> Vec<Pane> {
     panes
 }
 
+fn parse_sessions(out: &str) -> Vec<Session> {
+    let mut sessions = Vec::new();
+    for line in out.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        let get = |i: usize| parts.get(i).unwrap_or(&"").to_string();
+        let windows = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let attached = !matches!(
+            parts.get(2).map(|s| s.trim()),
+            None | Some("0") | Some("") | Some("no")
+        );
+        sessions.push(Session {
+            name: get(0),
+            windows,
+            attached,
+            created: get(3),
+            activity: get(4),
+        });
+    }
+    sessions
+}
+
 /// Unwrap launcher wrappers (`systemd-inhibit`, `sudo`, …) to the payload
 /// program, so the Cmd column names what runs instead of what launched it.
 /// The /proc snapshot is skipped entirely when no pane reports a wrapper.
