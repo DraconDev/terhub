@@ -1,5 +1,5 @@
 //! Attention flow: who needs you, peek reports, status line, notifications.
-use crate::agent::{AgentRecord, AgentState, now_unix};
+use crate::agent::{AgentRecord, AgentState, Source, now_unix};
 use crate::daemon;
 use crate::history::fmt_dur;
 use crate::tmux::{Pane, Tmux};
@@ -167,6 +167,43 @@ pub fn status_line(snapshot: &[AgentRecord], pane: Option<&str>) -> String {
             }
         }
     }
+}
+
+/// Text table for `terhub status`: the TUI's agent block (state, source,
+/// time-in-state, last turn, quiet age) in CLI form. Unknown turn/quiet
+/// clocks read `—`, mirroring the table.
+pub fn status_table(agents: &[AgentRecord], now: u64) -> String {
+    let mut out = String::from("PANE  AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY\n");
+    for a in agents {
+        let src = match a.source {
+            Source::Hook => "hook",
+            Source::Proc => "proc",
+            _ => "scr",
+        };
+        let turn = if a.last_turn_secs == 0 {
+            "—".to_string()
+        } else {
+            fmt_dur(a.last_turn_secs)
+        };
+        let idle = if a.quiet_since == 0 {
+            "—".to_string()
+        } else {
+            fmt_dur(now.saturating_sub(a.quiet_since))
+        };
+        out.push_str(&format!(
+            "{:<5} {:<8} {:<8} {:<4} {:<5} {:<5} {:<5} {:<9} {}\n",
+            a.pane,
+            a.agent,
+            a.state.label(),
+            src,
+            fmt_dur(a.waiting_secs(now)),
+            turn,
+            idle,
+            a.session,
+            a.summary,
+        ));
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
