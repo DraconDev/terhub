@@ -1318,6 +1318,23 @@ impl App {
         }
     }
 
+    /// Execute a navigation jump without leaving the TUI. Only the client's
+    /// view moves, so the table keeps running behind it; a failed jump
+    /// (stale row) stays visible as a status line. Callers handle Quit by
+    /// leaving the event loop, never by calling here.
+    pub fn do_nav(&mut self, tmux: &Tmux, ev: AppEvent) {
+        let (what, result) = match ev {
+            AppEvent::Attach(ref name) => (format!("attach {name}"), tmux.switch_session(name)),
+            AppEvent::FocusPane(ref id) => (format!("jump {id}"), tmux.focus_pane(id)),
+            AppEvent::Quit => return,
+        };
+        if let Err(e) = result {
+            self.set_status(format!("{what} failed: {e:#}"));
+        }
+        // A failed target is usually a dead row; re-read so it vanishes.
+        self.refresh(tmux);
+    }
+
     /// Space: toggle the row's mark and step down, file-manager style, so
     /// a run of rows marks with repeated presses.
     fn toggle_mark(&mut self) {
