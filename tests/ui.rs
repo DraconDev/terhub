@@ -533,6 +533,28 @@ fn kill_marked_confirm_keeps_hint_visible() {
 }
 
 #[test]
+fn hidden_sort_column_shows_in_title() {
+    let mut app = app_with_panes();
+    // Summary sorted but compact hides the column: the title says so.
+    app.config.density = "compact".to_string();
+    app.sort_key = SortKey::Summary;
+    let text = render_lines(&mut app, 160, 20).join("\n");
+    assert!(
+        text.contains("sorted by Summary"),
+        "sort indicator lost:\n{text}"
+    );
+    // Session sorted but filtered to one session: same fallback.
+    let mut app = app_with_panes();
+    app.select(1);
+    app.sort_key = SortKey::Session;
+    let text = render_lines(&mut app, 160, 20).join("\n");
+    assert!(
+        text.contains("sorted by Session"),
+        "sort indicator lost:\n{text}"
+    );
+}
+
+#[test]
 fn preview_title_uses_attach_binding() {
     let mut app = app_with_panes();
     app.config

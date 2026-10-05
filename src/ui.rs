@@ -641,6 +641,18 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         app.config.palette(),
         app.config.density_name(),
     ));
+    // The active sort column can be hidden (Session while filtered to one
+    // session, Summary in compact mode): say so here instead of dropping
+    // the indicator silently. (The trailing space above separates this.)
+    let sort_visible = (app.sort_key != SortKey::Session || show_session)
+        && (app.sort_key != SortKey::Summary || !compact);
+    if !sort_visible {
+        title.push_str(&format!(
+            "· sorted by {:?} {}",
+            app.sort_key,
+            if app.sort_asc { '▲' } else { '▼' }
+        ));
+    }
 
     let now = crate::agent::now_unix();
     let warn_style = crate::config::parse_style_spec(&app.config.idle_warn_style);
