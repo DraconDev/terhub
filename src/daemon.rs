@@ -517,6 +517,31 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
     }
 }
 
+/// Merge one poll's evidence into a record, legacy entry: no snapshot in
+/// scope here, so editor ownership falls back to the old rule (editor
+/// foreground plus any process hit). The poller calls
+/// [`merge_record_owned`] with the real subtree check instead.
+fn merge_record(
+    carried: Option<&AgentRecord>,
+    lapsed: bool,
+    screen: Option<ScreenHit>,
+    proc_hit: Option<(&str, u64)>,
+    pane: &Pane,
+    now: u64,
+    stuck_secs: u64,
+) -> Option<AgentRecord> {
+    merge_record_owned(
+        carried,
+        lapsed,
+        screen,
+        proc_hit,
+        pane,
+        is_editor_command(&pane.command),
+        now,
+        stuck_secs,
+    )
+}
+
 /// Merge one poll's evidence into a record. Identity priority: process tree
 /// beats screen guess (a `pi` binary is a fact; screen text is a hint).
 /// State priority: screen waiting/error/limited beats everything here (fresh hooks
@@ -525,12 +550,17 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
 /// screen states (patterns, no name) only survive paired with a process
 /// hit — otherwise a micro `>` bar would impersonate an agent. Returns
 /// None when nothing claims the pane.
-fn merge_record(
+///
+/// `has_editor` is the poller's verdict that the foreground editor sits
+/// inside this agent's own subtree — a background agent never claims a
+/// sibling editor.
+fn merge_record_owned(
     carried: Option<&AgentRecord>,
     lapsed: bool,
     screen: Option<ScreenHit>,
     proc_hit: Option<(&str, u64)>,
     pane: &Pane,
+    has_editor: bool,
     now: u64,
     stuck_secs: u64,
 ) -> Option<AgentRecord> {
@@ -541,8 +571,9 @@ fn merge_record(
         {
             (pa.to_string(), hit.state, Source::Proc)
         }
-        // Agent summoned $EDITOR: the foreground program awaits keystrokes.
-        (Some((pa, _)), _) if is_editor_command(&pane.command) => {
+        // Agent summoned $EDITOR: the foreground program awaits keystrokes —
+        // but only its own editor, never a sibling's.
+        (Some((pa, _)), _) if is_editor_command(&pane.command) && has_editor => {
             (pa.to_string(), Waiting, Source::Proc)
         }
         (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
@@ -754,14 +785,21 @@ fn poll_sync(
         let proc_pair = proc_hit
             .as_ref()
             .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid)));
+        // The editor gate only fires when the editor sits inside this
+        // agent's own subtree — a background agent never claims a sibling.
+        let has_editor = is_editor_command(&pane.command)
+            && proc_hit
+                .as_ref()
+                .is_some_and(|h| snap.subtree_has_editor(h.pid));
         let carried = old.or(stale);
         let lapsed = old.is_none() && stale.is_some();
-        if let Some(mut rec) = merge_record(
+        if let Some(mut rec) = merge_record_owned(
             carried,
             lapsed,
             screen_hit,
             proc_pair,
             pane,
+            has_editor,
             now,
             tune.stuck_secs,
         ) {
