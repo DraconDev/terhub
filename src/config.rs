@@ -694,10 +694,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     for (i, (a, sa)) in specs.iter().enumerate() {
         for (b, sb) in specs.iter().skip(i + 1) {
             if *sa != KeySpec::None && spec_conflicts(sa, sb) {
-                problems.push(format!(
-                    "keys '{a}' and '{b}' both use '{}'",
-                    cfg.keys[a]
-                ));
+                problems.push(format!("keys '{a}' and '{b}' both use '{}'", cfg.keys[a]));
             }
         }
     }
@@ -1059,7 +1056,11 @@ mod tests {
         std::fs::write(&path, "[keys]\nattach = \"f99\"\nquit = \"\"\n").unwrap();
         let (cfg, problems) = load_config_report(Some(path.clone()));
         assert_eq!(problems.len(), 2, "{problems:?}");
-        assert!(problems.iter().any(|p| p.contains("attach") && p.contains("f99")));
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("attach") && p.contains("f99"))
+        );
         assert!(problems.iter().any(|p| p.contains("quit")));
         // Reverted to defaults instead of deadening the actions.
         assert_eq!(cfg.key("attach"), "enter");
@@ -1076,7 +1077,10 @@ mod tests {
         std::fs::write(&path, "[keys]\nquit = \"x\"\n").unwrap();
         let (_, problems) = load_config_report(Some(path.clone()));
         assert_eq!(problems.len(), 1, "{problems:?}");
-        assert!(problems[0].contains("quit") && problems[0].contains("kill"), "{problems:?}");
+        assert!(
+            problems[0].contains("quit") && problems[0].contains("kill"),
+            "{problems:?}"
+        );
         // Case-insensitive: X steals x at runtime too.
         std::fs::write(&path, "[keys]\nquit = \"X\"\n").unwrap();
         let (_, problems) = load_config_report(Some(path.clone()));
