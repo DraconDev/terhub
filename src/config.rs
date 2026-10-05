@@ -855,6 +855,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn truncate_msg_floors_to_char_boundary() {
+        let s = format!("{}é{}", "a".repeat(159), "b".repeat(10));
+        // Byte 160 is the second byte of é: a naive truncate panics.
+        let out = truncate_msg(&s, 160);
+        assert_eq!(out, "a".repeat(159));
+        assert!(out.len() <= 160);
+        assert_eq!(truncate_msg("hello", 160), "hello");
+    }
+
+    #[test]
     fn parse_common_keys() {
         assert_eq!(parse_key("n"), KeySpec::Char('n'));
         assert_eq!(parse_key("?"), KeySpec::Char('?'));
