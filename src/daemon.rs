@@ -13,6 +13,7 @@ use crate::agent::{
 use crate::attend::{detect_all_transitions, notify_transition};
 use crate::config;
 use crate::history;
+use crate::proc::is_editor_name as is_editor_command;
 use crate::tmux::{Pane, Tmux};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -514,15 +515,6 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
         Some(h) if h == prev.0 => prev,
         Some(h) => (h, now),
     }
-}
-
-/// Terminal editors an agent summons via $EDITOR: with agent context in
-/// the tree, an editor in the foreground means awaiting input, not working.
-/// Plain user editing never matches — the rule needs a process hit.
-const EDITOR_COMMANDS: &[&str] = &["micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx"];
-
-fn is_editor_command(command: &str) -> bool {
-    EDITOR_COMMANDS.contains(&command.to_lowercase().as_str())
 }
 
 /// Merge one poll's evidence into a record. Identity priority: process tree
