@@ -176,27 +176,7 @@ impl Tmux {
                 return Err(e);
             }
         };
-        let mut sessions = Vec::new();
-        for line in out.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let parts: Vec<&str> = line.split('\t').collect();
-            let get = |i: usize| parts.get(i).unwrap_or(&"").to_string();
-            let windows = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-            let attached = !matches!(
-                parts.get(2).map(|s| s.trim()),
-                None | Some("0") | Some("") | Some("no")
-            );
-            sessions.push(Session {
-                name: get(0),
-                windows,
-                attached,
-                created: get(3),
-                activity: get(4),
-            });
-        }
-        Ok(sessions)
+        Ok(parse_sessions(&out))
     }
 
     pub fn session_exists(&self, name: &str) -> bool {
@@ -398,6 +378,36 @@ mod tests {
                 None => env::remove_var("TMUX"),
             }
         }
+    }
+
+    #[test]
+    fn tab_in_window_name_does_not_shift_fields() {
+        // Window name carries a real tab: fields must still land correctly.
+        let line = "%9\x1f@3\x1fedit\tnotes\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242";
+        let panes = parse_panes(line);
+        assert_eq!(panes.len(), 1);
+        assert_eq!(panes[0].window_name, "edit\tnotes");
+        assert_eq!(panes[0].session, "dev");
+        assert_eq!(panes[0].activity, 1790940000);
+        assert_eq!(panes[0].pid, 4242);
+    }
+
+    #[test]
+    fn overflow_fields_skip_line() {
+        // More parts than expected means a separator inside a field: fail
+        // closed (skip) rather than parse shifted.
+        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242\x1fEXTRA";
+        assert!(parse_panes(line).is_empty());
+    }
+
+    #[test]
+    fn session_tab_in_name_does_not_shift() {
+        let line = "my\tsess\x1f3\x1f1\x1f1749000000\x1f1790940000";
+        let sessions = parse_sessions(line);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].name, "my\tsess");
+        assert_eq!(sessions[0].windows, 3);
+        assert!(sessions[0].attached);
     }
 
     #[test]
