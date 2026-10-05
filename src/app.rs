@@ -511,6 +511,15 @@ impl App {
             self.filtered
                 .retain(|p| pane_matches(p, agents.get(&p.id), &q));
         }
+        self.hidden_quiet = 0;
+        if self.hide_quiet_shells {
+            let now = crate::agent::now_unix();
+            let agents = &self.agents;
+            let before = self.filtered.len();
+            self.filtered
+                .retain(|p| !is_quiet_shell(agents.get(&p.id), p.activity, now));
+            self.hidden_quiet = before - self.filtered.len();
+        }
         self.apply_sort();
         self.pane_selected = 0;
         if let Some(id) = keep
