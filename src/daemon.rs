@@ -906,6 +906,24 @@ mod tests {
         assert_eq!(screen_fallback_summary(Some("a\tb")), "a b");
     }
 
+    #[test]
+    fn fallback_summary_skips_working_rows() {
+        use crate::agent::AgentState::{Error, Limited, Stuck, Waiting, Working};
+        let screen = Some("● Chrome Bridge (indefinite)");
+        // Working rows stay summary-free: spinner text is noise.
+        assert_eq!(fallback_summary_for(Working, screen), "");
+        // Stuck carries its own explanation from merge_record.
+        assert_eq!(fallback_summary_for(Stuck, screen), "");
+        // Actionable states borrow the freshest screen line.
+        assert_eq!(
+            fallback_summary_for(Waiting, screen),
+            "● Chrome Bridge (indefinite)"
+        );
+        assert!(!fallback_summary_for(Error, screen).is_empty());
+        assert!(!fallback_summary_for(Limited, screen).is_empty());
+        assert_eq!(fallback_summary_for(Waiting, None), "");
+    }
+
     fn carried(agent: &str, state: AgentState, ticks: u64, still: u64, since: u64) -> AgentRecord {
         AgentRecord {
             pane: "%1".to_string(),
