@@ -67,7 +67,18 @@ impl Pane {
     }
 }
 
-const PANE_FORMAT: &str = "#{pane_id}\t#{window_id}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_active}\t#{pane_width}\t#{pane_height}\t#{session_name}\t#{window_activity}\t#{pane_pid}";
+/// Field separator for tmux `-F` formats: ASCII unit separator. A tab
+/// separator collides with tabs inside window names, paths, and session
+/// names, shifting every later field; 0x1f passes through tmux untouched
+/// and never appears in names.
+const SEP: char = '';
+
+/// Field counts of the two formats below: more parts than this means a
+/// separator smuggled inside a field, and the line is skipped.
+const PANE_FIELDS: usize = 13;
+const SESSION_FIELDS: usize = 5;
+
+const PANE_FORMAT: &str = "#{pane_id}#{window_id}#{window_name}#{window_active}#{pane_index}#{pane_current_command}#{pane_current_path}#{pane_active}#{pane_width}#{pane_height}#{session_name}#{window_activity}#{pane_pid}";
 
 fn parse_panes(out: &str) -> Vec<Pane> {
     let mut panes = Vec::new();
@@ -75,7 +86,12 @@ fn parse_panes(out: &str) -> Vec<Pane> {
         if line.trim().is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.split('\t').collect();
+        let parts: Vec<&str> = line.split(SEP).collect();
+        // Overflow fails closed: a shifted pid would walk the wrong
+        // process tree. Short lines still parse leniently (older tmux).
+        if parts.len() > PANE_FIELDS {
+            continue;
+        }
         let get = |i: usize| parts.get(i).unwrap_or(&"").to_string();
         let flag = |i: usize| {
             !matches!(
