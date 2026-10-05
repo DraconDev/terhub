@@ -813,6 +813,39 @@ fn title_nudges_hookless_setups() {
 }
 
 #[test]
+fn self_and_deleted_rows_recede() {
+    let mut app = app_with_panes();
+    app.own_pane = Some("%1".to_string());
+    app.panes[1].path = "/home/u/nav2 (deleted)".to_string();
+    app.refresh_filtered();
+    let grid = render_grid(&mut app, 140, 20);
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains("Pane")).unwrap();
+    let px = hdr[..hdr.find("Pane").unwrap()].chars().count();
+    let dx = hdr[..hdr.find("Dir").unwrap()].chars().count();
+    let r1 = text.iter().position(|l| l.contains("%1")).unwrap();
+    let r2 = text.iter().position(|l| l.contains("%2")).unwrap();
+    // The TUI's own pane wears the attached accent, not the dim id color.
+    assert_ne!(
+        grid[r1][px].1, grid[r2][px].1,
+        "self id not marked:\n{}",
+        text.join("\n")
+    );
+    // A deleted cwd is struck through; a live one is not.
+    assert!(
+        grid[r2][dx].2.contains(Modifier::CROSSED_OUT),
+        "deleted dir not struck"
+    );
+    assert!(
+        !grid[r1][dx].2.contains(Modifier::CROSSED_OUT),
+        "live dir struck"
+    );
+}
+
+#[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
     let (lines, areas) = render_with_areas(&mut app, 100, 24);
