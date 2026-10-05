@@ -435,6 +435,19 @@ mod tests {
     }
 
     #[test]
+    fn loopback_origins_only() {
+        use super::origin_allowed;
+        assert!(origin_allowed("http://127.0.0.1:8080"));
+        assert!(origin_allowed("http://localhost:3000"));
+        assert!(origin_allowed("http://[::1]:8080"));
+        assert!(!origin_allowed("http://evil.com"));
+        assert!(!origin_allowed("http://127.0.0.1.evil.com"));
+        assert!(!origin_allowed("http://localhost.evil.com"));
+        assert!(!origin_allowed("null"));
+        assert!(!origin_allowed(""));
+    }
+
+    #[test]
     fn timeline_rows_filter_and_limit() {
         let entries = vec![entry(100, AgentState::Working), entry(200, AgentState::Waiting)];
         let all = timeline_rows(&entries, None, None, None, 200, 300);
