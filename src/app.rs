@@ -1785,6 +1785,21 @@ mod tests {
     }
 
     #[test]
+    fn refresh_error_keeps_panes_and_marks() {
+        // A tick that fails to list panes is non-destructive: stale rows
+        // and the mark set survive, with the error in the status line.
+        let mut app = app_with_panes();
+        app.marked.insert("%1".to_string());
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        app.refresh(&tmux);
+        assert_eq!(app.panes.len(), 2);
+        assert_eq!(app.filtered.len(), 2);
+        assert!(app.marked.contains("%1"));
+        let status = app.status.as_deref().unwrap_or("");
+        assert!(status.contains("panes error"), "{status}");
+    }
+
+    #[test]
     fn tab_toggles_pane_focus() {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
