@@ -300,6 +300,11 @@ pub enum DrainError {
     WaitFailed(String),
 }
 
+/// Per-pipe drain cap: consumers truncate to display size anyway, so 1MB
+/// is vast headroom — and it bounds the detached reader threads even when
+/// they outlive the timeout on grandchild-held pipes.
+const DRAIN_CAP_BYTES: u64 = 1024 * 1024;
+
 /// Wait for a piped child with a deadline while draining stdout/stderr on
 /// reader threads. Draining *during* the wait (not after exit) is
 /// load-bearing: a child that fills the 64KB pipe buffer would otherwise
@@ -312,17 +317,17 @@ pub fn wait_drained(
     // Detached (not scoped) readers: on the timeout path grandchildren may
     // still hold the pipes open, so joining there would block past the
     // deadline — the old code returned without draining, and so do we.
-    let out_reader = child.stdout.take().map(|mut o| {
+    let out_reader = child.stdout.take().map(|o| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
-            let _ = o.read_to_end(&mut buf);
+            let _ = o.take(DRAIN_CAP_BYTES).read_to_end(&mut buf);
             buf
         })
     });
-    let err_reader = child.stderr.take().map(|mut e| {
+    let err_reader = child.stderr.take().map(|e| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
-            let _ = e.read_to_end(&mut buf);
+            let _ = e.take(DRAIN_CAP_BYTES).read_to_end(&mut buf);
             buf
         })
     });
@@ -684,6 +689,23 @@ mod tests {
             .unwrap();
         let err = wait_drained(&mut child, std::time::Duration::from_millis(200)).unwrap_err();
         assert!(matches!(err, DrainError::Timeout));
+    }
+
+    #[test]
+    fn wait_drained_caps_pipe_reads() {
+        // 3MB of output against a 1MB cap: truncated, not accumulated —
+        // and bounded even when reader threads outlive the timeout.
+        let mut child = std::process::Command::new("head")
+            .args(["-c", "3000000", "/dev/zero"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let drained = wait_drained(&mut child, std::time::Duration::from_secs(10)).unwrap();
+        // head dies by SIGPIPE once we stop reading at the cap — that IS
+        // the truncation working; what matters is the bounded capture.
+        assert_eq!(drained.stdout.len(), DRAIN_CAP_BYTES as usize);
+        assert!(drained.stderr.is_empty());
     }
 
     #[test]
