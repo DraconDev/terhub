@@ -1015,6 +1015,39 @@ mod tests {
     }
 
     #[test]
+    fn bad_builtin_key_value_warns_and_reverts() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("badkeys.toml");
+        std::fs::write(&path, "[keys]\nattach = \"f99\"\nquit = \"\"\n").unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(problems.iter().any(|p| p.contains("attach") && p.contains("f99")));
+        assert!(problems.iter().any(|p| p.contains("quit")));
+        // Reverted to defaults instead of deadening the actions.
+        assert_eq!(cfg.key("attach"), "enter");
+        assert_eq!(cfg.key("quit"), "q");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn builtin_key_collision_warns() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("keyclash.toml");
+        // kill defaults to x; rebinding quit onto it shadows one of them.
+        std::fs::write(&path, "[keys]\nquit = \"x\"\n").unwrap();
+        let (_, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("quit") && problems[0].contains("kill"), "{problems:?}");
+        // Case-insensitive: X steals x at runtime too.
+        std::fs::write(&path, "[keys]\nquit = \"X\"\n").unwrap();
+        let (_, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
     fn unknown_theme_falls_back_to_dark() {
         let cfg = AppConfig {
             theme: "textual-dark".to_string(),
