@@ -220,8 +220,8 @@ terhub status [--json]
 ```
 
 `terhubd` keeps the registry that powers `status`, `attend`, badges, rules,
-and MCP. One daemon per runtime dir (a second start refuses with "already
-listening"). Per pane it merges three signals:
+and MCP. One daemon per runtime dir (a second `daemon start` prints
+`already running` and exits 0). Per pane it merges three signals:
 
 1. **Hook events** (`terhub hook …`, see below) — authoritative while fresh.
    A hook record with no new event for `stale_secs` (default 30 minutes)
@@ -317,14 +317,14 @@ terhub status-line [--pane %N]
   (digits jump to a pane); `--plain` prints the same report as text for
   scripts and status bars.
 - **`status-line`** prints one line for `status-right`, e.g.
-  `set -g status-right '#(terhub status-line)'`. Always exits 0 (empty
-  when the daemon is down).
+  `set -g status-right '#(terhub status-line)'`. Always exits 0 (prints
+  `◎ --` when the daemon is down).
 
 ## History: stats, report, activity, timeline
 
 ```sh
 terhub stats [--since today] [--group-by day|agent|session]
-terhub report [--since week]
+terhub report [--since today]
 terhub activity [--since 24h] [--kind agent|session|rule|human|all] [--json]
 terhub timeline [--since today] [--session S] [--agent A]
 ```
