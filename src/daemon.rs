@@ -580,6 +580,30 @@ fn merge_record(
     })
 }
 
+/// Summary fallback: the freshest non-blank screen line, so panes whose
+/// agent was claimed by process (or whose hook lapsed) still say something
+/// instead of showing an empty Summary cell. Hooks with real summaries and
+/// screen-pattern hits keep theirs — this only fills blanks.
+fn screen_fallback_summary(screen: Option<&str>) -> String {
+    const MAX: usize = 80;
+    let line = screen
+        .unwrap_or("")
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .next_back()
+        .unwrap_or("");
+    let mut out: String = line
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(MAX)
+        .collect();
+    if line.chars().count() > MAX {
+        out.push('…');
+    }
+    out
+}
+
 /// Returns the new registry, attention transitions to notify, the live
 /// session list for open/close detection, and the foreground pane.
 fn poll_sync(
@@ -647,6 +671,9 @@ fn poll_sync(
                 }
             }
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
+            if r.summary.is_empty() {
+                r.summary = screen_fallback_summary(screen.as_deref());
+            }
             next.insert(pane.id.clone(), r);
             continue;
         }
@@ -675,6 +702,9 @@ fn poll_sync(
                 .map(|r| (r.screen_hash, r.quiet_since))
                 .unwrap_or((0, 0));
             (rec.screen_hash, rec.quiet_since) = track_quiet(prev_quiet, hash, now);
+            if rec.summary.is_empty() {
+                rec.summary = screen_fallback_summary(screen.as_deref());
+            }
             next.insert(pane.id.clone(), rec);
         } else if let Some(o) = old {
             // Pane alive but nothing matches: keep last known state only
@@ -693,6 +723,9 @@ fn poll_sync(
                 // clock running through the carry.
                 (r.screen_hash, r.quiet_since) =
                     track_quiet((r.screen_hash, r.quiet_since), hash, now);
+                if r.summary.is_empty() {
+                    r.summary = screen_fallback_summary(screen.as_deref());
+                }
                 next.insert(pane.id.clone(), r);
             }
         }
@@ -859,6 +892,22 @@ mod tests {
         assert_eq!(next["%1"].state, AgentState::Waiting);
         assert_eq!(next["%1"].summary, "Approve plan?");
         assert!(!next.contains_key("%2"));
+    }
+
+    #[test]
+    fn fallback_summary_takes_freshest_line() {
+        assert_eq!(
+            screen_fallback_summary(Some("old\nfresh  \n  \n")),
+            "fresh"
+        );
+        assert_eq!(screen_fallback_summary(None), "");
+        assert_eq!(screen_fallback_summary(Some("  \n\t\n")), "");
+        // Long lines truncate with an ellipsis, control chars wash out.
+        let long = "x".repeat(100);
+        let out = screen_fallback_summary(Some(&format!("a\tb\n{long}")));
+        assert_eq!(out.chars().count(), 81);
+        assert!(out.ends_with('…'), "{out}");
+        assert_eq!(screen_fallback_summary(Some("a\tb")), "a b");
     }
 
     fn carried(agent: &str, state: AgentState, ticks: u64, still: u64, since: u64) -> AgentRecord {
