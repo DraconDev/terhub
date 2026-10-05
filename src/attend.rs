@@ -305,6 +305,30 @@ mod tests {
     use super::*;
     use crate::agent::Source;
 
+    #[test]
+    fn status_table_carries_turn_idle_and_src() {
+        let now = 10_000;
+        let mut a = rec("%1", AgentState::Working, now - 300);
+        a.source = Source::Hook;
+        a.last_turn_secs = 90;
+        a.quiet_since = now - 60;
+        a.summary = "building".to_string();
+        let b = rec("%2", AgentState::Waiting, now - 120);
+        let table = status_table(&[a, b], now);
+        let mut lines = table.lines();
+        assert_eq!(
+            lines.next().unwrap(),
+            "PANE  AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY"
+        );
+        assert_eq!(
+            lines.next().unwrap(),
+            "%1    claude   working  hook 5m    1m    1m    s         building"
+        );
+        // Unknown clocks read as dashes, like the TUI table.
+        let row2 = lines.next().unwrap();
+        assert!(row2.contains('—'), "{row2}");
+    }
+
     fn rec(pane: &str, state: AgentState, since: u64) -> AgentRecord {
         AgentRecord {
             pane: pane.to_string(),
