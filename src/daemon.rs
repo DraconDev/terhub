@@ -19,6 +19,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -160,10 +161,24 @@ pub struct Server {
     tunables: Tunables,
 }
 
+/// Create the runtime dir owner-only (0700): it holds the control socket,
+/// pid file, and registry. umask-permissive creation would expose them.
+fn ensure_runtime_dir(path: &Path) -> Result<()> {
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+        .with_context(|| format!("create runtime dir {}", path.display()))?;
+    // Pre-existing dirs keep their old mode: tighten unconditionally.
+    let mut perms = std::fs::metadata(path)?.permissions();
+    perms.set_mode(0o700);
+    std::fs::set_permissions(path, perms)?;
+    Ok(())
+}
+
 impl Server {
     pub fn load(runtime: PathBuf) -> Result<Self> {
-        std::fs::create_dir_all(&runtime)
-            .with_context(|| format!("create runtime dir {}", runtime.display()))?;
+        ensure_runtime_dir(&runtime)?;
         let mut manifests = builtin_manifests();
         let (user_manifests, mut warnings) = load_manifests(&config::manifests_dir());
         manifests.extend(user_manifests);
@@ -993,6 +1008,21 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
 // Sync client (CLI + TUI)
 // ---------------------------------------------------------------------------
 
+/// Max response line a client accepts: snapshots are KBs, so 16MB is
+/// vast headroom — anything bigger is a flood, refused, never OOM.
+const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Read one line, refusing payloads over `cap` bytes instead of growing
+/// toward OOM on a peer that never sends a newline.
+fn read_capped_line(reader: &mut impl BufRead, cap: usize) -> Result<String> {
+    let mut line = String::new();
+    reader.take((cap + 1) as u64).read_line(&mut line)?;
+    if line.len() > cap {
+        anyhow::bail!("line exceeds {cap} bytes");
+    }
+    Ok(line)
+}
+
 pub fn send_request(req: &Request, timeout: Duration) -> Result<Response> {
     let sock = socket_path();
     let mut stream =
@@ -1004,8 +1034,7 @@ pub fn send_request(req: &Request, timeout: Duration) -> Result<Response> {
     stream.write_all(line.as_bytes())?;
     stream.flush()?;
     let mut reader = BufReader::new(stream);
-    let mut resp = String::new();
-    reader.read_line(&mut resp)?;
+    let resp = read_capped_line(&mut reader, MAX_RESPONSE_BYTES)?;
     serde_json::from_str(&resp).context("bad daemon response")
 }
 
