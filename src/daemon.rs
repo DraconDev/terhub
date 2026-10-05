@@ -524,8 +524,9 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
 
 /// Merge one poll's evidence into a record, legacy entry: no snapshot in
 /// scope here, so editor ownership falls back to the old rule (editor
-/// foreground plus any process hit). Test-only: the poller calls
-/// [`merge_record_owned`] with the real subtree check instead.
+/// foreground plus any process hit) and the starttime is unknown (0).
+/// Test-only: the poller calls [`merge_record_owned`] with the real
+/// subtree check and starttime instead.
 #[cfg(test)]
 fn merge_record(
     carried: Option<&AgentRecord>,
@@ -772,11 +773,14 @@ fn poll_sync(
             match &proc_hit {
                 Some(h) => {
                     let t = snap.subtree_ticks(h.pid);
-                    (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &h.agent, t, now);
+                    (r.cpu_ticks, r.cpu_still_since) =
+                        track_cpu(&r, &h.agent, t, h.start, now);
+                    r.agent_start = h.start;
                 }
                 None => {
                     r.cpu_ticks = 0;
                     r.cpu_still_since = 0;
+                    r.agent_start = 0;
                 }
             }
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
@@ -795,7 +799,7 @@ fn poll_sync(
         };
         let proc_pair = proc_hit
             .as_ref()
-            .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid)));
+            .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid), h.start));
         // The editor gate only fires when the editor sits inside this
         // agent's own subtree — a background agent never claims a sibling.
         let has_editor = is_editor_command(&pane.command)
