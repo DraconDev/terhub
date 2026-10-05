@@ -1071,17 +1071,26 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("help"), code) {
-            self.set_status(format!(
-                "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=quit",
-                cfg.key("new"),
-                cfg.key("rename"),
-                cfg.key("kill"),
-                cfg.key("attach"),
-                cfg.key("preview"),
-                cfg.key("theme"),
-                cfg.key("settings"),
-                cfg.key("quit"),
-            ));
+            // Repeated `?` toggles between the key list and the legend.
+            if self
+                .status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("sessions:"))
+            {
+                self.set_status(LEGEND.to_string());
+            } else {
+                self.set_status(format!(
+                    "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=quit",
+                    cfg.key("new"),
+                    cfg.key("rename"),
+                    cfg.key("kill"),
+                    cfg.key("attach"),
+                    cfg.key("preview"),
+                    cfg.key("theme"),
+                    cfg.key("settings"),
+                    cfg.key("quit"),
+                ));
+            }
             return None;
         }
         None
