@@ -664,6 +664,41 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         }
         cfg.keys.insert(k, v);
     }
+    // Builtin values are validated like custom ones: a typo/empty/f99
+    // would otherwise parse to KeySpec::None and silently deaden the
+    // action. Bad values revert to their default (poll_secs precedent).
+    // Sorted actions keep problem order deterministic.
+    let defaults = default_keys();
+    let mut actions: Vec<String> = cfg.keys.keys().cloned().collect();
+    actions.sort();
+    for action in &actions {
+        let value = cfg.keys[action].clone();
+        if parse_key(&value) == KeySpec::None
+            && let Some(def) = defaults.get(action)
+        {
+            problems.push(format!(
+                "key '{action}' has bad value '{value}' (using default '{def}')"
+            ));
+            cfg.keys.insert(action.clone(), def.clone());
+        }
+    }
+    // Builtin-vs-builtin collisions after rebinding: first-match dispatch
+    // would silently shadow one of the pair.
+    let specs: Vec<(String, KeySpec)> = actions
+        .iter()
+        .filter(|a| defaults.contains_key(a.as_str()))
+        .map(|a| (a.clone(), parse_key(&cfg.keys[a])))
+        .collect();
+    for (i, (a, sa)) in specs.iter().enumerate() {
+        for (b, sb) in specs.iter().skip(i + 1) {
+            if *sa != KeySpec::None && spec_conflicts(sa, sb) {
+                problems.push(format!(
+                    "keys '{a}' and '{b}' both use '{}'",
+                    cfg.keys[a]
+                ));
+            }
+        }
+    }
     cfg.theme = file.ui.theme;
     if !is_known_theme(&cfg.theme) {
         problems.push(format!(
