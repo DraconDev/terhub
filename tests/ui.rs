@@ -427,6 +427,17 @@ fn empty_state_hints_create_key() {
 }
 
 #[test]
+fn footer_hints_match_navigation() {
+    // Tab toggles focus (not "sessions") and arrows only steer the bar.
+    let mut app = app_with_panes();
+    let lines = render_lines(&mut app, 160, 12);
+    let footer = lines.last().cloned().unwrap_or_default();
+    assert!(footer.contains("tab = switch list"), "footer: {footer}");
+    assert!(footer.contains("←/→ sessions"), "footer: {footer}");
+    assert!(!footer.contains("tab = sessions"), "stale hint: {footer}");
+}
+
+#[test]
 fn filter_prompt_renders_text() {
     let mut app = app_with(&["alpha"]);
     app.mode = Mode::PromptFilter;
