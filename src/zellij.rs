@@ -47,8 +47,19 @@ pub fn parse_sessions(out: &str) -> Vec<ZSession> {
         .collect()
 }
 
+/// True when a list failure just means "no sessions" (same shape as the
+/// tmux empty-server check): that reads as an empty list, exit 0 — not an
+/// error. Anything else (a missing binary, real failures) still errors.
+fn is_empty_server(e: &anyhow::Error) -> bool {
+    e.to_string().to_lowercase().contains("no session")
+}
+
 pub fn list_sessions() -> Result<Vec<ZSession>> {
-    Ok(parse_sessions(&run(&["list-sessions", "--short"])?))
+    match run(&["list-sessions", "--short"]) {
+        Ok(out) => Ok(parse_sessions(&out)),
+        Err(e) if is_empty_server(&e) => Ok(vec![]),
+        Err(e) => Err(e),
+    }
 }
 
 /// Replace this process with `zellij attach`. Only returns on failure.
@@ -83,5 +94,15 @@ mod tests {
         );
         assert!(parse_sessions("").is_empty());
         assert!(parse_sessions("   \n").is_empty());
+    }
+
+    #[test]
+    fn empty_server_reads_as_no_sessions() {
+        assert!(is_empty_server(&anyhow::anyhow!("No sessions found")));
+        assert!(is_empty_server(&anyhow::anyhow!("error: no session running")));
+        // Real failures (and a missing binary) must still error, not
+        // masquerade as an empty list.
+        assert!(!is_empty_server(&anyhow::anyhow!("boom")));
+        assert!(!is_empty_server(&anyhow::anyhow!("zellij not found on PATH")));
     }
 }
