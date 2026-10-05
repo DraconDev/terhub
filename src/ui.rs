@@ -1114,6 +1114,7 @@ mod tests {
             state_since: now - 100,
             cpu_ticks: 0,
             cpu_still_since: 0,
+            agent_start: 0,
             last_turn_secs: 0,
             screen_hash: 1,
             quiet_since,
