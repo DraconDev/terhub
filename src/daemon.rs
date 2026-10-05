@@ -1016,7 +1016,7 @@ const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 /// toward OOM on a peer that never sends a newline.
 fn read_capped_line(reader: &mut impl BufRead, cap: usize) -> Result<String> {
     let mut line = String::new();
-    reader.take((cap + 1) as u64).read_line(&mut line)?;
+    std::io::Read::take(&mut *reader, (cap + 1) as u64).read_line(&mut line)?;
     if line.len() > cap {
         anyhow::bail!("line exceeds {cap} bytes");
     }
