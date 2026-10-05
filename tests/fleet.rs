@@ -113,5 +113,17 @@ fn fleet_and_zellij_against_fakes() {
     assert!(format!("{err:?}").contains("timed out"), "{err:?}");
     assert!(start.elapsed() < std::time::Duration::from_secs(10));
 
+    // Batch G (finding 46): a dash-leading target must reach ssh as the
+    // hostname behind a `--` separator, never as an ssh option.
+    write_exe(&bin.join("ssh"), "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+    let out = f::ssh_run("-oProxyCommand=evil", &["echo", "hi"], 5).unwrap();
+    let argv: Vec<&str> = out.lines().collect();
+    let sep = argv.iter().position(|a| *a == "--").expect("-- separator");
+    assert_eq!(
+        argv[sep + 1],
+        "-oProxyCommand=evil",
+        "target must follow --: {argv:?}"
+    );
+
     let _ = std::fs::remove_dir_all(&base);
 }
