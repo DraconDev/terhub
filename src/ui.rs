@@ -1056,7 +1056,9 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     // Wrapped: a long id list (or rename input) folds inside the modal
     // instead of clipping the Enter/Esc hint off the edge.
     frame.render_widget(
-        Paragraph::new(body).style(pal.status).wrap(Wrap { trim: false }),
+        Paragraph::new(body)
+            .style(pal.status)
+            .wrap(Wrap { trim: false }),
         inner,
     );
     if let Some(plen) = prefix {

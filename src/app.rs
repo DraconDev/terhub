@@ -1492,9 +1492,7 @@ impl App {
                 self.input = name.clone();
                 self.mode = Mode::PromptRename(name);
             }
-            None if self.focus == Focus::Panes => {
-                self.set_status("no pane selected".to_string())
-            }
+            None if self.focus == Focus::Panes => self.set_status("no pane selected".to_string()),
             None => self.set_status("pick a session row (All doesn't count)".to_string()),
         }
     }

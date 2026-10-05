@@ -514,10 +514,7 @@ fn settings_selection_stays_visible() {
         app.on_key(up, &tmux);
     }
     let text = render_lines(&mut app, 160, 12).join("\n");
-    assert!(
-        text.contains("› dark"),
-        "selection lost going up:\n{text}"
-    );
+    assert!(text.contains("› dark"), "selection lost going up:\n{text}");
 }
 
 #[test]
