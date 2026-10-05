@@ -173,7 +173,8 @@ pub fn status_line(snapshot: &[AgentRecord], pane: Option<&str>) -> String {
 /// time-in-state, last turn, quiet age) in CLI form. Unknown turn/quiet
 /// clocks read `—`, mirroring the table.
 pub fn status_table(agents: &[AgentRecord], now: u64) -> String {
-    let mut out = String::from("PANE  AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY\n");
+    let mut out =
+        String::from("PANE  AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY\n");
     for a in agents {
         let src = match a.source {
             Source::Hook => "hook",

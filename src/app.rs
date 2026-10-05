@@ -1773,16 +1773,36 @@ mod tests {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.on_key(press(KeyCode::Char('?')), &tmux);
-        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("panes:")));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("panes:"))
+        );
         app.on_key(press(KeyCode::Char('?')), &tmux);
-        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("legend:")));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("legend:"))
+        );
         app.on_key(press(KeyCode::Char('?')), &tmux);
-        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("panes:")));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("panes:"))
+        );
         app.focus = Focus::Sessions;
         app.on_key(press(KeyCode::Char('?')), &tmux);
-        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("sessions:")));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("sessions:"))
+        );
         app.on_key(press(KeyCode::Char('?')), &tmux);
-        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("legend:")));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("legend:"))
+        );
     }
 
     #[test]

@@ -590,8 +590,7 @@ fn screen_fallback_summary(screen: Option<&str>) -> String {
         .unwrap_or("")
         .lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .next_back()
+        .rfind(|l| !l.is_empty())
         .unwrap_or("");
     let mut out: String = line
         .chars()
@@ -896,10 +895,7 @@ mod tests {
 
     #[test]
     fn fallback_summary_takes_freshest_line() {
-        assert_eq!(
-            screen_fallback_summary(Some("old\nfresh  \n  \n")),
-            "fresh"
-        );
+        assert_eq!(screen_fallback_summary(Some("old\nfresh  \n  \n")), "fresh");
         assert_eq!(screen_fallback_summary(None), "");
         assert_eq!(screen_fallback_summary(Some("  \n\t\n")), "");
         // Long lines truncate with an ellipsis, control chars wash out.

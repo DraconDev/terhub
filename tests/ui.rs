@@ -477,7 +477,10 @@ fn preview_title_shows_agent_context() {
     app.show_preview = true;
     app.preview = "hello from pane".to_string();
     let text = render_lines(&mut app, 160, 20).join("\n");
-    assert!(text.contains("pi working 3m"), "title lacks context:\n{text}");
+    assert!(
+        text.contains("pi working 3m"),
+        "title lacks context:\n{text}"
+    );
 }
 
 #[test]
