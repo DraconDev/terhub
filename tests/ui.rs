@@ -740,3 +740,56 @@ fn all_themes_render() {
         assert!(text.contains("%1"), "theme {theme} broke table:\n{text}");
     }
 }
+
+#[test]
+fn wide_table_fits_long_commands_and_summaries() {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    let mut app = app_with(&["alpha"]);
+    app.panes = vec![pane("%1", "alpha", "editor", "muse-bin-1.4.2-R4684.1")];
+    app.refresh_filtered();
+    let summary = format!("summary {}", "x".repeat(22)); // 30 chars
+    assert_eq!(summary.chars().count(), 30);
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Waiting,
+            source: Source::Proc,
+            summary: summary.clone(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: 1,
+            state_since: 1,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+        },
+    );
+    let text = render_lines(&mut app, 195, 24).join("\n");
+    assert!(text.contains("muse-bin-1.4.2-R4684.1"), "cmd cut:\n{text}");
+    assert!(text.contains(&summary), "summary cut:\n{text}");
+}
+
+#[test]
+fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
+    let mut app = app_with_panes();
+    let (lines, areas) = render_with_areas(&mut app, 100, 24);
+    let header = lines
+        .iter()
+        .find(|l| l.contains("Pane"))
+        .expect("no header line");
+    for h in ["Pane", "State", "Src", "For", "Turn", "Idle"] {
+        assert!(header.contains(h), "lost {h}:\n{header}");
+    }
+    for hit in &areas.headers {
+        assert!(
+            hit.area.x + hit.area.width <= 100,
+            "hit out of bounds: {:?}",
+            hit.area
+        );
+    }
+}
