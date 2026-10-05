@@ -216,7 +216,7 @@ impl Snapshot {
                 Some(k) => {
                     let mut live = k
                         .iter()
-                        .filter(|k| !chain.contains(*k) && !self.is_helper(***k));
+                        .filter(|k| !chain.contains(*k) && !self.is_helper(**k));
                     match (live.next(), live.next()) {
                         (Some(&kid), None) => kid,
                         _ => break,
@@ -608,6 +608,40 @@ mod tests {
         let snap = Snapshot::capture_from(&dir);
         assert_eq!(snap.display_command(400, "sudo"), "micro");
         assert_eq!(snap.display_command(500, "timeout"), "pi");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn helper_companions_do_not_block_descent() {
+        // The live %77 shape: systemd-inhibit with a pkttyagent companion
+        // next to the real payload. The auth prompt is never the payload.
+        let dir = fake_proc(
+            "helper",
+            &[
+                ("700", "1", "zsh", "-zsh", 0, 0, 7000),
+                (
+                    "701",
+                    "700",
+                    "systemd-inhibit",
+                    "systemd-inhibit --mode=block pi",
+                    0,
+                    0,
+                    7001,
+                ),
+                (
+                    "702",
+                    "701",
+                    "pkttyagent",
+                    "/run/current-system/sw/bin/pkttyagent --notify-fd 6 --fallback",
+                    0,
+                    0,
+                    7002,
+                ),
+                ("703", "701", "pi", "pi", 0, 0, 7003),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.display_command(700, "systemd-inhibit"), "pi");
         let _ = fs::remove_dir_all(&dir);
     }
 }
