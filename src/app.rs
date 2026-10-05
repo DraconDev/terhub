@@ -243,6 +243,10 @@ fn pane_matches(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
         || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary))
 }
 
+/// Table legend, shown when `?` is pressed twice: the marks and column
+/// shorthands the table itself never explains.
+const LEGEND: &str = "legend: !=needs you · +=marked · *=focused pane · ●/○=attached · Src hook/proc/scr · For state age · Turn last turn · Idle quiet time";
+
 pub struct App {
     pub config: AppConfig,
     pub sessions: Vec<Session>,
@@ -1433,6 +1437,15 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("help"), code) {
+            // Repeated `?` toggles between the key list and the legend.
+            if self
+                .status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("panes:"))
+            {
+                self.set_status(LEGEND.to_string());
+                return None;
+            }
             let mut help = format!(
                 "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=sort {}=settings tab=back {}=quit",
                 cfg.key("attach"),
@@ -1753,6 +1766,23 @@ mod tests {
         app.status = Some("sticky".to_string());
         app.expire_status();
         assert!(app.status.is_some());
+    }
+
+    #[test]
+    fn repeated_help_toggles_legend() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("panes:")));
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("legend:")));
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("panes:")));
+        app.focus = Focus::Sessions;
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("sessions:")));
+        app.on_key(press(KeyCode::Char('?')), &tmux);
+        assert!(app.status.as_deref().is_some_and(|s| s.starts_with("legend:")));
     }
 
     #[test]
