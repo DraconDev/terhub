@@ -175,11 +175,17 @@ fn nav_failure_stays_in_tui_with_status() {
     app.refresh(&tmux);
     // A jump to a dead pane stays in-process (no exit, no panic) and
     // reports the failure as a status line.
-    app.do_nav(&tmux, AppEvent::FocusPane("%999999-no-such-pane".to_string()));
+    app.do_nav(
+        &tmux,
+        AppEvent::FocusPane("%999999-no-such-pane".to_string()),
+    );
     let status = app.status.clone().unwrap_or_default();
     assert!(status.contains("failed"), "status: {status}");
     // Same contract for a dead session attach.
-    app.do_nav(&tmux, AppEvent::Attach("no-such-terhub-session".to_string()));
+    app.do_nav(
+        &tmux,
+        AppEvent::Attach("no-such-terhub-session".to_string()),
+    );
     let status = app.status.clone().unwrap_or_default();
     assert!(status.contains("failed"), "status: {status}");
 }
