@@ -567,6 +567,17 @@ mod tests {
     }
 
     #[test]
+    fn fmt_dur_uses_days_past_two_days() {
+        assert_eq!(fmt_dur(45), "45s");
+        assert_eq!(fmt_dur(90), "1m");
+        assert_eq!(fmt_dur(5 * 3600 + 600), "5h10m");
+        // A 56-hour "turn" reads like a broken clock; days stay honest.
+        assert_eq!(fmt_dur(56 * 3600 + 36 * 60), "2d8h");
+        assert_eq!(fmt_dur(2 * 86400), "2d0h");
+        assert_eq!(fmt_dur(47 * 3600), "47h0m");
+    }
+
+    #[test]
     fn spans_cover_transitions_to_now() {
         let entries = vec![
             entry(100, "%1", AgentState::Working),
