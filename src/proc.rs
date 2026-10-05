@@ -45,6 +45,45 @@ const AGENT_SUBSTR: &[(&str, &str)] = &[
     ("claude-code", "claude"),
 ];
 
+/// Launcher wrappers that spawn (not exec) their payload, so tmux reports
+/// the wrapper — not the program — as the pane's foreground command.
+/// Shells are deliberately absent: diving into a foreground shell's
+/// children would surface background jobs, not the foreground program.
+const CMD_WRAPPERS: &[&str] = &[
+    "systemd-inhibit",
+    "systemd-run",
+    "timeout",
+    "sudo",
+    "doas",
+    "rlwrap",
+    "unbuffer",
+    "expect",
+    "script",
+    "sg",
+    "chrt",
+    "ionice",
+    "taskset",
+    "numactl",
+    "setarch",
+    "nsenter",
+];
+
+/// True when `name` (a tmux-reported foreground command) is a launcher
+/// wrapper worth unwrapping. Lets callers skip the /proc snapshot when
+/// nothing on screen can benefit from it.
+pub fn is_launcher_wrapper(name: &str) -> bool {
+    CMD_WRAPPERS.contains(&name)
+}
+
+/// argv[0] basename of a raw cmdline (`\0`- or space-separated).
+fn argv0_base(cmdline: &str) -> &str {
+    cmdline
+        .split([' ', '\0', '\t'])
+        .find(|t| !t.is_empty())
+        .map(|a| a.rsplit('/').next().unwrap_or(""))
+        .unwrap_or("")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProcInfo {
     pid: u32,
@@ -127,6 +166,86 @@ impl Snapshot {
             }
         }
         None
+    }
+
+    /// Display command for a pane: tmux's reported foreground command
+    /// with launcher wrappers unwrapped to their payload. Descent starts
+    /// at the reported process (found at or below `root`) and continues
+    /// only through single-child wrappers, so ambiguity keeps tmux's word
+    /// and foreground shells are never dived into. The payload names its
+    /// agent when one matches down the chain, else its own argv[0].
+    /// Anything unreadable keeps `reported` — never an invented command.
+    pub fn display_command(&self, root: u32, reported: &str) -> String {
+        if root == 0 || !self.procs.contains_key(&root) {
+            return reported.to_string();
+        }
+        let mut queue = std::collections::VecDeque::from([root]);
+        let mut seen = std::collections::HashSet::from([root]);
+        let mut start = None;
+        while let Some(pid) = queue.pop_front() {
+            let info = &self.procs[&pid];
+            if info.comm == reported || argv0_base(&info.cmdline) == reported {
+                start = Some(pid);
+                break;
+            }
+            if let Some(kids) = self.kids.get(&pid) {
+                for kid in kids {
+                    if seen.insert(*kid) {
+                        queue.push_back(*kid);
+                    }
+                }
+            }
+        }
+        let mut pid = match start {
+            Some(p) => p,
+            None => return reported.to_string(),
+        };
+        // Only a wrapper licenses the descent: anything else is already
+        // the true foreground program.
+        if !self.is_wrapper(pid) {
+            return reported.to_string();
+        }
+        let mut chain = vec![pid];
+        while chain.len() < 9 {
+            let kid = match self.kids.get(&pid) {
+                Some(k) if k.len() == 1 && !chain.contains(&k[0]) => k[0],
+                _ => break,
+            };
+            chain.push(kid);
+            pid = kid;
+            if !self.is_wrapper(pid) {
+                break;
+            }
+        }
+        if chain.len() == 1 {
+            // Childless or ambiguous wrapper: keep tmux's word.
+            return reported.to_string();
+        }
+        for pid in &chain {
+            if let Some(info) = self.procs.get(pid)
+                && let Some(agent) = match_proc(&info.comm, &info.cmdline)
+            {
+                return agent.to_string();
+            }
+        }
+        match self.procs.get(&pid) {
+            Some(info) => {
+                let base = argv0_base(&info.cmdline);
+                if base.is_empty() {
+                    info.comm.clone()
+                } else {
+                    base.to_string()
+                }
+            }
+            None => reported.to_string(),
+        }
+    }
+
+    fn is_wrapper(&self, pid: u32) -> bool {
+        self.procs.get(&pid).is_some_and(|info| {
+            CMD_WRAPPERS.contains(&info.comm.as_str())
+                || CMD_WRAPPERS.contains(&argv0_base(&info.cmdline))
+        })
     }
 
     /// Total CPU ticks of `pid` and all its descendants (0 when unknown).
