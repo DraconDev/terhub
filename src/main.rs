@@ -1575,6 +1575,13 @@ fn run_tui() -> Result<Option<TuiExit>> {
                             None
                         };
                     }
+                    MouseEventKind::ScrollUp => {
+                        app.on_wheel(true);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        app.on_wheel(false);
+                    }
+                    // Drags, releases, horizontal scrolls: no surface for them.
                     _ => {}
                 }
             }

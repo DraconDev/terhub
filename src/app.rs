@@ -1342,38 +1342,37 @@ impl App {
     /// settings list, or the table/sidebar selection (scroll follows via
     /// the existing ensure-visible paths). Prompts and confirms eat it.
     pub fn on_wheel(&mut self, up: bool) {
-        match &mut self.mode {
-            Mode::CommandOutput { lines, scroll, .. } => {
-                if up {
-                    *scroll = scroll.saturating_sub(3);
-                } else {
-                    *scroll = (*scroll + 3).min(lines.len().saturating_sub(1));
-                }
+        if matches!(self.mode, Mode::CommandOutput { .. }) {
+            let (len, scroll) = match &mut self.mode {
+                Mode::CommandOutput { lines, scroll, .. } => (lines.len(), scroll),
+                _ => unreachable!("just matched"),
+            };
+            if up {
+                *scroll = scroll.saturating_sub(3);
+            } else {
+                *scroll = (*scroll + 3).min(len.saturating_sub(1));
             }
-            Mode::Settings => {
-                if up {
-                    self.move_settings_up();
-                } else {
-                    self.move_settings_down();
-                }
+            return;
+        }
+        if matches!(self.mode, Mode::Settings) {
+            if up {
+                self.move_settings_up();
+            } else {
+                self.move_settings_down();
             }
-            Mode::Normal => match self.focus {
-                Focus::Panes => {
-                    if up {
-                        self.move_pane_up();
-                    } else {
-                        self.move_pane_down();
-                    }
+        } else if matches!(self.mode, Mode::Normal) {
+            let panes = self.focus == Focus::Panes;
+            if up {
+                if panes {
+                    self.move_pane_up();
+                } else {
+                    self.move_up();
                 }
-                Focus::Sessions => {
-                    if up {
-                        self.move_up();
-                    } else {
-                        self.move_down();
-                    }
-                }
-            },
-            _ => {}
+            } else if panes {
+                self.move_pane_down();
+            } else {
+                self.move_down();
+            }
         }
     }
 
