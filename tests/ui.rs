@@ -507,6 +507,14 @@ fn settings_selection_stays_visible() {
         "last item scrolled out of view:\n{text}"
     );
     assert!(text.contains("›"), "selection marker missing:\n{text}");
+    // Back up: scroll must follow to the top.
+    let up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
+    for _ in 0..20 {
+        app.on_key(up, &tmux);
+    }
+    let text = render_lines(&mut app, 160, 12).join("\n");
+    assert!(text.contains("Theme"), "scrolled past top:\n{text}");
+    assert_eq!(app.settings_scroll, 0);
 }
 
 #[test]
