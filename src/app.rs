@@ -1619,7 +1619,15 @@ impl App {
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
                 let mut killed = 0;
                 let mut failed = 0;
+                let mut skipped_own = 0;
                 for id in &ids {
+                    // Never kill the pane hosting this TUI: a marked own
+                    // pane would otherwise murder the messenger.
+                    if self.own_pane.as_deref() == Some(id.as_str()) {
+                        skipped_own += 1;
+                        self.marked.remove(id);
+                        continue;
+                    }
                     match tmux.kill_pane(id) {
                         Ok(_) => {
                             killed += 1;
@@ -1628,11 +1636,15 @@ impl App {
                         Err(_) => failed += 1,
                     }
                 }
-                self.set_status(if failed == 0 {
+                let mut msg = if failed == 0 {
                     format!("killed {killed} marked pane(s)")
                 } else {
                     format!("killed {killed}, {failed} failed")
-                });
+                };
+                if skipped_own > 0 {
+                    msg.push_str(", own pane skipped");
+                }
+                self.set_status(msg);
                 self.refresh(tmux);
                 self.cancel_modal();
             }
@@ -1701,6 +1713,22 @@ mod tests {
         assert_eq!(app.on_key(press(KeyCode::Esc), &tmux), None);
         assert_eq!(app.focus, Focus::Sessions);
         assert_eq!(app.on_key(press(KeyCode::Esc), &tmux), Some(AppEvent::Quit));
+    }
+
+    #[test]
+    fn bulk_kill_skips_own_pane() {
+        let mut app = app_with(&["a"]);
+        app.own_pane = Some("%1".to_string());
+        app.marked.insert("%1".to_string());
+        app.marked.insert("%2".to_string());
+        app.mode = Mode::ConfirmKillMarked(vec!["%1".to_string(), "%2".to_string()]);
+        // /bin/true "kills" everything: without the guard both report killed.
+        let tmux = Tmux::test("/bin/true".into());
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert!(app.marked.is_empty());
+        let status = app.status.as_deref().unwrap_or("");
+        assert!(status.contains("killed 1"), "{status}");
+        assert!(status.contains("own pane"), "{status}");
     }
 
     #[test]
