@@ -829,8 +829,16 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         return;
     };
     frame.render_widget(Clear, area);
+    let rec = app.agents.get(&p.id);
+    let agent = rec
+        .map(|r| r.agent.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("—");
+    let state = rec.map(|r| r.state.label()).unwrap_or("—");
+    let now = crate::agent::now_unix();
+    let (idle, _) = idle_cell(rec, p.activity, now, &app.config);
     let title = format!(
-        " {} · {}:{} — left-click/enter jump · right-click/esc close ",
+        " {} · {}:{} · {agent} {state} {idle} — left-click/enter jump · right-click/esc close ",
         p.id, p.session, p.window_name
     );
     let block = Block::bordered()

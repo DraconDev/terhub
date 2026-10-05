@@ -450,6 +450,37 @@ fn footer_hints_match_navigation() {
 }
 
 #[test]
+fn preview_title_shows_agent_context() {
+    use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
+    let mut app = app_with_panes();
+    let now = now_unix();
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: now,
+            state_since: now - 100,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            last_turn_secs: 0,
+            screen_hash: 1,
+            quiet_since: now - 180,
+        },
+    );
+    app.show_preview = true;
+    app.preview = "hello from pane".to_string();
+    let text = render_lines(&mut app, 160, 20).join("\n");
+    assert!(text.contains("pi working 3m"), "title lacks context:\n{text}");
+}
+
+#[test]
 fn filter_prompt_renders_text() {
     let mut app = app_with(&["alpha"]);
     app.mode = Mode::PromptFilter;
