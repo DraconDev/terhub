@@ -40,10 +40,8 @@ fn runtime_dir_flag_wins_without_env() {
         .unwrap();
     assert_eq!(pid, child.id());
     // Graceful shutdown through the flag-dir socket, then reap.
-    let _ = terhub::daemon::send_request(
-        &terhub::daemon::Request::Shutdown,
-        Duration::from_secs(2),
-    );
+    let _ =
+        terhub::daemon::send_request(&terhub::daemon::Request::Shutdown, Duration::from_secs(2));
     let mut exited = false;
     for _ in 0..50 {
         match child.try_wait() {

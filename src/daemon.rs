@@ -709,9 +709,7 @@ fn merge_record_owned(
     {
         final_state = AgentState::Stuck;
         since = match carried {
-            Some(o)
-                if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) =>
-            {
+            Some(o) if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) => {
                 o.state_since
             }
             _ => now,
@@ -1097,8 +1095,7 @@ mod tests {
         // tmux, no registry writes, prompt return.
         let registry = Arc::new(Mutex::new(HashMap::new()));
         let shutdown = Arc::new(AtomicBool::new(true));
-        let dir =
-            std::env::temp_dir().join(format!("terhub-poll-shutdown-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-poll-shutdown-{}", std::process::id()));
         tokio::time::timeout(
             Duration::from_secs(5),
             poll_loop(
@@ -1183,8 +1180,7 @@ mod tests {
     #[test]
     fn runtime_dir_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
-        let dir =
-            std::env::temp_dir().join(format!("terhub-dirperms-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-dirperms-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Simulate a pre-existing umask-permissive dir.
         let mut p = std::fs::metadata(&dir).unwrap().permissions();
@@ -1235,7 +1231,10 @@ mod tests {
         .unwrap();
         write_task.abort();
         assert!(!resp.ok, "oversize request accepted");
-        assert!(lock_registry(&registry).is_empty(), "truncated event applied");
+        assert!(
+            lock_registry(&registry).is_empty(),
+            "truncated event applied"
+        );
         handle.await.unwrap();
     }
 
