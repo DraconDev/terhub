@@ -1328,6 +1328,55 @@ impl App {
         }
     }
 
+    fn move_settings_up(&mut self) {
+        self.settings_selected = self.settings_selected.saturating_sub(1);
+    }
+
+    fn move_settings_down(&mut self) {
+        if self.settings_selected + 1 < self.settings_item_rows().len() {
+            self.settings_selected += 1;
+        }
+    }
+
+    /// Mouse wheel: scroll the visible surface — the output popup, the
+    /// settings list, or the table/sidebar selection (scroll follows via
+    /// the existing ensure-visible paths). Prompts and confirms eat it.
+    pub fn on_wheel(&mut self, up: bool) {
+        match &mut self.mode {
+            Mode::CommandOutput { lines, scroll, .. } => {
+                if up {
+                    *scroll = scroll.saturating_sub(3);
+                } else {
+                    *scroll = (*scroll + 3).min(lines.len().saturating_sub(1));
+                }
+            }
+            Mode::Settings => {
+                if up {
+                    self.move_settings_up();
+                } else {
+                    self.move_settings_down();
+                }
+            }
+            Mode::Normal => match self.focus {
+                Focus::Panes => {
+                    if up {
+                        self.move_pane_up();
+                    } else {
+                        self.move_pane_down();
+                    }
+                }
+                Focus::Sessions => {
+                    if up {
+                        self.move_up();
+                    } else {
+                        self.move_down();
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+
     fn on_settings_key(&mut self, key: KeyEvent) -> Option<AppEvent> {
         let items = self.settings_item_rows();
         match key.code {
@@ -1336,13 +1385,11 @@ impl App {
                 return None;
             }
             KeyCode::Up => {
-                self.settings_selected = self.settings_selected.saturating_sub(1);
+                self.move_settings_up();
                 return None;
             }
             KeyCode::Down => {
-                if self.settings_selected + 1 < items.len() {
-                    self.settings_selected += 1;
-                }
+                self.move_settings_down();
                 return None;
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
@@ -2099,6 +2146,57 @@ mod tests {
             "custom dead in Sessions focus: {:?}",
             app.mode
         );
+    }
+
+    #[test]
+    fn wheel_scrolls_output_popup() {
+        let mut app = app_with_panes();
+        app.mode = Mode::CommandOutput {
+            name: "out".to_string(),
+            lines: (0..20).map(|i| format!("line {i}")).collect(),
+            scroll: 10,
+        };
+        app.on_wheel(true);
+        assert_eq!(output_scroll(&app), 7);
+        app.on_wheel(false);
+        assert_eq!(output_scroll(&app), 10);
+        // Clamps at both ends.
+        for _ in 0..20 {
+            app.on_wheel(true);
+        }
+        assert_eq!(output_scroll(&app), 0);
+        for _ in 0..30 {
+            app.on_wheel(false);
+        }
+        assert_eq!(output_scroll(&app), 19);
+    }
+
+    #[test]
+    fn wheel_moves_table_and_settings_selection() {
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        assert_eq!(app.pane_selected, 0);
+        app.on_wheel(false);
+        assert_eq!(app.pane_selected, 1);
+        app.on_wheel(true);
+        assert_eq!(app.pane_selected, 0);
+        app.open_settings();
+        assert_eq!(app.settings_selected, 0);
+        app.on_wheel(false);
+        assert_eq!(app.settings_selected, 1);
+        app.on_wheel(true);
+        assert_eq!(app.settings_selected, 0);
+        // Prompts eat the wheel.
+        app.open_filter();
+        app.on_wheel(false);
+        assert_eq!(app.mode, Mode::PromptFilter);
+    }
+
+    fn output_scroll(app: &App) -> usize {
+        match &app.mode {
+            Mode::CommandOutput { scroll, .. } => *scroll,
+            m => panic!("lost popup mode: {m:?}"),
+        }
     }
 
     #[test]
