@@ -1130,7 +1130,8 @@ mod tests {
         // track_cpu matches agents case-insensitively; state continuity
         // must agree, or a "PI"→"pi" wobble resets the clock every poll.
         let now = 100_000;
-        let mut old = carried("PI", AgentState::Working, 50, now - 600, now - 600);
+        // Fresh still-clock (no stuck trip): only the clock continuity matters.
+        let mut old = carried("PI", AgentState::Working, 50, now - 60, now - 600);
         old.agent_start = 100;
         let rec = merge_record_owned(
             Some(&old),
@@ -1144,7 +1145,7 @@ mod tests {
         )
         .expect("no record");
         assert_eq!(rec.state_since, now - 600);
-        assert_eq!(rec.cpu_still_since, now - 600);
+        assert_eq!(rec.cpu_still_since, now - 60);
     }
 
     fn hook_record(updated_at: u64) -> AgentRecord {
