@@ -1041,7 +1041,12 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         .border_style(pal.border);
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
-    frame.render_widget(Paragraph::new(body).style(pal.status), inner);
+    // Wrapped: a long id list (or rename input) folds inside the modal
+    // instead of clipping the Enter/Esc hint off the edge.
+    frame.render_widget(
+        Paragraph::new(body).style(pal.status).wrap(Wrap { trim: false }),
+        inner,
+    );
     if let Some(plen) = prefix {
         let cx = inner.x + (plen as u16) + (app.cursor as u16);
         let cx = cx.min(inner.x + inner.width.saturating_sub(1));
