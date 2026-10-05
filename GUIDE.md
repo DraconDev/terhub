@@ -116,6 +116,11 @@ status bar, no modes except small popups:
   `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc` cancels).
   Kills ask for confirmation (`Enter`/`y` yes, `Esc`/`n` no).
 - **`Ctrl+C` always quits.** `Esc` quits from the session bar.
+- **Stays open.** Jumps, attends, and attaches only move your view to the
+  target pane or session — the table keeps running behind it, so keep it
+  in its own pane and flip back to a live table. Only `q`, `Esc` (from the
+  session bar), and `Ctrl+C` quit. Outside tmux, an attach still takes over
+  the terminal (it has to become a tmux client).
 - **Agent columns.** With the daemon running, rows show agent/state/for
   (time in this state) and the title bar counts how many need you. Panes
   with no agent show no state (`—`): a shell was never expected to work
