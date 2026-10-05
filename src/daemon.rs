@@ -773,8 +773,7 @@ fn poll_sync(
             match &proc_hit {
                 Some(h) => {
                     let t = snap.subtree_ticks(h.pid);
-                    (r.cpu_ticks, r.cpu_still_since) =
-                        track_cpu(&r, &h.agent, t, h.start, now);
+                    (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &h.agent, t, h.start, now);
                     r.agent_start = h.start;
                 }
                 None => {
