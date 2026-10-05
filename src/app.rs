@@ -1423,11 +1423,21 @@ impl App {
     }
 
     fn do_rename_session(&mut self) {
-        match self.side_session().map(|s| s.name.clone()) {
+        // Panes focus renames the selected pane's session (the sidebar may
+        // sit on All); Sessions focus keeps the sidebar cursor.
+        let name = if self.focus == Focus::Panes {
+            self.selected_pane().map(|p| p.session.clone())
+        } else {
+            self.side_session().map(|s| s.name.clone())
+        };
+        match name {
             Some(name) => {
                 self.cursor = name.chars().count();
                 self.input = name.clone();
                 self.mode = Mode::PromptRename(name);
+            }
+            None if self.focus == Focus::Panes => {
+                self.set_status("no pane selected".to_string())
             }
             None => self.set_status("pick a session row (All doesn't count)".to_string()),
         }
