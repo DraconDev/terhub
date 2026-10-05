@@ -561,8 +561,7 @@ mod tests {
 
     #[test]
     fn broken_manifests_warn_instead_of_vanishing() {
-        let dir =
-            std::env::temp_dir().join(format!("terhub-manifests-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-manifests-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(

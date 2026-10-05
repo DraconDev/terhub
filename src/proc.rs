@@ -67,9 +67,7 @@ fn is_version_suffix(rest: &str) -> bool {
     }
     match rest.chars().next() {
         Some(c) if c.is_ascii_digit() => true,
-        Some('-') | Some('.') | Some('_') => {
-            rest.contains(|c: char| c.is_ascii_digit())
-        }
+        Some('-') | Some('.') | Some('_') => rest.contains(|c: char| c.is_ascii_digit()),
         _ => false,
     }
 }
@@ -162,9 +160,7 @@ const HELPER_PROCS: &[&str] = &["pkttyagent", "ssh-askpass", "systemd-ask-passwo
 /// Terminal editors an agent summons via $EDITOR. Matched case-insensitively
 /// against comm or argv[0]; plain user editing never matches without agent
 /// context around it.
-const EDITOR_NAMES: &[&str] = &[
-    "micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx",
-];
+const EDITOR_NAMES: &[&str] = &["micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx"];
 
 pub fn is_editor_name(name: &str) -> bool {
     EDITOR_NAMES.contains(&name.to_lowercase().as_str())
@@ -683,7 +679,15 @@ mod tests {
         // The claude-code binary itself still resolves.
         let dir = fake_proc(
             "stillcc",
-            &[("805", "1", "claude-code", "claude-code --resume", 1, 1, 8005)],
+            &[(
+                "805",
+                "1",
+                "claude-code",
+                "claude-code --resume",
+                1,
+                1,
+                8005,
+            )],
         );
         let snap = Snapshot::capture_from(&dir);
         assert_eq!(

@@ -509,8 +509,7 @@ mod tests {
 
     #[test]
     fn corrupt_rules_file_errors_instead_of_empty() {
-        let dir =
-            std::env::temp_dir().join(format!("terhub-rules-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-rules-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let bad = dir.join("automation.toml");

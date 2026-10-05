@@ -416,10 +416,7 @@ fn note_sticky(key: &'static str, msg: Option<String>) {
 /// Report an automation load failure through the sticky logger: a corrupt
 /// file warns once, a clean load re-arms.
 fn note_rules_error(err: Option<&anyhow::Error>) {
-    note_sticky(
-        "automation",
-        err.map(|e| format!("automation.toml: {e:#}")),
-    );
+    note_sticky("automation", err.map(|e| format!("automation.toml: {e:#}")));
 }
 
 /// Evaluate automation rules against the current registry and carry out
@@ -519,8 +516,9 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
 
 /// Merge one poll's evidence into a record, legacy entry: no snapshot in
 /// scope here, so editor ownership falls back to the old rule (editor
-/// foreground plus any process hit). The poller calls
+/// foreground plus any process hit). Test-only: the poller calls
 /// [`merge_record_owned`] with the real subtree check instead.
+#[cfg(test)]
 fn merge_record(
     carried: Option<&AgentRecord>,
     lapsed: bool,
@@ -554,6 +552,7 @@ fn merge_record(
 /// `has_editor` is the poller's verdict that the foreground editor sits
 /// inside this agent's own subtree — a background agent never claims a
 /// sibling editor.
+#[allow(clippy::too_many_arguments)] // one verdict per evidence source; a struct would churn 25 test sites
 fn merge_record_owned(
     carried: Option<&AgentRecord>,
     lapsed: bool,
@@ -883,10 +882,7 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
     let text = match serde_json::to_string_pretty(&agents) {
         Ok(t) => t,
         Err(e) => {
-            note_sticky(
-                "registry-save",
-                Some(format!("registry serialize: {e:#}")),
-            );
+            note_sticky("registry-save", Some(format!("registry serialize: {e:#}")));
             return;
         }
     };
