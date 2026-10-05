@@ -307,6 +307,9 @@ pub struct App {
     /// Filtered-list index under the mouse cursor, if any. Cleared on
     /// every list rebuild (an index can't survive a reorder).
     pub hover: Option<usize>,
+    /// The TUI's own pane id (`$TMUX_PANE`, set once at startup), so its
+    /// row reads as the observer instead of just another entry.
+    pub own_pane: Option<String>,
 }
 
 impl App {
@@ -340,6 +343,7 @@ impl App {
             hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
             hover: None,
+            own_pane: None,
         }
     }
 

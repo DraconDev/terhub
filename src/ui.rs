@@ -709,9 +709,16 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Some(_) => ("scr".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };
+            // The observer's own row wears the attached accent on its id
+            // instead of another dim entry.
+            let id_style = if app.own_pane.as_deref() == Some(p.id.as_str()) {
+                pal.attached
+            } else {
+                pal.dim
+            };
             let mut cells = vec![
                 Cell::from(mark).style(mark_style),
-                Cell::from(p.id.clone()).style(pal.dim),
+                Cell::from(p.id.clone()).style(id_style),
             ];
             if show_session {
                 cells.push(Cell::from(truncate(&p.session, 18)));
@@ -719,7 +726,12 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             cells.extend([
                 Cell::from(truncate(&window, 20)),
                 Cell::from(truncate(&p.command, if compact { 16 } else { 32 })),
-                Cell::from(truncate(dir, 24)).style(pal.dim),
+                Cell::from(truncate(dir, 24)).style(if dir.contains("(deleted)") {
+                    // A vanished cwd reads struck-through, still legible.
+                    pal.dim.add_modifier(Modifier::CROSSED_OUT)
+                } else {
+                    pal.dim
+                }),
                 Cell::from(agent).style(agent_style),
                 Cell::from(state).style(state_style),
                 Cell::from(src).style(src_style),

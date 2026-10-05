@@ -1391,6 +1391,7 @@ fn run_tui() -> Result<Option<TuiExit>> {
     let (cfg, problems) = config::load_config_report(None);
     let tmux = Tmux::new()?;
     let mut app = App::new(cfg);
+    app.own_pane = std::env::var("TMUX_PANE").ok();
     if let Some(first) = problems.first() {
         app.status = Some(format!("config: {first}"));
     }
