@@ -997,7 +997,7 @@ impl App {
             if let Some(s) = self.side_session() {
                 return Some(AppEvent::Attach(s.name.clone()));
             }
-            self.status = Some("pick a session row (0 is All)".to_string());
+            self.status = Some("pick a session row (All doesn't count)".to_string());
             return None;
         }
         if key_matches(&cfg.spec("attend"), code) {
@@ -1014,7 +1014,7 @@ impl App {
         if key_matches(&cfg.spec("kill"), code) {
             match self.side_session() {
                 Some(s) => self.mode = Mode::ConfirmKill(s.name.clone()),
-                None => self.status = Some("pick a session row (0 is All)".to_string()),
+                None => self.status = Some("pick a session row (All doesn't count)".to_string()),
             }
             return None;
         }
@@ -1295,7 +1295,7 @@ impl App {
                 self.input = name.clone();
                 self.mode = Mode::PromptRename(name);
             }
-            None => self.status = Some("pick a session row (0 is All)".to_string()),
+            None => self.status = Some("pick a session row (All doesn't count)".to_string()),
         }
     }
 
@@ -1583,7 +1583,10 @@ mod tests {
         // Row 0 (All) is a filter, not a session: nothing to attach.
         app.select(0);
         assert_eq!(app.on_key(press(KeyCode::Enter), &tmux), None);
-        assert!(app.status.is_some());
+        assert_eq!(
+            app.status.as_deref(),
+            Some("pick a session row (All doesn't count)")
+        );
     }
 
     #[test]
