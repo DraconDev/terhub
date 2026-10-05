@@ -193,8 +193,7 @@ struct ProcInfo {
 /// its $EDITOR and is Waiting on the user.
 impl Snapshot {
     pub fn subtree_has_editor(&self, pid: u32) -> bool {
-        self.walk_subtree_rooted(pid)
-            .any(|p| p.comm != "exe" && is_editor_name(&p.comm))
+        self.walk_subtree_rooted(pid).any(|p| is_editor_name(&p.comm))
     }
 }
 
