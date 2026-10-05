@@ -1,0 +1,46 @@
+# Batch G (finding 45): supply-chain gates for CI (`cargo deny check`).
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+db-path = "~/.cargo/advisory-db"
+severity-threshold = "medium"
+vulnerability = "deny"
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+highlight = "all"
+
+[licenses]
+unlicensed = "deny"
+confidence-threshold = 0.8
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Zlib",
+    "BSL-1.0",
+    "LGPL-2.1-only",
+    "LGPL-3.0-only",
+]
+copyleft = "deny"
+allow-osi-fsf-free = "neither"
+default = "deny"
+exceptions = []
+
+[[licenses.clarify]]
+name = "ring"
+expression = "ISC AND MIT AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

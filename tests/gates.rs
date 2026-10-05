@@ -17,7 +17,7 @@ fn ci_workflow_runs_gates() {
         "/.github/workflows/ci.yml"
     ))
     .expect("ci.yml");
-    for gate in ["fmt --check", "clippy", "cargo test", "cargo deny"] {
+    for gate in ["fmt --check", "clippy", "cargo test", "cargo-deny-action"] {
         assert!(text.contains(gate), "CI must run {gate}");
     }
 }
