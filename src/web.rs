@@ -335,12 +335,60 @@ refresh(); setInterval(refresh, 2000); setInterval(refreshCap, 3000);
 
 #[cfg(test)]
 mod tests {
-    use super::latest;
+    use super::{latest, stats_rows, timeline_rows};
+    use crate::agent::AgentState;
+    use crate::history::{Entry, GroupBy};
 
     #[test]
     fn latest_keeps_the_tail() {
         assert_eq!(latest(vec![1, 2, 3, 4, 5], 3), vec![3, 4, 5]);
         assert_eq!(latest(vec![1, 2], 5), vec![1, 2]);
         assert!(latest::<u8>(Vec::new(), 10).is_empty());
+    }
+
+    fn entry(t: u64, to: AgentState) -> Entry {
+        Entry {
+            t,
+            kind: "agent".to_string(),
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            from: Some(AgentState::Idle),
+            to: Some(to),
+            session: "s".to_string(),
+            window: "w".to_string(),
+            summary: String::new(),
+            event: None,
+        }
+    }
+
+    #[test]
+    fn stats_rows_aggregate_spans() {
+        // Working 100–200, Waiting 200–300.
+        let entries = vec![entry(100, AgentState::Working), entry(200, AgentState::Waiting)];
+        let rows = stats_rows(&entries, None, GroupBy::Agent, 300);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key, "pi");
+        assert_eq!(rows[0].work, 100);
+        assert_eq!(rows[0].wait, 100);
+        // since clips: only the 250–300 slice counts.
+        let rows = stats_rows(&entries, Some(250), GroupBy::Agent, 300);
+        assert_eq!(rows[0].work, 0);
+        assert_eq!(rows[0].wait, 50);
+    }
+
+    #[test]
+    fn timeline_rows_filter_and_limit() {
+        let entries = vec![entry(100, AgentState::Working), entry(200, AgentState::Waiting)];
+        let all = timeline_rows(&entries, None, None, None, 200, 300);
+        assert_eq!(all.len(), 2);
+        assert!(timeline_rows(&entries, None, None, Some("xx"), 200, 300).is_empty());
+        assert_eq!(
+            timeline_rows(&entries, None, Some("s"), Some("pi"), 200, 300).len(),
+            2
+        );
+        // Limit keeps the tail (latest first? no — oldest-first, tail cut).
+        let one = timeline_rows(&entries, None, None, None, 1, 300);
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].state, AgentState::Waiting);
     }
 }
