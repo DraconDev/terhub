@@ -1113,7 +1113,7 @@ impl App {
                 self.set_status(LEGEND.to_string());
             } else {
                 self.set_status(format!(
-                    "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=quit",
+                    "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hide {}=quit",
                     cfg.key("new"),
                     cfg.key("rename"),
                     cfg.key("kill"),
@@ -1121,6 +1121,7 @@ impl App {
                     cfg.key("preview"),
                     cfg.key("theme"),
                     cfg.key("settings"),
+                    cfg.key("hide_shells"),
                     cfg.key("quit"),
                 ));
             }
@@ -1508,7 +1509,7 @@ impl App {
                 return None;
             }
             let mut help = format!(
-                "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=sort {}=settings tab=back {}=quit",
+                "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=hide {}=sort {}=settings tab=back {}=quit",
                 cfg.key("attach"),
                 cfg.key("kill"),
                 cfg.key("preview"),
@@ -1516,6 +1517,7 @@ impl App {
                 cfg.key("mark"),
                 cfg.key("unmark"),
                 cfg.key("filter"),
+                cfg.key("hide_shells"),
                 cfg.key("sort"),
                 cfg.key("settings"),
                 cfg.key("quit"),
