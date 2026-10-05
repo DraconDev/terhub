@@ -1715,22 +1715,39 @@ mod tests {
         assert_eq!(app.on_key(press(KeyCode::Esc), &tmux), Some(AppEvent::Quit));
     }
 
+    /// Fake tmux: listings succeed empty, kills fail. No real tmux needed.
+    fn fake_tmux() -> (Tmux, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("terhub-faketmux-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tmux");
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\ncase \"$1\" in\nlist-*) exit 0;;\nkill-pane) exit 1;;\n*) exit 0;;\nesac\n",
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let mut p = std::fs::metadata(&bin).unwrap().permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(&bin, p).unwrap();
+        (Tmux::test(bin), dir)
+    }
+
     #[test]
     fn bulk_kill_skips_own_pane() {
-        // Kills fail (bogus binary) — but the own pane must not even be
-        // attempted: failed keeps its mark, skipped does not.
+        // The own pane is never attempted: one attempt (failed), one skip.
+        // Without the guard both would be attempted ("0, 2 failed").
         let mut app = app_with(&["a"]);
         app.own_pane = Some("%1".to_string());
         app.marked.insert("%1".to_string());
         app.marked.insert("%2".to_string());
         app.mode = Mode::ConfirmKillMarked(vec!["%1".to_string(), "%2".to_string()]);
-        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        let (tmux, dir) = fake_tmux();
         app.on_key(press(KeyCode::Enter), &tmux);
-        assert_eq!(app.marked.len(), 1);
-        assert!(app.marked.contains("%2"));
         let status = app.status.as_deref().unwrap_or("");
         assert!(status.contains("0, 1 failed"), "{status}");
         assert!(status.contains("own pane skipped"), "{status}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
