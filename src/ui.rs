@@ -142,6 +142,7 @@ pub struct ClickAreas {
 }
 
 pub fn render(frame: &mut Frame, app: &mut App) -> ClickAreas {
+    app.expire_status();
     let pal = palette(app.config.palette());
     let area = frame.area();
     let chunks = Layout::vertical([
@@ -609,6 +610,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     let show_session = app.side_session().is_none();
     let needy = app.visible_needy();
     let mut title = format!(" terhub — {} pane(s)", app.filtered.len());
+    if !app.agents_live {
+        title.push_str(" · daemon down");
+    }
     if let Some(s) = app.side_session() {
         title.push_str(&format!(" · {} only", truncate(&s.name, 16)));
     }

@@ -375,7 +375,7 @@ impl App {
     pub fn refresh(&mut self, tmux: &Tmux) {
         match tmux.list_sessions() {
             Ok(s) => self.set_sessions(s),
-            Err(e) => self.status = Some(format!("tmux error: {e}")),
+            Err(e) => self.set_status(format!("tmux error: {e}")),
         }
         match tmux.list_all_panes() {
             Ok(mut panes) => {
@@ -398,7 +398,7 @@ impl App {
                 self.panes.clear();
                 self.filtered.clear();
                 self.marked.clear();
-                self.status = Some(format!("panes error: {e}"));
+                self.set_status(format!("panes error: {e}"));
             }
         }
         self.refresh_agents();
@@ -410,7 +410,8 @@ impl App {
         }
     }
 
-    /// Pull the daemon snapshot; a dead daemon just clears the badges.
+    /// Pull the daemon snapshot; a dead daemon clears the badges and drops
+    /// the liveness flag (the title says so — empty badges can't).
     pub fn refresh_agents(&mut self) {
         match daemon::fetch_snapshot(Duration::from_millis(200)) {
             Ok(snap) => {
@@ -419,8 +420,33 @@ impl App {
                     .into_iter()
                     .map(|a| (a.pane.clone(), a))
                     .collect();
+                self.agents_live = true;
             }
-            Err(_) => self.agents.clear(),
+            Err(_) => {
+                self.agents.clear();
+                self.agents_live = false;
+            }
+        }
+    }
+
+    /// Footer toast lifetime: confirmations fade back to the hints instead
+    /// of pinning the footer for the rest of the session.
+    pub const STATUS_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// Show a footer message that expires after [`App::STATUS_TTL`].
+    pub fn set_status(&mut self, text: String) {
+        self.set_status(text);
+        self.status_since = Some(std::time::Instant::now());
+    }
+
+    /// Clear an expired footer message, if any. Called every render.
+    pub fn expire_status(&mut self) {
+        if self
+            .status_since
+            .is_some_and(|t| t.elapsed() >= Self::STATUS_TTL)
+        {
+            self.status = None;
+            self.status_since = None;
         }
     }
 
@@ -620,7 +646,7 @@ impl App {
             return;
         }
         if self.selected_pane().is_none() {
-            self.status = Some("no pane selected".to_string());
+            self.set_status("no pane selected".to_string());
             return;
         }
         self.capture_preview(tmux);
@@ -751,11 +777,11 @@ impl App {
                         } else {
                             match tmux.new_session(&value, None, None) {
                                 Ok(_) => {
-                                    self.status = Some(format!("created {value}"));
+                                    self.set_status(format!("created {value}"));
                                     self.refresh(tmux);
                                     self.select_named(&value);
                                 }
-                                Err(e) => self.status = Some(format!("create failed: {e}")),
+                                Err(e) => self.set_status(format!("create failed: {e}")),
                             }
                             self.cancel_modal();
                         }
@@ -764,11 +790,11 @@ impl App {
                         if !value.is_empty() && value != old {
                             match tmux.rename_session(&old, &value) {
                                 Ok(_) => {
-                                    self.status = Some(format!("renamed {old} -> {value}"));
+                                    self.set_status(format!("renamed {old} -> {value}"));
                                     self.refresh(tmux);
                                     self.select_named(&value);
                                 }
-                                Err(e) => self.status = Some(format!("rename failed: {e}")),
+                                Err(e) => self.set_status(format!("rename failed: {e}")),
                             }
                         }
                         self.cancel_modal();
@@ -806,7 +832,7 @@ impl App {
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.follow_preview(tmux);
-                self.status = Some("filter cleared".to_string());
+                self.set_status("filter cleared".to_string());
             }
             KeyCode::Enter => {
                 self.filter = self.input.trim().to_string();
@@ -816,7 +842,7 @@ impl App {
                 self.pane_scroll = 0;
                 self.follow_preview(tmux);
                 if !self.filter.is_empty() {
-                    self.status = Some(format!("filter: {}", self.filter));
+                    self.set_status(format!("filter: {}", self.filter));
                 }
             }
             KeyCode::Backspace => {
@@ -886,10 +912,10 @@ impl App {
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
                 match tmux.kill_session(&name) {
                     Ok(_) => {
-                        self.status = Some(format!("killed {name}"));
+                        self.set_status(format!("killed {name}"));
                         self.refresh(tmux);
                     }
-                    Err(e) => self.status = Some(format!("kill failed: {e}")),
+                    Err(e) => self.set_status(format!("kill failed: {e}")),
                 }
                 self.cancel_modal();
             }
@@ -952,7 +978,7 @@ impl App {
                 if !self.filter.is_empty() {
                     self.filter.clear();
                     self.refresh_filtered();
-                    self.status = Some("filter cleared".to_string());
+                    self.set_status("filter cleared".to_string());
                     return None;
                 }
                 if self.focus == Focus::Panes {
@@ -983,7 +1009,7 @@ impl App {
         if key_matches(&self.config.spec("sort"), code) {
             self.resort_next();
             self.follow_preview(tmux);
-            self.status = Some(format!(
+            self.set_status(format!(
                 "sort: {:?} {}",
                 self.sort_key,
                 if self.sort_asc { "▲" } else { "▼" }
@@ -1001,7 +1027,7 @@ impl App {
             if let Some(p) = self.selected_pane() {
                 return Some(AppEvent::FocusPane(p.id.clone()));
             }
-            self.status = Some("no pane selected".to_string());
+            self.set_status("no pane selected".to_string());
             return None;
         }
         if self.focus == Focus::Panes {
@@ -1015,7 +1041,7 @@ impl App {
             if let Some(s) = self.side_session() {
                 return Some(AppEvent::Attach(s.name.clone()));
             }
-            self.status = Some("pick a session row (All doesn't count)".to_string());
+            self.set_status("pick a session row (All doesn't count)".to_string());
             return None;
         }
         if key_matches(&cfg.spec("attend"), code) {
@@ -1032,7 +1058,7 @@ impl App {
         if key_matches(&cfg.spec("kill"), code) {
             match self.side_session() {
                 Some(s) => self.mode = Mode::ConfirmKill(s.name.clone()),
-                None => self.status = Some("pick a session row (All doesn't count)".to_string()),
+                None => self.set_status("pick a session row (All doesn't count)".to_string()),
             }
             return None;
         }
@@ -1045,7 +1071,7 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("help"), code) {
-            self.status = Some(format!(
+            self.set_status(format!(
                 "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=quit",
                 cfg.key("new"),
                 cfg.key("rename"),
@@ -1074,7 +1100,7 @@ impl App {
         let cur = THEMES.iter().position(|t| *t == self.config.theme);
         let next = cur.map(|i| (i + 1) % THEMES.len()).unwrap_or(0);
         self.config.theme = THEMES[next].to_string();
-        self.status = Some(format!(
+        self.set_status(format!(
             "theme: {} ({}/{})",
             THEMES[next],
             next + 1,
@@ -1089,7 +1115,7 @@ impl App {
         } else {
             "compact".to_string()
         };
-        self.status = Some(format!("density: {}", self.config.density));
+        self.set_status(format!("density: {}", self.config.density));
     }
 
     /// Settings popup rows: section headers plus actionable items.
@@ -1214,8 +1240,8 @@ impl App {
             self.config.notifications_enabled,
             self.config.highlight_attached,
         ) {
-            Ok(()) => self.status = Some(format!("{label} (saved)")),
-            Err(e) => self.status = Some(format!("{label} (live only: {e})")),
+            Ok(()) => self.set_status(format!("{label} (saved)")),
+            Err(e) => self.set_status(format!("{label} (live only: {e})")),
         }
     }
 
@@ -1267,13 +1293,13 @@ impl App {
                 match crate::attend::pick_attend(&agents, None) {
                     Some(a) => Some(AppEvent::FocusPane(a.pane.clone())),
                     None => {
-                        self.status = Some(format!("all clear ({} agents)", agents.len()));
+                        self.set_status(format!("all clear ({} agents)", agents.len()));
                         None
                     }
                 }
             }
             Err(_) => {
-                self.status = Some("daemon not running".to_string());
+                self.set_status("daemon not running".to_string());
                 None
             }
         }
@@ -1285,15 +1311,15 @@ impl App {
         let id = match self.selected_pane() {
             Some(p) => p.id.clone(),
             None => {
-                self.status = Some("no pane selected".to_string());
+                self.set_status("no pane selected".to_string());
                 return;
             }
         };
         if self.marked.remove(&id) {
-            self.status = Some(format!("unmarked {id}"));
+            self.set_status(format!("unmarked {id}"));
         } else {
             self.marked.insert(id.clone());
-            self.status = Some(format!("marked {id}"));
+            self.set_status(format!("marked {id}"));
         }
         self.move_pane_down();
     }
@@ -1313,18 +1339,18 @@ impl App {
                 self.input = name.clone();
                 self.mode = Mode::PromptRename(name);
             }
-            None => self.status = Some("pick a session row (All doesn't count)".to_string()),
+            None => self.set_status("pick a session row (All doesn't count)".to_string()),
         }
     }
 
     fn do_detach(&mut self, tmux: &Tmux) {
         if std::env::var("TMUX").is_ok() {
             match tmux.detach_client() {
-                Ok(_) => self.status = Some("detached".to_string()),
-                Err(e) => self.status = Some(format!("detach failed: {e}")),
+                Ok(_) => self.set_status("detached".to_string()),
+                Err(e) => self.set_status(format!("detach failed: {e}")),
             }
         } else {
-            self.status = Some("not inside tmux (nothing to detach)".to_string());
+            self.set_status("not inside tmux (nothing to detach)".to_string());
         }
     }
 
@@ -1339,7 +1365,7 @@ impl App {
             if let Some(p) = self.selected_pane() {
                 return Some(AppEvent::FocusPane(p.id.clone()));
             }
-            self.status = Some("no pane selected".to_string());
+            self.set_status("no pane selected".to_string());
             return None;
         }
         if key_matches(&cfg.spec("kill"), code) {
@@ -1350,7 +1376,7 @@ impl App {
             } else {
                 match self.selected_pane() {
                     Some(p) => self.mode = Mode::ConfirmKillPane(p.id.clone()),
-                    None => self.status = Some("no pane selected".to_string()),
+                    None => self.set_status("no pane selected".to_string()),
                 }
             }
             return None;
@@ -1362,7 +1388,7 @@ impl App {
         if key_matches(&cfg.spec("unmark"), code) {
             let n = self.marked.len();
             self.marked.clear();
-            self.status = Some(if n == 0 {
+            self.set_status(if n == 0 {
                 "nothing marked".to_string()
             } else {
                 format!("cleared {n} mark(s)")
@@ -1417,7 +1443,7 @@ impl App {
                     help.push_str(&format!(" {}={}", c.key, c.name));
                 }
             }
-            self.status = Some(help);
+            self.set_status(help);
             return None;
         }
         None
@@ -1433,11 +1459,11 @@ impl App {
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
                 match tmux.kill_pane(&id) {
                     Ok(_) => {
-                        self.status = Some(format!("killed pane {id}"));
+                        self.set_status(format!("killed pane {id}"));
                         self.marked.remove(&id);
                         self.refresh(tmux);
                     }
-                    Err(e) => self.status = Some(format!("kill failed: {e}")),
+                    Err(e) => self.set_status(format!("kill failed: {e}")),
                 }
                 self.cancel_modal();
             }
@@ -1453,7 +1479,7 @@ impl App {
         let pane = match self.selected_pane() {
             Some(p) => p.clone(),
             None => {
-                self.status = Some("no pane selected".to_string());
+                self.set_status("no pane selected".to_string());
                 return;
             }
         };
@@ -1472,7 +1498,7 @@ impl App {
                     scroll: 0,
                 };
             }
-            Err(e) => self.status = Some(format!("{}: {e}", cmd.name)),
+            Err(e) => self.set_status(format!("{}: {e}", cmd.name)),
         }
     }
 
@@ -1513,7 +1539,7 @@ impl App {
                         Err(_) => failed += 1,
                     }
                 }
-                self.status = Some(if failed == 0 {
+                self.set_status(if failed == 0 {
                     format!("killed {killed} marked pane(s)")
                 } else {
                     format!("killed {killed}, {failed} failed")
