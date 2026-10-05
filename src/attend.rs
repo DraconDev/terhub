@@ -330,6 +330,18 @@ mod tests {
         assert!(row2.contains('—'), "{row2}");
     }
 
+    #[test]
+    fn hung_notifier_times_out() {
+        // A notifier that never exits must not stall the poll loop: bounded
+        // wait, kill, error — all well under the child's own lifetime.
+        let start = std::time::Instant::now();
+        let err = run_notifier_timeout("sleep", &["30"], Duration::from_millis(100));
+        assert!(err.is_err());
+        assert!(start.elapsed() < Duration::from_secs(5));
+        // A healthy notifier still succeeds.
+        assert!(run_notifier_timeout("true", &[], Duration::from_secs(5)).is_ok());
+    }
+
     fn rec(pane: &str, state: AgentState, since: u64) -> AgentRecord {
         AgentRecord {
             pane: pane.to_string(),
