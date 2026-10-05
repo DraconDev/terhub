@@ -1405,6 +1405,9 @@ fn run_tui() -> Result<Option<TuiExit>> {
     let mut press: Option<(u16, u16, Instant)> = None;
     // Last session-segment click for double-click-to-attach.
     let mut last_seg: Option<(Instant, usize)> = None;
+    // Inside tmux a jump only moves the client's view, so the table stays
+    // open behind it; outside tmux the attach must take over this terminal.
+    let stay_open = std::env::var("TMUX").is_ok();
 
     loop {
         terminal.draw(|frame| {
@@ -1422,8 +1425,17 @@ fn run_tui() -> Result<Option<TuiExit>> {
                 if let Some(ev) = app.on_key(key, &tmux) {
                     match ev {
                         AppEvent::Quit => return Ok(None),
-                        AppEvent::Attach(name) => return Ok(Some(TuiExit::Attach(name))),
-                        AppEvent::FocusPane(id) => return Ok(Some(TuiExit::FocusPane(id))),
+                        ev => {
+                            if stay_open {
+                                app.do_nav(&tmux, ev);
+                            } else {
+                                return Ok(Some(match ev {
+                                    AppEvent::Attach(n) => TuiExit::Attach(n),
+                                    AppEvent::FocusPane(i) => TuiExit::FocusPane(i),
+                                    AppEvent::Quit => unreachable!("matched above"),
+                                }));
+                            }
+                        }
                     }
                 }
             }
@@ -1457,7 +1469,11 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         }
                         if let Some(id) = app.preview_jump_target() {
                             // Fullscreen preview: jump to the previewed pane.
-                            return Ok(Some(TuiExit::FocusPane(id)));
+                            if stay_open {
+                                app.do_nav(&tmux, AppEvent::FocusPane(id));
+                            } else {
+                                return Ok(Some(TuiExit::FocusPane(id)));
+                            }
                         }
                         if let Some(hit) = areas
                             .headers
@@ -1490,7 +1506,11 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                                 < Duration::from_millis(500))
                                         && let Some(s) = app.side_session()
                                     {
-                                        return Ok(Some(TuiExit::Attach(s.name.clone())));
+                                        if stay_open {
+                                            app.do_nav(&tmux, AppEvent::Attach(s.name.clone()));
+                                        } else {
+                                            return Ok(Some(TuiExit::Attach(s.name.clone())));
+                                        }
                                     }
                                     last_seg = Some((now, idx));
                                 }
@@ -1501,7 +1521,11 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                 && let Some(p) = app.filtered.get(idx).map(|p| p.id.clone())
                             {
                                 // Left-click jumps straight to the pane.
-                                return Ok(Some(TuiExit::FocusPane(p)));
+                                if stay_open {
+                                    app.do_nav(&tmux, AppEvent::FocusPane(p));
+                                } else {
+                                    return Ok(Some(TuiExit::FocusPane(p)));
+                                }
                             }
                         }
                     }
