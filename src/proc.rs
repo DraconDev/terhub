@@ -159,6 +159,17 @@ pub fn is_launcher_wrapper(name: &str) -> bool {
 /// children of a wrapper: never the payload, ignored when descending.
 const HELPER_PROCS: &[&str] = &["pkttyagent", "ssh-askpass", "systemd-ask-password"];
 
+/// Terminal editors an agent summons via $EDITOR. Matched case-insensitively
+/// against comm or argv[0]; plain user editing never matches without agent
+/// context around it.
+const EDITOR_NAMES: &[&str] = &[
+    "micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx",
+];
+
+pub fn is_editor_name(name: &str) -> bool {
+    EDITOR_NAMES.contains(&name.to_lowercase().as_str())
+}
+
 /// argv[0] basename of a raw cmdline (`\0`- or space-separated).
 fn argv0_base(cmdline: &str) -> &str {
     cmdline
