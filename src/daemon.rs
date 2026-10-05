@@ -487,10 +487,18 @@ fn carry_record(old: &AgentRecord, pane: &Pane, now: u64, stale_secs: u64) -> bo
 }
 
 /// Advance the stuck clock for `ticks` observed under `agent`: an
-/// unchanged sum keeps the old still-time, anything else (moved sum,
-/// restarted agent, new agent) restarts it. Never trips on first sight.
-fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, now: u64) -> (u64, u64) {
-    if o.agent.eq_ignore_ascii_case(agent) && o.cpu_ticks == ticks && o.cpu_still_since > 0 {
+/// unchanged sum from the same process keeps the old still-time, anything
+/// else (moved sum, restarted agent, new agent, recycled pid) restarts
+/// it. Never trips on first sight. A zero `start` on either side means
+/// unknown (legacy caller, unparsable stat, pre-upgrade registry) and
+/// skips the identity check rather than forcing a restart.
+fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, start: u64, now: u64) -> (u64, u64) {
+    let same_proc = o.agent_start == 0 || start == 0 || o.agent_start == start;
+    if o.agent.eq_ignore_ascii_case(agent)
+        && o.cpu_ticks == ticks
+        && o.cpu_still_since > 0
+        && same_proc
+    {
         (ticks, o.cpu_still_since)
     } else {
         (ticks, now)
@@ -532,7 +540,7 @@ fn merge_record(
         carried,
         lapsed,
         screen,
-        proc_hit,
+        proc_hit.map(|(pa, t)| (pa, t, 0)),
         pane,
         is_editor_command(&pane.command),
         now,
@@ -551,13 +559,13 @@ fn merge_record(
 ///
 /// `has_editor` is the poller's verdict that the foreground editor sits
 /// inside this agent's own subtree — a background agent never claims a
-/// sibling editor.
+/// sibling editor. The proc triple is (agent, subtree ticks, starttime).
 #[allow(clippy::too_many_arguments)] // one verdict per evidence source; a struct would churn 25 test sites
 fn merge_record_owned(
     carried: Option<&AgentRecord>,
     lapsed: bool,
     screen: Option<ScreenHit>,
-    proc_hit: Option<(&str, u64)>,
+    proc_hit: Option<(&str, u64, u64)>,
     pane: &Pane,
     has_editor: bool,
     now: u64,
@@ -565,17 +573,17 @@ fn merge_record_owned(
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
-        (Some((pa, _)), Some(hit))
+        (Some((pa, _, _)), Some(hit))
             if hit.state == Waiting || hit.state == Error || hit.state == Limited =>
         {
             (pa.to_string(), hit.state, Source::Proc)
         }
         // Agent summoned $EDITOR: the foreground program awaits keystrokes —
         // but only its own editor, never a sibling's.
-        (Some((pa, _)), _) if is_editor_command(&pane.command) && has_editor => {
+        (Some((pa, _, _)), _) if is_editor_command(&pane.command) && has_editor => {
             (pa.to_string(), Waiting, Source::Proc)
         }
-        (Some((pa, _)), _) => (pa.to_string(), Working, Source::Proc),
+        (Some((pa, _, _)), _) => (pa.to_string(), Working, Source::Proc),
         (None, Some(hit)) => {
             let sa = hit.agent.as_ref()?;
             (sa.clone(), hit.state, Source::Screen)
@@ -612,11 +620,14 @@ fn merge_record_owned(
     if state == Working {
         summary = String::new();
     }
-    let (ticks, still) = match proc_hit {
-        Some((pa, t)) => carried
-            .map(|o| track_cpu(o, pa, t, now))
-            .unwrap_or((t, now)),
-        None => (0, 0),
+    let (ticks, still, astart) = match proc_hit {
+        Some((pa, t, s)) => carried
+            .map(|o| {
+                let (ti, st) = track_cpu(o, pa, t, s, now);
+                (ti, st, s)
+            })
+            .unwrap_or((t, now, s)),
+        None => (0, 0, 0),
     };
     let mut final_state = state;
     // stuck_secs = 0 disables stuck detection (the user's off switch).
@@ -656,6 +667,7 @@ fn merge_record_owned(
         state_since: since,
         cpu_ticks: ticks,
         cpu_still_since: still,
+        agent_start: astart,
         last_turn_secs,
         // Quiet is set by the poller post-merge (it owns the capture).
         screen_hash: 0,
