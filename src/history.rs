@@ -553,6 +553,17 @@ mod tests {
         assert!(parse_since("2028-02-29", now).is_ok());
     }
 
+    #[test]
+    fn since_rejects_unicode_without_panic() {
+        let now = 1_000_000;
+        // Multibyte input must error, never panic on a char boundary.
+        assert!(parse_since("5é", now).is_err());
+        assert!(parse_since("é", now).is_err());
+        assert!(parse_since("", now).is_err());
+        assert!(parse_since("m", now).is_err());
+        assert_eq!(parse_since("90m", now).unwrap(), Some(now - 5400));
+    }
+
     fn entry(t: u64, pane: &str, to: AgentState) -> Entry {
         Entry {
             t,
