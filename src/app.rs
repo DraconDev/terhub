@@ -986,6 +986,16 @@ impl App {
             self.open_filter();
             return None;
         }
+        // Fullscreen preview owns the screen: Enter jumps to the previewed
+        // pane from either focus (like left-click), instead of attaching to
+        // a session bar the preview covers up.
+        if self.show_preview && key_matches(&self.config.spec("attach"), code) {
+            if let Some(p) = self.selected_pane() {
+                return Some(AppEvent::FocusPane(p.id.clone()));
+            }
+            self.status = Some("no pane selected".to_string());
+            return None;
+        }
         if self.focus == Focus::Panes {
             return self.on_pane_key(code, tmux);
         }
@@ -1671,6 +1681,19 @@ mod tests {
         app.on_key(press(KeyCode::Char('?')), &tmux);
         let sessions = app.status.clone().unwrap_or_default();
         assert!(sessions.contains("s=settings"), "sessions help: {sessions}");
+    }
+
+    #[test]
+    fn preview_open_enter_jumps_from_either_focus() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.show_preview = true;
+        app.focus = Focus::Sessions;
+        app.select(1); // session "a": without the preview this would attach.
+        assert_eq!(
+            app.on_key(press(KeyCode::Enter), &tmux),
+            Some(AppEvent::FocusPane("%1".to_string()))
+        );
     }
 
     #[test]
