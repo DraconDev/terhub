@@ -335,4 +335,42 @@ mod tests {
         let mut cur = Cursor::new(full);
         assert!(read_frame(&mut cur).unwrap().is_none());
     }
+
+    #[test]
+    fn non_utf8_header_skips_frame() {
+        // Garbage bytes in the headers abandon one frame; the server keeps
+        // serving instead of exiting on read_line's UTF-8 error.
+        let mut input = b"\xff\xfe\n\n".to_vec();
+        input.extend_from_slice(&framed(r#"{"jsonrpc":"2.0","id":9}"#));
+        let mut cur = Cursor::new(input);
+        let v = read_frame(&mut cur).expect("server exited").expect("no frame");
+        assert_eq!(v.get("id").and_then(|i| i.as_u64()), Some(9));
+    }
+
+    #[test]
+    fn header_flood_skips_frame() {
+        // 100 junk headers (with a valid Content-Length!) must not
+        // accumulate unboundedly: the frame is drained and skipped.
+        let mut input = Vec::new();
+        for i in 0..100 {
+            input.extend_from_slice(format!("X-Junk-{i}: padding\r\n").as_bytes());
+        }
+        input.extend_from_slice(b"Content-Length: 2\r\n\r\n{}");
+        let real = r#"{"jsonrpc":"2.0","id":11,"method":"ping"}"#;
+        input.extend_from_slice(&framed(real));
+        let mut cur = Cursor::new(input);
+        let v = read_frame(&mut cur).expect("read").expect("frame");
+        assert_eq!(v.get("id").and_then(|i| i.as_u64()), Some(11));
+    }
+
+    #[test]
+    fn bad_state_filter_is_an_error() {
+        use crate::agent::AgentState;
+        assert_eq!(state_filter(&serde_json::json!({})).unwrap(), None);
+        assert_eq!(
+            state_filter(&serde_json::json!({"state": "waiting"})).unwrap(),
+            Some(AgentState::Waiting)
+        );
+        assert!(state_filter(&serde_json::json!({"state": "bogus"})).is_err());
+    }
 }
