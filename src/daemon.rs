@@ -477,9 +477,7 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
 /// Terminal editors an agent summons via $EDITOR: with agent context in
 /// the tree, an editor in the foreground means awaiting input, not working.
 /// Plain user editing never matches — the rule needs a process hit.
-const EDITOR_COMMANDS: &[&str] = &[
-    "micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx",
-];
+const EDITOR_COMMANDS: &[&str] = &["micro", "vim", "nvim", "vi", "nano", "emacs", "helix", "hx"];
 
 fn is_editor_command(command: &str) -> bool {
     EDITOR_COMMANDS.contains(&command.to_lowercase().as_str())
@@ -543,6 +541,12 @@ fn merge_record(
         && !hit.summary.is_empty()
     {
         summary = hit.summary.clone();
+    }
+    // Working rows stay summary-free even across carries: a prompt line
+    // borrowed while waiting is rot once the agent works again (and
+    // pre-gate summaries must not ride the carry forever).
+    if state == Working {
+        summary = String::new();
     }
     let (ticks, still) = match proc_hit {
         Some((pa, t)) => carried
@@ -1191,6 +1195,27 @@ mod tests {
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Error);
+    }
+
+    #[test]
+    fn working_carry_drops_stale_summary() {
+        let now = 100_000;
+        // A prompt line borrowed while waiting is rot once the agent
+        // works again — and pre-gate summaries must not ride the carry.
+        let mut old = carried("pi", AgentState::Working, 50, now - 10, now - 100);
+        old.summary = "● Chrome Bridge (indefinite)".to_string();
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 60)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        assert!(rec.summary.is_empty(), "carried rot: {}", rec.summary);
     }
 
     #[test]

@@ -78,7 +78,11 @@ status bar, no modes except small popups:
   show up here too); working rows stay blank, since spinner text is
   noise, not information. Turn is the last completed working turn (a turn
   ends when working moves to waiting/error/limited/idle; stuck never ends
-  one — the same turn is grinding).
+  one — the same turn is grinding). `Cmd` unwraps launcher wrappers
+  (`systemd-inhibit`, `sudo`, …) to the payload program; an agent with an
+  editor (`micro`, `vim`, …) in the foreground reads waiting — it
+  summoned `$EDITOR` and sits on keystrokes. The TUI's own row wears the
+  attached accent on its id, and a vanished cwd reads struck-through.
   `↑`/`↓` moves, `Enter` jumps to the pane, `x` kills it (with confirm),
   `a` attends, `Esc` steps back to the session bar. `Space` toggles a `+`
   mark on the row and steps down (file-manager style), `u` clears all
@@ -96,16 +100,18 @@ status bar, no modes except small popups:
   land on the same cell, so text drags never jump), right-click toggles
   the fullscreen preview, click a session segment to filter, double-click
   a session to attach. The row under the cursor highlights (bold).
-- **Sorting.** The table sorts by the `Idle` column (longest-quiet first)
-  by default. Click any header to sort by it, click again to
-  flip direction; `o` cycles columns from the keyboard. The `▲`/`▼` mark
-  shows the active sort. Unknowns (no daemon record yet) sink to the
-  bottom.
+- **Sorting.** The table sorts by the `Idle` column
+  (most-recently-active first) by default. Click any header to sort by
+  it, click again to flip direction; `o` cycles columns from the
+  keyboard. The `▲`/`▼` mark shows the active sort. Unknowns (no daemon
+  record yet) sink to the bottom.
 - **Filter.** `f` narrows rows by case-insensitive substring across every
   text column (session, window, command, dir, agent, state, summary).
   Typing filters live, `Enter` keeps the query, `Esc` clears it; the
   active query shows in the title bar. It composes with the session
-  filter.
+  filter. `h` hides unclaimed panes quiet over 10 minutes (one key,
+  reversible, hidden count in the title) — the fast way to drop idle
+  shells from a dashboard view.
   Prompts eat all clicks; the settings popup rows are clickable.
 - **Styles.** `t` cycles the six built-in themes and `v` flips table
   density (comfortable shows the summary column, compact drops it and
@@ -166,6 +172,7 @@ sort = "o"
 filter = "f"
 mark = "space"
 unmark = "u"
+hide_shells = "h"
 
 [notifications]
 enabled = true
@@ -287,6 +294,9 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
 - Unknown states are rejected; if the daemon is down the hook warns on
   stderr but still exits 0 — fire-and-forget, so a hook can never break
   the agent lifecycle script that called it.
+- Until the first hook lands, the TUI title shows `no hooks yet`:
+  hooks are the only true-state source, everything else is proc/screen
+  guessing.
 
 State changes from hooks are logged to the ledger and fire desktop
 notifications (unless disabled).

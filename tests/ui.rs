@@ -808,7 +808,10 @@ fn title_nudges_hookless_setups() {
     app.agents.get_mut("%1").unwrap().source = Source::Proc;
     app.agents_live = false;
     let text = render_lines(&mut app, 140, 20).join("\n");
-    assert!(!text.contains("no hooks yet"), "nudge over daemon-down:\n{text}");
+    assert!(
+        !text.contains("no hooks yet"),
+        "nudge over daemon-down:\n{text}"
+    );
     assert!(text.contains("daemon down"), "missing daemon-down:\n{text}");
 }
 
@@ -830,7 +833,8 @@ fn self_and_deleted_rows_recede() {
     let r2 = text.iter().position(|l| l.contains("%2")).unwrap();
     // The TUI's own pane wears the attached accent, not the dim id color.
     assert_ne!(
-        grid[r1][px].1, grid[r2][px].1,
+        grid[r1][px].1,
+        grid[r2][px].1,
         "self id not marked:\n{}",
         text.join("\n")
     );
