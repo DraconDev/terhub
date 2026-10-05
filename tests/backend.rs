@@ -1,11 +1,18 @@
 use terhub::tmux::Tmux;
 
+/// Backend tests need a real tmux: fail loudly without one instead of
+/// green-but-vacuous early returns (CI installs tmux; see the workflow).
+fn require_tmux() -> Tmux {
+    assert!(
+        Tmux::available(),
+        "tmux is required for backend tests (install tmux to run them)"
+    );
+    Tmux::new().unwrap()
+}
+
 #[test]
 fn list_sessions_returns_vec() {
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let sessions = tmux.list_sessions().unwrap();
     // Live server has at least the user's own session; empty is also valid.
     assert!(sessions.iter().all(|s| !s.name.is_empty()));
@@ -13,10 +20,7 @@ fn list_sessions_returns_vec() {
 
 #[test]
 fn new_and_kill_roundtrip() {
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let name = format!("terhub-test-{}", std::process::id());
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
@@ -31,10 +35,7 @@ fn new_and_kill_roundtrip() {
 #[test]
 fn pane_discovery_capture_and_kill() {
     use std::process::Command;
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let name = format!("terhub-pane-{}", std::process::id());
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
@@ -73,10 +74,7 @@ fn pane_discovery_capture_and_kill() {
 fn sidebar_filter_tracks_selection() {
     use terhub::app::App;
     use terhub::config::AppConfig;
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let name = format!("terhub-detail-{}", std::process::id());
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
@@ -104,10 +102,7 @@ fn sidebar_filter_tracks_selection() {
 #[test]
 fn swap_panes_flips_positions() {
     use std::process::Command;
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let name = format!("terhub-swap-{}", std::process::id());
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
@@ -136,10 +131,7 @@ fn swap_panes_flips_positions() {
 #[test]
 fn window_of_pane_resolves() {
     use terhub::attend::window_of_pane;
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let name = format!("terhub-win-{}", std::process::id());
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
@@ -155,10 +147,7 @@ fn window_of_pane_resolves() {
 
 #[test]
 fn empty_name_rejected() {
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     assert!(tmux.new_session("  ", None, None).is_err());
     assert!(tmux.rename_session("whatever", " ").is_err());
 }
@@ -167,10 +156,7 @@ fn empty_name_rejected() {
 fn nav_failure_stays_in_tui_with_status() {
     use terhub::app::{App, AppEvent};
     use terhub::config::AppConfig;
-    if !Tmux::available() {
-        return;
-    }
-    let tmux = Tmux::new().unwrap();
+    let tmux = require_tmux();
     let mut app = App::new(AppConfig::default());
     app.refresh(&tmux);
     // A jump to a dead pane stays in-process (no exit, no panic) and
