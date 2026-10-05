@@ -489,6 +489,27 @@ fn preview_title_shows_agent_context() {
 }
 
 #[test]
+fn settings_selection_stays_visible() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use terhub::tmux::Tmux;
+    let mut app = app_with_panes();
+    app.open_settings();
+    // Fake tmux: the settings path never touches it.
+    let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+    let down = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
+    for _ in 0..20 {
+        app.on_key(down, &tmux);
+    }
+    // Short terminal: 13 rows in an 8-row popup forces scrolling.
+    let text = render_lines(&mut app, 160, 12).join("\n");
+    assert!(
+        text.contains("highlight attached"),
+        "last item scrolled out of view:\n{text}"
+    );
+    assert!(text.contains("›"), "selection marker missing:\n{text}");
+}
+
+#[test]
 fn preview_title_uses_attach_binding() {
     let mut app = app_with_panes();
     app.config
