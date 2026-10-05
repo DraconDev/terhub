@@ -2051,6 +2051,26 @@ mod tests {
     }
 
     #[test]
+    fn custom_command_runs_from_sessions_focus() {
+        use crate::config::CustomCommand;
+        let mut app = app_with_panes();
+        app.focus = Focus::Sessions;
+        app.config.commands.push(CustomCommand {
+            name: "echo-pane".to_string(),
+            key: "G".to_string(),
+            spec: crate::config::parse_key("G"),
+            run: "echo pane-is-{pane}".to_string(),
+        });
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('g')), &tmux);
+        assert!(
+            matches!(app.mode, Mode::CommandOutput { .. }),
+            "custom dead in Sessions focus: {:?}",
+            app.mode
+        );
+    }
+
+    #[test]
     fn kill_with_marks_opens_bulk_confirm() {
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
