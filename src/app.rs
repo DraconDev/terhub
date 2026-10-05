@@ -2297,6 +2297,25 @@ mod tests {
     }
 
     #[test]
+    fn hide_quiet_shells_keeps_claimed_fresh_and_unknown() {
+        let mut app = app_with_three();
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", crate::agent::AgentState::Working, 100),
+        );
+        app.hide_quiet_shells = true;
+        app.refresh_filtered();
+        // %2 (unclaimed, long quiet) hides; %1 is claimed, %10 has
+        // unknown activity (0) and unknowns always stay visible.
+        assert_eq!(ids(&app), vec!["%1", "%10"]);
+        assert_eq!(app.hidden_quiet, 1);
+        app.hide_quiet_shells = false;
+        app.refresh_filtered();
+        assert_eq!(ids(&app).len(), 3);
+        assert_eq!(app.hidden_quiet, 0);
+    }
+
+    #[test]
     fn sort_cmd_reads_a_to_z_and_toggles() {
         let mut app = app_with_three();
         app.cycle_sort(SortKey::Cmd);
