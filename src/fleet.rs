@@ -53,14 +53,19 @@ pub fn fleet_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("fleet.toml"))
 }
 
-pub fn load_hosts() -> Vec<Host> {
-    let text = match std::fs::read_to_string(fleet_path()) {
+pub fn load_hosts() -> Result<Vec<Host>> {
+    let path = fleet_path();
+    let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
-        Err(_) => return Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
     };
+    // A corrupt file errors loudly: callers must refuse to overwrite it.
+    // (Flattening a parse error to empty here once let add_host wipe
+    // every host in the file.)
     toml::from_str::<FleetFile>(&text)
         .map(|f| f.host)
-        .unwrap_or_default()
+        .with_context(|| format!("parse {}", path.display()))
 }
 
 pub fn save_hosts(hosts: &[Host]) -> Result<()> {
@@ -81,7 +86,7 @@ pub fn add_host(name: &str, target: &str, mode: Mode) -> Result<()> {
     if name.is_empty() || target.is_empty() {
         bail!("name and target must not be empty");
     }
-    let mut hosts = load_hosts();
+    let mut hosts = load_hosts()?;
     if hosts.iter().any(|h| h.name == name) {
         bail!("host '{name}' already exists (remove it first)");
     }
@@ -94,7 +99,7 @@ pub fn add_host(name: &str, target: &str, mode: Mode) -> Result<()> {
 }
 
 pub fn remove_host(name: &str) -> Result<bool> {
-    let mut hosts = load_hosts();
+    let mut hosts = load_hosts()?;
     let before = hosts.len();
     hosts.retain(|h| h.name != name);
     if hosts.len() == before {

@@ -1121,7 +1121,13 @@ fn cmd_host(action: &HostAction) -> i32 {
             }
         }
         HostAction::List => {
-            let hosts = f::load_hosts();
+            let hosts = match f::load_hosts() {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("terhub: {e:#}");
+                    return 1;
+                }
+            };
             if hosts.is_empty() {
                 print_out("no hosts (terhub host add <name> <target>)");
                 return 0;
@@ -1146,7 +1152,13 @@ fn cmd_host(action: &HostAction) -> i32 {
             }
         },
         HostAction::Doctor { name } => {
-            let hosts = f::load_hosts();
+            let hosts = match f::load_hosts() {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("terhub: {e:#}");
+                    return 1;
+                }
+            };
             let Some(host) = hosts.iter().find(|h| &h.name == name) else {
                 eprintln!("terhub: no host '{name}'");
                 return 1;
@@ -1168,7 +1180,13 @@ fn cmd_host(action: &HostAction) -> i32 {
 
 fn cmd_fleet(action: &FleetAction) -> i32 {
     use terhub::fleet as f;
-    let hosts = f::load_hosts();
+    let hosts = match f::load_hosts() {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("terhub: {e:#}");
+            return 1;
+        }
+    };
     match action {
         FleetAction::Status { json } => {
             if hosts.is_empty() {

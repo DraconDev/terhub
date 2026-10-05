@@ -56,15 +56,15 @@ fn fleet_and_zellij_against_fakes() {
     }
 
     // Host CRUD.
-    assert!(f::load_hosts().is_empty());
+    assert!(f::load_hosts().unwrap().is_empty());
     f::add_host("dev", "fake-target", f::Mode::Control).unwrap();
     f::add_host("obs", "fake-target", f::Mode::Observe).unwrap();
     assert!(f::add_host("dev", "x", f::Mode::Observe).is_err());
-    assert_eq!(f::load_hosts().len(), 2);
+    assert_eq!(f::load_hosts().unwrap().len(), 2);
 
     // Fleet status parses the remote snapshot, in config order even
     // though hosts are queried concurrently.
-    let statuses = f::fleet_status(&f::load_hosts());
+    let statuses = f::fleet_status(&f::load_hosts().unwrap());
     assert_eq!(statuses.len(), 2);
     assert_eq!(statuses[0].host.name, "dev");
     assert_eq!(statuses[1].host.name, "obs");
@@ -75,7 +75,7 @@ fn fleet_and_zellij_against_fakes() {
     }
 
     // Control gate + remote send.
-    let hosts = f::load_hosts();
+    let hosts = f::load_hosts().unwrap();
     let dev = hosts.iter().find(|h| h.name == "dev").unwrap();
     let obs = hosts.iter().find(|h| h.name == "obs").unwrap();
     assert_eq!(f::fleet_send(dev, "%1", "hi", true).unwrap().trim(), "sent");
