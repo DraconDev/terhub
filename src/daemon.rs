@@ -603,6 +603,21 @@ fn screen_fallback_summary(screen: Option<&str>) -> String {
     out
 }
 
+/// Screen-line fallback gated to states whose screen names actionable text
+/// (a prompt or error line). Working rows stay summary-free — spinner text
+/// is noise, not information — and Stuck carries its own explanation from
+/// [`merge_record`], so neither borrows a screen line here.
+fn fallback_summary_for(state: AgentState, screen: Option<&str>) -> String {
+    if matches!(
+        state,
+        AgentState::Waiting | AgentState::Error | AgentState::Limited
+    ) {
+        screen_fallback_summary(screen)
+    } else {
+        String::new()
+    }
+}
+
 /// Returns the new registry, attention transitions to notify, the live
 /// session list for open/close detection, and the foreground pane.
 fn poll_sync(
@@ -671,7 +686,7 @@ fn poll_sync(
             }
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
             if r.summary.is_empty() {
-                r.summary = screen_fallback_summary(screen.as_deref());
+                r.summary = fallback_summary_for(r.state, screen.as_deref());
             }
             next.insert(pane.id.clone(), r);
             continue;
