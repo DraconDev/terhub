@@ -1097,6 +1097,19 @@ mod tests {
     }
 
     #[test]
+    fn theme_and_density_match_case_insensitively() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("case.toml");
+        std::fs::write(&path, "[ui]\ntheme = \"Dark\"\ndensity = \"Compact\"\n").unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(cfg.palette(), "dark");
+        assert!(cfg.compact());
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
     fn persist_touches_only_ui_keys() {
         let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
