@@ -183,6 +183,9 @@ struct ProcInfo {
     cmdline: String,
     /// utime + stime in clock ticks.
     ticks: u64,
+    /// starttime in clock ticks since boot (stat field 22): pid identity
+    /// across reuse — same pid with a different start is a new process.
+    start: u64,
 }
 
 /// An agent process found under a pane root: the nearest match, whose
@@ -196,6 +199,9 @@ struct ProcInfo {
 pub struct AgentHit {
     pub agent: String,
     pub pid: u32,
+    /// starttime of the matched process: continuity checks compare this so
+    /// a recycled pid never inherits the previous owner's still-clock.
+    pub start: u64,
 }
 
 /// One point-in-time view of the process table, shared across all panes of
@@ -249,6 +255,7 @@ impl Snapshot {
                 return Some(AgentHit {
                     agent: agent.to_string(),
                     pid,
+                    start: info.start,
                 });
             }
             if let Some(kids) = self.kids.get(&pid) {
@@ -476,6 +483,7 @@ fn read_proc(dir: &Path, pid: u32) -> Option<ProcInfo> {
         comm,
         cmdline,
         ticks,
+        start: num(19),
     })
 }
 
