@@ -427,6 +427,18 @@ fn empty_state_hints_create_key() {
 }
 
 #[test]
+fn title_names_a_dead_daemon() {
+    let mut app = app_with_panes();
+    app.agents_live = false;
+    let lines = render_lines(&mut app, 160, 12);
+    let text = lines.join("\n");
+    assert!(text.contains("daemon down"), "missing marker:\n{text}");
+    app.agents_live = true;
+    let lines = render_lines(&mut app, 160, 12);
+    assert!(!lines.join("\n").contains("daemon down"));
+}
+
+#[test]
 fn footer_hints_match_navigation() {
     // Tab toggles focus (not "sessions") and arrows only steer the bar.
     let mut app = app_with_panes();

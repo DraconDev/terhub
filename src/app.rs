@@ -435,7 +435,7 @@ impl App {
 
     /// Show a footer message that expires after [`App::STATUS_TTL`].
     pub fn set_status(&mut self, text: String) {
-        self.set_status(text);
+        self.status = Some(text);
         self.status_since = Some(std::time::Instant::now());
     }
 
@@ -1728,6 +1728,22 @@ mod tests {
             app.on_key(press(KeyCode::Enter), &tmux),
             Some(AppEvent::FocusPane("%1".to_string()))
         );
+    }
+
+    #[test]
+    fn status_expires_after_ttl() {
+        let mut app = app_with(&["a"]);
+        app.set_status("killed x".to_string());
+        app.expire_status();
+        assert!(app.status.is_some()); // fresh: stays
+        app.status_since =
+            Some(std::time::Instant::now() - App::STATUS_TTL - std::time::Duration::from_secs(1));
+        app.expire_status();
+        assert!(app.status.is_none()); // stale: footer hints return
+        // Unstamped (direct write) stays sticky.
+        app.status = Some("sticky".to_string());
+        app.expire_status();
+        assert!(app.status.is_some());
     }
 
     #[test]
