@@ -169,11 +169,19 @@ fn snapshot() -> Result<crate::daemon::Snapshot, String> {
         .map_err(|_| "daemon not running (terhub daemon start)".to_string())
 }
 
+/// Optional `state` argument: absent means unfiltered, but a present
+/// value that parses to nothing is the caller's mistake, not "no filter".
+fn state_filter(args: &Value) -> Result<Option<crate::agent::AgentState>, String> {
+    match args.get("state").and_then(|s| s.as_str()) {
+        None => Ok(None),
+        Some(s) => crate::agent::AgentState::parse(s)
+            .map(Some)
+            .ok_or_else(|| "bad state (working|waiting|error|idle|stuck|limited)".to_string()),
+    }
+}
+
 fn tool_status(args: &Value) -> Result<String, String> {
-    let filter = args
-        .get("state")
-        .and_then(|s| s.as_str())
-        .and_then(crate::agent::AgentState::parse);
+    let filter = state_filter(args)?;
     let snap = snapshot()?;
     let mut agents = snap.agents;
     if let Some(f) = filter {
@@ -237,12 +245,7 @@ fn tool_send(args: &Value) -> Result<String, String> {
 
 fn tool_wait(args: &Value) -> Result<String, String> {
     let pane = args.get("pane").and_then(|p| p.as_str());
-    let state = args
-        .get("state")
-        .and_then(|s| s.as_str())
-        .map(crate::agent::AgentState::parse)
-        .unwrap_or(Some(crate::agent::AgentState::Waiting))
-        .ok_or_else(|| "bad state (working|waiting|error|idle|stuck|limited)".to_string())?;
+    let state = state_filter(args)?.unwrap_or(crate::agent::AgentState::Waiting);
     let timeout = args
         .get("timeout_secs")
         .and_then(|t| t.as_u64())
