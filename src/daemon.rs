@@ -388,26 +388,35 @@ fn merge_mid_poll_hooks(
     }
 }
 
-/// Report an automation load failure once per distinct message (the poll
-/// calls every 2s; a corrupt file must warn, not spam). A clean load
-/// re-arms the warning.
-fn note_rules_error(err: Option<&anyhow::Error>) {
+/// Log a recurring-condition message once per distinct text (poll-frequency
+/// callers must warn, not spam). `None` re-arms the key.
+fn note_sticky(key: &'static str, msg: Option<String>) {
     use std::sync::{Mutex, OnceLock};
-    static LAST: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    static LAST: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
     let mut last = LAST
-        .get_or_init(|| Mutex::new(None))
+        .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(|p| p.into_inner());
-    match err {
-        Some(e) => {
-            let msg = format!("{e:#}");
-            if last.as_ref() != Some(&msg) {
-                eprintln!("terhubd: automation.toml: {msg}");
-                *last = Some(msg);
+    match msg {
+        Some(m) => {
+            if last.get(key) != Some(&m) {
+                eprintln!("terhubd: {m}");
+                last.insert(key.to_string(), m);
             }
         }
-        None => *last = None,
+        None => {
+            last.remove(key);
+        }
     }
+}
+
+/// Report an automation load failure through the sticky logger: a corrupt
+/// file warns once, a clean load re-arms.
+fn note_rules_error(err: Option<&anyhow::Error>) {
+    note_sticky(
+        "automation",
+        err.map(|e| format!("automation.toml: {e:#}")),
+    );
 }
 
 /// Evaluate automation rules against the current registry and carry out
@@ -807,17 +816,57 @@ fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
         Ok(t) => t,
         Err(_) => return HashMap::new(),
     };
-    let agents: Vec<AgentRecord> = match serde_json::from_str(&text) {
-        Ok(a) => a,
-        Err(_) => return HashMap::new(),
+    // Per-record parse: one corrupt record must not sink the registry.
+    let values: Vec<serde_json::Value> = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "terhubd: registry {} unreadable ({e:#}); starting fresh",
+                path.display()
+            );
+            return HashMap::new();
+        }
     };
-    agents.into_iter().map(|a| (a.pane.clone(), a)).collect()
+    let mut out = HashMap::new();
+    let mut dropped = 0;
+    for v in values {
+        match serde_json::from_value::<AgentRecord>(v) {
+            Ok(a) => {
+                out.insert(a.pane.clone(), a);
+            }
+            Err(_) => dropped += 1,
+        }
+    }
+    if dropped > 0 {
+        eprintln!(
+            "terhubd: registry {}: dropped {dropped} corrupt record(s)",
+            path.display()
+        );
+    }
+    out
 }
 
 fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
     let agents: Vec<&AgentRecord> = registry.values().collect();
-    if let Ok(text) = serde_json::to_string_pretty(&agents) {
-        let _ = std::fs::write(path, text);
+    let text = match serde_json::to_string_pretty(&agents) {
+        Ok(t) => t,
+        Err(e) => {
+            note_sticky(
+                "registry-save",
+                Some(format!("registry serialize: {e:#}")),
+            );
+            return;
+        }
+    };
+    // Tmp + rename: a crash mid-write never leaves a half file behind.
+    let tmp = path.with_extension("json.tmp");
+    let result = std::fs::write(&tmp, &text).and_then(|()| std::fs::rename(&tmp, path));
+    match result {
+        Ok(()) => note_sticky("registry-save", None),
+        Err(e) => note_sticky(
+            "registry-save",
+            Some(format!("registry save {}: {e:#}", path.display())),
+        ),
     }
 }
 
