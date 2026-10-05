@@ -1280,6 +1280,51 @@ mod tests {
     }
 
     #[test]
+    fn sibling_editor_does_not_wait() {
+        // Background pi plus a sibling micro: the editor is not pi's
+        // $EDITOR, so pi stays on its own verdict path (Working here).
+        let now = 100_000;
+        let mut ed = test_pane();
+        ed.command = "micro".to_string();
+        let rec = merge_record_owned(
+            None,
+            false,
+            None,
+            Some(("pi", 50)),
+            &ed,
+            false,
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.source, Source::Proc);
+    }
+
+    #[test]
+    fn owned_editor_still_waits() {
+        // micro inside pi's own subtree: pi summoned $EDITOR, awaiting input.
+        let now = 100_000;
+        let mut ed = test_pane();
+        ed.command = "micro".to_string();
+        let rec = merge_record_owned(
+            None,
+            false,
+            None,
+            Some(("pi", 50)),
+            &ed,
+            true,
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "pi");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.source, Source::Proc);
+    }
+
+    #[test]
     fn registry_round_trip_is_atomic_and_tolerant() {
         let dir = std::env::temp_dir().join(format!("terhub-reg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
