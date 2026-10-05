@@ -27,7 +27,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader as TokioBufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader as TokioBufReader};
 use tokio::net::{UnixListener, UnixStream as TokioUnixStream};
 
 pub const POLL_SECS: u64 = 2;
@@ -247,6 +247,10 @@ impl Server {
     }
 }
 
+/// Max request line the daemon accepts: hook events are small JSON, so
+/// 1MB is vast headroom — anything bigger truncates into "bad request".
+const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
+
 async fn handle_conn(
     stream: TokioUnixStream,
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
@@ -254,7 +258,9 @@ async fn handle_conn(
     shutdown: Arc<AtomicBool>,
 ) {
     let (reader, mut writer) = stream.into_split();
-    let mut lines = TokioBufReader::new(reader).lines();
+    // Bounded read: a peer that never sends a newline (or sends megabytes)
+    // hits EOF at the cap instead of growing toward OOM.
+    let mut lines = TokioBufReader::new(reader.take(MAX_REQUEST_BYTES)).lines();
     let line = match tokio::time::timeout(Duration::from_secs(10), lines.next_line()).await {
         Ok(Ok(Some(l))) => l,
         _ => return,
