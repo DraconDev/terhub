@@ -34,16 +34,96 @@ const AGENT_BINS: &[&str] = &[
     "copilot",
 ];
 
-/// (cmdline substring, canonical agent). Catches versioned wrappers and
-/// patch-loader invocations the basename match misses.
-const AGENT_SUBSTR: &[(&str, &str)] = &[
-    ("muse-bin", "muse"),
-    ("codex-bin", "codex"),
-    ("/.pi/agent", "pi"),
-    ("/bin/pi", "pi"),
-    ("pi-agent", "pi"),
-    ("claude-code", "claude"),
-];
+/// Versioned wrapper stems (lowercase). Match a program basename that is
+/// exactly the stem or the stem plus a version suffix (digit-first, or a
+/// separator run containing a digit): `muse-bin-1.4.2` resolves,
+/// `muse-bin-notes` (no digit) does not. A filename merely mentioning
+/// the stem is not the program.
+const VERSIONED_BINS: &[(&str, &str)] = &[("muse-bin", "muse"), ("codex-bin", "codex")];
+
+/// Path-anchored needles (lowercase). Match inside a token when followed by
+/// a boundary (end, `/`, or a non-name char): `/bin/pi` resolves,
+/// `/bin/pip` and `/usr/bin/pi-hole` do not.
+const PATH_NEEDLES: &[(&str, &str)] = &[("/.pi/agent", "pi"), ("/bin/pi", "pi")];
+
+/// Bare-name needles (lowercase). Match a program identity (comm, argv[0],
+/// or a path token's basename) exactly or as a separator-led prefix:
+/// `claude-code` and `pi-agent-core-…` resolve, while bare argument
+/// tokens and URLs never match — so `ssh claude-code` and
+/// `curl …/claude-code` are not agents.
+const NAME_NEEDLES: &[(&str, &str)] = &[("pi-agent", "pi"), ("claude-code", "claude")];
+
+/// Lowercased basename for agent matching.
+fn proc_base(s: &str) -> String {
+    s.rsplit('/').next().unwrap_or("").trim().to_lowercase()
+}
+
+/// True when `rest` (a stem remainder) looks like a version suffix rather
+/// than a different name: empty, digit-first, or a separator run holding
+/// a digit.
+fn is_version_suffix(rest: &str) -> bool {
+    if rest.is_empty() {
+        return true;
+    }
+    match rest.chars().next() {
+        Some(c) if c.is_ascii_digit() => true,
+        Some('-') | Some('.') | Some('_') => {
+            rest.contains(|c: char| c.is_ascii_digit())
+        }
+        _ => false,
+    }
+}
+
+/// Substring-stage match on a program basename (comm, argv[0], or a path
+/// token's basename).
+fn match_substr_name(base: &str) -> Option<&'static str> {
+    for (stem, agent) in VERSIONED_BINS {
+        if base == *stem {
+            return Some(agent);
+        }
+        if let Some(rest) = base.strip_prefix(stem)
+            && is_version_suffix(rest)
+        {
+            return Some(agent);
+        }
+    }
+    for (needle, agent) in NAME_NEEDLES {
+        if base == *needle {
+            return Some(agent);
+        }
+        if let Some(rest) = base.strip_prefix(needle)
+            && matches!(rest.chars().next(), Some('-') | Some('.') | Some('_'))
+        {
+            return Some(agent);
+        }
+    }
+    None
+}
+
+/// Substring-stage match on one full token: path needles with a trailing
+/// boundary, plus basename matching for path-like tokens only (a bare
+/// `muse-bin-notes.txt` argument is a filename, not a program).
+fn match_substr_token(tok: &str) -> Option<&'static str> {
+    for (needle, agent) in PATH_NEEDLES {
+        let mut start = 0;
+        while let Some(i) = tok[start..].find(needle) {
+            let after = &tok[start + i + needle.len()..];
+            let boundary = after.is_empty()
+                || after.starts_with('/')
+                || after.chars().next().is_some_and(|c| {
+                    !(c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+                });
+            if boundary {
+                return Some(agent);
+            }
+            start += i + 1;
+        }
+    }
+    if tok.contains('/') {
+        return match_substr_name(&proc_base(tok));
+    }
+    None
+}
 
 /// Launcher wrappers that spawn (not exec) their payload, so tmux reports
 /// the wrapper — not the program — as the pane's foreground command.
@@ -293,32 +373,46 @@ impl Snapshot {
     }
 }
 
-/// Canonical agent name for a process, or None. Only comm, argv[0], and
-/// path-like tokens match exactly, so `grep pi file` is not an agent.
+/// Canonical agent name for a process, or None. Exact stages first (comm,
+/// argv[0], path-token basenames), then per-token substring needles with
+/// boundaries — never a flat whole-cmdline contains, which cried agent
+/// at `pip`, filenames, and URLs.
 fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
-    let lower = |s: &str| s.to_lowercase();
-    let base = |s: &str| s.rsplit('/').next().unwrap_or("").trim().to_lowercase();
     let find_bin = |name: &str| AGENT_BINS.iter().find(|b| **b == name).copied();
-    if let Some(agent) = find_bin(&base(comm)) {
+    if let Some(agent) = find_bin(&proc_base(comm)) {
         return Some(agent);
     }
     let mut tokens = cmdline.split([' ', '\0', '\t']).filter(|t| !t.is_empty());
-    if let Some(argv0) = tokens.next()
-        && let Some(agent) = find_bin(&base(argv0))
-    {
+    let argv0 = tokens.next().unwrap_or("");
+    if let Some(agent) = find_bin(&proc_base(argv0)) {
         return Some(agent);
     }
-    for tok in tokens {
+    let rest: Vec<&str> = tokens.collect();
+    for tok in &rest {
         if !tok.contains('/') {
             continue;
         }
-        if let Some(agent) = find_bin(&base(tok)) {
+        if let Some(agent) = find_bin(&proc_base(tok)) {
             return Some(agent);
         }
     }
-    let flat = lower(cmdline);
-    for (needle, agent) in AGENT_SUBSTR {
-        if flat.contains(needle) {
+    if let Some(agent) = match_substr_name(&proc_base(comm)) {
+        return Some(agent);
+    }
+    if let Some(agent) = match_substr_name(&proc_base(argv0)) {
+        return Some(agent);
+    }
+    if !argv0.contains("://")
+        && let Some(agent) = match_substr_token(argv0)
+    {
+        return Some(agent);
+    }
+    for tok in rest {
+        // Remote identifiers aren't local programs.
+        if tok.contains("://") {
+            continue;
+        }
+        if let Some(agent) = match_substr_token(tok) {
             return Some(agent);
         }
     }
