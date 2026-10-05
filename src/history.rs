@@ -409,8 +409,10 @@ pub fn fmt_dur(secs: u64) -> String {
         format!("{secs}s")
     } else if secs < 3600 {
         format!("{}m", secs / 60)
-    } else {
+    } else if secs < 2 * 86400 {
         format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
+    } else {
+        format!("{}d{}h", secs / 86400, (secs % 86400) / 3600)
     }
 }
 
