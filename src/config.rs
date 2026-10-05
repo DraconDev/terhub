@@ -14,7 +14,7 @@ pub const DEFAULT_DENSITY: &str = "comfortable";
 pub const THEMES: &[&str] = &["dark", "light", "dracula", "nord", "gruvbox", "solarized"];
 
 pub fn is_known_theme(name: &str) -> bool {
-    THEMES.contains(&name)
+    THEMES.iter().any(|t| t.eq_ignore_ascii_case(name))
 }
 
 /// Table density: `comfortable` shows the summary column with airy spacing,
@@ -22,7 +22,7 @@ pub fn is_known_theme(name: &str) -> bool {
 pub const DENSITIES: &[&str] = &["comfortable", "compact"];
 
 pub fn is_known_density(name: &str) -> bool {
-    DENSITIES.contains(&name)
+    DENSITIES.iter().any(|d| d.eq_ignore_ascii_case(name))
 }
 
 fn default_keys() -> HashMap<String, String> {
@@ -108,22 +108,24 @@ impl AppConfig {
     }
 
     /// Theme palette name; unknown values fall back to dark (incl. the old
-    /// Python default "textual-dark").
+    /// Python default "textual-dark"). Returns the canonical lowercase
+    /// name so "Dark" keeps working downstream of this call.
     pub fn palette(&self) -> &str {
-        if is_known_theme(&self.theme) {
-            &self.theme
-        } else {
-            "dark"
-        }
+        THEMES
+            .iter()
+            .find(|t| t.eq_ignore_ascii_case(&self.theme))
+            .copied()
+            .unwrap_or("dark")
     }
 
     /// Effective density; unknown values fall back to comfortable.
+    /// Canonical lowercase, like [`Self::palette`].
     pub fn density_name(&self) -> &str {
-        if is_known_density(&self.density) {
-            &self.density
-        } else {
-            "comfortable"
-        }
+        DENSITIES
+            .iter()
+            .find(|d| d.eq_ignore_ascii_case(&self.density))
+            .copied()
+            .unwrap_or("comfortable")
     }
 
     pub fn compact(&self) -> bool {
