@@ -717,7 +717,7 @@ fn poll_sync(
                 .unwrap_or((0, 0));
             (rec.screen_hash, rec.quiet_since) = track_quiet(prev_quiet, hash, now);
             if rec.summary.is_empty() {
-                rec.summary = screen_fallback_summary(screen.as_deref());
+                rec.summary = fallback_summary_for(rec.state, screen.as_deref());
             }
             next.insert(pane.id.clone(), rec);
         } else if let Some(o) = old {
@@ -738,7 +738,7 @@ fn poll_sync(
                 (r.screen_hash, r.quiet_since) =
                     track_quiet((r.screen_hash, r.quiet_since), hash, now);
                 if r.summary.is_empty() {
-                    r.summary = screen_fallback_summary(screen.as_deref());
+                    r.summary = fallback_summary_for(r.state, screen.as_deref());
                 }
                 next.insert(pane.id.clone(), r);
             }
