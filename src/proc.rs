@@ -189,14 +189,6 @@ struct ProcInfo {
     ticks: u64,
 }
 
-/// True when `pid`'s subtree contains a terminal editor: the agent summoned
-/// its $EDITOR and is Waiting on the user.
-impl Snapshot {
-    pub fn subtree_has_editor(&self, pid: u32) -> bool {
-        self.walk_subtree_rooted(pid).any(|p| is_editor_name(&p.comm))
-    }
-}
-
 /// An agent process found under a pane root: the nearest match, whose
 /// subtree CPU is tracked for stuck detection. Wrappers match too (their
 /// cmdline embeds the child command), which is fine — the subtree sum
@@ -272,6 +264,30 @@ impl Snapshot {
             }
         }
         None
+    }
+
+    /// True when `pid`'s subtree contains a terminal editor: the agent
+    /// summoned its $EDITOR and is Waiting on the user. Scoped to this
+    /// subtree only, so a background agent never claims a sibling editor.
+    pub fn subtree_has_editor(&self, pid: u32) -> bool {
+        if !self.procs.contains_key(&pid) {
+            return false;
+        }
+        let mut queue = std::collections::VecDeque::from([pid]);
+        let mut seen = std::collections::HashSet::from([pid]);
+        while let Some(p) = queue.pop_front() {
+            if is_editor_name(&self.procs[&p].comm) {
+                return true;
+            }
+            if let Some(kids) = self.kids.get(&p) {
+                for kid in kids {
+                    if seen.insert(*kid) {
+                        queue.push_back(*kid);
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Display command for a pane: tmux's reported foreground command
