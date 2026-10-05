@@ -501,6 +501,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn corrupt_rules_file_errors_instead_of_empty() {
+        let dir =
+            std::env::temp_dir().join(format!("terhub-rules-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bad = dir.join("automation.toml");
+        std::fs::write(&bad, "rule = [unclosed\n").unwrap();
+        assert!(load_rules_from(&bad).is_err());
+        let missing = dir.join("nope.toml");
+        assert!(load_rules_from(&missing).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn rule() -> Rule {
         Rule {
             name: "resume".to_string(),
