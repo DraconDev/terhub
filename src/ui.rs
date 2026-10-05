@@ -861,8 +861,11 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     let now = crate::agent::now_unix();
     let (idle, _) = idle_cell(rec, p.activity, now, &app.config);
     let title = format!(
-        " {} · {}:{} · {agent} {state} {idle} — left-click/enter jump · right-click/esc close ",
-        p.id, p.session, p.window_name
+        " {} · {}:{} · {agent} {state} {idle} — left-click/{} jump · right-click/esc close ",
+        p.id,
+        p.session,
+        p.window_name,
+        app.config.key("attach")
     );
     let block = Block::bordered()
         .title(Line::from(title).style(pal.title))
