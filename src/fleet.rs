@@ -110,7 +110,9 @@ pub fn remove_host(name: &str) -> Result<bool> {
 }
 
 /// Run a command over ssh. BatchMode so we never hang on a password prompt;
-/// host keys must be pre-accepted. `timeout_secs` bounds the whole command:
+/// host keys must be pre-accepted. `--` ends ssh option parsing so a
+/// dash-leading target can never be mistaken for an ssh flag.
+/// `timeout_secs` bounds the whole command:
 /// ConnectTimeout alone only covers TCP connect, so a hung remote command is
 /// killed past the deadline instead of hanging the caller forever.
 pub fn ssh_run(target: &str, args: &[&str], timeout_secs: u64) -> Result<String> {
@@ -120,6 +122,7 @@ pub fn ssh_run(target: &str, args: &[&str], timeout_secs: u64) -> Result<String>
             "BatchMode=yes",
             "-o",
             &format!("ConnectTimeout={timeout_secs}"),
+            "--",
             target,
         ])
         .args(args)
