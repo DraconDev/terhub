@@ -1107,6 +1107,17 @@ impl App {
             self.refresh(tmux);
             return None;
         }
+        // Custom commands run against the selected pane from either focus
+        // (mirrors the Panes branch below).
+        let custom = cfg
+            .commands
+            .iter()
+            .find(|c| key_matches(&c.spec, code))
+            .cloned();
+        if let Some(cmd) = custom {
+            self.run_custom(&cmd);
+            return None;
+        }
         if key_matches(&cfg.spec("help"), code) {
             // Repeated `?` toggles between the key list and the legend.
             if self
