@@ -125,7 +125,10 @@ fn parse_sessions(out: &str) -> Vec<Session> {
         if line.trim().is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.split('\t').collect();
+        let parts: Vec<&str> = line.split(SEP).collect();
+        if parts.len() > SESSION_FIELDS {
+            continue;
+        }
         let get = |i: usize| parts.get(i).unwrap_or(&"").to_string();
         let windows = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         let attached = !matches!(
