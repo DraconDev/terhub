@@ -189,10 +189,22 @@ struct ProcInfo {
     ticks: u64,
 }
 
+/// True when `pid`'s subtree contains a terminal editor: the agent summoned
+/// its $EDITOR and is Waiting on the user.
+impl Snapshot {
+    pub fn subtree_has_editor(&self, pid: u32) -> bool {
+        self.walk_subtree_rooted(pid)
+            .any(|p| p.comm != "exe" && is_editor_name(&p.comm))
+    }
+}
+
 /// An agent process found under a pane root: the nearest match, whose
 /// subtree CPU is tracked for stuck detection. Wrappers match too (their
 /// cmdline embeds the child command), which is fine — the subtree sum
 /// still captures the real agent's CPU.
+///
+/// Detection answers presence only (is an agent descended from this pane?),
+/// never foreground intent; classification decides what it means.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentHit {
     pub agent: String,
