@@ -388,12 +388,43 @@ fn merge_mid_poll_hooks(
     }
 }
 
+/// Report an automation load failure once per distinct message (the poll
+/// calls every 2s; a corrupt file must warn, not spam). A clean load
+/// re-arms the warning.
+fn note_rules_error(err: Option<&anyhow::Error>) {
+    use std::sync::{Mutex, OnceLock};
+    static LAST: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    let mut last = LAST
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    match err {
+        Some(e) => {
+            let msg = format!("{e:#}");
+            if last.as_ref() != Some(&msg) {
+                eprintln!("terhubd: automation.toml: {msg}");
+                *last = Some(msg);
+            }
+        }
+        None => *last = None,
+    }
+}
+
 /// Evaluate automation rules against the current registry and carry out
 /// firings. The poll loop detaches this with an in-flight guard instead of
 /// awaiting it, so a slow shell action delays automation, never polls —
 /// while passes still never overlap and guardrails can't double-fire.
 async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
-    let rules = crate::automation::load_rules();
+    let rules = match crate::automation::load_rules() {
+        Ok(r) => {
+            note_rules_error(None);
+            r
+        }
+        Err(e) => {
+            note_rules_error(Some(&e));
+            return;
+        }
+    };
     if !rules.iter().any(|r| r.enabled) {
         return;
     }

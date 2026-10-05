@@ -985,7 +985,13 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
         eprintln!("terhub: cannot write {}", a::automation_path().display());
         return 1;
     }
-    let rules = a::load_rules();
+    let rules = match a::load_rules() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("terhub: {e:#}");
+            return 1;
+        }
+    };
     match action {
         AutomationAction::List => {
             print_out(&format!("rules: {}", a::automation_path().display()));

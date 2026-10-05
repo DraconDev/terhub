@@ -97,15 +97,21 @@ pub fn ensure_automation() -> Result<PathBuf> {
     Ok(path)
 }
 
-pub fn load_rules() -> Vec<Rule> {
-    let path = automation_path();
-    let text = match std::fs::read_to_string(&path) {
+pub fn load_rules() -> Result<Vec<Rule>> {
+    load_rules_from(&automation_path())
+}
+
+/// A missing file is fine (no rules yet); a broken file errors loudly so
+/// one malformed entry can't silently disable all automation.
+pub fn load_rules_from(path: &std::path::Path) -> Result<Vec<Rule>> {
+    let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(_) => return Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
     };
     toml::from_str::<RuleFile>(&text)
         .map(|f| f.rule)
-        .unwrap_or_default()
+        .with_context(|| format!("parse {}", path.display()))
 }
 
 /// Static problems with a rule (bad state, unknown action, missing payload).
