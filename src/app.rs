@@ -297,6 +297,9 @@ pub struct App {
     pub sort_asc: bool,
     /// Free-text row filter (case-insensitive substring, empty = off).
     pub filter: String,
+    /// Query as it was when the filter prompt opened: live typing edits
+    /// `filter` in place, and Esc restores this instead of clearing.
+    filter_before_edit: String,
     /// Hide unclaimed panes quiet past [`QUIET_SHELL_SECS`] (`h` toggle).
     pub hide_quiet_shells: bool,
     /// Rows the toggle is currently hiding (0 when off), for the title.
@@ -339,6 +342,7 @@ impl App {
             sort_key: SortKey::Idle,
             sort_asc: false,
             filter: String::new(),
+            filter_before_edit: String::new(),
             hide_quiet_shells: false,
             hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
@@ -857,15 +861,20 @@ impl App {
     }
 
     /// Filter prompt: live narrowing while typing, Enter keeps the query,
-    /// Esc clears it.
+    /// Esc restores the pre-edit query (clearing lives on Esc in Normal
+    /// mode, or deleting everything + Enter).
     fn on_filter_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
         match key.code {
             KeyCode::Esc => {
-                self.filter.clear();
+                self.filter.clone_from(&self.filter_before_edit);
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.follow_preview(tmux);
-                self.set_status("filter cleared".to_string());
+                if self.filter.is_empty() {
+                    self.set_status("filter cleared".to_string());
+                } else {
+                    self.set_status(format!("filter: {}", self.filter));
+                }
             }
             KeyCode::Enter => {
                 self.filter = self.input.trim().to_string();
@@ -1238,6 +1247,7 @@ impl App {
     /// Open the text filter, editing the current query in place.
     pub fn open_filter(&mut self) {
         self.mode = Mode::PromptFilter;
+        self.filter_before_edit.clone_from(&self.filter);
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
     }
@@ -2635,13 +2645,13 @@ mod tests {
         app.on_key(press(KeyCode::Enter), &tmux);
         assert_eq!(app.mode, Mode::Normal);
         assert_eq!(app.filter, "ba");
-        // Reopen edits in place; Esc clears everything.
+        // Reopen edits in place; Esc restores the pre-edit query.
         app.on_key(press(KeyCode::Char('f')), &tmux);
         assert_eq!(app.input, "ba");
         app.on_key(press(KeyCode::Esc), &tmux);
         assert_eq!(app.mode, Mode::Normal);
-        assert_eq!(app.filter, "");
-        assert_eq!(app.filtered.len(), 2);
+        assert_eq!(app.filter, "ba");
+        assert_eq!(ids(&app), vec!["%2"]);
     }
 
     #[test]
