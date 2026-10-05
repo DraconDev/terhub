@@ -5,7 +5,10 @@ use std::fs;
 fn deny_config_exists_with_strict_bans() {
     let text =
         fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/deny.toml")).expect("deny.toml");
-    assert!(text.contains("[advisories]"), "must configure advisories gate");
+    assert!(
+        text.contains("[advisories]"),
+        "must configure advisories gate"
+    );
     assert!(text.contains("[bans]"), "must configure license/code bans");
     assert!(text.contains("[licenses]"), "must configure licenses gate");
 }

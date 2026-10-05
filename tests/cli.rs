@@ -37,7 +37,10 @@ fn stdout(out: &Output) -> String {
 
 #[test]
 fn hook_bad_state_exits_1() {
-    let out = run_isolated("hookbad", &["hook", "--agent", "pi", "--pane", "%1", "--state", "bogus"]);
+    let out = run_isolated(
+        "hookbad",
+        &["hook", "--agent", "pi", "--pane", "%1", "--state", "bogus"],
+    );
     assert_eq!(out.status.code(), Some(1));
     assert!(stderr(&out).contains("bad state"), "{}", stderr(&out));
 }
@@ -47,7 +50,9 @@ fn hook_without_daemon_still_exits_0() {
     // Fire-and-forget: hooks must never break the agent they observe.
     let out = run_isolated(
         "hookok",
-        &["hook", "--agent", "pi", "--pane", "%1", "--state", "waiting"],
+        &[
+            "hook", "--agent", "pi", "--pane", "%1", "--state", "waiting",
+        ],
     );
     assert_eq!(out.status.code(), Some(0));
 }
@@ -56,7 +61,11 @@ fn hook_without_daemon_still_exits_0() {
 fn status_without_daemon_exits_1() {
     let out = run_isolated("status", &["status"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(stderr(&out).contains("daemon not running"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("daemon not running"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]
