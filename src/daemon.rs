@@ -643,7 +643,7 @@ fn merge_record_owned(
     // clock (no renotify) but drops its summary — hook text from 30+
     // minutes ago is rot, not information.
     let (mut since, mut summary) = match carried {
-        Some(o) if o.state == state && o.agent == agent => (
+        Some(o) if o.state == state && o.agent.eq_ignore_ascii_case(&agent) => (
             o.state_since,
             if lapsed {
                 String::new()
@@ -688,7 +688,11 @@ fn merge_record_owned(
     {
         final_state = AgentState::Stuck;
         since = match carried {
-            Some(o) if o.state == AgentState::Stuck && o.agent == agent => o.state_since,
+            Some(o)
+                if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) =>
+            {
+                o.state_since
+            }
             _ => now,
         };
         summary = format!(

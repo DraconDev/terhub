@@ -546,7 +546,7 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                 ev.pane.clone(),
                 AgentRecord {
                     pane: ev.pane.clone(),
-                    agent: ev.agent.clone(),
+                    agent,
                     state: ev.state,
                     source: Source::Hook,
                     summary: ev.summary.clone(),
