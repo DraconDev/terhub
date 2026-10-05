@@ -1004,19 +1004,11 @@ impl App {
             return self.do_attend();
         }
         if key_matches(&cfg.spec("new"), code) {
-            self.mode = Mode::PromptNew;
-            self.input.clear();
+            self.do_new_session();
             return None;
         }
         if key_matches(&cfg.spec("rename"), code) {
-            match self.side_session().map(|s| s.name.clone()) {
-                Some(name) => {
-                    self.cursor = name.chars().count();
-                    self.input = name.clone();
-                    self.mode = Mode::PromptRename(name);
-                }
-                None => self.status = Some("pick a session row (0 is All)".to_string()),
-            }
+            self.do_rename_session();
             return None;
         }
         if key_matches(&cfg.spec("kill"), code) {
@@ -1027,14 +1019,7 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("detach"), code) {
-            if std::env::var("TMUX").is_ok() {
-                match tmux.detach_client() {
-                    Ok(_) => self.status = Some("detached".to_string()),
-                    Err(e) => self.status = Some(format!("detach failed: {e}")),
-                }
-            } else {
-                self.status = Some("not inside tmux (nothing to detach)".to_string());
-            }
+            self.do_detach(tmux);
             return None;
         }
         if key_matches(&cfg.spec("refresh"), code) {
@@ -1295,6 +1280,36 @@ impl App {
         self.move_pane_down();
     }
 
+    /// Session actions with no pane meaning (`new`/`rename`/`detach`), shared
+    /// by both foci so they work from the table too — otherwise the
+    /// empty-state hint names a dead key in the default focus.
+    fn do_new_session(&mut self) {
+        self.mode = Mode::PromptNew;
+        self.input.clear();
+    }
+
+    fn do_rename_session(&mut self) {
+        match self.side_session().map(|s| s.name.clone()) {
+            Some(name) => {
+                self.cursor = name.chars().count();
+                self.input = name.clone();
+                self.mode = Mode::PromptRename(name);
+            }
+            None => self.status = Some("pick a session row (0 is All)".to_string()),
+        }
+    }
+
+    fn do_detach(&mut self, tmux: &Tmux) {
+        if std::env::var("TMUX").is_ok() {
+            match tmux.detach_client() {
+                Ok(_) => self.status = Some("detached".to_string()),
+                Err(e) => self.status = Some(format!("detach failed: {e}")),
+            }
+        } else {
+            self.status = Some("not inside tmux (nothing to detach)".to_string());
+        }
+    }
+
     /// Keys when the pane table has focus. Quit/refresh/help keep their
     /// global meaning; attach jumps to the pane; kill closes it.
     fn on_pane_key(&mut self, code: KeyCode, tmux: &Tmux) -> Option<AppEvent> {
@@ -1341,6 +1356,18 @@ impl App {
         }
         if key_matches(&cfg.spec("refresh"), code) {
             self.refresh(tmux);
+            return None;
+        }
+        if key_matches(&cfg.spec("new"), code) {
+            self.do_new_session();
+            return None;
+        }
+        if key_matches(&cfg.spec("rename"), code) {
+            self.do_rename_session();
+            return None;
+        }
+        if key_matches(&cfg.spec("detach"), code) {
+            self.do_detach(tmux);
             return None;
         }
         let custom = cfg
