@@ -710,7 +710,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             }
             cells.extend([
                 Cell::from(truncate(&window, 20)),
-                Cell::from(truncate(&p.command, if compact { 16 } else { 24 })),
+                Cell::from(truncate(&p.command, if compact { 16 } else { 32 })),
                 Cell::from(truncate(dir, 24)).style(pal.dim),
                 Cell::from(agent).style(agent_style),
                 Cell::from(state).style(state_style),
@@ -721,7 +721,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             ]);
             if !compact {
                 let summary = rec.map(|r| r.summary.as_str()).unwrap_or("");
-                cells.push(Cell::from(truncate(summary, 40)).style(pal.dim));
+                cells.push(Cell::from(truncate(summary, 60)).style(pal.dim));
             }
             let mut row = Row::new(cells);
             if i == app.pane_selected {
@@ -760,13 +760,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         ]
         .map(Some),
     );
-    // Window/Cmd/Dir/Agent = 43%; with Session 9% + Summary 13% the
-    // percentage columns total 65%, so with the fixed columns + spacing
-    // the table fits a 140-column terminal exactly. Keep it there:
-    // overflow squeezes Summary (last column absorbs the deficit).
+    // Window/Cmd/Dir/Agent = 43%; with Session 9% + Summary 20% the
+    // percentage columns total 72%, so at 140 columns the fixed columns
+    // + spacing still fit and only Summary absorbs the small deficit;
+    // at 195+ the waiting summaries and versioned binaries fit uncut.
     widths.extend([
-        Constraint::Percentage(11),
-        Constraint::Percentage(11),
+        Constraint::Percentage(9),
+        Constraint::Percentage(13),
         Constraint::Percentage(13),
         Constraint::Percentage(8),
         Constraint::Length(8),
@@ -778,7 +778,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !compact {
         headers.push("Summary".to_string());
         keys.push(Some(SortKey::Summary));
-        widths.push(Constraint::Percentage(13));
+        widths.push(Constraint::Percentage(20));
     }
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });
