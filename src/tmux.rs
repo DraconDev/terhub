@@ -344,6 +344,12 @@ impl Tmux {
         }
     }
 
+    /// Move our own client to another session without leaving the process
+    /// (only meaningful inside tmux; the TUI stays open behind the jump).
+    pub fn switch_session(&self, name: &str) -> Result<()> {
+        self.run(&["switch-client", "-t", name]).map(|_| ())
+    }
+
     /// Detach the current client (only meaningful inside tmux).
     pub fn detach_client(&self) -> Result<()> {
         self.run(&["detach-client"]).map(|_| ())
