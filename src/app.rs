@@ -164,6 +164,16 @@ fn idle_secs(rec: Option<&AgentRecord>, activity: u64) -> u64 {
     }
 }
 
+/// Quiet threshold for the `h` toggle: unclaimed panes idle this long hide.
+const QUIET_SHELL_SECS: u64 = 600;
+
+/// True for rows the `h` toggle hides: unclaimed panes quiet past
+/// [`QUIET_SHELL_SECS`]. Unknown activity (0) stays visible — the toggle
+/// hides judged-quiet rows, never unknowns.
+fn is_quiet_shell(rec: Option<&AgentRecord>, activity: u64, now: u64) -> bool {
+    rec.is_none() && activity > 0 && now.saturating_sub(activity) >= QUIET_SHELL_SECS
+}
+
 fn age_secs(rec: Option<&AgentRecord>, now: u64) -> u64 {
     rec.map(|r| r.waiting_secs(now)).unwrap_or(0)
 }
@@ -287,6 +297,10 @@ pub struct App {
     pub sort_asc: bool,
     /// Free-text row filter (case-insensitive substring, empty = off).
     pub filter: String,
+    /// Hide unclaimed panes quiet past [`QUIET_SHELL_SECS`] (`h` toggle).
+    pub hide_quiet_shells: bool,
+    /// Rows the toggle is currently hiding (0 when off), for the title.
+    pub hidden_quiet: usize,
     /// Space-marked pane ids for bulk kill/attend. Survives sort/filter;
     /// pruned to live panes on every refresh.
     pub marked: std::collections::HashSet<String>,
@@ -322,6 +336,8 @@ impl App {
             sort_key: SortKey::Idle,
             sort_asc: false,
             filter: String::new(),
+            hide_quiet_shells: false,
+            hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
             hover: None,
         }
