@@ -177,7 +177,7 @@ pub fn render(frame: &mut Frame, app: &mut App) -> ClickAreas {
             pal.dim,
         ),
         None => (
-            "left-click = jump · right-click = preview · 2×click session = attach · tab = sessions · ←/→ filter · ↑/↓ move · click header = sort"
+            "left-click = jump · right-click = preview · 2×click session = attach · tab = switch list · ←/→ sessions · ↑/↓ move · click header = sort"
                 .to_string(),
             pal.dim,
         ),
