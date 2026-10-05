@@ -248,18 +248,13 @@ pub fn parse_since(s: &str, now: u64) -> Result<Option<u64>> {
     if s == "month" {
         return Ok(Some(now.saturating_sub(30 * 86400)));
     }
-    if s.len() > 1 {
-        let (num, unit) = s.split_at(s.len() - 1);
-        if let Ok(n) = num.parse::<u64>() {
-            let mult = match unit {
-                "m" => Some(60),
-                "h" => Some(3600),
-                "d" => Some(86400),
-                _ => None,
-            };
-            if let Some(mult) = mult {
-                return Ok(Some(now.saturating_sub(n.saturating_mul(mult))));
-            }
+    // Suffix-strip, never byte-split: split_at(len-1) panics on a
+    // trailing multibyte char ("5é"). An empty head fails the u64 parse.
+    for (suffix, mult) in [("m", 60), ("h", 3600), ("d", 86400)] {
+        if let Some(num) = s.strip_suffix(suffix)
+            && let Ok(n) = num.parse::<u64>()
+        {
+            return Ok(Some(now.saturating_sub(n.saturating_mul(mult))));
         }
     }
     let parts: Vec<&str> = s.split('-').collect();
