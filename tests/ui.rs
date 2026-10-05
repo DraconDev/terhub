@@ -775,6 +775,44 @@ fn wide_table_fits_long_commands_and_summaries() {
 }
 
 #[test]
+fn title_nudges_hookless_setups() {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    let mut app = app_with_panes();
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: 1,
+            state_since: 1,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+        },
+    );
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(text.contains("no hooks yet"), "missing nudge:\n{text}");
+    // One hook reporter silences it.
+    app.agents.get_mut("%1").unwrap().source = Source::Hook;
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(!text.contains("no hooks yet"), "nudge stuck:\n{text}");
+    // A dead daemon says that instead.
+    app.agents.get_mut("%1").unwrap().source = Source::Proc;
+    app.agents_live = false;
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(!text.contains("no hooks yet"), "nudge over daemon-down:\n{text}");
+    assert!(text.contains("daemon down"), "missing daemon-down:\n{text}");
+}
+
+#[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
     let (lines, areas) = render_with_areas(&mut app, 100, 24);
