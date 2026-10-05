@@ -5,6 +5,7 @@ use crate::history::fmt_dur;
 use crate::tmux::{Pane, Tmux};
 use anyhow::Result;
 use std::collections::HashMap;
+use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Picking
@@ -293,11 +294,25 @@ pub fn notify_transition(t: &Transition) {
 }
 
 fn run_notifier(cmd: &str, args: &[&str]) -> Result<()> {
-    let status = std::process::Command::new(cmd).args(args).status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        anyhow::bail!("notifier exited {status}")
+    run_notifier_timeout(cmd, args, Duration::from_secs(5))
+}
+
+/// Run the notifier with a bounded wait: a hung notify-send is killed and
+/// reported instead of stalling the poll loop forever.
+fn run_notifier_timeout(cmd: &str, args: &[&str], timeout: Duration) -> Result<()> {
+    let mut child = std::process::Command::new(cmd).args(args).spawn()?;
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait()? {
+            Some(status) if status.success() => return Ok(()),
+            Some(status) => anyhow::bail!("notifier exited {status}"),
+            None if start.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                anyhow::bail!("notifier timed out after {timeout:?}")
+            }
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
     }
 }
 
