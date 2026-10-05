@@ -1145,6 +1145,69 @@ mod tests {
         assert_eq!(rec.cpu_still_since, now - 60);
     }
 
+    #[test]
+    fn runtime_dir_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("terhub-dirperms-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Simulate a pre-existing umask-permissive dir.
+        let mut p = std::fs::metadata(&dir).unwrap().permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(&dir, p).unwrap();
+        ensure_runtime_dir(&dir).unwrap();
+        let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn oversize_request_rejected_without_oom() {
+        // A 2MB (valid!) hook event exceeds the 1MB request cap: truncated,
+        // rejected, never applied — instead of read whole into memory.
+        let registry = Arc::new(Mutex::new(HashMap::new()));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let dir = std::env::temp_dir().join(format!("terhub-bigreq-{}", std::process::id()));
+        let (server, mut client) = tokio::net::UnixStream::pair().unwrap();
+        let reg = registry.clone();
+        let rt = dir.clone();
+        let handle = tokio::spawn(async move { handle_conn(server, reg, rt, shutdown).await });
+        let big = serde_json::to_string(&Request::Event {
+            event: crate::agent::HookEvent {
+                pane: "%1".to_string(),
+                agent: "pi".to_string(),
+                state: AgentState::Waiting,
+                summary: "s".repeat(2 * 1024 * 1024),
+            },
+        })
+        .unwrap();
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        client.write_all(big.as_bytes()).await.unwrap();
+        client.write_all(b"\n").await.unwrap();
+        let mut lines = tokio::io::BufReader::new(client).lines();
+        let resp: Response = serde_json::from_str(
+            &tokio::time::timeout(Duration::from_secs(5), lines.next_line())
+                .await
+                .expect("no response")
+                .expect("read failed")
+                .expect("empty response"),
+        )
+        .unwrap();
+        assert!(!resp.ok, "oversize request accepted");
+        assert!(lock_registry(&registry).is_empty(), "truncated event applied");
+        handle.await.unwrap();
+    }
+
+    #[test]
+    fn capped_line_reader_refuses_flood() {
+        use std::io::Cursor;
+        let mut big = vec![b'x'; 100];
+        big.push(b'\n');
+        assert!(read_capped_line(&mut Cursor::new(big), 16).is_err());
+        let mut ok = Cursor::new(b"{\"ok\":true}\n".to_vec());
+        assert_eq!(read_capped_line(&mut ok, 16).unwrap(), "{\"ok\":true}\n");
+    }
+
     fn hook_record(updated_at: u64) -> AgentRecord {
         AgentRecord {
             pane: "%1".to_string(),
