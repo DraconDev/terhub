@@ -63,6 +63,48 @@ fn latest<T>(mut items: Vec<T>, limit: usize) -> Vec<T> {
     items
 }
 
+/// Stats rows from already-read entries: pure compute, called inside
+/// `spawn_blocking` by the handler (the ledger read + span build must not
+/// run on async workers) and directly by unit tests.
+fn stats_rows(
+    entries: &[crate::history::Entry],
+    since: Option<u64>,
+    group: crate::history::GroupBy,
+    now: u64,
+) -> Vec<crate::history::StatsRow> {
+    let spans = crate::history::build_spans(entries, now);
+    crate::history::stats(&spans, since, group)
+}
+
+/// Filtered timeline spans from already-read entries: pure compute, same
+/// `spawn_blocking` contract as [`stats_rows`].
+fn timeline_rows(
+    entries: &[crate::history::Entry],
+    since: Option<u64>,
+    session: Option<&str>,
+    agent: Option<&str>,
+    limit: usize,
+    now: u64,
+) -> Vec<crate::history::Span> {
+    let mut spans = crate::history::build_spans(entries, now);
+    spans.retain(|s| {
+        since.is_none_or(|c| s.end >= c)
+            && session.is_none_or(|f| s.session.contains(f))
+            && agent.is_none_or(|f| s.agent.contains(f))
+    });
+    latest(spans, limit.clamp(1, 2000))
+}
+
+/// 500 when the blocking pool itself fails (effectively never; documents
+/// the JoinError arm instead of unwrapping the handler task).
+fn blocking_failed() -> axum::response::Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({"error": "compute failed"})),
+    )
+        .into_response()
+}
+
 async fn api_status() -> impl IntoResponse {
     match crate::daemon::fetch_snapshot(Duration::from_secs(2)) {
         Ok(snap) => ok_json(&snap),
@@ -101,9 +143,15 @@ async fn api_stats(Query(q): Query<StatsQuery>) -> impl IntoResponse {
                 .into_response();
         }
     };
-    let spans = h::build_spans(&h::read_entries(&h::ledger_path()), now);
-    let rows = h::stats(&spans, since, group);
-    ok_json(&rows)
+    // Ledger read + span build are blocking file/CPU work: off the workers.
+    let rows = tokio::task::spawn_blocking(move || {
+        stats_rows(&h::read_entries(&h::ledger_path()), since, group, now)
+    })
+    .await;
+    match rows {
+        Ok(r) => ok_json(&r),
+        Err(_) => blocking_failed(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,15 +175,25 @@ async fn api_timeline(Query(q): Query<TimelineQuery>) -> impl IntoResponse {
                 .into_response();
         }
     };
-    let mut spans = h::build_spans(&h::read_entries(&h::ledger_path()), now);
-    spans.retain(|s| {
-        since.is_none_or(|c| s.end >= c)
-            && q.session.as_ref().is_none_or(|f| s.session.contains(f))
-            && q.agent.as_ref().is_none_or(|f| s.agent.contains(f))
-    });
-    let limit = q.limit.unwrap_or(200).clamp(1, 2000);
-    let spans = latest(spans, limit);
-    ok_json(&spans)
+    // Ledger read + span build are blocking file/CPU work: off the workers.
+    let session = q.session.clone();
+    let agent = q.agent.clone();
+    let limit = q.limit.unwrap_or(200);
+    let spans = tokio::task::spawn_blocking(move || {
+        timeline_rows(
+            &h::read_entries(&h::ledger_path()),
+            since,
+            session.as_deref(),
+            agent.as_deref(),
+            limit,
+            now,
+        )
+    })
+    .await;
+    match spans {
+        Ok(s) => ok_json(&s),
+        Err(_) => blocking_failed(),
+    }
 }
 
 async fn api_capture(Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
