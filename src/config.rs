@@ -625,6 +625,17 @@ fn is_key_line(line: &str, key: &str) -> bool {
         && !t.starts_with('#')
 }
 
+/// Byte-cap a message, flooring to a char boundary. `String::truncate`
+/// panics mid-multibyte-char, which would turn a config error report
+/// into a crash.
+fn truncate_msg(s: &str, max: usize) -> String {
+    let mut end = s.len().min(max);
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
+}
+
 /// Load config plus human-readable problems (syntax errors, unknown keys or
 /// theme). A missing file is fine (defaults); a broken file must say so
 /// instead of silently behaving like defaults.
@@ -639,8 +650,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     let file: FileConfig = match toml::from_str(&text) {
         Ok(f) => f,
         Err(e) => {
-            let mut msg = e.to_string().replace('\n', " ");
-            msg.truncate(160);
+            let msg = truncate_msg(&e.to_string().replace('\n', " "), 160);
             problems.push(format!("{}: {msg}", path.display()));
             return (cfg, problems);
         }
