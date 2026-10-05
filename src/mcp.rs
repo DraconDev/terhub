@@ -41,18 +41,56 @@ fn content_length(headers: &[String]) -> Option<usize> {
 /// so an uncapped `vec![0; n]` would let a bogus header OOM the server.
 const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
+/// Header flood guards: real frames carry 1–2 short headers. A peer that
+/// never sends a blank line gets its frame drained and skipped, not OOM.
+const MAX_HEADER_LINES: usize = 64;
+const MAX_HEADER_LINE_BYTES: usize = 16 * 1024;
+
 fn read_frame(reader: &mut impl BufRead) -> Result<Option<Value>> {
     loop {
-        let mut headers = Vec::new();
+        // Headers arrive as bytes first: a non-UTF8 line abandons the frame
+        // (already resynced at the blank line below) instead of read_line's
+        // UTF-8 error exiting the whole server.
+        let mut raw_headers = Vec::new();
+        let mut flooded = false;
         loop {
-            let mut line = String::new();
-            if reader.read_line(&mut line)? == 0 {
+            let mut raw = Vec::new();
+            let n = reader
+                .by_ref()
+                .take((MAX_HEADER_LINE_BYTES + 1) as u64)
+                .read_until(b'\n', &mut raw)?;
+            if n == 0 {
                 return Ok(None); // EOF
             }
-            if line.trim().is_empty() {
+            if raw.len() > MAX_HEADER_LINE_BYTES || raw_headers.len() >= MAX_HEADER_LINES {
+                flooded = true;
+            }
+            if raw.iter().all(|b| b.is_ascii_whitespace()) {
                 break;
             }
-            headers.push(line);
+            // Flooded lines drain to the blank line without accumulating.
+            if !flooded {
+                raw_headers.push(raw);
+            }
+        }
+        if flooded {
+            eprintln!("terhub mcp: header flood, skipping frame");
+            continue;
+        }
+        let mut headers = Vec::with_capacity(raw_headers.len());
+        let mut utf8_ok = true;
+        for raw in raw_headers {
+            match String::from_utf8(raw) {
+                Ok(l) => headers.push(l),
+                Err(_) => {
+                    utf8_ok = false;
+                    break;
+                }
+            }
+        }
+        if !utf8_ok {
+            eprintln!("terhub mcp: non-utf8 header, skipping frame");
+            continue;
         }
         let Some(n) = content_length(&headers) else {
             continue; // unframed garbage: skip, keep reading
