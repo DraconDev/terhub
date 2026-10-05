@@ -191,15 +191,20 @@ impl Server {
             anyhow::bail!("a daemon is already listening on {}", sock.display());
         }
         let _ = std::fs::remove_file(&sock); // stale socket from a crash
-        std::fs::write(&pid_file, std::process::id().to_string())?;
         let listener =
             UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
+        // Pid file only after a successful bind: a concurrent-start loser
+        // fails above without clobbering the winner's pid with dead data.
+        std::fs::write(&pid_file, std::process::id().to_string())?;
 
         let reg = self.registry.clone();
         let manifests = self.manifests.clone();
         let runtime = self.runtime.clone();
         let tunables = self.tunables;
-        tokio::spawn(async move { poll_loop(reg, manifests, runtime, tunables).await });
+        let shutdown_flag = self.shutdown.clone();
+        let poll = tokio::spawn(async move {
+            poll_loop(reg, manifests, runtime, tunables, shutdown_flag).await
+        });
 
         loop {
             if self.shutdown.load(Ordering::SeqCst) {
@@ -217,6 +222,10 @@ impl Server {
             tokio::spawn(async move { handle_conn(stream, reg, runtime, shutdown).await });
         }
 
+        // Graceful drain: the flag is set, so the poll loop breaks within
+        // 100ms (or finishes its in-flight poll first). `daemon stop`
+        // escalates to TERM after 3s if a wedged poll hangs this.
+        let _ = poll.await;
         let _ = std::fs::remove_file(&sock);
         let _ = std::fs::remove_file(&pid_file);
         Ok(())
@@ -265,19 +274,16 @@ async fn handle_conn(
             }
         }
         Request::Event { event } => {
-            {
+            // Lock only across the registry mutation + save; ledger and
+            // notify-send run unlocked (same shape as the poll write-back).
+            let (transitions, now) = {
                 let mut reg = lock_registry(&registry);
-                let before = reg.clone();
                 let now = now_unix();
-                apply_event_to(&mut reg, &event, now);
+                let t = apply_hook_event(&mut reg, &event, now);
                 save_registry(&runtime.join("registry.json"), &reg);
-                for t in detect_all_transitions(&before, &reg) {
-                    log_entry(&history::Entry::transition(now, &t));
-                    if t.to.needs_attention() {
-                        notify_transition(&t);
-                    }
-                }
-            }
+                (t, now)
+            };
+            emit_transitions(&transitions, now);
             Response::ok()
         }
     };
@@ -294,11 +300,21 @@ async fn write_response(
     Ok(())
 }
 
+/// Resolve when the shutdown flag sets, polling at 10Hz. The atomic flag
+/// (not a Notify) keeps handle_conn's fire-and-forget Shutdown send simple;
+/// 100ms is prompt next to a multi-second poll interval.
+async fn shutdown_wait(shutdown: &AtomicBool) {
+    while !shutdown.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 async fn poll_loop(
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     manifests: Arc<Vec<CompiledManifest>>,
     runtime: PathBuf,
     tunables: Tunables,
+    shutdown: Arc<AtomicBool>,
 ) {
     // A zero interval would panic; config validation keeps this >= 1, and
     // the clamp makes direct construction safe too.
@@ -308,14 +324,20 @@ async fn poll_loop(
     let mut prev_foreground: Option<Option<String>> = None;
     let automation_busy = Arc::new(AtomicBool::new(false));
     loop {
-        tick.tick().await;
+        if shutdown.load(Ordering::SeqCst) {
+            break;
+        }
+        tokio::select! {
+            _ = tick.tick() => {},
+            _ = shutdown_wait(&shutdown) => break,
+        }
         let poll_start = now_unix();
         let prev = lock_registry(&registry).clone();
         let manifests = manifests.clone();
         let tune = tunables;
         let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests, tune)).await;
         match next {
-            Ok((mut next, _, sessions, foreground)) => {
+            Ok((mut next, _, sessions, foreground, outage)) => {
                 // Fold the poll result back under one lock hold: hooks that
                 // landed during the poll are in the live registry but were
                 // never in the pre-poll clone poll_sync saw, so merging them
@@ -330,25 +352,26 @@ async fn poll_loop(
                     t
                 };
                 let now = now_unix();
-                for t in &transitions {
-                    log_entry(&history::Entry::transition(now, t));
-                    if t.to.needs_attention() {
-                        notify_transition(t);
+                emit_transitions(&transitions, now);
+                // Outage: sessions/foreground unknown — skip diffing AND the
+                // prev update, so recovery diffs against last-known-good and
+                // neither direction logs phantoms.
+                if !outage {
+                    let sessions: std::collections::HashSet<String> =
+                        sessions.into_iter().collect();
+                    if let Some(prev) = prev_sessions.replace(sessions.clone()) {
+                        for opened in sessions.difference(&prev) {
+                            log_entry(&history::Entry::session_event(now, opened, true));
+                        }
+                        for closed in prev.difference(&sessions) {
+                            log_entry(&history::Entry::session_event(now, closed, false));
+                        }
                     }
-                }
-                let sessions: std::collections::HashSet<String> = sessions.into_iter().collect();
-                if let Some(prev) = prev_sessions.replace(sessions.clone()) {
-                    for opened in sessions.difference(&prev) {
-                        log_entry(&history::Entry::session_event(now, opened, true));
+                    if let Some(prev) = prev_foreground.replace(foreground.clone())
+                        && prev != foreground
+                    {
+                        log_entry(&history::Entry::human_focus(now, foreground.as_deref()));
                     }
-                    for closed in prev.difference(&sessions) {
-                        log_entry(&history::Entry::session_event(now, closed, false));
-                    }
-                }
-                if let Some(prev) = prev_foreground.replace(foreground.clone())
-                    && prev != foreground
-                {
-                    log_entry(&history::Entry::human_focus(now, foreground.as_deref()));
                 }
                 // Automation runs detached so a slow shell action can't stall
                 // polls; the in-flight guard means passes never overlap, so
@@ -370,6 +393,31 @@ async fn poll_loop(
 
 fn log_entry(entry: &history::Entry) {
     let _ = history::append_entry(&history::ledger_path(), entry);
+}
+
+/// Apply one hook event to the registry and report its transitions.
+/// Pure registry work — no disk, no subprocess — so callers run it under
+/// the lock and emit side effects after unlocking.
+fn apply_hook_event(
+    reg: &mut HashMap<String, AgentRecord>,
+    event: &HookEvent,
+    now: u64,
+) -> Vec<crate::attend::Transition> {
+    let before = reg.clone();
+    apply_event_to(reg, event, now);
+    detect_all_transitions(&before, reg)
+}
+
+/// Emit transition side effects: ledger lines always, a desktop
+/// notification for attention states. Runs WITHOUT the registry lock —
+/// a slow notify-send must never stall polls or snapshots.
+fn emit_transitions(transitions: &[crate::attend::Transition], now: u64) {
+    for t in transitions {
+        log_entry(&history::Entry::transition(now, t));
+        if t.to.needs_attention() {
+            notify_transition(t);
+        }
+    }
 }
 
 /// Fold hook events that landed in the live registry *during* a poll back
@@ -714,8 +762,24 @@ fn fallback_summary_for(state: AgentState, screen: Option<&str>) -> String {
     }
 }
 
+/// Outage result: the registry carries over untouched, and `outage` tells
+/// the poll loop to skip session/foreground diffing — unknown is not
+/// empty, and diffing it would log phantom open/close/focus events.
+fn outage_result(
+    prev: HashMap<String, AgentRecord>,
+) -> (
+    HashMap<String, AgentRecord>,
+    Vec<crate::attend::Transition>,
+    Vec<String>,
+    Option<String>,
+    bool,
+) {
+    (prev, Vec::new(), Vec::new(), None, true)
+}
+
 /// Returns the new registry, attention transitions to notify, the live
-/// session list for open/close detection, and the foreground pane.
+/// session list for open/close detection, the foreground pane, and whether
+/// tmux was unreachable (sessions/foreground unknown, not empty).
 fn poll_sync(
     prev: HashMap<String, AgentRecord>,
     manifests: &[CompiledManifest],
@@ -725,21 +789,31 @@ fn poll_sync(
     Vec<crate::attend::Transition>,
     Vec<String>,
     Option<String>,
+    bool,
 ) {
-    let prev_session_list: Vec<String> = prev
-        .values()
-        .map(|r| r.session.clone())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let now = now_unix();
-    let tmux = match Tmux::new() {
+    match Tmux::new() {
         // tmux gone: keep stale rather than wipe
-        Ok(t) => t,
-        Err(_) => return (prev, Vec::new(), prev_session_list, None),
-    };
+        Ok(t) => poll_sync_with(&t, prev, manifests, tune),
+        Err(_) => outage_result(prev),
+    }
+}
+
+fn poll_sync_with(
+    tmux: &Tmux,
+    prev: HashMap<String, AgentRecord>,
+    manifests: &[CompiledManifest],
+    tune: Tunables,
+) -> (
+    HashMap<String, AgentRecord>,
+    Vec<crate::attend::Transition>,
+    Vec<String>,
+    Option<String>,
+    bool,
+) {
+    let now = now_unix();
     let panes = match tmux.list_all_panes() {
         Ok(p) => p,
-        Err(_) => return (prev, Vec::new(), prev_session_list, None),
+        Err(_) => return outage_result(prev),
     };
     // One process view shared by every pane: /proc is walked once per poll.
     let snap = crate::proc::Snapshot::capture();
@@ -854,7 +928,7 @@ fn poll_sync(
     sessions.sort();
     sessions.dedup();
     let foreground = tmux.foreground_pane();
-    (next, transitions, sessions, foreground)
+    (next, transitions, sessions, foreground, false)
 }
 
 fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
@@ -960,6 +1034,114 @@ pub fn daemon_alive() -> bool {
 mod tests {
     use super::*;
     use crate::agent::AgentState;
+
+    #[test]
+    fn hook_event_applies_without_side_effects() {
+        // The lock-held half of hook handling: mutate the registry and
+        // report transitions. Ledger + notify emission is the caller's job
+        // after unlocking, so a slow notify-send never stalls polls.
+        let mut reg = std::collections::HashMap::new();
+        let ev = crate::agent::HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Waiting,
+            summary: "Approve?".to_string(),
+        };
+        let transitions = apply_hook_event(&mut reg, &ev, 100_000);
+        assert_eq!(reg["%1"].state, AgentState::Waiting);
+        assert_eq!(reg["%1"].summary, "Approve?");
+        assert_eq!(transitions.len(), 1);
+        assert!(transitions[0].to.needs_attention());
+    }
+
+    #[tokio::test]
+    async fn poll_loop_exits_on_shutdown() {
+        // A preset shutdown flag stops the loop before the first tick: no
+        // tmux, no registry writes, prompt return.
+        let registry = Arc::new(Mutex::new(HashMap::new()));
+        let shutdown = Arc::new(AtomicBool::new(true));
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-shutdown-{}", std::process::id()));
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            poll_loop(
+                registry,
+                Arc::new(vec![]),
+                dir,
+                Tunables::default(),
+                shutdown,
+            ),
+        )
+        .await
+        .expect("poll_loop ignored shutdown");
+    }
+
+    #[tokio::test]
+    async fn failed_bind_leaves_no_pid_file() {
+        // The pid file must be written only after a successful bind: a
+        // concurrent-start loser that fails to bind must not clobber the
+        // winner's pid with its own dead one. A >108-char socket path
+        // fails the bind deterministically.
+        let runtime = std::env::temp_dir().join(format!(
+            "terhub-pid-order-{}-{}",
+            std::process::id(),
+            "p".repeat(100)
+        ));
+        std::fs::create_dir_all(&runtime).unwrap();
+        let server = Server {
+            runtime: runtime.clone(),
+            registry: Arc::new(Mutex::new(HashMap::new())),
+            manifests: Arc::new(vec![]),
+            shutdown: Arc::new(AtomicBool::new(false)),
+            tunables: Tunables::default(),
+        };
+        server.run().await.expect_err("overlong socket bound?");
+        assert!(
+            !runtime.join("terhubd.pid").exists(),
+            "loser wrote a pid file"
+        );
+        let _ = std::fs::remove_dir_all(&runtime);
+    }
+
+    #[test]
+    fn poll_sync_outage_flags_unknown() {
+        // tmux unreachable: the registry carries over untouched, and the
+        // outage flag tells the poll loop to skip session/foreground
+        // diffing (no phantom open/close/focus events either direction).
+        let mut prev = HashMap::new();
+        prev.insert("%1".to_string(), hook_record(99_000));
+        let tmux = crate::tmux::Tmux::test("/nonexistent-tmux-binary".into());
+        let (next, transitions, sessions, foreground, outage) =
+            poll_sync_with(&tmux, prev, &[], Tunables::default());
+        assert!(outage);
+        assert_eq!(next.len(), 1);
+        assert_eq!(next["%1"].state, AgentState::Waiting);
+        assert!(transitions.is_empty());
+        assert!(sessions.is_empty());
+        assert_eq!(foreground, None);
+    }
+
+    #[test]
+    fn continuity_ignores_agent_case() {
+        // track_cpu matches agents case-insensitively; state continuity
+        // must agree, or a "PI"→"pi" wobble resets the clock every poll.
+        let now = 100_000;
+        let mut old = carried("PI", AgentState::Working, 50, now - 600, now - 600);
+        old.agent_start = 100;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 50, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state_since, now - 600);
+        assert_eq!(rec.cpu_still_since, now - 600);
+    }
 
     fn hook_record(updated_at: u64) -> AgentRecord {
         AgentRecord {

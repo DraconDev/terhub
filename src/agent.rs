@@ -521,9 +521,12 @@ pub fn classify_screen(
 }
 
 /// Merge helper for tests and the daemon: fold hook events over a registry.
+/// The hook label canonicalizes first (`claude-code` → `claude`), so hook
+/// records compare equal to proc/screen records in every downstream check.
 pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEvent, now: u64) {
+    let agent = crate::proc::canonical_agent(&ev.agent);
     match registry.get(&ev.pane) {
-        Some(old) if old.state == ev.state && old.agent == ev.agent => {
+        Some(old) if old.state == ev.state && old.agent == agent => {
             let mut rec = old.clone();
             rec.source = Source::Hook;
             rec.summary = ev.summary.clone();
@@ -609,6 +612,29 @@ mod tests {
         let agents: Vec<&str> = manifests.iter().map(|m| m.agent.as_str()).collect();
         assert_eq!(agents, ["a", "b", "c", "d", "e", "f", "g", "h"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hook_agent_names_canonicalize() {
+        // Hooks report raw labels; the registry stores canonical names so
+        // hook records compare equal to proc/screen records downstream.
+        let mut reg = HashMap::new();
+        let ev = HookEvent {
+            pane: "%1".to_string(),
+            agent: "claude-code".to_string(),
+            state: AgentState::Waiting,
+            summary: String::new(),
+        };
+        apply_event_to(&mut reg, &ev, 100_000);
+        assert_eq!(reg["%1"].agent, "claude");
+        let ev2 = HookEvent {
+            pane: "%2".to_string(),
+            agent: "MyAgent".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+        };
+        apply_event_to(&mut reg, &ev2, 100_000);
+        assert_eq!(reg["%2"].agent, "myagent");
     }
 
     fn compiled() -> Vec<CompiledManifest> {

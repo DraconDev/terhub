@@ -185,6 +185,12 @@ impl Tmux {
         find_tmux().is_some()
     }
 
+    /// Test handle with an explicit binary (a bogus path fails every call,
+    /// which is how outage paths get exercised deterministically).
+    pub fn test(bin: PathBuf) -> Self {
+        Tmux { bin }
+    }
+
     fn run(&self, args: &[&str]) -> Result<String> {
         let out = Command::new(&self.bin)
             .args(args)

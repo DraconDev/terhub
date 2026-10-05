@@ -418,6 +418,16 @@ impl Snapshot {
 /// argv[0], path-token basenames), then per-token substring needles with
 /// boundaries — never a flat whole-cmdline contains, which cried agent
 /// at `pip`, filenames, and URLs.
+/// Canonical agent name for a hook-provided label: resolve through the
+/// same pipeline as process matching (`claude-code` → `claude`,
+/// `muse-bin-1.4.2` → `muse`), lowercasing anything unrecognized, so hook
+/// records compare equal to proc/screen records downstream.
+pub fn canonical_agent(name: &str) -> String {
+    match_proc("", name)
+        .map(str::to_string)
+        .unwrap_or_else(|| name.trim().to_lowercase())
+}
+
 fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
     let find_bin = |name: &str| AGENT_BINS.iter().find(|b| **b == name).copied();
     if let Some(agent) = find_bin(&proc_base(comm)) {
@@ -743,6 +753,16 @@ mod tests {
         assert_eq!(hit.pid, 921);
         assert_eq!(hit.start, 9210);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn canonical_agent_resolves_aliases() {
+        assert_eq!(canonical_agent("claude-code"), "claude");
+        assert_eq!(canonical_agent("muse-bin-1.4.2"), "muse");
+        assert_eq!(canonical_agent("pi-agent-core-x"), "pi");
+        assert_eq!(canonical_agent("Claude"), "claude");
+        assert_eq!(canonical_agent("myagent"), "myagent");
+        assert_eq!(canonical_agent(""), "");
     }
 
     #[test]
