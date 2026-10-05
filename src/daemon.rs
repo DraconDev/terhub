@@ -337,7 +337,7 @@ async fn poll_loop(
         let tune = tunables;
         let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests, tune)).await;
         match next {
-            Ok((mut next, _, sessions, foreground, outage)) => {
+            Ok((mut next, sessions, foreground, outage)) => {
                 // Fold the poll result back under one lock hold: hooks that
                 // landed during the poll are in the live registry but were
                 // never in the pre-poll clone poll_sync saw, so merging them
@@ -773,24 +773,24 @@ fn outage_result(
     prev: HashMap<String, AgentRecord>,
 ) -> (
     HashMap<String, AgentRecord>,
-    Vec<crate::attend::Transition>,
     Vec<String>,
     Option<String>,
     bool,
 ) {
-    (prev, Vec::new(), Vec::new(), None, true)
+    (prev, Vec::new(), None, true)
 }
 
-/// Returns the new registry, attention transitions to notify, the live
-/// session list for open/close detection, the foreground pane, and whether
-/// tmux was unreachable (sessions/foreground unknown, not empty).
+/// Returns the new registry, the live session list for open/close
+/// detection, the foreground pane, and whether tmux was unreachable
+/// (sessions/foreground unknown, not empty). Transitions are NOT computed
+/// here: the poll loop merges mid-poll hooks first and diffs after, so any
+/// diff here would be discarded and recomputed.
 fn poll_sync(
     prev: HashMap<String, AgentRecord>,
     manifests: &[CompiledManifest],
     tune: Tunables,
 ) -> (
     HashMap<String, AgentRecord>,
-    Vec<crate::attend::Transition>,
     Vec<String>,
     Option<String>,
     bool,
@@ -809,7 +809,6 @@ fn poll_sync_with(
     tune: Tunables,
 ) -> (
     HashMap<String, AgentRecord>,
-    Vec<crate::attend::Transition>,
     Vec<String>,
     Option<String>,
     bool,
@@ -927,12 +926,11 @@ fn poll_sync_with(
             }
         }
     }
-    let transitions = detect_all_transitions(&prev, &next);
     let mut sessions: Vec<String> = panes.iter().map(|p| p.session.clone()).collect();
     sessions.sort();
     sessions.dedup();
     let foreground = tmux.foreground_pane();
-    (next, transitions, sessions, foreground, false)
+    (next, sessions, foreground, false)
 }
 
 fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
@@ -1115,12 +1113,11 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%1".to_string(), hook_record(99_000));
         let tmux = crate::tmux::Tmux::test("/nonexistent-tmux-binary".into());
-        let (next, transitions, sessions, foreground, outage) =
+        let (next, sessions, foreground, outage) =
             poll_sync_with(&tmux, prev, &[], Tunables::default());
         assert!(outage);
         assert_eq!(next.len(), 1);
         assert_eq!(next["%1"].state, AgentState::Waiting);
-        assert!(transitions.is_empty());
         assert!(sessions.is_empty());
         assert_eq!(foreground, None);
     }
