@@ -548,6 +548,27 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
 mod tests {
     use super::*;
 
+    #[test]
+    fn broken_manifests_warn_instead_of_vanishing() {
+        let dir =
+            std::env::temp_dir().join(format!("terhub-manifests-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("good.toml"),
+            "agent = \"custom\"\nwaiting = [\"approve?\"]\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("bad.toml"), "agent = [unclosed\n").unwrap();
+        std::fs::write(dir.join("notes.txt"), "ignored").unwrap();
+        let (manifests, warnings) = load_manifests(&dir);
+        assert_eq!(manifests.len(), 1);
+        assert_eq!(manifests[0].agent, "custom");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("bad.toml"), "{}", warnings[0]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn compiled() -> Vec<CompiledManifest> {
         compile_all(&builtin_manifests()).unwrap()
     }
