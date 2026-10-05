@@ -406,12 +406,15 @@ pub fn builtin_manifests() -> Vec<Manifest> {
     ]
 }
 
-/// Load user manifests from a directory (`*.toml`); invalid files are skipped.
-pub fn load_manifests(dir: &Path) -> Vec<Manifest> {
+/// Load user manifests from a directory (`*.toml`), reporting unreadable
+/// or invalid files instead of silently dropping them. A typo in one user
+/// manifest must not blind the daemon without a word.
+pub fn load_manifests(dir: &Path) -> (Vec<Manifest>, Vec<String>) {
     let mut out = Vec::new();
+    let mut warnings = Vec::new();
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return out,
+        Err(_) => return (out, warnings),
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -420,13 +423,21 @@ pub fn load_manifests(dir: &Path) -> Vec<Manifest> {
         }
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
-            Err(_) => continue,
+            Err(e) => {
+                warnings.push(format!("manifest {}: unreadable ({e:#})", path.display()));
+                continue;
+            }
         };
-        if let Ok(m) = toml::from_str::<Manifest>(&text) {
-            out.push(m);
+        match toml::from_str::<Manifest>(&text) {
+            Ok(m) => out.push(m),
+            Err(e) => warnings.push(format!(
+                "manifest {}: invalid ({})",
+                path.display(),
+                e.to_string().replace('\n', " ")
+            )),
         }
     }
-    out
+    (out, warnings)
 }
 
 pub fn compile_all(manifests: &[Manifest]) -> Result<Vec<CompiledManifest>> {

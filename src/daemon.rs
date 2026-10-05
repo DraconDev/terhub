@@ -164,8 +164,10 @@ impl Server {
         std::fs::create_dir_all(&runtime)
             .with_context(|| format!("create runtime dir {}", runtime.display()))?;
         let mut manifests = builtin_manifests();
-        manifests.extend(load_manifests(&config::manifests_dir()));
-        let (compiled, warnings) = compile_all_lossy(&manifests);
+        let (user_manifests, mut warnings) = load_manifests(&config::manifests_dir());
+        manifests.extend(user_manifests);
+        let (compiled, compile_warnings) = compile_all_lossy(&manifests);
+        warnings.extend(compile_warnings);
         for w in &warnings {
             eprintln!("terhubd: broken manifest skipped ({w})");
         }
