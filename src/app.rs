@@ -2149,6 +2149,20 @@ mod tests {
     }
 
     #[test]
+    fn rename_from_panes_focus_uses_pane_session() {
+        // Sidebar on All must not block rename: the selected pane's session
+        // is the obvious target.
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.select(0); // All
+        assert!(app.side_session().is_none());
+        assert!(app.selected_pane().is_some());
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('r')), &tmux);
+        assert_eq!(app.mode, Mode::PromptRename("a".to_string()));
+    }
+
+    #[test]
     fn attend_works_from_pane_focus() {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
