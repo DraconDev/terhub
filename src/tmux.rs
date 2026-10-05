@@ -103,6 +103,23 @@ fn parse_panes(out: &str) -> Vec<Pane> {
     panes
 }
 
+/// Unwrap launcher wrappers (`systemd-inhibit`, `sudo`, …) to the payload
+/// program, so the Cmd column names what runs instead of what launched it.
+/// The /proc snapshot is skipped entirely when no pane reports a wrapper.
+fn label_commands(mut panes: Vec<Pane>) -> Vec<Pane> {
+    if !panes
+        .iter()
+        .any(|p| p.pid != 0 && crate::proc::is_launcher_wrapper(&p.command))
+    {
+        return panes;
+    }
+    let snap = crate::proc::Snapshot::capture();
+    for p in &mut panes {
+        p.command = snap.display_command(p.pid, &p.command);
+    }
+    panes
+}
+
 fn find_tmux() -> Option<PathBuf> {
     let path = env::var_os("PATH")?;
     env::split_paths(&path)
@@ -276,13 +293,13 @@ impl Tmux {
     /// All panes in a session, across its windows.
     pub fn list_panes(&self, session: &str) -> Result<Vec<Pane>> {
         let out = self.run(&["list-panes", "-s", "-t", session, "-F", PANE_FORMAT])?;
-        Ok(parse_panes(&out))
+        Ok(label_commands(parse_panes(&out)))
     }
 
     /// All panes on the server, across sessions (for the daemon poll).
     pub fn list_all_panes(&self) -> Result<Vec<Pane>> {
         let out = self.run(&["list-panes", "-a", "-F", PANE_FORMAT])?;
-        Ok(parse_panes(&out))
+        Ok(label_commands(parse_panes(&out)))
     }
 
     /// Last `lines` of a pane's visible content (no escape sequences).
