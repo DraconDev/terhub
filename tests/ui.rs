@@ -489,6 +489,21 @@ fn preview_title_shows_agent_context() {
 }
 
 #[test]
+fn preview_title_uses_attach_binding() {
+    let mut app = app_with_panes();
+    app.config
+        .keys
+        .insert("attach".to_string(), "ctrl-o".to_string());
+    app.show_preview = true;
+    app.preview = "hello from pane".to_string();
+    let text = render_lines(&mut app, 160, 20).join("\n");
+    assert!(
+        text.contains("left-click/ctrl-o jump"),
+        "title ignores binding:\n{text}"
+    );
+}
+
+#[test]
 fn filter_prompt_renders_text() {
     let mut app = app_with(&["alpha"]);
     app.mode = Mode::PromptFilter;
