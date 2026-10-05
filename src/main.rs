@@ -1496,6 +1496,9 @@ fn run_tui() -> Result<Option<TuiExit>> {
                             // Fullscreen preview: jump to the previewed pane.
                             if stay_open {
                                 app.do_nav(&tmux, AppEvent::FocusPane(id));
+                                // Preview owns the click: never fall through
+                                // to header/session/pane handling below.
+                                continue;
                             } else {
                                 return Ok(Some(TuiExit::FocusPane(id)));
                             }

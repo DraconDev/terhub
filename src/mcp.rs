@@ -52,11 +52,19 @@ const MAX_HEADER_LINE_BYTES: usize = 16 * 1024;
 fn content_length_raw(line: &[u8]) -> Option<usize> {
     let colon = line.iter().position(|b| *b == b':')?;
     let (k, v) = line.split_at(colon);
-    let key: Vec<u8> = k.iter().filter(|b| !b.is_ascii_whitespace()).copied().collect();
+    let key: Vec<u8> = k
+        .iter()
+        .filter(|b| !b.is_ascii_whitespace())
+        .copied()
+        .collect();
     if !key.eq_ignore_ascii_case(b"content-length") {
         return None;
     }
-    let val: Vec<u8> = v[1..].iter().filter(|b| !b.is_ascii_whitespace()).copied().collect();
+    let val: Vec<u8> = v[1..]
+        .iter()
+        .filter(|b| !b.is_ascii_whitespace())
+        .copied()
+        .collect();
     std::str::from_utf8(&val).ok()?.parse().ok()
 }
 
@@ -420,7 +428,9 @@ mod tests {
         let mut input = b"\xff\xfe\nContent-Length: 2\r\n\r\n{}".to_vec();
         input.extend_from_slice(&framed(r#"{"jsonrpc":"2.0","id":9}"#));
         let mut cur = Cursor::new(input);
-        let v = read_frame(&mut cur).expect("server exited").expect("no frame");
+        let v = read_frame(&mut cur)
+            .expect("server exited")
+            .expect("no frame");
         assert_eq!(v.get("id").and_then(|i| i.as_u64()), Some(9));
     }
 

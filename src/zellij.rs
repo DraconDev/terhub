@@ -99,10 +99,14 @@ mod tests {
     #[test]
     fn empty_server_reads_as_no_sessions() {
         assert!(is_empty_server(&anyhow::anyhow!("No sessions found")));
-        assert!(is_empty_server(&anyhow::anyhow!("error: no session running")));
+        assert!(is_empty_server(&anyhow::anyhow!(
+            "error: no session running"
+        )));
         // Real failures (and a missing binary) must still error, not
         // masquerade as an empty list.
         assert!(!is_empty_server(&anyhow::anyhow!("boom")));
-        assert!(!is_empty_server(&anyhow::anyhow!("zellij not found on PATH")));
+        assert!(!is_empty_server(&anyhow::anyhow!(
+            "zellij not found on PATH"
+        )));
     }
 }

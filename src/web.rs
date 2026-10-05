@@ -459,7 +459,10 @@ mod tests {
     #[test]
     fn stats_rows_aggregate_spans() {
         // Working 100–200, Waiting 200–300.
-        let entries = vec![entry(100, AgentState::Working), entry(200, AgentState::Waiting)];
+        let entries = vec![
+            entry(100, AgentState::Working),
+            entry(200, AgentState::Waiting),
+        ];
         let rows = stats_rows(&entries, None, GroupBy::Agent, 300);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].key, "pi");
@@ -486,7 +489,10 @@ mod tests {
 
     #[test]
     fn timeline_rows_filter_and_limit() {
-        let entries = vec![entry(100, AgentState::Working), entry(200, AgentState::Waiting)];
+        let entries = vec![
+            entry(100, AgentState::Working),
+            entry(200, AgentState::Waiting),
+        ];
         let all = timeline_rows(&entries, None, None, None, 200, 300);
         assert_eq!(all.len(), 2);
         assert!(timeline_rows(&entries, None, None, Some("xx"), 200, 300).is_empty());
