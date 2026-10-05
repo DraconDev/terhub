@@ -628,6 +628,14 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if app.hidden_quiet > 0 {
         title.push_str(&format!(" · hiding {}", app.hidden_quiet));
     }
+    if app.agents_live
+        && !app
+            .agents
+            .values()
+            .any(|r| r.source == crate::agent::Source::Hook)
+    {
+        title.push_str(" · no hooks yet (GUIDE: Hooks)");
+    }
     title.push_str(&format!(
         " · {} · {} ",
         app.config.palette(),
