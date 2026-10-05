@@ -656,6 +656,28 @@ mod tests {
     }
 
     #[test]
+    fn subtree_editor_distinguishes_child_from_sibling() {
+        let dir = fake_proc(
+            "edown",
+            &[
+                ("900", "1", "zsh", "-zsh", 0, 0, 9000),
+                // Background agent with a sibling editor: not its $EDITOR.
+                ("901", "900", "pi", "pi", 0, 0, 9001),
+                ("902", "900", "micro", "micro notes.md", 0, 0, 9002),
+                ("910", "1", "zsh", "-zsh", 0, 0, 9010),
+                // Agent with its own $EDITOR child.
+                ("911", "910", "pi", "pi", 0, 0, 9011),
+                ("912", "911", "micro", "micro msg.md", 0, 0, 9012),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert!(!snap.subtree_has_editor(901));
+        assert!(snap.subtree_has_editor(911));
+        assert!(!snap.subtree_has_editor(999));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn nearest_agent_wins() {
         // Deep codex under the first child, shallow pi under the second:
         // breadth-first finds pi despite the higher pid.
