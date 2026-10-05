@@ -166,8 +166,11 @@ pub fn parse_key(s: &str) -> KeySpec {
         "pageup" | "pgup" => KeySpec::Code(KeyCode::PageUp),
         "pagedown" | "pgdn" => KeySpec::Code(KeyCode::PageDown),
         "question_mark" => KeySpec::Char('?'),
+        // Real function keys run F1–F24; f0/f99 are typos, not keys.
         f if f.len() > 1 && f.starts_with('f') => f[1..]
             .parse::<u8>()
+            .ok()
+            .filter(|n| (1..=24).contains(n))
             .map(KeyCode::F)
             .map(KeySpec::Code)
             .unwrap_or(KeySpec::None),
@@ -885,6 +888,15 @@ mod tests {
         assert_eq!(parse_key("f12"), KeySpec::Code(KeyCode::F(12)));
         assert_eq!(parse_key(""), KeySpec::None);
         assert_eq!(parse_key("nope-not-a-key"), KeySpec::None);
+    }
+
+    #[test]
+    fn fkey_range_rejects_absurd() {
+        assert_eq!(parse_key("f0"), KeySpec::None);
+        assert_eq!(parse_key("f99"), KeySpec::None);
+        assert_eq!(parse_key("f25"), KeySpec::None);
+        assert_eq!(parse_key("f1"), KeySpec::Code(KeyCode::F(1)));
+        assert_eq!(parse_key("f24"), KeySpec::Code(KeyCode::F(24)));
     }
 
     #[test]
