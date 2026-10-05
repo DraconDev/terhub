@@ -23,6 +23,43 @@ pub fn router() -> Router {
         .route("/api/capture", get(api_capture))
         .route("/api/send", post(api_send))
         .route("/api/interrupt", post(api_interrupt))
+        .layer(axum::middleware::from_fn(origin_guard))
+}
+
+/// Loopback origins only: the dashboard is same-origin served, so a
+/// present-but-foreign Origin (CSRF from a malicious page, DNS rebinding
+/// against /api/send) is rejected. Missing Origin (curl, same-origin GET)
+/// is allowed — this guards browsers, not the local user.
+fn origin_allowed(origin: &str) -> bool {
+    // scheme://host[:port][/...], tolerating bare hosts. Exact host match:
+    // 127.0.0.1.evil.com must not ride on the 127.0.0.1 prefix.
+    let after_scheme = origin.rsplit("://").next().unwrap_or("");
+    let host_port = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    let host = host_port.rsplit('@').next().unwrap_or("");
+    let bare = match host.strip_prefix('[') {
+        Some(inner) => inner.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    matches!(bare, "127.0.0.1" | "localhost" | "::1")
+}
+
+async fn origin_guard(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let foreign = req
+        .headers()
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|o| !origin_allowed(o));
+    if foreign {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "foreign origin"})),
+        )
+            .into_response();
+    }
+    next.run(req).await
 }
 
 /// Serve on 127.0.0.1:`port` (0 = ephemeral). Prints the URL for the caller.
