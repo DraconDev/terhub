@@ -720,6 +720,24 @@ mod tests {
     }
 
     #[test]
+    fn hit_carries_process_starttime() {
+        // Distinct starttimes so a pid-reuse mixup is observable.
+        let dir = fake_proc(
+            "start",
+            &[
+                ("920", "1", "zsh", "-zsh", 0, 0, 9200),
+                ("921", "920", "pi", "pi", 30, 20, 9210),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        let hit = snap.detect_agent(920).expect("no hit");
+        assert_eq!(hit.agent, "pi");
+        assert_eq!(hit.pid, 921);
+        assert_eq!(hit.start, 9210);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn nearest_agent_wins() {
         // Deep codex under the first child, shallow pi under the second:
         // breadth-first finds pi despite the higher pid.
