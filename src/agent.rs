@@ -421,7 +421,11 @@ pub fn load_manifests(dir: &Path) -> (Vec<Manifest>, Vec<String>) {
         Ok(e) => e,
         Err(_) => return (out, warnings),
     };
-    for entry in entries.flatten() {
+    // read_dir order is filesystem-dependent; classification is
+    // first-match-wins, so sort by file name for deterministic matches.
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    for entry in entries {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("toml") {
             continue;
