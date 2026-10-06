@@ -384,8 +384,9 @@ impl CompiledManifest {
     /// line decides, so current output overrides stale scrollback (an old
     /// "error:" in prose can't pin Error forever while the agent works).
     /// Within one line, the most specific signal wins: limited beats error
-    /// beats waiting beats working ("Error: rate limit reached" is a quota
-    /// wall, not a crash).
+    /// beats waiting beats working beats idle ("Error: rate limit reached"
+    /// is a quota wall, not a crash; a completion marker beside live
+    /// activity is stale scrollback, not done-ness).
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
@@ -474,6 +475,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            idle: vec![],
             waiting_unless: vec![],
         },
         Manifest {
@@ -498,6 +500,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            idle: vec![],
             waiting_unless: vec![],
         },
         Manifest {
@@ -521,6 +524,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            idle: vec![],
             waiting_unless: vec![],
         },
         Manifest {
@@ -588,6 +592,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            idle: vec![],
             waiting_unless: vec![],
         },
     ]
