@@ -1941,6 +1941,7 @@ impl App {
         }
         if key_matches(&cfg.spec("refresh"), code) {
             self.refresh(tmux);
+            self.fetch_native();
             return None;
         }
         // Custom commands run against the selected pane from either focus
@@ -2671,6 +2672,7 @@ impl App {
         }
         if key_matches(&cfg.spec("refresh"), code) {
             self.refresh(tmux);
+            self.fetch_native();
             return None;
         }
         if key_matches(&cfg.spec("new"), code) {
