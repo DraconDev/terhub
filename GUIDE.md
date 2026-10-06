@@ -370,7 +370,8 @@ terhub status-line [--pane %N]
   cleanly instead of scrambling server selection.
 - **`peek`** shows this window's panes with agent states as a tmux popup
   (digits jump to a pane); `--plain` prints the same report as text for
-  scripts and status bars.
+  scripts and status bars. Hooked agents also show their last prompt and
+  how long ago you sent it, plus which pane was prompted most recently.
 - **`status-line`** prints one line for `status-right`, e.g.
   `set -g status-right '#(terhub status-line)'`. Always exits 0 (prints
   `◎ --` when the daemon is down).
@@ -380,7 +381,8 @@ terhub status-line [--pane %N]
 ```sh
 terhub stats [--since today] [--group-by day|agent|session]
 terhub report [--since today] [--json|--markdown]
-terhub activity [--since 24h] [--kind agent|session|rule|human|all] [--json]
+terhub activity [--since 24h] [--kind agent|session|rule|human|prompt|all] [--json]
+terhub recap [--since today] [--pane %N] [--limit 10]
 terhub timeline [--since today] [--session S] [--agent A]
   [--sort time|waiting] [--view time|heatmap]
 ```
@@ -394,8 +396,12 @@ instead of the entry log. `report` adds a foreground section (time your
 focus spent per pane, from the `human` ledger) to the three breakdowns;
 `--json` and `--markdown` export the same data for scripts and pasting.
 
+`recap` reads back what you asked: recent prompts newest-first with ages,
+optionally scoped to one pane — the answer to "what did I tell this agent?".
+
 Entry kinds: `agent` (state transitions), `session` (open/close), `rule`
-(automation firings), `human` (your focus moving between panes). Every
+(automation firings), `human` (your focus moving between panes), `prompt`
+(user prompts via hooks). Every
 transition is logged (working and idle included), so WORK/IDLE columns
 reflect real time — but only from this version on; older ledger ranges
 logged attention states only, and show 0 there.
@@ -546,7 +552,8 @@ are tmux-backed.
 | `swap-pane <a> <b>` | Swap two panes |
 | `send <pane> <text> [--no-submit]` | Type into a pane |
 | `status [--json]` | Agent states from the daemon |
-| `hook --agent A --pane P --state S [--summary T]` | Push a hook event |
+| `hook --agent A --pane P --state S [--summary T] [--prompt P]` | Push a hook event |
+| `recap [--since S] [--pane P] [--limit N]` | Recent prompts, newest first |
 | `hooks install\|status\|uninstall [agent]` | Wire agent lifecycle hooks |
 | `daemon start\|stop\|status` | Manage `terhubd` |
 | `attend [--cycle] [--list]` | Jump to longest-waiting agent |
