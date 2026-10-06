@@ -153,6 +153,7 @@ fn mcp_conversation_without_and_with_daemon() {
             agent: "codex".to_string(),
             state: terhub::agent::AgentState::Working,
             summary: "mcp probe".to_string(),
+            prompt: String::new(),
         },
         Duration::from_secs(2),
     )
