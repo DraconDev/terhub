@@ -3670,7 +3670,7 @@ mod tests {
         let tmux = Tmux::new().unwrap();
         assert_eq!(app.on_key(press(KeyCode::Char('t')), &tmux), None);
         assert_eq!(app.config.theme, "light");
-        app.config.theme = "solarized".to_string();
+        app.config.theme = "monokai".to_string();
         app.on_key(press(KeyCode::Char('t')), &tmux);
         assert_eq!(app.config.theme, "dark");
         assert!(app.status.as_ref().unwrap().contains("theme: dark"));
@@ -3737,8 +3737,9 @@ mod tests {
         assert!(app.status.as_ref().unwrap().contains("(saved)"));
         let text = std::fs::read_to_string(crate::config::config_path()).unwrap();
         assert!(text.contains("theme = \"dracula\""), "{text}");
-        // Toggles flip too.
-        for _ in 0..10 {
+        // Toggles flip too (drive to the last row, however many
+        // theme rows exist now).
+        for _ in 0..app.settings_rows().len() + 1 {
             app.on_key(press(KeyCode::Down), &tmux);
         }
         app.on_key(press(KeyCode::Enter), &tmux);
