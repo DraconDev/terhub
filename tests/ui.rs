@@ -795,7 +795,7 @@ fn settings_popup_lists_styles() {
 fn settings_popup_scrolls_when_short() {
     let mut app = app_with_panes();
     app.open_settings();
-    app.settings_selected = 10; // last toggle (mru row sits above highlight)
+    app.settings_selected = 14; // last toggle (10 themes + 2 density + 3 toggles)
     let lines = render_lines(&mut app, 120, 12);
     let text = lines.join("\n");
     assert!(app.settings_scroll > 0, "scroll never moved");
