@@ -1111,6 +1111,48 @@ fn tabs_show_worst_state_dot() {
 }
 
 #[test]
+fn hosts_modal_lists_registry_and_cache_age() {
+    let mut app = app_with_panes();
+    app.fleet_hosts = vec![terhub::fleet::Host {
+        name: "dev".to_string(),
+        target: "user@host".to_string(),
+        mode: terhub::fleet::Mode::Control,
+    }];
+    app.mode = terhub::app::Mode::Hosts;
+    let lines = render_lines(&mut app, 120, 30);
+    let text = lines.join("\n");
+    assert!(text.contains("Fleet hosts"), "no modal:\n{text}");
+    assert!(text.contains("never fetched"), "no age:\n{text}");
+    assert!(text.contains("dev user@host [control]"), "no row:\n{text}");
+    assert!(text.contains("a=add"), "no hints:\n{text}");
+}
+
+#[test]
+fn remote_rows_render_in_table() {
+    let mut app = app_with_panes();
+    app.panes.push(Pane {
+        id: "dev:%1".to_string(),
+        session: "dev \u{25b8} web".to_string(),
+        window_id: String::new(),
+        window_name: "srv".to_string(),
+        window_active: false,
+        index: 0,
+        command: "pi".to_string(),
+        path: String::new(),
+        active: false,
+        width: 0,
+        height: 0,
+        activity: 1,
+        pid: 0,
+    });
+    app.refresh_filtered();
+    let lines = render_lines(&mut app, 160, 24);
+    let text = lines.join("\n");
+    assert!(text.contains("dev:%1"), "remote id missing:\n{text}");
+    assert!(text.contains("dev \u{25b8} web"), "remote session missing:\n{text}");
+}
+
+#[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
     let (lines, areas) = render_with_areas(&mut app, 100, 24);
