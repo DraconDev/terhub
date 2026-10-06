@@ -3226,7 +3226,6 @@ mod tests {
         assert_eq!(app.panes.len(), 3);
     }
 
-    #[test]
     fn native_pane() -> Pane {
         let mut p = Pane::test("konsole:999:6", "tab six", "pi");
         p.session = "konsole".to_string();
