@@ -3100,6 +3100,28 @@ mod tests {
     }
 
     #[test]
+    fn session_segment_click_selects_or_attaches() {
+        let mut app = app_with(&["a", "b"]);
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        // Plain click selects the tab and refilters, no event.
+        let ev = app.click_session_segment(2, false, &tmux);
+        assert_eq!(ev, None);
+        assert_eq!(app.selected, 2);
+        assert_eq!(app.focus, Focus::Sessions);
+        // Ctrl+click attaches to the tab's session.
+        let ev = app.click_session_segment(1, true, &tmux);
+        assert_eq!(ev, Some(AppEvent::Attach("a".to_string())));
+        assert_eq!(app.selected, 1);
+        // The All tab never attaches (it isn't a session).
+        let ev = app.click_session_segment(0, true, &tmux);
+        assert_eq!(ev, None);
+        assert!(app.status.as_deref().unwrap_or("").contains("All"));
+        // Out of range: loud no-op.
+        let ev = app.click_session_segment(99, false, &tmux);
+        assert_eq!(ev, None);
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.
