@@ -1175,6 +1175,22 @@ fn preview_title_shows_cpu_and_git_segments() {
 }
 
 #[test]
+fn preview_scroll_renders_offset_content() {
+    let mut app = app_with_panes();
+    app.show_preview = true;
+    app.preview = (0..60)
+        .map(|i| format!("pline {i:03}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    app.preview_scroll = 40;
+    let lines = render_lines(&mut app, 120, 12);
+    let text = lines.join("\n");
+    assert!(!text.contains("pline 000"), "top leaked through scroll:\n{text}");
+    assert!(text.contains("pline 040"), "offset start missing:\n{text}");
+    assert!(text.contains("40/60"), "scroll position missing:\n{text}");
+}
+
+#[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
     let (lines, areas) = render_with_areas(&mut app, 100, 24);
