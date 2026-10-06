@@ -996,6 +996,33 @@ fn wait_stopped(pid: u32, want: bool) -> bool {
 }
 
 #[test]
+fn bulk_modal_sends_to_marked_with_submit() {
+    use crossterm::event::KeyCode;
+    let mut app = app_with_panes();
+    let (tmux, log) = fake_tmux("bulk");
+    app.marked.insert("%1".to_string());
+    app.marked.insert("%2".to_string());
+    app.on_key(press(KeyCode::Char('b')), &tmux);
+    assert!(matches!(
+        app.mode,
+        terhub::app::Mode::PromptBulk { .. }
+    ));
+    let lines = render_lines(&mut app, 120, 30);
+    let text = lines.join("\n");
+    assert!(text.contains("Prompt 2 pane(s)"), "no modal:\n{text}");
+    assert!(text.contains("%1 %2"), "no targets:\n{text}");
+    for c in "go".chars() {
+        app.on_key(press(KeyCode::Char(c)), &tmux);
+    }
+    app.on_key(press(KeyCode::Enter), &tmux);
+    assert_eq!(app.mode, terhub::app::Mode::Normal);
+    let argv = argv_log(&log);
+    assert_eq!(argv.matches("send-keys").count(), 4, "want text+Enter per target:\n{argv}");
+    assert!(argv.contains("go"), "text lost:\n{argv}");
+    assert!(argv.contains("Enter"), "no submit:\n{argv}");
+}
+
+#[test]
 fn spawn_modal_cycles_profile_and_spawns_with_prompt() {
     use crossterm::event::KeyCode;
     let mut app = app_with_panes();
