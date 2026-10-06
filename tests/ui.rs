@@ -1156,6 +1156,25 @@ fn remote_rows_render_in_table() {
 }
 
 #[test]
+fn preview_title_shows_cpu_and_git_segments() {
+    let mut app = app_with_panes();
+    app.show_preview = true;
+    app.preview_cpu_pct = Some(42.0);
+    app.preview_git_line = Some("git main +45/-12 · 2 changed".to_string());
+    let lines = render_lines(&mut app, 160, 24);
+    let text = lines.join("\n");
+    assert!(text.contains("cpu 42%"), "no cpu:\n{text}");
+    assert!(text.contains("git main +45/-12"), "no git:\n{text}");
+    // Absent data leaves no hole in the title.
+    let mut app = app_with_panes();
+    app.show_preview = true;
+    let lines = render_lines(&mut app, 160, 24);
+    let text = lines.join("\n");
+    assert!(!text.contains("cpu"), "phantom cpu:\n{text}");
+    assert!(text.contains("left-click"), "title broken:\n{text}");
+}
+
+#[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
     let (lines, areas) = render_with_areas(&mut app, 100, 24);

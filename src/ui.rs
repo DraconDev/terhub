@@ -909,13 +909,20 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     let state = rec.map(|r| r.state.label()).unwrap_or("—");
     let now = crate::agent::now_unix();
     let (idle, _) = idle_cell(rec, p.activity, now, &app.config);
-    let title = format!(
-        " {} · {}:{} · {agent} {state} {idle} — left-click/{} jump · right-click/esc close ",
-        p.id,
-        p.session,
-        p.window_name,
-        app.config.key("attach")
+    let mut title = format!(
+        " {} · {}:{} · {agent} {state} {idle}",
+        p.id, p.session, p.window_name,
     );
+    if let Some(pct) = app.preview_cpu_pct {
+        title.push_str(&format!(" · cpu {pct:.0}%"));
+    }
+    if let Some(g) = &app.preview_git_line {
+        title.push_str(&format!(" · {g}"));
+    }
+    title.push_str(&format!(
+        " — left-click/{} jump · right-click/esc close ",
+        app.config.key("attach")
+    ));
     let block = Block::bordered()
         .title(Line::from(title).style(pal.title))
         .border_style(pal.focus);
