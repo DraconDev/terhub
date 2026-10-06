@@ -1327,6 +1327,109 @@ mod tests {
         assert_eq!(foreground, None);
     }
 
+    /// Fake tmux listing a single `%50` pane running `sleep` (pid
+    /// substituted in): capture prints a bare prompt, everything else is
+    /// empty. Fields are `\x1f`-separated like the real PANE_FORMAT.
+    fn fake_tmux_one_sleep_pane(dir: &std::path::Path, pid: u32) -> crate::tmux::Tmux {
+        use std::os::unix::fs::PermissionsExt;
+        let sep = "\x1f";
+        let line = [
+            "%50", "@1", "w", "1", "0", "sleep", "/tmp", "1", "80", "24", "sess", "0",
+        ]
+        .join(sep);
+        // The payload travels as a printf *argument*: the pane id's `%`
+        // would otherwise be eaten as a format specifier.
+        let payload = format!("{line}{sep}{pid}");
+        let script = format!(
+            "#!/bin/sh\ncase \"$1\" in\n  list-panes) printf '%s\\n' '{payload}' ;;\n  capture-pane) printf '$ \\n' ;;\n  *) printf '' ;;\nesac\n"
+        );
+        let path = dir.join("tmux");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::tmux::Tmux::test(path)
+    }
+
+    fn manual_record(pane: &str, pid: u32, updated_at: u64) -> AgentRecord {
+        let mut rec = hook_record(updated_at);
+        rec.pane = pane.to_string();
+        rec.agent = "myagent".to_string();
+        rec.state = AgentState::Working;
+        rec.source = Source::Manual;
+        rec.reg_pid = pid;
+        rec
+    }
+
+    #[test]
+    fn manual_pin_without_pid_survives_stale_window() {
+        // A pid-less pin on a live pane is carried forever: staleness is
+        // a hook concept (event freshness), pins persist by design.
+        let dir = std::env::temp_dir().join(format!("terhub-poll-manual-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmux = fake_tmux_one_sleep_pane(&dir, 999_999_999);
+        let now = now_unix();
+        let mut prev = HashMap::new();
+        prev.insert(
+            "%50".to_string(),
+            manual_record("%50", 0, now.saturating_sub(99_999)),
+        );
+        let (next, _, _, outage) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        assert!(!outage);
+        let rec = next.get("%50").expect("manual pin carried");
+        assert_eq!(rec.source, Source::Manual);
+        assert_eq!(rec.state, AgentState::Working);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn manual_pin_tracks_reg_pid_cpu() {
+        // A live reg_pid feeds the CPU/stuck clocks like a proc hit; the
+        // nonzero agent_start proves the pin path ran (the generic carry
+        // leaves it zero).
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-manualpid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmux = fake_tmux_one_sleep_pane(&dir, pid);
+        let now = now_unix();
+        let mut prev = HashMap::new();
+        prev.insert("%50".to_string(), manual_record("%50", pid, now));
+        let (next, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        let rec = next.get("%50").expect("manual pin carried");
+        assert!(rec.agent_start > 0, "reg_pid ticks not tracked");
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn manual_pin_drops_when_reg_pid_dead() {
+        // The pinned process is gone: the pin drops even though the pane
+        // is alive (pid 999999999 cannot exist: over the kernel maximum).
+        let dir = std::env::temp_dir().join(format!("terhub-poll-manualdead-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmux = fake_tmux_one_sleep_pane(&dir, 999_999_999);
+        let now = now_unix();
+        let mut prev = HashMap::new();
+        prev.insert(
+            "%50".to_string(),
+            manual_record("%50", 999_999_999, now),
+        );
+        let (next, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        assert!(
+            !next.contains_key("%50"),
+            "dead-pin record should drop"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn continuity_ignores_agent_case() {
         // track_cpu matches agents case-insensitively; state continuity
