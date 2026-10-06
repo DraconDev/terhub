@@ -399,3 +399,113 @@ fn init_dry_run_lists_steps_without_acting() {
         assert!(text.contains(step), "missing {step}:\n{text}");
     }
 }
+
+#[test]
+fn hook_model_and_ctx_flags_are_accepted() {
+    // Fire-and-forget: exit 0 even with no daemon; the flags must parse.
+    let out = run_isolated(
+        "hookmodel",
+        &[
+            "hook", "--agent", "pi", "--pane", "%1", "--state", "working", "--model",
+            "opus-4.5", "--ctx", "72",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}
+
+#[test]
+fn hook_ctx_out_of_range_exits_1() {
+    // `--ctx=` form throughout: a bare `-1` would parse as a flag.
+    for bad in ["101", "abc", "-1"] {
+        let flag = format!("--ctx={bad}");
+        let out = run_isolated(
+            "hookctx",
+            &[
+                "hook", "--agent", "pi", "--pane", "%1", "--state", "working", &flag,
+            ],
+        );
+        assert_eq!(out.status.code(), Some(1), "ctx {bad}: {}", stderr(&out));
+        assert!(stderr(&out).contains("--ctx"), "ctx {bad}: {}", stderr(&out));
+    }
+}
+
+#[test]
+fn register_validates_before_touching_daemon() {
+    // Bad state: rejected without tmux or daemon.
+    let out = run_isolated(
+        "regstate",
+        &["register", "%1", "--agent", "pi", "--state", "bogus"],
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("bad state"), "{}", stderr(&out));
+    // Dead pid: rejected (999999999 cannot exist).
+    let out = run_isolated(
+        "regpid",
+        &["register", "%1", "--agent", "pi", "--pid", "999999999"],
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("not running"), "{}", stderr(&out));
+    // Native ids are not tmux panes.
+    let out = run_isolated(
+        "regnative",
+        &["register", "konsole:1:2", "--agent", "pi"],
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        stderr(&out).contains("local tmux panes"),
+        "{}",
+        stderr(&out)
+    );
+    // A handle needs the daemon for resolution.
+    let out = run_isolated("reghandle", &["register", "@x", "--agent", "pi"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("daemon"), "{}", stderr(&out));
+    // A plain pane needs tmux (absent on this PATH).
+    let out = run_isolated("regnotmux", &["register", "%1", "--agent", "pi"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("tmux"), "{}", stderr(&out));
+}
+
+#[test]
+fn unregister_without_daemon_exits_1() {
+    let out = run_isolated("unreg", &["unregister", "%1"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("daemon"), "{}", stderr(&out));
+}
+
+#[test]
+fn host_label_roundtrip_shows_in_list() {
+    // Sequential invocations share one TERHUB_CONFIG so the fleet file
+    // persists across them.
+    let base = std::env::temp_dir().join(format!("terhub-cli-{}-hostlabel", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let cfg = base.join("terhub.toml");
+    let run = |args: &[&str]| {
+        Command::new(bin())
+            .args(args)
+            .env("TERHUB_RUNTIME_DIR", &base)
+            .env("TERHUB_CONFIG", &cfg)
+            .env("PATH", "/nonexistent-terhub-test")
+            .output()
+            .expect("spawn terhub")
+    };
+    let out = run(&["host", "add", "dev", "fake-target"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let out = run(&["host", "label", "dev", "Dev Box"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let out = run(&["host", "list"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stdout(&out).contains("[Dev Box]"), "{}", stdout(&out));
+    let out = run(&["host", "label", "dev", ""]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let out = run(&["host", "list"]);
+    assert!(
+        !stdout(&out).contains("[Dev Box]"),
+        "label not cleared: {}",
+        stdout(&out)
+    );
+    let out = run(&["host", "label", "ghost", "x"]);
+    assert_eq!(out.status.code(), Some(1));
+    let _ = std::fs::remove_dir_all(&base);
+}
