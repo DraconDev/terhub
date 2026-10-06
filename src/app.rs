@@ -850,14 +850,44 @@ impl App {
                     // Native tabs have no hooks: prompts never land here.
                     last_prompt_at: 0,
                     last_prompt: String::new(),
+                    // Minted below against the daemon's handles (no clash).
                     handle: String::new(),
                 });
             }
         }
         self.native_rows = rows;
         self.native_agents = agents;
+        self.assign_native_handles();
         self.set_status(format!("native: {}", notes.join("; ")));
         self.merge_caches();
+    }
+
+    /// Mint handles for native agent records, avoiding the daemon-issued
+    /// ones (a tmux session named `konsole` must not shadow a tab).
+    fn assign_native_handles(&mut self) {
+        use crate::agent::mint_handle;
+        let mut used: std::collections::HashSet<String> = self
+            .agents
+            .values()
+            .filter_map(|r| {
+                if r.handle.is_empty() {
+                    None
+                } else {
+                    Some(r.handle.clone())
+                }
+            })
+            .collect();
+        let mut idx: Vec<usize> = (0..self.native_agents.len()).collect();
+        idx.sort_by_key(|i| self.native_agents[*i].pane.clone());
+        for i in idx {
+            let rec = &self.native_agents[i];
+            if !rec.handle.is_empty() || rec.agent.is_empty() {
+                continue;
+            }
+            let handle = mint_handle(&used, &rec.agent, &rec.session);
+            used.insert(handle.clone());
+            self.native_agents[i].handle = handle;
+        }
     }
 
     /// (host, remote session) for a remote row id, if the cache knows it.

@@ -95,6 +95,8 @@ fn daemon_hook_snapshot_expire_shutdown() {
     assert_eq!(rec.summary, "needs input");
     assert_eq!(rec.last_prompt, "do the thing");
     assert!(rec.last_prompt_at > 0);
+    // Session-less hook records mint the bare agent handle.
+    assert_eq!(rec.handle, "@claude");
     assert!(runtime.join("registry.json").is_file());
     // The transition was appended to the ledger.
     let ledger = data.join("activity.jsonl");
