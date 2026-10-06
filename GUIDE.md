@@ -332,6 +332,20 @@ while the same prompt with no process behind it claims nobody. A manifest
 with a broken regex is skipped with a warning instead of killing the
 daemon.
 
+When the detector misses an agent entirely (unknown binary, odd
+wrapping), pin it by hand instead of writing a manifest:
+
+```sh
+terhub register %4 --agent myagent [--pid 1234] [--state working]
+terhub unregister %4
+```
+
+A pin is a `man`-sourced record that survives polls until you drop it
+(never lapses, never overwritten by detection — but a real hook event
+for the pane takes over). `--pid` lets the poll track CPU under that
+process for stuck detection, and the pin drops itself when the process
+exits. Handles work: `register @old-pin …` re-pins under a new name.
+
 ## Hooks: telling terhub what agents do
 
 Hooks are fire-and-forget, made for agent lifecycle scripts:
