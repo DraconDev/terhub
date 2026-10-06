@@ -2492,7 +2492,12 @@ impl App {
             }
         };
         // Marks feed bulk kill/attend: remote rows stay out so a marked
-        // kill can never reach across ssh.
+        // kill can never reach across ssh; native rows stay out because
+        // the terminals expose no tab-close.
+        if is_native_pane(&id) {
+            self.set_status(format!("can't mark native row {id}"));
+            return;
+        }
         if is_remote_pane(&id) {
             self.set_status(format!("can't mark remote row {id}"));
             return;
@@ -2537,7 +2542,9 @@ impl App {
             return;
         };
         let (id, pid) = (pane.id.clone(), pane.pid);
-        if is_remote_pane(&id) {
+        // Pause is pid-based, so native rows (real local pids) work; only
+        // true remotes are out of reach.
+        if is_remote_pane(&id) && !is_native_pane(&id) {
             self.set_status(format!(
                 "can't pause remote row {id} (jump in to manage it)"
             ));
@@ -2568,6 +2575,13 @@ impl App {
     fn do_rename_session(&mut self) {
         // Panes focus renames the selected pane's session (the sidebar may
         // sit on All); Sessions focus keeps the sidebar cursor.
+        if self.focus == Focus::Panes
+            && let Some(p) = self.selected_pane()
+            && is_native_pane(&p.id)
+        {
+            self.set_status("can't rename native tabs from here".to_string());
+            return;
+        }
         if self.focus == Focus::Panes && self.selected_pane().is_some_and(|p| is_remote_pane(&p.id))
         {
             self.set_status("can't rename remote sessions here (jump in)".to_string());
@@ -2622,6 +2636,11 @@ impl App {
                 self.mode = Mode::ConfirmKillMarked(ids);
             } else {
                 match self.selected_pane() {
+                    Some(p) if is_native_pane(&p.id) => self.set_status(format!(
+                        "can't close native tab {} from here (no tab-close over {})",
+                        p.id,
+                        p.session,
+                    )),
                     Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
                         "can't kill remote row {} (jump in to manage it)",
                         p.id
@@ -2667,6 +2686,10 @@ impl App {
         }
         if key_matches(&cfg.spec("restart"), code) {
             match self.selected_pane() {
+                Some(p) if is_native_pane(&p.id) => self.set_status(format!(
+                    "can't restart native tab {} (re-run inside the tab)",
+                    p.id
+                )),
                 Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
                     "can't restart remote row {} (jump in to manage it)",
                     p.id
@@ -2801,7 +2824,8 @@ impl App {
             }
         };
         // Templates expand local paths ({dir} is a remote path here).
-        if is_remote_pane(&pane.id) {
+        // Native rows are local tabs, so their paths expand fine.
+        if is_remote_pane(&pane.id) && !is_native_pane(&pane.id) {
             self.set_status(format!("{}: remote rows run no local commands", cmd.name));
             return;
         }
