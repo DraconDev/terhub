@@ -1468,7 +1468,7 @@ mod tests {
             waiting_unless: vec![],
         });
         let (ok, warnings) = compile_all_lossy(&manifests);
-        assert_eq!(ok.len(), 4);
+        assert_eq!(ok.len(), builtin_manifests().len());
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("broken"));
     }
