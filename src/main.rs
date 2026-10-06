@@ -673,7 +673,7 @@ fn cmd_hooks(action: &HooksAction) -> i32 {
         HooksAction::Status => {
             let cpath = hooks::claude_settings_path();
             let wired = hooks::claude_status(&cpath);
-            if wired.len() == 3 {
+            if wired.len() == hooks::claude_expected_events() {
                 print_out(&format!("claude: installed ({})", cpath.display()));
             } else if wired.is_empty() {
                 print_out("claude: not installed");

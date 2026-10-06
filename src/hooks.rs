@@ -79,6 +79,11 @@ const CLAUDE_HOOKS: &[HookDef] = &[
     },
 ];
 
+/// How many Claude events a full install wires (status "installed").
+pub fn claude_expected_events() -> usize {
+    CLAUDE_HOOKS.len()
+}
+
 fn hook_command(agent: &str, def: &HookDef) -> String {
     let summary = match def.summary {
         Some(s) => format!("--summary {}", crate::fleet::sh_quote(s)),
