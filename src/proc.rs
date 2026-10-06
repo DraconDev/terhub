@@ -422,6 +422,54 @@ impl Snapshot {
 /// same pipeline as process matching (`claude-code` → `claude`,
 /// `muse-bin-1.4.2` → `muse`), lowercasing anything unrecognized, so hook
 /// records compare equal to proc/screen records downstream.
+/// State letter from `/proc/<pid>/stat` (None when unreadable/gone).
+pub fn proc_state(pid: u32) -> Option<char> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let tail = stat.rsplit_once(')')?.1;
+    tail.split_whitespace().next()?.chars().next()
+}
+
+/// True when the process is currently job-stopped (T) or traced-stop (t).
+pub fn is_stopped(pid: u32) -> bool {
+    matches!(proc_state(pid), Some('T') | Some('t'))
+}
+
+/// Process group id from `/proc/<pid>/stat` (field 5).
+fn proc_pgrp(pid: u32) -> Option<u32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let tail = stat.rsplit_once(')')?.1;
+    tail.split_whitespace().nth(2)?.parse().ok()
+}
+
+fn signal_tree(pid: u32, sig: libc::c_int, name: &str) -> anyhow::Result<()> {
+    if pid <= 1 {
+        anyhow::bail!("refusing to signal pid {pid}");
+    }
+    // tmux puts each pane root in its own process group, so a negative
+    // pid stops the whole tree; a non-leader falls back to the lone pid
+    // rather than spraying a foreign group.
+    let target = if proc_pgrp(pid) == Some(pid) {
+        -(pid as libc::pid_t)
+    } else {
+        pid as libc::pid_t
+    };
+    // SAFETY: kill() with a plain signal number has no memory effects.
+    if unsafe { libc::kill(target, sig) } == 0 {
+        return Ok(());
+    }
+    anyhow::bail!("{name} {pid}: {}", std::io::Error::last_os_error())
+}
+
+/// Freeze a pane's process tree (SIGSTOP); reversible via resume_group.
+pub fn pause_group(pid: u32) -> anyhow::Result<()> {
+    signal_tree(pid, libc::SIGSTOP, "pause")
+}
+
+/// Thaw a tree frozen by pause_group (SIGCONT).
+pub fn resume_group(pid: u32) -> anyhow::Result<()> {
+    signal_tree(pid, libc::SIGCONT, "resume")
+}
+
 pub fn canonical_agent(name: &str) -> String {
     match_proc("", name)
         .map(str::to_string)
