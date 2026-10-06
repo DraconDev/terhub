@@ -330,6 +330,14 @@ pub struct Manifest {
     /// agent never badges as needing input.
     #[serde(default)]
     pub idle: Vec<String>,
+    /// Done chrome (input boxes, idle footers): reads as Idle, but only
+    /// as a fallback — chrome sits below everything, so freshest-wins
+    /// alone would let it shadow real verdicts above. It applies when no
+    /// waiting/error/limited line matched anywhere in the tail, and loses
+    /// to live activity below it (but beats stale activity above it: a
+    /// spinner scrolled past the returned input box is history).
+    #[serde(default)]
+    pub idle_fallback: Vec<String>,
     /// Waiting veto: when any of these match the tail, a waiting verdict
     /// falls back to the freshest working line (or no verdict). For agents
     /// whose input prompt stays visible during work — `❯` below a live
@@ -346,6 +354,7 @@ pub struct CompiledManifest {
     error: Vec<Regex>,
     limited: Vec<Regex>,
     idle: Vec<Regex>,
+    idle_fallback: Vec<Regex>,
     waiting_unless: Vec<Regex>,
 }
 
@@ -372,6 +381,7 @@ impl CompiledManifest {
             limited: compile_all(&m.agent, "limited", &m.limited)?,
             waiting_unless: compile_all(&m.agent, "waiting_unless", &m.waiting_unless)?,
             idle: compile_all(&m.agent, "idle", &m.idle)?,
+            idle_fallback: compile_all(&m.agent, "idle_fallback", &m.idle_fallback)?,
         })
     }
 
@@ -401,6 +411,8 @@ impl CompiledManifest {
             .any(|line| self.waiting_unless.iter().any(|r| r.is_match(line)));
         let mut hit = None;
         let mut work = None;
+        let mut need = false;
+        let mut fallback = None;
         for (i, line) in tail.iter().enumerate() {
             let is_work = self.working.iter().any(|r| r.is_match(line));
             if is_work {
@@ -408,10 +420,13 @@ impl CompiledManifest {
             }
             if self.limited.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Limited, i));
+                need = true;
             } else if self.error.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Error, i));
+                need = true;
             } else if self.waiting.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Waiting, i));
+                need = true;
             } else if is_work {
                 hit = Some((AgentState::Working, i));
             } else if self.idle.iter().any(|r| r.is_match(line)) {
@@ -419,12 +434,34 @@ impl CompiledManifest {
                 // activity on the same line outranks a completion marker.
                 hit = Some((AgentState::Idle, i));
             }
+            if self.idle_fallback.iter().any(|r| r.is_match(line)) {
+                fallback = Some(i);
+            }
         }
         // A vetoed prompt is an input box under a live task, not a plea:
         // fall back to the freshest working line, or no verdict at all
         // (the caller pairs that with process evidence, or drops it).
         if veto && matches!(hit, Some((AgentState::Waiting, _))) {
             hit = work.map(|i| (AgentState::Working, i));
+        }
+        // Done chrome (input boxes) applies last: never over need (even
+        // vetoed need — a live task outranks chrome), never over a banner
+        // (which summarizes better), and never over live activity below
+        // it — but it beats stale activity above it.
+        if let Some(fi) = fallback {
+            let dominated = need
+                || match hit {
+                    None => false,
+                    Some((AgentState::Waiting | AgentState::Error | AgentState::Limited, _)) => {
+                        true
+                    }
+                    Some((AgentState::Idle, _)) => true,
+                    Some((AgentState::Working, wi)) => wi >= fi,
+                    Some(_) => true,
+                };
+            if !dominated {
+                hit = Some((AgentState::Idle, fi));
+            }
         }
         hit.map(|(state, i)| {
             let mut line = tail[i];
@@ -476,6 +513,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\b429\\b".to_string(),
             ],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec![],
         },
         Manifest {
@@ -501,6 +539,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\b429\\b".to_string(),
             ],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec![],
         },
         Manifest {
@@ -525,6 +564,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\b429\\b".to_string(),
             ],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec![],
         },
         Manifest {
@@ -545,6 +585,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "press enter to send".to_string(),
             ],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec!["esc to interrupt".to_string()],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
@@ -582,12 +623,14 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![
                 "✓ goal complete".to_string(),
                 "todo list \\d+/\\d+ completed".to_string(),
-                // The input box only returns when the turn is over; live
-                // inference replaces it with the Running footer. (Bare
-                // "tok/s" is deliberately NOT a working signal: Completed
-                // lines keep a stale rate forever and would pin working.)
-                "enter send".to_string(),
             ],
+            // The input box only returns when the turn is over (live
+            // inference replaces it with the Running footer), but as
+            // bottom chrome it must never shadow verdicts above — hence
+            // fallback, not idle. (Bare "tok/s" is deliberately NOT a
+            // working signal: Completed lines keep a stale rate forever
+            // and would pin working.)
+            idle_fallback: vec!["enter send".to_string()],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
                 "traceback".to_string(),
@@ -1201,6 +1244,7 @@ mod tests {
             error: vec![],
             limited: vec![],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec!["busy".to_string()],
         })
         .unwrap();
@@ -1267,6 +1311,7 @@ mod tests {
             error: vec![],
             limited: vec![],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec![],
         };
         assert!(CompiledManifest::compile(&m).is_err());
@@ -1441,6 +1486,58 @@ mod tests {
             ),
             None
         );
+        // The box is bottom chrome: it never shadows need above it.
+        assert_eq!(
+            classify_screen(
+                &m,
+                "minimax-code",
+                "× Tasks · 1 failed\nMessage · Enter send · Ctrl+J newline\n"
+            ),
+            hit(
+                Some("minimax-code"),
+                AgentState::Error,
+                "× Tasks · 1 failed"
+            )
+        );
+        // …never shadows a banner (which also summarizes better)…
+        assert_eq!(
+            classify_screen(
+                &m,
+                "minimax-code",
+                "✓ Todo list 9/9 completed\nMessage · Enter send · Ctrl+J newline\n"
+            ),
+            hit(
+                Some("minimax-code"),
+                AgentState::Idle,
+                "✓ Todo list 9/9 completed"
+            )
+        );
+        // …loses to live activity below it…
+        assert_eq!(
+            classify_screen(
+                &m,
+                "minimax-code",
+                "Message · Enter send · Ctrl+J newline\n⠙ Running 5min1s\n"
+            ),
+            hit(
+                Some("minimax-code"),
+                AgentState::Working,
+                "⠙ Running 5min1s"
+            )
+        );
+        // …but beats stale activity above it.
+        assert_eq!(
+            classify_screen(
+                &m,
+                "minimax-code",
+                "⠙ Running 5min1s\nMessage · Enter send · Ctrl+J newline\n"
+            ),
+            hit(
+                Some("minimax-code"),
+                AgentState::Idle,
+                "Message · Enter send · Ctrl+J newline"
+            )
+        );
         // Live inference still reads working.
         assert_eq!(
             classify_screen(&m, "minimax-code", "⠙ Running 13min40s · ⚡ 15092 tok/s\n"),
@@ -1541,6 +1638,7 @@ mod tests {
             error: vec![],
             limited: vec![],
             idle: vec![],
+            idle_fallback: vec![],
             waiting_unless: vec![],
         });
         let (ok, warnings) = compile_all_lossy(&manifests);
