@@ -127,6 +127,12 @@ enum Cmd {
     Report {
         #[arg(long, default_value = "today")]
         since: String,
+        /// Emit the report as JSON.
+        #[arg(long, conflicts_with = "markdown")]
+        json: bool,
+        /// Emit the report as Markdown tables.
+        #[arg(long, conflicts_with = "json")]
+        markdown: bool,
     },
     /// Raw activity ledger entries.
     Activity {
@@ -145,6 +151,12 @@ enum Cmd {
         session: Option<String>,
         #[arg(long)]
         agent: Option<String>,
+        /// Entry order: chronological, or attention states first.
+        #[arg(long, value_parser = ["time", "waiting"], default_value = "time")]
+        sort: String,
+        /// Render the entry log or a day × hour heatmap.
+        #[arg(long, value_parser = ["time", "heatmap"], default_value = "time")]
+        view: String,
     },
     /// Rules that act on agent state.
     Automation {
@@ -978,24 +990,46 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
     0
 }
 
-fn cmd_report(since: &str) -> i32 {
+fn cmd_report(since: &str, json: bool, markdown: bool) -> i32 {
     use terhub::history as h;
     let now = terhub::agent::now_unix();
     let Some(since) = resolve_since(since, now) else {
         return 1;
     };
-    let spans = h::build_spans(&h::read_entries(&h::ledger_path()), now);
-    for (name, group) in [
-        ("by day", h::GroupBy::Day),
-        ("by agent", h::GroupBy::Agent),
-        ("by session", h::GroupBy::Session),
+    let entries = h::read_entries(&h::ledger_path());
+    let spans = h::build_spans(&entries, now);
+    let data = h::ReportData {
+        by_day: h::stats(&spans, since, h::GroupBy::Day),
+        by_agent: h::stats(&spans, since, h::GroupBy::Agent),
+        by_session: h::stats(&spans, since, h::GroupBy::Session),
+        foreground: h::foreground_totals(&h::build_foreground(&entries, now), since),
+    };
+    if json {
+        print_out(&h::report_json(&data));
+        return 0;
+    }
+    if markdown {
+        print_out(&h::report_markdown(&data, since_label(since)));
+        return 0;
+    }
+    for (name, rows) in [
+        ("by day", &data.by_day),
+        ("by agent", &data.by_agent),
+        ("by session", &data.by_session),
     ] {
         print_out(&format!("== {name} =="));
-        let rows = h::stats(&spans, since, group);
         if rows.iter().all(|r| r.total() == 0) {
             print_out("no activity in range");
         } else {
-            print_stats_table(&rows);
+            print_stats_table(rows);
+        }
+    }
+    print_out("== foreground ==");
+    if data.foreground.is_empty() {
+        print_out("no activity in range");
+    } else {
+        for f in &data.foreground {
+            print_out(&format!("{:<15} {}", f.pane, h::fmt_dur(f.secs)));
         }
     }
     0
@@ -1858,13 +1892,25 @@ fn real_main() -> i32 {
         Some(Cmd::Peek { plain, pick }) => cmd_peek(plain, pick),
         Some(Cmd::StatusLine { pane }) => cmd_status_line(pane.as_deref()),
         Some(Cmd::Stats { since, group_by }) => cmd_stats(&since, group_by),
-        Some(Cmd::Report { since }) => cmd_report(&since),
+        Some(Cmd::Report {
+            since,
+            json,
+            markdown,
+        }) => cmd_report(&since, json, markdown),
         Some(Cmd::Activity { since, kind, json }) => cmd_activity(&since, &kind, json),
         Some(Cmd::Timeline {
             since,
             session,
             agent,
-        }) => cmd_timeline(&since, session.as_deref(), agent.as_deref()),
+            sort,
+            view,
+        }) => cmd_timeline(
+            &since,
+            session.as_deref(),
+            agent.as_deref(),
+            &sort,
+            &view,
+        ),
         Some(Cmd::Automation { action }) => cmd_automation(&action),
         Some(Cmd::Send {
             pane,
