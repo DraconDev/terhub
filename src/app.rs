@@ -856,8 +856,40 @@ impl App {
         out
     }
 
+    /// Preview a remote row over ssh (target resolved from the host
+    /// registry by the jump index's host name).
+    fn capture_remote_preview(&mut self, id: &str) {
+        let target = self.remote_target(id).and_then(|(host, _)| {
+            crate::fleet::load_hosts()
+                .ok()?
+                .into_iter()
+                .find(|h| h.name == host)
+                .map(|h| h.target)
+        });
+        let pane = id.split_once(':').map(|(_, p)| p).unwrap_or("");
+        match (target, pane) {
+            (Some(t), p) if !p.is_empty() => {
+                match crate::fleet::remote_capture(&t, p, PREVIEW_LINES) {
+                    Ok(text) => {
+                        self.preview = text;
+                        self.preview_width = None;
+                    }
+                    Err(_) => {
+                        self.preview = "(remote capture failed)".to_string();
+                        self.preview_width = None;
+                    }
+                }
+            }
+            _ => {
+                self.preview = "(stale remote row)".to_string();
+                self.preview_width = None;
+            }
+        }
+    }
+
     fn capture_preview(&mut self, tmux: &Tmux) {
         match self.selected_pane().map(|p| p.id.clone()) {
+            Some(id) if is_remote_pane(&id) => self.capture_remote_preview(&id),
             Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_LINES) {
                 Ok(text) => {
                     self.preview = text;
@@ -1791,9 +1823,20 @@ impl App {
     /// (stale row) stays visible as a status line. Callers handle Quit by
     /// leaving the event loop, never by calling here.
     pub fn do_nav(&mut self, tmux: &Tmux, ev: AppEvent) {
+        // Remote jumps exit the process (ssh owns the terminal), so the
+        // main loop intercepts them before do_nav; a direct call can only
+        // say so and stay.
+        if let AppEvent::RemoteAttach { host, .. } = &ev {
+            self.set_status(format!("remote attach to {host} exits the hub"));
+            return;
+        }
         let (what, result) = match ev {
             AppEvent::Attach(ref name) => (format!("attach {name}"), tmux.switch_session(name)),
             AppEvent::FocusPane(ref id) => (format!("jump {id}"), tmux.focus_pane(id)),
+            AppEvent::RemoteAttach { .. } => {
+                self.set_status("remote attach exits the hub".to_string());
+                return;
+            }
             AppEvent::Quit => return,
         };
         if let Err(e) = result {
@@ -1859,6 +1902,10 @@ impl App {
             return;
         };
         let (id, pid) = (pane.id.clone(), pane.pid);
+        if is_remote_pane(&id) {
+            self.set_status(format!("can't pause remote row {id} (jump in to manage it)"));
+            return;
+        }
         if pid == 0 {
             self.set_status(format!("no pid for pane {id}"));
             return;
@@ -1879,6 +1926,14 @@ impl App {
     fn do_rename_session(&mut self) {
         // Panes focus renames the selected pane's session (the sidebar may
         // sit on All); Sessions focus keeps the sidebar cursor.
+        if self.focus == Focus::Panes
+            && self
+                .selected_pane()
+                .is_some_and(|p| is_remote_pane(&p.id))
+        {
+            self.set_status("can't rename remote sessions here (jump in)".to_string());
+            return;
+        }
         let name = if self.focus == Focus::Panes {
             self.selected_pane().map(|p| p.session.clone())
         } else {
@@ -2102,6 +2157,11 @@ impl App {
                 return;
             }
         };
+        // Templates expand local paths ({dir} is a remote path here).
+        if is_remote_pane(&pane.id) {
+            self.set_status(format!("{}: remote rows run no local commands", cmd.name));
+            return;
+        }
         let rec = self.agents.get(&pane.id);
         let expanded = expand_command(&cmd.run, &pane, rec);
         match crate::automation::shell_capture(
