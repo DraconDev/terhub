@@ -660,23 +660,42 @@ impl App {
     /// Re-apply the fleet cache after a local refresh (idempotent: old
     /// remote rows are stripped first, so re-merges never duplicate).
     pub fn merge_fleet(&mut self) {
+        self.merge_fleet_rows();
+        self.refresh_filtered();
+    }
+
+    /// Fleet rows without the re-filter: refresh and fetch paths merge
+    /// both caches before filtering once, so a foreign-only filter view
+    /// never mid-passes through empty (which would close the preview).
+    fn merge_fleet_rows(&mut self) {
         self.panes.retain(|p| !is_remote_pane(&p.id));
         self.panes.extend(self.fleet_rows.iter().cloned());
         for a in &self.fleet_agents {
             self.agents.insert(a.pane.clone(), a.clone());
         }
+    }
+
+    /// Re-apply the native cache after a local refresh. Runs after the
+    /// fleet merge (which strips all non-% rows), so natives always come
+    /// back; idempotent like the fleet merge.
+    pub fn merge_native(&mut self) {
+        self.merge_native_rows();
         self.refresh_filtered();
     }
 
-    /// Re-apply the native cache after a local refresh. Runs after
-    /// [`merge_fleet`](Self::merge_fleet) (which strips all non-% rows),
-    /// so natives always come back; idempotent like the fleet merge.
-    pub fn merge_native(&mut self) {
+    /// Native rows without the re-filter (see [`merge_fleet_rows`]).
+    fn merge_native_rows(&mut self) {
         self.panes.retain(|p| !is_native_pane(&p.id));
         self.panes.extend(self.native_rows.iter().cloned());
         for a in &self.native_agents {
             self.agents.insert(a.pane.clone(), a.clone());
         }
+    }
+
+    /// Re-filter after both caches merged (single filter, no mid-pass).
+    fn merge_caches(&mut self) {
+        self.merge_fleet_rows();
+        self.merge_native_rows();
         self.refresh_filtered();
     }
 
