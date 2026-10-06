@@ -194,6 +194,12 @@ enum Cmd {
         #[arg(long)]
         check: bool,
     },
+    /// One-shot setup: config file, agent hooks, daemon.
+    Init {
+        /// Print the steps without running them.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -1489,6 +1495,45 @@ fn cmd_kill(name: &str) -> i32 {
     }
 }
 
+/// One-shot setup: config file, hooks for all agents, daemon start.
+/// Steps share the subcommand implementations; the summary names failures.
+fn cmd_init(dry_run: bool) -> i32 {
+    if dry_run {
+        print_out("init would run, in order:");
+        print_out("  1) write the default config file");
+        print_out("  2) install agent hooks (all agents)");
+        print_out("  3) start the terhubd daemon");
+        return 0;
+    }
+    let mut failed: Vec<&str> = Vec::new();
+    print_out("== config ==");
+    match config::ensure_config() {
+        Ok(p) => print_out(&format!("config ready ({})", p.display())),
+        Err(e) => {
+            eprintln!("terhub: config failed: {e:?}");
+            failed.push("config");
+        }
+    }
+    print_out("== hooks ==");
+    if cmd_hooks(&HooksAction::Install {
+        agent: "all".to_string(),
+    }) != 0
+    {
+        failed.push("hooks");
+    }
+    print_out("== daemon ==");
+    if cmd_daemon(&DaemonAction::Start) != 0 {
+        failed.push("daemon");
+    }
+    if failed.is_empty() {
+        print_out("init complete: config, hooks, daemon");
+        0
+    } else {
+        eprintln!("terhub: init failed: {}", failed.join(", "));
+        1
+    }
+}
+
 fn cmd_config(show: bool, path: bool, init: bool, check: bool) -> i32 {
     if check {
         let (_, problems) = config::load_config_report(None);
@@ -1849,6 +1894,7 @@ fn real_main() -> i32 {
             init,
             check,
         }) => cmd_config(show, path, init, check),
+        Some(Cmd::Init { dry_run }) => cmd_init(dry_run),
     }
 }
 
