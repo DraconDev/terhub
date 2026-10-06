@@ -1316,7 +1316,11 @@ mod tests {
         let m = compiled();
         // Finished task banners: waiting, not working.
         assert_eq!(
-            classify_screen(&m, "minimax-code", "✓ Goal complete · 31min38s · 352K tokens\n"),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "✓ Goal complete · 31min38s · 352K tokens\n"
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Waiting,
@@ -1345,7 +1349,10 @@ mod tests {
             )
         );
         // Partial progress is not completion…
-        assert_eq!(classify_screen(&m, "minimax-code", "Todo list 3/15\n"), None);
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "Todo list 3/15\n"),
+            None
+        );
         // …prose failures are not task failures…
         assert_eq!(
             classify_screen(&m, "minimax-code", "SPEC-200 failed when gates ran\n"),
@@ -1358,7 +1365,11 @@ mod tests {
         );
         // …and the persistent input chrome never waits.
         assert_eq!(
-            classify_screen(&m, "minimax-code", "Message · Enter send · Ctrl+J newline\n"),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "Message · Enter send · Ctrl+J newline\n"
+            ),
             None
         );
         assert_eq!(
@@ -1387,7 +1398,11 @@ mod tests {
         );
         // …while real verdicts beside a tip still land, with real summaries.
         assert_eq!(
-            classify_screen(&m, "claude", "Tip: quota for free tier\nError: socket timeout\n"),
+            classify_screen(
+                &m,
+                "claude",
+                "Tip: quota for free tier\nError: socket timeout\n"
+            ),
             hit(Some("claude"), AgentState::Error, "Error: socket timeout")
         );
         // Only the footer prefix strips: prose merely starting with Tip stays.

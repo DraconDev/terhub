@@ -1678,8 +1678,7 @@ mod tests {
         // Footer tip carousel swaps full text every few seconds: the
         // quiet clock must ignore it like any other animation, while the
         // verdict beside it still stands.
-        let dir =
-            std::env::temp_dir().join(format!("terhub-poll-tips-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-poll-tips-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         fake_tmux_file_screen(&dir, 999_999_999, "claude");
