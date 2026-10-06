@@ -160,9 +160,13 @@ daemon instead of silently emptying the agent columns.
 theme = "dark"       # dark | light | dracula | nord | gruvbox | solarized
 density = "comfortable"  # comfortable | compact
 highlight_attached = true
+mru_tabs = false     # order session tabs by recent activity
 
 [keys]
 new = "n"
+spawn = "w"
+restart = "e"
+pause = "z"
 kill = "x"
 rename = "r"
 attach = "enter"
@@ -207,6 +211,12 @@ stderr kept and marked). The same `TERHUB_*` environment as automation
 rules is set. Example: `name = "git status"`, `key = "G"`,
 `run = "git -C {dir} status -sb"`.
 
+Spawn profiles name the agents `w` offers: `[[profile]]` with `name`,
+`program`, and optional `dir` (start directory). Without any
+`[[profile]]` the builtins apply (`claude`, `codex`, `pi`, `gemini`,
+`muse`); user entries replace them wholesale. Example:
+`name = "pi-fast"`, `program = "pi --model fast"`.
+
 Key names: single characters, `enter`, `esc`, `tab`, `f5`, … Unknown keys
 fall back to defaults. Notifications gate the desktop popups on agent state
 changes. A style spec is optional modifiers plus a color (`"bold yellow"`,
@@ -215,8 +225,8 @@ blink`, colors `black red green yellow blue magenta cyan white gray` with
 `bright-`/`light-` variants, `#rgb`/`#rrggbb`, or `none` for plain). Unknown
 spec tokens degrade to plainer text at render time. `terhub config --check`
 validates the file and names every problem
-(unknown theme/density/keys, bad `[[command]]` entries, bad style specs,
-TOML syntax errors); the TUI also surfaces the
+(unknown theme/density/keys, bad `[[command]]`/`[[profile]]` entries,
+bad style specs, TOML syntax errors); the TUI also surfaces the
 first problem in its status bar instead of silently running on defaults.
 
 ## The daemon and agent awareness
@@ -307,6 +317,16 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
 
 State changes from hooks are logged to the ledger and fire desktop
 notifications (unless disabled).
+
+`terhub hooks install [claude|pi|all]` wires agents up for you: claude
+gets `SessionStart`/`Notification`/`Stop` entries merged into
+`~/.claude/settings.json` (idempotent, user hooks kept, first write
+backed up to `settings.json.terhub-bak`), pi gets a lifecycle reporter
+at `~/.pi/agent/extensions/terhub.ts`. `hooks status` shows what is
+wired, `hooks uninstall` removes only terhub's entries. Restart running
+agents so they pick the hooks up. `--summary-stdin` reads a hook's
+summary from stdin (a JSON `{"message": …}` wins, else the first raw
+line) for shims whose platform delivers context on stdin.
 
 ## Attention: attend, peek, status line
 
@@ -452,6 +472,7 @@ are tmux-backed.
 | `send <pane> <text> [--no-submit]` | Type into a pane |
 | `status [--json]` | Agent states from the daemon |
 | `hook --agent A --pane P --state S [--summary T]` | Push a hook event |
+| `hooks install\|status\|uninstall [agent]` | Wire agent lifecycle hooks |
 | `daemon start\|stop\|status` | Manage `terhubd` |
 | `attend [--cycle] [--list]` | Jump to longest-waiting agent |
 | `peek [--plain]` | This window's panes + states |
