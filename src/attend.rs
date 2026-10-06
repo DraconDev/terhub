@@ -314,8 +314,21 @@ pub fn detect_transitions(
 /// desktop note (done, not needy: no badge, no attend). Unknown→Idle is
 /// a fresh discovery, not a finish, and never pings.
 pub fn is_completion(from: AgentState, to: AgentState) -> bool {
-    let _ = (from, to);
-    false
+    to == AgentState::Idle && !matches!(from, AgentState::Unknown | AgentState::Idle)
+}
+
+/// One desktop note for a finished agent (done, not needy: no badge,
+/// no attend). Same toggle as attention notes.
+pub fn notify_done(t: &Transition) {
+    if !crate::config::load_config(None).notifications_enabled {
+        return;
+    }
+    let title = format!("terhub: {} done", t.agent);
+    let mut body = format!("{}:{} · {}", t.session, t.window, t.pane);
+    if !t.summary.is_empty() {
+        body.push_str(&format!(" — {}", truncate(&t.summary, 80)));
+    }
+    let _ = run_notifier("notify-send", &[title.as_str(), body.as_str()]);
 }
 
 pub fn notify_transition(t: &Transition) {

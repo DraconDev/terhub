@@ -559,13 +559,16 @@ fn apply_hook_event(
 }
 
 /// Emit transition side effects: ledger lines always, a desktop
-/// notification for attention states. Runs WITHOUT the registry lock —
-/// a slow notify-send must never stall polls or snapshots.
+/// notification for attention states, a one-shot note for completions.
+/// Runs WITHOUT the registry lock — a slow notify-send must never stall
+/// polls or snapshots.
 fn emit_transitions(transitions: &[crate::attend::Transition], now: u64) {
     for t in transitions {
         log_entry(&history::Entry::transition(now, t));
         if t.to.needs_attention() {
             notify_transition(t);
+        } else if crate::attend::is_completion(t.from, t.to) {
+            crate::attend::notify_done(t);
         }
     }
 }
@@ -837,7 +840,7 @@ fn merge_record_owned(
     now: u64,
     stuck_secs: u64,
 ) -> Option<AgentRecord> {
-    use AgentState::{Error, Limited, Waiting, Working};
+    use AgentState::{Error, Idle, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
         (Some((pa, _, _)), Some(hit))
             if hit.state == Waiting || hit.state == Error || hit.state == Limited =>
@@ -870,11 +873,12 @@ fn merge_record_owned(
         ),
         _ => (now, String::new()),
     };
-    // Waiting/error rows show the prompt (or error) line that tripped the
-    // classifier — the text you must read to act. Refreshed every poll;
+    // Waiting/error/limited rows show the prompt (or error) line that
+    // tripped the classifier — the text you must read to act. Idle rows
+    // show the completion line, for the same reason. Refreshed every poll;
     // the clock above still decides notifications. Working rows stay
     // summary-free: spinner text is noise, not information.
-    if matches!(state, Waiting | Error | Limited)
+    if matches!(state, Waiting | Error | Limited | Idle)
         && let Some(hit) = screen.as_ref()
         && !hit.summary.is_empty()
     {
