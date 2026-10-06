@@ -438,6 +438,7 @@ mod tests {
         assert_eq!(agents[0].pane, "dev:%1");
         assert_eq!(agents[0].summary, "Approve?");
         assert!(agents[0].handle.is_empty(), "remote handle leaked");
+    }
 
     #[test]
     fn host_names_reject_colons() {
