@@ -527,22 +527,134 @@ fn cmd_status(json: bool) -> i32 {
     0
 }
 
-fn cmd_hook(agent: &str, pane: &str, state: &str, summary: Option<&str>) -> i32 {
+fn cmd_hook(
+    agent: &str,
+    pane: &str,
+    state: &str,
+    summary: Option<&str>,
+    summary_stdin: bool,
+) -> i32 {
     let Some(state) = AgentState::parse(state) else {
         eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
         return 1;
+    };
+    let from_stdin;
+    let summary = if summary_stdin {
+        from_stdin = read_stdin_summary();
+        from_stdin.as_str()
+    } else {
+        summary.unwrap_or("")
     };
     let ev = HookEvent {
         pane: pane.to_string(),
         agent: agent.to_string(),
         state,
-        summary: summary.unwrap_or("").to_string(),
+        summary: summary.to_string(),
     };
     // Fire-and-forget: hooks must never break the agent they observe.
     if let Err(e) = daemon::send_event(&ev, Duration::from_secs(1)) {
         eprintln!("terhub: hook not delivered ({e:?})");
     }
     0
+}
+
+/// Read hook stdin for `--summary-stdin`; unreadable stdin degrades to
+/// an empty summary (fire-and-forget must not fail the hook).
+fn read_stdin_summary() -> String {
+    use std::io::Read;
+    let mut raw = String::new();
+    if std::io::stdin().read_to_string(&mut raw).is_ok() {
+        terhub::hooks::stdin_summary(&raw)
+    } else {
+        String::new()
+    }
+}
+
+fn cmd_hooks(action: &HooksAction) -> i32 {
+    use terhub::hooks;
+    match action {
+        HooksAction::Status => {
+            let cpath = hooks::claude_settings_path();
+            let wired = hooks::claude_status(&cpath);
+            if wired.len() == 3 {
+                print_out(&format!("claude: installed ({})", cpath.display()));
+            } else if wired.is_empty() {
+                print_out("claude: not installed");
+            } else {
+                print_out(&format!("claude: partial ({})", wired.join(", ")));
+            }
+            let ppath = hooks::pi_extension_path();
+            if hooks::pi_status(&ppath) {
+                print_out(&format!("pi: installed ({})", ppath.display()));
+            } else {
+                print_out("pi: not installed");
+            }
+            0
+        }
+        HooksAction::Install { agent } => {
+            let mut code = 0;
+            if agent == "all" || agent == "claude" {
+                match hooks::claude_install(&hooks::claude_settings_path()) {
+                    Ok(report) => {
+                        let added: Vec<_> = report
+                            .iter()
+                            .filter(|(_, a)| *a)
+                            .map(|(e, _)| *e)
+                            .collect();
+                        if added.is_empty() {
+                            print_out("claude: already installed");
+                        } else {
+                            print_out(&format!("claude: installed ({})", added.join(", ")));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("terhub: claude install failed: {e:?}");
+                        code = 1;
+                    }
+                }
+            }
+            if agent == "all" || agent == "pi" {
+                match hooks::pi_install(&hooks::pi_extension_path()) {
+                    Ok(true) => print_out(&format!(
+                        "pi: installed ({})",
+                        hooks::pi_extension_path().display()
+                    )),
+                    Ok(false) => print_out("pi: already installed"),
+                    Err(e) => {
+                        eprintln!("terhub: pi install failed: {e:?}");
+                        code = 1;
+                    }
+                }
+            }
+            code
+        }
+        HooksAction::Uninstall { agent } => {
+            let mut code = 0;
+            if agent == "all" || agent == "claude" {
+                match hooks::claude_uninstall(&hooks::claude_settings_path()) {
+                    Ok(cleaned) if cleaned.is_empty() => print_out("claude: not installed"),
+                    Ok(cleaned) => {
+                        print_out(&format!("claude: removed ({})", cleaned.join(", ")))
+                    }
+                    Err(e) => {
+                        eprintln!("terhub: claude uninstall failed: {e:?}");
+                        code = 1;
+                    }
+                }
+            }
+            if agent == "all" || agent == "pi" {
+                match hooks::pi_uninstall(&hooks::pi_extension_path()) {
+                    Ok(true) => print_out("pi: removed"),
+                    Ok(false) => print_out("pi: not installed"),
+                    Err(e) => {
+                        eprintln!("terhub: pi uninstall failed: {e:?}");
+                        code = 1;
+                    }
+                }
+            }
+            code
+        }
+    }
 }
 
 fn daemon_bin() -> std::path::PathBuf {
@@ -1651,8 +1763,10 @@ fn real_main() -> i32 {
             pane,
             state,
             summary,
-        }) => cmd_hook(&agent, &pane, &state, summary.as_deref()),
+            summary_stdin,
+        }) => cmd_hook(&agent, &pane, &state, summary.as_deref(), summary_stdin),
         Some(Cmd::Daemon { action }) => cmd_daemon(&action),
+        Some(Cmd::Hooks { action }) => cmd_hooks(&action),
         Some(Cmd::Attend { cycle, list }) => cmd_attend(cycle, list),
         Some(Cmd::Peek { plain, pick }) => cmd_peek(plain, pick),
         Some(Cmd::StatusLine { pane }) => cmd_status_line(pane.as_deref()),
