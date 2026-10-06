@@ -35,17 +35,24 @@ fn run_timed(mut cmd: Command, what: &str) -> Result<Output> {
         .stderr(Stdio::piped());
     let mut child = cmd.spawn().with_context(|| format!("spawn {what}"))?;
     let (tx, rx) = std::sync::mpsc::channel();
-    for (id, pipe) in [(0u8, child.stdout.take()), (1u8, child.stderr.take())] {
-        let tx = tx.clone();
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            if let Some(mut p) = pipe {
-                let _ = p.read_to_end(&mut buf);
-            }
-            let _ = tx.send((id, buf));
-        });
-    }
-    drop(tx);
+    // Two reader threads (stdout/stderr are distinct types, so no loop).
+    let out_tx = tx.clone();
+    let mut out_pipe = child.stdout.take();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = out_pipe.as_mut() {
+            let _ = p.read_to_end(&mut buf);
+        }
+        let _ = out_tx.send((0u8, buf));
+    });
+    let err_pipe = child.stderr.take();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut p) = err_pipe {
+            let _ = p.read_to_end(&mut buf);
+        }
+        let _ = tx.send((1u8, buf));
+    });
     let deadline = Instant::now() + Duration::from_secs(NATIVE_CMD_TIMEOUT_SECS);
     let status = loop {
         match child.try_wait()? {
