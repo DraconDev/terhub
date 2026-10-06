@@ -57,7 +57,15 @@ pub enum SettingKind {
 pub enum AppEvent {
     Attach(String),
     FocusPane(String),
+    /// Jump to a remote session: exits the TUI into `ssh -t` (ssh owns
+    /// the terminal from there, so this never stays open).
+    RemoteAttach { host: String, session: String },
     Quit,
+}
+
+/// Remote rows carry `host:%N` ids; local tmux ids always start with `%`.
+pub fn is_remote_pane(id: &str) -> bool {
+    !id.starts_with('%')
 }
 
 /// Which list keyboard input drives: the session sidebar or the pane table.
@@ -359,6 +367,20 @@ pub struct App {
     /// The TUI's own pane id (`$TMUX_PANE`, set once at startup), so its
     /// row reads as the observer instead of just another entry.
     pub own_pane: Option<String>,
+    /// Cached remote agent rows (manual fetch; re-merged every refresh).
+    pub fleet_rows: Vec<Pane>,
+    /// Cached remote agent records, merged into `agents` on refresh.
+    pub fleet_agents: Vec<AgentRecord>,
+    /// Remote id → (host, remote session) for jumps and previews.
+    pub fleet_index: HashMap<String, (String, String)>,
+    /// Hosts shown in the Hosts modal (loaded when it opens).
+    pub fleet_hosts: Vec<crate::fleet::Host>,
+    /// Per-host errors from the last fetch (shown in the modal).
+    pub fleet_errors: Vec<(String, String)>,
+    /// When the fleet cache was last fetched (None = never).
+    pub fleet_fetched_at: Option<std::time::Instant>,
+    /// Hosts modal cursor.
+    pub hosts_selected: usize,
 }
 
 impl App {
@@ -394,6 +416,13 @@ impl App {
             marked: std::collections::HashSet::new(),
             hover: None,
             own_pane: None,
+            fleet_rows: Vec::new(),
+            fleet_agents: Vec::new(),
+            fleet_index: HashMap::new(),
+            fleet_hosts: Vec::new(),
+            fleet_errors: Vec::new(),
+            fleet_fetched_at: None,
+            hosts_selected: 0,
         }
     }
 
