@@ -1042,6 +1042,7 @@ mod tests {
             agent: "claude".to_string(),
             state: AgentState::Working,
             summary: "a".to_string(),
+            prompt: String::new(),
         };
         apply_event_to(&mut reg, &ev, 100);
         reg.get_mut("%1").unwrap().session = "work".to_string();
@@ -1063,6 +1064,7 @@ mod tests {
             agent: "claude".to_string(),
             state: AgentState::Working,
             summary: "a".to_string(),
+            prompt: String::new(),
         };
         apply_event_to(&mut reg, &work, 100);
         apply_event_to(&mut reg, &work, 200);
@@ -1086,6 +1088,7 @@ mod tests {
             agent: "claude".to_string(),
             state: AgentState::Working,
             summary: "a".to_string(),
+            prompt: String::new(),
         };
         apply_event_to(&mut reg, &ev, 100);
         apply_event_to(&mut reg, &ev, 200);

@@ -396,6 +396,8 @@ mod tests {
             last_turn_secs: 0,
             screen_hash: 0,
             quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
         }
     }
 
