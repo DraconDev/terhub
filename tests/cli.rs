@@ -296,6 +296,54 @@ fn native_spawn_unknown_backend_exits_1() {
 }
 
 #[test]
+fn hook_prompt_flag_is_accepted() {
+    // Fire-and-forget: exit 0 even with no daemon; the flag must parse.
+    let out = run_isolated(
+        "hookprompt",
+        &["hook", "--agent", "pi", "--pane", "%1", "--state", "working", "--prompt", "hi"],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}
+
+const PROMPT_LEDGER: &str = "{\"t\":100,\"kind\":\"prompt\",\"pane\":\"%1\",\"agent\":\"pi\",\"summary\":\"first\"}\n{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"agent\":\"pi\",\"summary\":\"second\"}\n{\"t\":300,\"kind\":\"prompt\",\"pane\":\"%1\",\"agent\":\"pi\",\"summary\":\"third\"}\n";
+
+#[test]
+fn recap_lists_prompts_newest_first() {
+    let out = run_with_ledger("recap", &["recap", "--since", "all"], PROMPT_LEDGER);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    let i3 = text.find("third").expect("third");
+    let i2 = text.find("second").expect("second");
+    let i1 = text.find("first").expect("first");
+    assert!(i3 < i2 && i2 < i1, "wrong order:\n{text}");
+}
+
+#[test]
+fn recap_filters_by_pane_and_limit() {
+    let out = run_with_ledger(
+        "recapf",
+        &["recap", "--since", "all", "--pane", "%1", "--limit", "1"],
+        PROMPT_LEDGER,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("third"), "missing third:\n{text}");
+    assert!(!text.contains("first"), "limit ignored:\n{text}");
+    assert!(!text.contains("second"), "pane filter ignored:\n{text}");
+}
+
+#[test]
+fn activity_kind_prompt_lists_prompt_entries() {
+    let out = run_with_ledger(
+        "actprompt",
+        &["activity", "--since", "all", "--kind", "prompt"],
+        PROMPT_LEDGER,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stdout(&out).contains("third"), "{}", stdout(&out));
+}
+
+#[test]
 fn send_capture_focus_route_native_ids_to_backends() {
     // No tmux and no qdbus on PATH: the failure must name the native
     // backend, proving the id never went down the tmux path.

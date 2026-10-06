@@ -305,6 +305,16 @@ async fn handle_conn(
                 (t, now)
             };
             emit_transitions(&transitions, now);
+            // Prompts log even when the state didn't move: asking again is
+            // itself the event the recap reads back.
+            if !event.prompt.trim().is_empty() {
+                log_entry(&history::Entry::prompt(
+                    now,
+                    &event.pane,
+                    &crate::proc::canonical_agent(&event.agent),
+                    &event.prompt,
+                ));
+            }
             Response::ok()
         }
     };
@@ -1084,6 +1094,7 @@ mod tests {
             agent: "pi".to_string(),
             state: AgentState::Waiting,
             summary: "Approve?".to_string(),
+            prompt: String::new(),
         };
         let transitions = apply_hook_event(&mut reg, &ev, 100_000);
         assert_eq!(reg["%1"].state, AgentState::Waiting);
@@ -1212,6 +1223,7 @@ mod tests {
                 agent: "pi".to_string(),
                 state: AgentState::Waiting,
                 summary: "s".repeat(2 * 1024 * 1024),
+                prompt: String::new(),
             },
         })
         .unwrap();
