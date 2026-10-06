@@ -7,7 +7,7 @@ const FAKE_QDBUS: &str = r#"#!/bin/sh
 if [ "$1" = "--version" ]; then echo "fake qdbus"; exit 0; fi
 if [ $# -eq 0 ]; then printf ':1.84\n org.kde.konsole-999\n'; exit 0; fi
 SVC="$1"; PATH_="$2"; METHOD="$3"; shift 3
-base="$(basename "$METHOD")"
+base="${METHOD##*.}"
 case "$PATH_::$base" in
   "/Windows::Introspect") printf '<node><node name="1"/></node>\n';;
   "/Windows/1::sessionList") printf '6\n7\n';;

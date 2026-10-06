@@ -89,6 +89,11 @@ pub fn validate_host_name(name: &str) -> Result<()> {
     if name.contains(':') {
         bail!("host name must not contain ':'");
     }
+    // Native terminal rows (`konsole:…`, `kitty:…`, `wezterm:…`) share the
+    // non-% namespace; a host named the same would misroute jumps.
+    if crate::native::BACKENDS.contains(&name.trim().to_lowercase().as_str()) {
+        bail!("host name '{name}' is reserved for native terminal rows");
+    }
     Ok(())
 }
 
