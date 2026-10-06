@@ -181,6 +181,7 @@ fn title_needy_counts_visible_rows_only() {
         quiet_since: 0,
         last_prompt_at: 0,
         last_prompt: String::new(),
+        handle: String::new(),
     };
     app.agents.insert("%1".to_string(), rec("%1"));
     app.agents.insert("%2".to_string(), rec("%2"));
@@ -217,6 +218,7 @@ fn proc_source_and_stuck_state_render() {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -272,6 +274,7 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
             quiet_since: now - 3600,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -316,6 +319,7 @@ fn agent_color_and_idle_warn_reach_cells() {
             quiet_since: now - 3600,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let grid = render_grid(&mut app, 140, 20);
@@ -487,6 +491,7 @@ fn preview_title_shows_agent_context() {
             quiet_since: now - 180,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     app.show_preview = true;
@@ -642,6 +647,7 @@ fn agent_state_renders_in_table() {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -750,6 +756,7 @@ fn src_and_dir_columns_render() {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     app.agents.insert(
@@ -773,6 +780,7 @@ fn src_and_dir_columns_render() {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -872,6 +880,7 @@ fn wide_table_fits_long_commands_and_summaries() {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let text = render_lines(&mut app, 195, 24).join("\n");
@@ -904,6 +913,7 @@ fn title_nudges_hookless_setups() {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -1126,6 +1136,7 @@ fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::a
         quiet_since: 0,
         last_prompt_at: 0,
         last_prompt: String::new(),
+        handle: String::new(),
     }
 }
 

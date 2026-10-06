@@ -379,6 +379,7 @@ async fn poll_loop(
                     merge_mid_poll_hooks(&mut next, &reg, poll_start);
                     let t = detect_all_transitions(&reg, &next);
                     *reg = next;
+                    crate::agent::ensure_handles(&mut reg);
                     save_registry(&runtime.join("registry.json"), &reg);
                     t
                 };
@@ -436,6 +437,7 @@ fn apply_hook_event(
 ) -> Vec<crate::attend::Transition> {
     let before = reg.clone();
     apply_event_to(reg, event, now);
+    crate::agent::ensure_handles(reg);
     detect_all_transitions(&before, reg)
 }
 
@@ -757,6 +759,12 @@ fn merge_record_owned(
         // Polls never wipe hook prompts: carry the old cut forward.
         last_prompt_at: carried.map(|o| o.last_prompt_at).unwrap_or(0),
         last_prompt: carried.map(|o| o.last_prompt.clone()).unwrap_or_default(),
+        // Handles follow the agent, not the pane: a changed agent drops
+        // the old name so ensure_handles mints a fresh one.
+        handle: match carried {
+            Some(o) if o.agent == agent => o.handle.clone(),
+            _ => String::new(),
+        },
     })
 }
 
@@ -1283,6 +1291,7 @@ mod tests {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         }
     }
 
@@ -1406,6 +1415,7 @@ mod tests {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         }
     }
 

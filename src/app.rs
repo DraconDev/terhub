@@ -850,6 +850,7 @@ impl App {
                     // Native tabs have no hooks: prompts never land here.
                     last_prompt_at: 0,
                     last_prompt: String::new(),
+                    handle: String::new(),
                 });
             }
         }
@@ -4462,6 +4463,7 @@ mod tests {
                 quiet_since: 0,
                 last_prompt_at: 0,
                 last_prompt: String::new(),
+                handle: String::new(),
             },
         );
         let counts = app.session_counts();
@@ -4493,6 +4495,7 @@ mod tests {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         }
     }
 

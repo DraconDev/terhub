@@ -1416,6 +1416,7 @@ mod tests {
             quiet_since,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         };
         // Working + quiet past stuck_secs (600) → warn.
         let r = rec(AgentState::Working, now - 3600);

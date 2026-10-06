@@ -398,6 +398,7 @@ mod tests {
             quiet_since: 0,
             last_prompt_at: 0,
             last_prompt: String::new(),
+            handle: String::new(),
         }
     }
 
