@@ -597,3 +597,87 @@ pub fn proc_cwd(pid: u32) -> Option<String> {
         .ok()
         .map(|p| p.to_string_lossy().into_owned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_ids_split_by_backend() {
+        assert_eq!(split_native_id("konsole:153:6"), Some(("konsole", "153:6")));
+        assert_eq!(split_native_id("kitty:3"), Some(("kitty", "3")));
+        assert_eq!(split_native_id("wezterm:7"), Some(("wezterm", "7")));
+        // tmux and fleet ids are never native.
+        assert_eq!(split_native_id("%1"), None);
+        assert_eq!(split_native_id("dev:%1"), None);
+        assert_eq!(split_native_id("konsole:"), None);
+        assert_eq!(split_native_id("konsole"), None);
+        assert!(is_native_id("kitty:3"));
+        assert!(!is_native_id("dev:%1"));
+    }
+
+    #[test]
+    fn qdbus_services_pick_konsole_lines() {
+        let text = ":1.84\n org.kde.konsole-1535082\n:1.96\n org.kde.plasmashell\n";
+        assert_eq!(
+            parse_qdbus_services(text),
+            vec!["org.kde.konsole-1535082".to_string()]
+        );
+        assert!(parse_qdbus_services("nothing here\n").is_empty());
+    }
+
+    #[test]
+    fn introspect_nodes_parse_sorted_unique() {
+        let xml = "<node><node name=\"2\"/><node name=\"1\"/><node name=\"2\"/><node name=\"x\"/></node>";
+        assert_eq!(parse_introspect_nodes(xml), vec![1, 2]);
+        assert!(parse_introspect_nodes("<node></node>").is_empty());
+    }
+
+    #[test]
+    fn int_lists_skip_junk() {
+        assert_eq!(parse_int_list("6\n24\n"), vec![6, 24]);
+        assert_eq!(parse_int_list("6\nbogus\n\n24\n"), vec![6, 24]);
+    }
+
+    #[test]
+    fn screen_trim_strips_padding_and_tails() {
+        let text = "a  \n  \nb\n";
+        assert_eq!(trim_screen_lines(text, 0), "a\n\nb\n");
+        assert_eq!(trim_screen_lines(text, 2), "\nb\n");
+        assert_eq!(trim_screen_lines("", 10), "");
+    }
+
+    #[test]
+    fn kitty_ls_walks_os_windows() {
+        let json = r#"[{"id":1,"tabs":[{"id":2,"title":"t","layout":"tall","windows":[{"id":3,"is_focused":true,"title":"w","pid":99,"cwd":"/tmp"}]}]}]"#;
+        let tabs = parse_kitty_ls(json);
+        assert_eq!(tabs.len(), 1);
+        assert_eq!(tabs[0].id, "kitty:3");
+        assert_eq!(tabs[0].title, "w");
+        assert_eq!(tabs[0].pid, 99);
+        assert!(tabs[0].active);
+        // Garbage in, empty out — never a panic.
+        assert!(parse_kitty_ls("bogus").is_empty());
+        assert!(parse_kitty_ls("{}").is_empty());
+    }
+
+    #[test]
+    fn wezterm_list_needs_only_pane_id() {
+        let json = r#"[{"window_id":0,"tab_id":1,"pane_id":7,"title":""},{"pane_id":8}]"#;
+        let tabs = parse_wezterm_list(json);
+        assert_eq!(tabs.len(), 2);
+        assert_eq!(tabs[0].id, "wezterm:7");
+        assert_eq!(tabs[0].title, "tab 1");
+        assert_eq!(tabs[1].window, "win 0");
+        assert!(parse_wezterm_list("bogus").is_empty());
+        assert!(parse_wezterm_list(r#"[{"tab_id":1}]"#).is_empty());
+    }
+
+    #[test]
+    fn bad_ids_error_cleanly() {
+        assert!(capture("%1", 10).is_err());
+        assert!(send_text("dev:%1", "hi", false).is_err());
+        assert!(focus("nope", ).is_err());
+        assert!(spawn("gnome").is_err());
+    }
+}
