@@ -899,6 +899,49 @@ mod tests {
     }
 
     #[test]
+    fn hook_event_sets_model_and_ctx() {
+        let mut reg = HashMap::new();
+        let ev = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+            prompt: String::new(),
+            model: "opus-4.5".to_string(),
+            ctx: Some(72),
+        };
+        apply_event_to(&mut reg, &ev, 100);
+        assert_eq!(reg["%1"].model, "opus-4.5");
+        assert_eq!(reg["%1"].ctx_pct, Some(72));
+        // Same-state refresh updates both.
+        let ev2 = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+            prompt: String::new(),
+            model: "opus-4.6".to_string(),
+            ctx: Some(80),
+        };
+        apply_event_to(&mut reg, &ev2, 200);
+        assert_eq!(reg["%1"].model, "opus-4.6");
+        assert_eq!(reg["%1"].ctx_pct, Some(80));
+        // An event that doesn't know keeps the old values, not blanks.
+        let ev3 = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Waiting,
+            summary: String::new(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &ev3, 300);
+        assert_eq!(reg["%1"].model, "opus-4.6");
+        assert_eq!(reg["%1"].ctx_pct, Some(80));
+    }
+
+    #[test]
     fn hook_agent_names_canonicalize() {
         // Hooks report raw labels; the registry stores canonical names so
         // hook records compare equal to proc/screen records downstream.

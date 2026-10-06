@@ -1175,6 +1175,93 @@ mod tests {
         assert!(transitions[0].to.needs_attention());
     }
 
+    #[test]
+    fn register_upserts_manual_record() {
+        let mut reg = HashMap::new();
+        apply_register(&mut reg, "%7", "myagent", 4242, AgentState::Working, 1000);
+        let rec = &reg["%7"];
+        assert_eq!(rec.source, Source::Manual);
+        assert_eq!(rec.agent, "myagent");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.reg_pid, 4242);
+        assert_eq!(rec.updated_at, 1000);
+        assert_eq!(rec.state_since, 1000);
+        // Same agent + state refreshes the pin in place: new pid wins,
+        // the clock is kept (no renotify downstream).
+        apply_register(&mut reg, "%7", "myagent", 5000, AgentState::Working, 2000);
+        let rec = &reg["%7"];
+        assert_eq!(rec.reg_pid, 5000);
+        assert_eq!(rec.updated_at, 2000);
+        assert_eq!(rec.state_since, 1000);
+        // A new state is a fresh pin with a fresh clock.
+        apply_register(&mut reg, "%7", "myagent", 5000, AgentState::Waiting, 3000);
+        let rec = &reg["%7"];
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert_eq!(rec.state_since, 3000);
+    }
+
+    #[test]
+    fn unregister_drops_only_manual() {
+        let mut reg = HashMap::new();
+        apply_register(&mut reg, "%7", "myagent", 0, AgentState::Working, 1000);
+        reg.insert("%1".to_string(), hook_record(1000));
+        assert!(apply_unregister(&mut reg, "%7"));
+        assert!(!reg.contains_key("%7"));
+        // A hook record is real evidence: unregister leaves it alone.
+        assert!(!apply_unregister(&mut reg, "%1"));
+        assert!(reg.contains_key("%1"));
+        // Nothing pinned, nothing dropped.
+        assert!(!apply_unregister(&mut reg, "%9"));
+    }
+
+    #[test]
+    fn manual_pin_never_lapses() {
+        // split_prev must keep Manual pins on the authoritative side no
+        // matter how old: only unregister (or pane/pid death) drops them.
+        let mut rec = hook_record(100);
+        rec.source = Source::Manual;
+        rec.pane = "%7".to_string();
+        let (old, stale) = split_prev(Some(&rec), 100_000, 1800);
+        assert!(old.is_some());
+        assert!(stale.is_none());
+    }
+
+    #[test]
+    fn merge_carries_model_and_ctx() {
+        // Poll evidence never reports model/ctx: the merge carries the
+        // old cut forward like the prompt, never blanks it.
+        let mut old = carried("pi", AgentState::Working, 10, 90, 50);
+        old.model = "opus-4.5".to_string();
+        old.ctx_pct = Some(72);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 10)),
+            &test_pane(),
+            100,
+            300,
+        )
+        .expect("proc hit claims the pane");
+        assert_eq!(rec.model, "opus-4.5");
+        assert_eq!(rec.ctx_pct, Some(72));
+        // Manual pins carry their pid through merges too.
+        let mut old = carried("myagent", AgentState::Working, 10, 90, 50);
+        old.source = Source::Manual;
+        old.reg_pid = 4242;
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("myagent", 10)),
+            &test_pane(),
+            100,
+            300,
+        )
+        .expect("proc hit claims the pane");
+        assert_eq!(rec.reg_pid, 4242);
+    }
+
     #[tokio::test]
     async fn poll_loop_exits_on_shutdown() {
         // A preset shutdown flag stops the loop before the first tick: no
