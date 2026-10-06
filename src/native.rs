@@ -13,9 +13,66 @@
 //! Konsole exposes no tab-close over DBus, so native rows never offer kill.
 
 use anyhow::{Context, Result};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 
 pub const BACKENDS: &[&str] = &["konsole", "kitty", "wezterm"];
+
+/// Backstop for every native-backend subprocess: a wedged helper must
+/// never freeze the TUI (real `kitty @` outside kitty waits 10s on
+/// /dev/tty for a terminal reply that never comes).
+const NATIVE_CMD_TIMEOUT_SECS: u64 = 5;
+
+/// Run `cmd` to completion, killing it past the timeout. Pipes drain on
+/// reader threads so a chatty child can't deadlock the wait; stdin is
+/// null so no child ever reads the terminal. Pipe collection itself is
+/// bounded (a slain child's orphaned grandchild holding a pipe open
+/// costs one lingering reader thread, never a hang).
+fn run_timed(mut cmd: Command, what: &str) -> Result<Output> {
+    use std::io::Read;
+    use std::time::{Duration, Instant};
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().with_context(|| format!("spawn {what}"))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    for (id, pipe) in [(0u8, child.stdout.take()), (1u8, child.stderr.take())] {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            let _ = tx.send((id, buf));
+        });
+    }
+    drop(tx);
+    let deadline = Instant::now() + Duration::from_secs(NATIVE_CMD_TIMEOUT_SECS);
+    let status = loop {
+        match child.try_wait()? {
+            Some(s) => break s,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                anyhow::bail!("{what} timed out after {NATIVE_CMD_TIMEOUT_SECS}s");
+            }
+            None => std::thread::sleep(Duration::from_millis(10)),
+        }
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    for _ in 0..2 {
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok((0, buf)) => stdout = buf,
+            Ok((_, buf)) => stderr = buf,
+            Err(_) => break,
+        }
+    }
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
 
 /// One tab in a native terminal.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -115,7 +172,11 @@ pub fn trim_screen_lines(text: &str, lines: u32) -> String {
 fn qdbus_bin() -> &'static str {
     // Qt5/Plasma5 systems ship qdbus6 for the Qt6 Konsole.
     for bin in ["qdbus", "qdbus6"] {
-        if Command::new(bin).arg("--version").output().is_ok() {
+        let mut probe = Command::new(bin);
+        probe.arg("--version");
+        if run_timed(probe, &format!("{bin} --version"))
+            .is_ok_and(|o| o.status.success())
+        {
             return bin;
         }
     }
@@ -129,7 +190,7 @@ fn qdbus(service: &str, path: &str, method: &str, args: &[&str]) -> Result<Strin
     for a in args {
         cmd.arg(a);
     }
-    let out = cmd.output().with_context(|| format!("{bin} {method}"))?;
+    let out = run_timed(cmd, &format!("{bin} {method}"))?;
     if !out.status.success() {
         anyhow::bail!("{bin} {method} failed");
     }
@@ -138,9 +199,10 @@ fn qdbus(service: &str, path: &str, method: &str, args: &[&str]) -> Result<Strin
 
 fn konsole_tabs() -> Result<Vec<NativeTab>> {
     let bin = qdbus_bin();
-    let list = Command::new(bin)
-        .output()
-        .with_context(|| format!("{bin} (Konsole control channel)"))?;
+    let list = run_timed(
+        Command::new(bin),
+        &format!("{bin} (Konsole control channel)"),
+    )?;
     if !list.status.success() {
         anyhow::bail!("{bin} service list failed");
     }
@@ -276,7 +338,12 @@ fn konsole_focus(local: &str) -> Result<()> {
 
 fn konsole_spawn() -> Result<()> {
     let bin = qdbus_bin();
-    let list = Command::new(bin).output()?;
+    let list = run_timed(
+        Command::new(bin),
+        &format!("{bin} (Konsole control channel)"),
+    )?
+    .stdout;
+    let list = String::from_utf8_lossy(&list).into_owned();
     let services = parse_qdbus_services(&String::from_utf8_lossy(&list.stdout));
     let service = services.first().context("no Konsole on the session bus")?;
     let xml = qdbus(
