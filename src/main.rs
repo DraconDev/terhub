@@ -191,7 +191,11 @@ enum Cmd {
     /// Type text into a pane.
     Send {
         pane: String,
-        text: String,
+        /// Literal text (exactly one of text/template).
+        text: Option<String>,
+        /// A `[[template]]` name from the config instead of literal text.
+        #[arg(long)]
+        template: Option<String>,
         /// Don't press Enter after typing.
         #[arg(long)]
         no_submit: bool,
@@ -1410,7 +1414,35 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
     }
 }
 
-fn cmd_send(pane: &str, text: &str, submit: bool) -> i32 {
+fn cmd_send(pane: &str, text: Option<&str>, template: Option<&str>, submit: bool) -> i32 {
+    // Template resolution runs before any tmux call so a bad name fails
+    // fast with the name, not a tmux error.
+    let owned;
+    let text = match (text, template) {
+        (Some(t), None) => t,
+        (None, Some(name)) => {
+            let cfg = config::load_config(None);
+            match cfg.templates.iter().find(|t| t.name == name) {
+                Some(t) => {
+                    owned = t.text.clone();
+                    &owned
+                }
+                None => {
+                    let names: Vec<&str> =
+                        cfg.templates.iter().map(|t| t.name.as_str()).collect();
+                    eprintln!(
+                        "terhub: unknown template '{name}' (have: {})",
+                        names.join(", ")
+                    );
+                    return 1;
+                }
+            }
+        }
+        _ => {
+            eprintln!("terhub: send needs exactly one of TEXT or --template NAME");
+            return 1;
+        }
+    };
     if terhub::native::is_native_id(pane) {
         return match terhub::native::send_text(pane, text, submit) {
             Ok(()) => {
@@ -2142,8 +2174,9 @@ fn real_main() -> i32 {
         Some(Cmd::Send {
             pane,
             text,
+            template,
             no_submit,
-        }) => cmd_send(&pane, &text, !no_submit),
+        }) => cmd_send(&pane, text.as_deref(), template.as_deref(), !no_submit),
         Some(Cmd::Host { action }) => cmd_host(&action),
         Some(Cmd::Fleet { action }) => cmd_fleet(&action),
         Some(Cmd::Zellij { action }) => cmd_zellij(&action),
