@@ -127,7 +127,7 @@ status bar, no modes except small popups:
   reversible, hidden count in the title) — the fast way to drop idle
   shells from a dashboard view.
   Prompts eat all clicks; the settings popup rows are clickable.
-- **Styles.** `t` cycles the six built-in themes and `v` flips table
+- **Styles.** `t` cycles the ten built-in themes and `v` flips table
   density (comfortable shows the summary column, compact drops it and
   tightens columns) — both session-only try-outs. `s` opens the settings
   popup (style picker, density, notification, mru-tabs and highlight
@@ -165,7 +165,7 @@ daemon instead of silently emptying the agent columns.
 
 ```toml
 [ui]
-theme = "dark"       # dark | light | dracula | nord | gruvbox | solarized
+theme = "dark"       # dark | light | dracula | nord | gruvbox | solarized | tokyonight | catppuccin | onedark | monokai
 density = "comfortable"  # comfortable | compact
 highlight_attached = true
 mru_tabs = false     # order session tabs by recent activity

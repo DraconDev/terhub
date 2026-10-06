@@ -11,7 +11,18 @@ pub const DEFAULT_THEME: &str = "dark";
 pub const DEFAULT_DENSITY: &str = "comfortable";
 
 /// Built-in theme names, in live-cycle order.
-pub const THEMES: &[&str] = &["dark", "light", "dracula", "nord", "gruvbox", "solarized"];
+pub const THEMES: &[&str] = &[
+    "dark",
+    "light",
+    "dracula",
+    "nord",
+    "gruvbox",
+    "solarized",
+    "tokyonight",
+    "catppuccin",
+    "onedark",
+    "monokai",
+];
 
 pub fn is_known_theme(name: &str) -> bool {
     THEMES.iter().any(|t| t.eq_ignore_ascii_case(name))
@@ -593,7 +604,7 @@ fn persist_ui_settings_to(
         if line == "# terhub config: keys are single-key bindings, theme is dark or light." {
             out.push("# terhub config: keys are single-key bindings.".to_string());
             out.push(
-                "# theme: dark, light, dracula, nord, gruvbox, solarized. density: comfortable, compact."
+                "# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai. density: comfortable, compact."
                     .to_string(),
             );
             continue;
@@ -981,7 +992,7 @@ pub fn ensure_config() -> Result<PathBuf> {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create config dir {}", parent.display()))?;
         }
-        let text = "# terhub config: keys are single-key bindings.\n# theme: dark, light, dracula, nord, gruvbox, solarized. density: comfortable, compact.\n"
+        let text = "# terhub config: keys are single-key bindings.\n# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai. density: comfortable, compact.\n"
             .to_string()
             + &default_config_text();
         std::fs::write(&path, text)
@@ -1277,7 +1288,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my fancy config"), "{text}");
         assert!(
-            text.contains("# theme: dark, light, dracula, nord, gruvbox, solarized."),
+            text.contains("# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai."),
             "{text}"
         );
         assert!(!text.contains("theme is dark or light"), "{text}");

@@ -104,6 +104,70 @@ pub fn palette(theme: &str) -> Palette {
             dim: Style::default().fg(rgb(0x58, 0x6E, 0x75)),
             focus: Style::default().fg(rgb(0xCB, 0x4B, 0x16)),
         },
+        "tokyonight" => Palette {
+            border: Style::default().fg(rgb(0x56, 0x5F, 0x89)),
+            title: Style::default()
+                .fg(rgb(0x7D, 0xCF, 0xFF))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xE0, 0xAF, 0x68))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xC0, 0xCA, 0xF5))
+                .bg(rgb(0x33, 0x46, 0x7C)),
+            attached: Style::default().fg(rgb(0x9E, 0xCE, 0x6A)),
+            status: Style::default().fg(rgb(0xC0, 0xCA, 0xF5)),
+            dim: Style::default().fg(rgb(0x56, 0x5F, 0x89)),
+            focus: Style::default().fg(rgb(0xBB, 0x9A, 0xF7)),
+        },
+        "catppuccin" => Palette {
+            border: Style::default().fg(rgb(0x6C, 0x70, 0x86)),
+            title: Style::default()
+                .fg(rgb(0x74, 0xC7, 0xEC))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xF9, 0xE2, 0xAF))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xCD, 0xD6, 0xF4))
+                .bg(rgb(0x45, 0x47, 0x5B)),
+            attached: Style::default().fg(rgb(0xA6, 0xE3, 0xA1)),
+            status: Style::default().fg(rgb(0xCD, 0xD6, 0xF4)),
+            dim: Style::default().fg(rgb(0x6C, 0x70, 0x86)),
+            focus: Style::default().fg(rgb(0xCB, 0xA6, 0xF7)),
+        },
+        "onedark" => Palette {
+            border: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
+            title: Style::default()
+                .fg(rgb(0x56, 0xB6, 0xC2))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xE5, 0xC0, 0x7B))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xAB, 0xB2, 0xBF))
+                .bg(rgb(0x3E, 0x44, 0x51)),
+            attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
+            status: Style::default().fg(rgb(0xAB, 0xB2, 0xBF)),
+            dim: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
+            focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+        },
+        "monokai" => Palette {
+            border: Style::default().fg(rgb(0x75, 0x71, 0x5E)),
+            title: Style::default()
+                .fg(rgb(0x66, 0xD9, 0xEF))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xE6, 0xDB, 0x74))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xF8, 0xF8, 0xF2))
+                .bg(rgb(0x49, 0x48, 0x3E)),
+            attached: Style::default().fg(rgb(0xA6, 0xE2, 0x2E)),
+            status: Style::default().fg(rgb(0xF8, 0xF8, 0xF2)),
+            dim: Style::default().fg(rgb(0x75, 0x71, 0x5E)),
+            focus: Style::default().fg(rgb(0xF9, 0x26, 0x72)),
+        },
         _ => Palette {
             border: Style::default().fg(Color::Cyan),
             title: Style::default()
