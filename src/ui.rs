@@ -473,8 +473,9 @@ fn render_selector(
     const FLAG: usize = 2;
     const SEP: usize = 3;
     let seg_width = |i: usize| {
-        let (mark, name, counts, _) = &segs[i];
+        let (mark, name, counts, _, dot) = &segs[i];
         seg_text(mark, &truncate(name, 20), counts).chars().count()
+            + if dot.is_some() { 2 } else { 0 }
     };
     // Slide the window until the selection fits on screen.
     if app.selected < app.session_scroll {
@@ -512,9 +513,9 @@ fn render_selector(
     }
     let mut used = (x - area.x) as usize + 2; // room for a possible " ›"
     for (offset, i) in (start..segs.len()).enumerate() {
-        let (mark, name, counts, attached) = &segs[i];
+        let (mark, name, counts, attached, dot) = &segs[i];
         let text = seg_text(mark, &truncate(name, 20), counts);
-        let w = text.chars().count();
+        let w = text.chars().count() + if dot.is_some() { 2 } else { 0 };
         if used + w + SEP > width {
             break;
         }
@@ -537,6 +538,9 @@ fn render_selector(
         };
         // Selected keeps its background; the overlay only sets fg/flags.
         spans.push(Span::styled(text, base.patch(overlay)));
+        if let Some(worst) = dot {
+            spans.push(Span::styled(" ●", base.patch(state_style(*worst, pal))));
+        }
         rects.push(Rect {
             x,
             y: area.y,
