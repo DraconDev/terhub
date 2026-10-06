@@ -1324,9 +1324,10 @@ mod tests {
     }
 
     #[test]
-    fn minimax_completion_reads_waiting() {
+    fn minimax_completion_reads_idle() {
         let m = compiled();
-        // Finished task banners: waiting, not working.
+        // Finished task banners: done (idle), not working — and not
+        // waiting either, which is reserved for genuine input pleas.
         assert_eq!(
             classify_screen(
                 &m,
@@ -1335,7 +1336,7 @@ mod tests {
             ),
             hit(
                 Some("minimax-code"),
-                AgentState::Waiting,
+                AgentState::Idle,
                 "✓ Goal complete · 31min38s · 352K tokens"
             )
         );
@@ -1343,8 +1344,17 @@ mod tests {
             classify_screen(&m, "minimax-code", "✓ Todo list 15/15 completed\n"),
             hit(
                 Some("minimax-code"),
-                AgentState::Waiting,
+                AgentState::Idle,
                 "✓ Todo list 15/15 completed"
+            )
+        );
+        // Done loses within-line ties: any hint of need or activity wins.
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "⠙ ✓ Goal complete · 31min38s\n"),
+            hit(
+                Some("minimax-code"),
+                AgentState::Working,
+                "⠙ ✓ Goal complete · 31min38s"
             )
         );
         // A failed task run is an error (and beats the goal banner below it).
