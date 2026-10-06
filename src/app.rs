@@ -227,6 +227,7 @@ pub enum SortKey {
     Cmd,
     Dir,
     Agent,
+    Handle,
     State,
     Src,
     For,
@@ -250,6 +251,7 @@ const SORT_CYCLE: &[SortKey] = &[
     SortKey::For,
     SortKey::Turn,
     SortKey::Agent,
+    SortKey::Handle,
     SortKey::Session,
     SortKey::Window,
     SortKey::Cmd,
@@ -275,6 +277,12 @@ fn dir_name(path: &str) -> &str {
 /// Blank/unknown text sinks last in ascending order.
 fn agent_name(rec: Option<&AgentRecord>) -> &str {
     rec.map(|r| r.agent.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("—")
+}
+
+fn handle_name(rec: Option<&AgentRecord>) -> &str {
+    rec.map(|r| r.handle.as_str())
         .filter(|s| !s.is_empty())
         .unwrap_or("—")
 }
@@ -1130,6 +1138,9 @@ impl App {
                 SortKey::Cmd => a.command.cmp(&b.command),
                 SortKey::Dir => dir_name(&a.path).cmp(dir_name(&b.path)),
                 SortKey::Agent => agent_name(agents.get(&a.id)).cmp(agent_name(agents.get(&b.id))),
+                SortKey::Handle => {
+                    handle_name(agents.get(&a.id)).cmp(handle_name(agents.get(&b.id)))
+                }
                 SortKey::State => state_rank(agents.get(&a.id)).cmp(&state_rank(agents.get(&b.id))),
                 SortKey::Src => src_name(agents.get(&a.id)).cmp(src_name(agents.get(&b.id))),
                 SortKey::For => {

@@ -848,6 +848,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                     pal.dim
                 }),
                 Cell::from(agent).style(agent_style),
+                Cell::from(handle).style(pal.dim),
                 Cell::from(state).style(state_style),
                 Cell::from(src).style(src_style),
                 Cell::from(age).style(pal.dim),
@@ -877,7 +878,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     }
     headers.extend(
         [
-            "Window", "Cmd", "Dir", "Agent", "State", "Src", "For", "Turn", "Idle",
+            "Window", "Cmd", "Dir", "Agent", "Handle", "State", "Src", "For", "Turn", "Idle",
         ]
         .map(str::to_string),
     );
@@ -887,6 +888,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             SortKey::Cmd,
             SortKey::Dir,
             SortKey::Agent,
+            SortKey::Handle,
             SortKey::State,
             SortKey::Src,
             SortKey::For,
@@ -895,8 +897,8 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         ]
         .map(Some),
     );
-    // Window/Cmd/Dir/Agent = 43%; with Session 9% + Summary 20% the
-    // percentage columns total 72%, so at 140 columns the fixed columns
+    // Window/Cmd/Dir/Agent/Handle = 50%; with Session 9% + Summary 20% the
+    // percentage columns total 79%, so at 140 columns the fixed columns
     // + spacing still fit and only Summary absorbs the small deficit;
     // at 195+ the waiting summaries and versioned binaries fit uncut.
     widths.extend([
@@ -904,6 +906,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         Constraint::Percentage(13),
         Constraint::Percentage(13),
         Constraint::Percentage(8),
+        Constraint::Percentage(7),
         Constraint::Length(8),
         Constraint::Length(4),
         Constraint::Length(6),
