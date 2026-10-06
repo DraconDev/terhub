@@ -2242,6 +2242,118 @@ mod tests {
         assert_eq!(app.selected, 0);
     }
 
+    fn remote_pane() -> Pane {
+        Pane {
+            id: "dev:%1".to_string(),
+            session: "dev \u{25b8} web".to_string(),
+            window_id: String::new(),
+            window_name: "srv".to_string(),
+            window_active: false,
+            index: 0,
+            command: "pi".to_string(),
+            path: String::new(),
+            active: false,
+            width: 0,
+            height: 0,
+            activity: 1700,
+            pid: 0,
+        }
+    }
+
+    fn app_with_remote() -> App {
+        let mut app = app_with_panes();
+        app.panes.push(remote_pane());
+        app.fleet_rows = vec![remote_pane()];
+        app.fleet_index
+            .insert("dev:%1".to_string(), ("dev".to_string(), "web".to_string()));
+        app.refresh_filtered();
+        app.select_pane(app.filtered.len() - 1);
+        app
+    }
+
+    #[test]
+    fn remote_rows_are_read_only() {
+        let mut app = app_with_remote();
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        assert_eq!(app.selected_pane().unwrap().id, "dev:%1");
+        for key in ['x', 'e', ' ', 'z'] {
+            app.on_key(press(KeyCode::Char(key)), &tmux);
+            assert_eq!(app.mode, Mode::Normal, "key {key} opened a modal");
+            assert!(
+                app.status.as_deref().unwrap_or("").contains("remote"),
+                "key {key}: {:?}",
+                app.status
+            );
+        }
+        app.on_key(press(KeyCode::Char('r')), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(app.status.as_deref().unwrap_or("").contains("remote"));
+        // Custom commands refuse too (their {dir} is a remote path).
+        app.config.commands.push(crate::config::CustomCommand {
+            name: "gs".to_string(),
+            key: "G".to_string(),
+            spec: crate::config::parse_key("G"),
+            run: "git -C {dir} status".to_string(),
+        });
+        app.on_key(press(KeyCode::Char('g')), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(app.status.as_deref().unwrap_or("").contains("remote"));
+        // But jumping out to the remote session is the whole point.
+        let ev = app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(
+            ev,
+            Some(AppEvent::RemoteAttach {
+                host: "dev".to_string(),
+                session: "web".to_string(),
+            })
+        );
+        // A remote id with no index entry is stale, not jumpable.
+        app.fleet_index.clear();
+        let ev = app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(ev, None);
+        assert!(app.status.as_deref().unwrap_or("").contains("stale"));
+    }
+
+    #[test]
+    fn merge_fleet_appends_rows_and_agents_idempotently() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        let rec = record("dev:%9", "pi", AgentState::Waiting, 5);
+        let mut row = remote_pane();
+        row.id = "dev:%9".to_string();
+        app.fleet_rows = vec![row];
+        app.fleet_agents = vec![rec];
+        app.merge_fleet();
+        app.merge_fleet();
+        assert_eq!(app.panes.iter().filter(|p| p.id == "dev:%9").count(), 1);
+        assert!(app.agents.contains_key("dev:%9"));
+        assert_eq!(app.panes.len(), 3);
+    }
+
+    #[test]
+    fn attend_event_routes_remote_winners_out() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        app.fleet_index
+            .insert("dev:%1".to_string(), ("dev".to_string(), "web".to_string()));
+        let local = record("%1", "pi", AgentState::Waiting, 100);
+        let mut remote = record("dev:%1", "pi", AgentState::Waiting, 50);
+        remote.session = "web".to_string();
+        // Longest-waiting wins: the remote (since=50) beats local (100).
+        let ev = app.attend_event(&[local, remote]);
+        assert_eq!(
+            ev,
+            Some(AppEvent::RemoteAttach {
+                host: "dev".to_string(),
+                session: "web".to_string(),
+            })
+        );
+        let local2 = record("%1", "pi", AgentState::Waiting, 100);
+        let ev = app.attend_event(std::slice::from_ref(&local2));
+        assert_eq!(ev, Some(AppEvent::FocusPane("%1".to_string())));
+        assert_eq!(app.attend_event(&[]), None);
+    }
+
     #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
