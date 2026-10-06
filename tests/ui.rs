@@ -1058,6 +1058,52 @@ fn pause_key_toggles_live_process_tree() {
     let _ = &mut guard;
 }
 
+fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::agent::AgentRecord {
+    use terhub::agent::Source;
+    terhub::agent::AgentRecord {
+        pane: pane.to_string(),
+        agent: "pi".to_string(),
+        state,
+        source: Source::Proc,
+        summary: String::new(),
+        session: session.to_string(),
+        window: "w".to_string(),
+        command: "pi".to_string(),
+        updated_at: 1,
+        state_since: 1,
+        cpu_ticks: 0,
+        cpu_still_since: 0,
+        agent_start: 0,
+        last_turn_secs: 0,
+        screen_hash: 0,
+        quiet_since: 0,
+    }
+}
+
+#[test]
+fn tabs_show_worst_state_dot() {
+    use terhub::agent::AgentState;
+    let mut app = app_with_panes();
+    app.agents.insert("%1".to_string(), rec("%1", "alpha", AgentState::Stuck));
+    app.agents.insert("%2".to_string(), rec("%2", "beta", AgentState::Working));
+    let grid = render_grid(&mut app, 140, 20);
+    // Row 0 is the tab bar; attached marks here are all ○, so every ●
+    // is a worst-state dot: All=stuck(red), alpha=stuck(red), beta=working(green).
+    let dots: Vec<Color> = grid[0]
+        .iter()
+        .filter(|(s, _, _)| s == "●")
+        .map(|(_, fg, _)| *fg)
+        .collect();
+    assert_eq!(dots.len(), 3, "want All+alpha+beta dots");
+    assert_eq!(dots.iter().filter(|c| **c == Color::Red).count(), 2);
+    assert_eq!(dots.iter().filter(|c| **c == Color::Green).count(), 1);
+    // Idle/unknown-only tabs stay dotless (noise discipline).
+    let mut app = app_with_panes();
+    app.agents.insert("%1".to_string(), rec("%1", "alpha", AgentState::Idle));
+    let grid = render_grid(&mut app, 140, 20);
+    assert!(!grid[0].iter().any(|(s, _, _)| s == "●"), "idle must be dotless");
+}
+
 #[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
