@@ -325,6 +325,11 @@ pub struct Manifest {
     /// Quota/rate-limit language: reads as Limited, never Error.
     #[serde(default)]
     pub limited: Vec<String>,
+    /// Done language (completion banners, all-tasks-verdicts): reads as
+    /// Idle — finished, not waiting. Kept separate from waiting so a done
+    /// agent never badges as needing input.
+    #[serde(default)]
+    pub idle: Vec<String>,
     /// Waiting veto: when any of these match the tail, a waiting verdict
     /// falls back to the freshest working line (or no verdict). For agents
     /// whose input prompt stays visible during work — `❯` below a live
@@ -340,6 +345,7 @@ pub struct CompiledManifest {
     waiting: Vec<Regex>,
     error: Vec<Regex>,
     limited: Vec<Regex>,
+    idle: Vec<Regex>,
     waiting_unless: Vec<Regex>,
 }
 
