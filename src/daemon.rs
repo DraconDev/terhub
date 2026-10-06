@@ -718,10 +718,39 @@ fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, start: u64, now: u64) -> 
     }
 }
 
+/// Strip animation noise from a capture before hashing: braille spinner
+/// frames (⠙⠋), block-element meters (█▆▄), and digit runs (elapsed
+/// counters, token rates, relative times). Without this a spinner redraw
+/// restarts the quiet clock every poll and Idle pegs near zero forever.
+/// Digit-only semantic steps ("1 failed" → "2 failed") hide from the hash
+/// too — the summary comparison in [`track_quiet_merged`] catches the
+/// ones the classifier surfaces.
+fn denoise_screen(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_digits = false;
+    for c in s.chars() {
+        if ('\u{2800}'..='\u{28ff}').contains(&c) || ('\u{2580}'..='\u{259f}').contains(&c) {
+            in_digits = false;
+        } else if c.is_ascii_digit() {
+            if !in_digits {
+                out.push('#');
+                in_digits = true;
+            }
+        } else {
+            out.push(c);
+            in_digits = false;
+        }
+    }
+    out
+}
+
 /// Deterministic screen-change hash, stable across restarts so quiet
-/// clocks survive daemon upgrades.
+/// clocks survive daemon upgrades. Hashes the denoised capture, so
+/// spinner frames and counter ticks don't count as screen changes.
+/// (One break: hashes from before the denoise upgrade never match, so
+/// every quiet clock restarts once on the first post-upgrade poll.)
 fn screen_hash(s: &str) -> u64 {
-    crate::fnv1a(s)
+    crate::fnv1a(&denoise_screen(s))
 }
 
 /// Advance the visible-quiet clock: same screen hash keeps the old
@@ -732,6 +761,27 @@ fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
         None => prev,
         Some(h) if h == prev.0 => prev,
         Some(h) => (h, now),
+    }
+}
+
+/// Merge-post quiet update: a screen change restarts the clock, and so
+/// does a changed non-empty summary (it catches digit-only steps like
+/// "1 failed" → "2 failed" that denoising hides from the hash). A wiped
+/// summary is decay, not activity, and stuck rows are exempt outright —
+/// their "no cpu for {dur}" ticker would otherwise read fresh forever.
+fn track_quiet_merged(
+    prev: (u64, u64),
+    hash: Option<u64>,
+    carried_summary: &str,
+    new_summary: &str,
+    state: AgentState,
+    now: u64,
+) -> (u64, u64) {
+    let (h, q) = track_quiet(prev, hash, now);
+    if state != AgentState::Stuck && !new_summary.is_empty() && new_summary != carried_summary {
+        (h, now)
+    } else {
+        (h, q)
     }
 }
 
@@ -1098,7 +1148,17 @@ fn poll_sync_with(
             let prev_quiet = carried
                 .map(|r| (r.screen_hash, r.quiet_since))
                 .unwrap_or((0, 0));
-            (rec.screen_hash, rec.quiet_since) = track_quiet(prev_quiet, hash, now);
+            // Compare pre-fallback summaries: the fill below only runs on
+            // empty, and an empty-to-filled row is a new row, not news.
+            let carried_summary = carried.map(|r| r.summary.as_str()).unwrap_or("");
+            (rec.screen_hash, rec.quiet_since) = track_quiet_merged(
+                prev_quiet,
+                hash,
+                carried_summary,
+                &rec.summary,
+                rec.state,
+                now,
+            );
             if rec.summary.is_empty() {
                 rec.summary = fallback_summary_for(rec.state, screen.as_deref());
             }
