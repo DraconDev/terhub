@@ -60,7 +60,9 @@ const CLAUDE_HOOKS: &[HookDef] = &[
     HookDef {
         event: "UserPromptSubmit",
         state: "working",
-        summary: None,
+        // Static: this stdin carries "prompt", not "message", so
+        // --summary-stdin would keep JSON garbage as the summary.
+        summary: Some("prompt submitted"),
         prompt_stdin: true,
     },
     HookDef {
@@ -284,15 +286,13 @@ pub const PI_EXTENSION: &str = r#"// terhub lifecycle reporter (managed by `terh
 // Forwards pi events to the terhub daemon; never throws into pi.
 import { execFileSync } from "node:child_process";
 
-function report(state: string, summary: string): void {
+function report(state: string, summary: string, prompt?: string): void {
   try {
     const pane = process.env.TMUX_PANE;
     if (!pane) return;
-    execFileSync(
-      "terhub",
-      ["hook", "--agent", "pi", "--pane", pane, "--state", state, "--summary", summary],
-      { stdio: "ignore", timeout: 2000 },
-    );
+    const args = ["hook", "--agent", "pi", "--pane", pane, "--state", state, "--summary", summary];
+    if (prompt) args.push("--prompt", prompt.slice(0, 500));
+    execFileSync("terhub", args, { stdio: "ignore", timeout: 2000 });
   } catch {
     // Hooks must never break the agent they observe.
   }
@@ -301,6 +301,10 @@ function report(state: string, summary: string): void {
 export default function (pi: any): void {
   pi.on("session_start", async () => {
     report("working", "session started");
+  });
+  pi.on("before_agent_start", async (event: any) => {
+    const prompt = event && typeof event.prompt === "string" ? event.prompt : "";
+    report("working", "turn started", prompt);
   });
   pi.on("turn_start", async () => {
     report("working", "turn started");
@@ -314,13 +318,16 @@ export default function (pi: any): void {
 }
 "#;
 
-/// Install the pi reporter. Ok(true) = written, Ok(false) = already ours.
+/// Install the pi reporter. Ok(true) = written or updated, Ok(false) =
+/// already current. Content-idempotent: a stale ours-file (marker, old
+/// body) is rewritten so hook upgrades actually land.
 pub fn pi_install(path: &Path) -> Result<bool> {
     if path.is_file() {
         let text = std::fs::read_to_string(path)?;
-        if text.contains(MARKER) {
+        if text == PI_EXTENSION {
             return Ok(false);
         }
+        // Ours but stale, or foreign: back up once, then overwrite.
         ensure_backup(path)?;
     }
     if let Some(parent) = path.parent() {
