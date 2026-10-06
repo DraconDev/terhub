@@ -767,7 +767,11 @@ impl App {
                 let fg_comm = crate::native::proc_comm(tab.fg_pid)
                     .or_else(|| crate::native::proc_comm(tab.pid))
                     .unwrap_or_default();
-                let reported = if fg_comm.is_empty() { &tab.title } else { &fg_comm };
+                let reported = if fg_comm.is_empty() {
+                    &tab.title
+                } else {
+                    &fg_comm
+                };
                 let command = snap.display_command(tab.pid, reported);
                 rows.push(Pane {
                     id: tab.id.clone(),
@@ -789,8 +793,7 @@ impl App {
                 };
                 // An agent with an editor in the tree summoned $EDITOR and
                 // sits on keystrokes: waiting, same as the daemon reads it.
-                let editor_wait =
-                    !fg_comm.is_empty() && crate::proc::is_editor_name(&fg_comm);
+                let editor_wait = !fg_comm.is_empty() && crate::proc::is_editor_name(&fg_comm);
                 let screen = crate::native::capture(&tab.id, 60).unwrap_or_default();
                 let classified = classify_screen(&compiled, &command, &screen);
                 let (state, summary, source) = match classified {
@@ -800,7 +803,11 @@ impl App {
                         "editor in foreground".to_string(),
                         Source::Proc,
                     ),
-                    None => (crate::agent::AgentState::Unknown, String::new(), Source::Proc),
+                    None => (
+                        crate::agent::AgentState::Unknown,
+                        String::new(),
+                        Source::Proc,
+                    ),
                 };
                 agents.push(AgentRecord {
                     pane: tab.id.clone(),
@@ -3295,7 +3302,10 @@ mod tests {
         );
         app.on_key(press(KeyCode::Char('e')), &tmux);
         assert!(
-            app.status.as_deref().unwrap_or("").contains("can't restart"),
+            app.status
+                .as_deref()
+                .unwrap_or("")
+                .contains("can't restart"),
             "restart allowed native: {:?}",
             app.status
         );
@@ -3316,10 +3326,7 @@ mod tests {
         app.select_pane(idx);
         app.do_pause();
         // Past the remote guard (pid-based pause works on native rows).
-        assert_eq!(
-            app.status.as_deref(),
-            Some("no pid for pane konsole:999:6")
-        );
+        assert_eq!(app.status.as_deref(), Some("no pid for pane konsole:999:6"));
     }
 
     #[test]
@@ -3328,10 +3335,7 @@ mod tests {
         let app = app_with_panes();
         let native = record("konsole:999:6", "pi", AgentState::Waiting, 50);
         let ev = app.attend_event(std::slice::from_ref(&native));
-        assert_eq!(
-            ev,
-            Some(AppEvent::FocusNative("konsole:999:6".to_string()))
-        );
+        assert_eq!(ev, Some(AppEvent::FocusNative("konsole:999:6".to_string())));
     }
 
     #[test]

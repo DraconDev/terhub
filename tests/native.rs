@@ -117,12 +117,18 @@ fn native_backends_against_fakes() {
     n::send_text("wezterm:7", "hi", true).unwrap();
     n::focus("wezterm:7").unwrap();
     let log_text = std::fs::read_to_string(&log).unwrap();
-    assert!(log_text.contains("sendText hi"), "missing konsole send:\n{log_text}");
+    assert!(
+        log_text.contains("sendText hi"),
+        "missing konsole send:\n{log_text}"
+    );
     assert!(
         log_text.contains("setCurrentSession 7"),
         "missing focus:\n{log_text}"
     );
-    assert!(log_text.contains("newSession"), "missing spawn:\n{log_text}");
+    assert!(
+        log_text.contains("newSession"),
+        "missing spawn:\n{log_text}"
+    );
     assert!(
         log_text.contains("kitty send-text --match id:3 hi"),
         "missing kitty send:\n{log_text}"

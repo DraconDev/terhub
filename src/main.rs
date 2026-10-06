@@ -1606,7 +1606,11 @@ fn cmd_native(action: &NativeAction) -> i32 {
                     "{:<22} {:<12} {}",
                     t.id,
                     t.window,
-                    if t.title.is_empty() { "(untitled)" } else { &t.title }
+                    if t.title.is_empty() {
+                        "(untitled)"
+                    } else {
+                        &t.title
+                    }
                 ));
             }
             0

@@ -93,9 +93,7 @@ pub fn parse_introspect_nodes(xml: &str) -> Vec<u32> {
 
 /// One integer per line (sessionList, pids); blanks and junk are skipped.
 pub fn parse_int_list(text: &str) -> Vec<u32> {
-    text.lines()
-        .filter_map(|l| l.trim().parse().ok())
-        .collect()
+    text.lines().filter_map(|l| l.trim().parse().ok()).collect()
 }
 
 /// Konsole pads captured lines to the window width; trailing blanks carry
@@ -177,18 +175,18 @@ fn konsole_tabs() -> Result<Vec<NativeTab>> {
             .and_then(|t| t.trim().parse().ok());
             for sess in sessions {
                 let sess_path = format!("/Sessions/{sess}");
-                let title = qdbus(
+                let title = qdbus(service, &sess_path, "org.kde.konsole.Session.title", &["1"])
+                    .map(|t| t.trim().to_string())
+                    .unwrap_or_default();
+                let pid: u32 = qdbus(
                     service,
                     &sess_path,
-                    "org.kde.konsole.Session.title",
-                    &["1"],
+                    "org.kde.konsole.Session.processId",
+                    &[],
                 )
-                .map(|t| t.trim().to_string())
-                .unwrap_or_default();
-                let pid: u32 = qdbus(service, &sess_path, "org.kde.konsole.Session.processId", &[])
-                    .ok()
-                    .and_then(|t| t.trim().parse().ok())
-                    .unwrap_or(0);
+                .ok()
+                .and_then(|t| t.trim().parse().ok())
+                .unwrap_or(0);
                 let fg_pid: u32 = qdbus(
                     service,
                     &sess_path,
@@ -280,9 +278,7 @@ fn konsole_spawn() -> Result<()> {
     let bin = qdbus_bin();
     let list = Command::new(bin).output()?;
     let services = parse_qdbus_services(&String::from_utf8_lossy(&list.stdout));
-    let service = services
-        .first()
-        .context("no Konsole on the session bus")?;
+    let service = services.first().context("no Konsole on the session bus")?;
     let xml = qdbus(
         service,
         "/Windows",
@@ -400,7 +396,13 @@ fn kitty_tabs() -> Result<Vec<NativeTab>> {
 }
 
 fn kitty_capture(local: &str, lines: u32) -> Result<String> {
-    let text = kitty(&["get-text", "--extent", "all", "--match", &format!("id:{local}")])?;
+    let text = kitty(&[
+        "get-text",
+        "--extent",
+        "all",
+        "--match",
+        &format!("id:{local}"),
+    ])?;
     Ok(trim_screen_lines(&text, lines))
 }
 
@@ -523,15 +525,25 @@ pub struct BackendReport {
 /// Enumerate every backend. Backends fail independently — a dead WezTerm
 /// server never hides Konsole tabs.
 pub fn list_all() -> Vec<BackendReport> {
-    [("konsole", konsole_tabs as fn() -> Result<Vec<NativeTab>>),
-     ("kitty", kitty_tabs),
-     ("wezterm", wezterm_tabs)]
-        .into_iter()
-        .map(|(backend, fetch)| match fetch() {
-            Ok(tabs) => BackendReport { backend, tabs, error: None },
-            Err(e) => BackendReport { backend, tabs: Vec::new(), error: Some(format!("{e:#}")) },
-        })
-        .collect()
+    [
+        ("konsole", konsole_tabs as fn() -> Result<Vec<NativeTab>>),
+        ("kitty", kitty_tabs),
+        ("wezterm", wezterm_tabs),
+    ]
+    .into_iter()
+    .map(|(backend, fetch)| match fetch() {
+        Ok(tabs) => BackendReport {
+            backend,
+            tabs,
+            error: None,
+        },
+        Err(e) => BackendReport {
+            backend,
+            tabs: Vec::new(),
+            error: Some(format!("{e:#}")),
+        },
+    })
+    .collect()
 }
 
 /// Screen/scrollback text for a native row id.
@@ -628,7 +640,8 @@ mod tests {
 
     #[test]
     fn introspect_nodes_parse_sorted_unique() {
-        let xml = "<node><node name=\"2\"/><node name=\"1\"/><node name=\"2\"/><node name=\"x\"/></node>";
+        let xml =
+            "<node><node name=\"2\"/><node name=\"1\"/><node name=\"2\"/><node name=\"x\"/></node>";
         assert_eq!(parse_introspect_nodes(xml), vec![1, 2]);
         assert!(parse_introspect_nodes("<node></node>").is_empty());
     }
@@ -677,7 +690,7 @@ mod tests {
     fn bad_ids_error_cleanly() {
         assert!(capture("%1", 10).is_err());
         assert!(send_text("dev:%1", "hi", false).is_err());
-        assert!(focus("nope", ).is_err());
+        assert!(focus("nope",).is_err());
         assert!(spawn("gnome").is_err());
     }
 }
