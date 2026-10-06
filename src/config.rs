@@ -1049,6 +1049,48 @@ mod tests {
     }
 
     #[test]
+    fn spawn_profiles_validate_with_builtins() {
+        // Valid entries survive; nameless, program-less, and duplicate
+        // names become problems. Empty file still offers builtins.
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("profiles.toml");
+        std::fs::write(
+            &path,
+            "[[profile]]\nname = \"pi-fast\"\nprogram = \"pi --model fast\"\ndir = \"/tmp\"\n\n\
+             [[profile]]\nname = \"\"\nprogram = \"pi\"\n\n\
+             [[profile]]\nname = \"noprogram\"\n\n\
+             [[profile]]\nname = \"pi-fast\"\nprogram = \"pi\"\n",
+        )
+        .unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(cfg.profiles.len(), 1);
+        assert_eq!(cfg.profiles[0].name, "pi-fast");
+        assert_eq!(cfg.profiles[0].program, "pi --model fast");
+        assert_eq!(cfg.profiles[0].dir.as_deref(), Some("/tmp"));
+        assert_eq!(problems.len(), 3);
+        assert!(problems.iter().any(|p| p.contains("no name")));
+        assert!(problems.iter().any(|p| p.contains("no program")));
+        assert!(problems.iter().any(|p| p.contains("duplicate")));
+        std::fs::remove_file(path).ok();
+        // No [[profile]] at all: builtin agents keep spawn usable.
+        let empty = dir.join("empty.toml");
+        std::fs::write(&empty, "# nothing\n").unwrap();
+        let (cfg, _) = load_config_report(Some(empty.clone()));
+        assert!(cfg.profiles.len() >= 3);
+        assert!(cfg.profiles.iter().any(|p| p.name == "claude"));
+        std::fs::remove_file(empty).ok();
+    }
+
+    #[test]
+    fn spawn_keys_have_defaults() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.key("spawn"), "N");
+        assert_eq!(cfg.key("restart"), "R");
+        assert_eq!(cfg.key("pause"), "z");
+    }
+
+    #[test]
     fn bad_builtin_key_value_warns_and_reverts() {
         let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
