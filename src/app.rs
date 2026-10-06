@@ -319,6 +319,7 @@ fn src_name(rec: Option<&AgentRecord>) -> &'static str {
     match rec {
         Some(r) if r.source == crate::agent::Source::Hook => "hook",
         Some(r) if r.source == crate::agent::Source::Proc => "proc",
+        Some(r) if r.source == crate::agent::Source::Manual => "man",
         Some(_) => "scr",
         None => "—",
     }

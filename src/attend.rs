@@ -202,6 +202,7 @@ pub fn status_table(agents: &[AgentRecord], now: u64) -> String {
         let src = match a.source {
             Source::Hook => "hook",
             Source::Proc => "proc",
+            Source::Manual => "man",
             _ => "scr",
         };
         let turn = if a.last_turn_secs == 0 {

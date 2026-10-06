@@ -825,6 +825,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Some(r) if r.source == crate::agent::Source::Proc => {
                     ("proc".to_string(), pal.attached)
                 }
+                Some(r) if r.source == crate::agent::Source::Manual => {
+                    ("man".to_string(), pal.attached)
+                }
                 Some(_) => ("scr".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };
@@ -986,6 +989,15 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
         " {} · {}:{} · {agent} {state} {idle}",
         p.id, p.session, p.window_name,
     );
+    // Model/ctx strip: hook-reported facts about what the agent runs.
+    if let Some(r) = rec {
+        if !r.model.is_empty() {
+            title.push_str(&format!(" · {}", r.model));
+        }
+        if let Some(ctx) = r.ctx_pct {
+            title.push_str(&format!(" · ctx {ctx}%"));
+        }
+    }
     if let Some(pct) = app.preview_cpu_pct {
         title.push_str(&format!(" · cpu {pct:.0}%"));
     }
