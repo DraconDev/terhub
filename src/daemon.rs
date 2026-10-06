@@ -111,6 +111,15 @@ pub enum Request {
     Ping,
     Snapshot,
     Event { event: HookEvent },
+    Register {
+        pane: String,
+        agent: String,
+        pid: u32,
+        state: AgentState,
+    },
+    Unregister {
+        pane: String,
+    },
     Shutdown,
 }
 
@@ -317,6 +326,34 @@ async fn handle_conn(
             }
             Response::ok()
         }
+        Request::Register {
+            pane,
+            agent,
+            pid,
+            state,
+        } => {
+            {
+                let mut reg = lock_registry(&registry);
+                let now = now_unix();
+                apply_register(&mut reg, &pane, &agent, pid, state, now);
+                crate::agent::ensure_handles(&reg);
+                save_registry(&runtime.join("registry.json"), &reg);
+            }
+            Response::ok()
+        }
+        Request::Unregister { pane } => {
+            let dropped = {
+                let mut reg = lock_registry(&registry);
+                let dropped = apply_unregister(&mut reg, &pane);
+                save_registry(&runtime.join("registry.json"), &reg);
+                dropped
+            };
+            if dropped {
+                Response::ok()
+            } else {
+                Response::err(format!("no manual pin on {pane}"))
+            }
+        }
     };
     let _ = write_response(&mut writer, &resp).await;
 }
@@ -425,6 +462,29 @@ async fn poll_loop(
 
 fn log_entry(entry: &history::Entry) {
     let _ = history::append_entry(&history::ledger_path(), entry);
+}
+
+/// Pin a manual agent record (`terhub register`). Same agent + state
+/// refreshes the pin in place (new pid wins, clock kept); anything else
+/// is a fresh pin with a fresh clock. Pure registry work for the lock.
+fn apply_register(
+    reg: &mut HashMap<String, AgentRecord>,
+    pane: &str,
+    agent: &str,
+    pid: u32,
+    state: AgentState,
+    now: u64,
+) {
+    let _ = (reg, pane, agent, pid, state, now);
+    todo!("placeholder");
+}
+
+/// Drop a manual pin (`terhub unregister`). Only Manual records go:
+/// a hook/proc/screen record under the pane is real evidence, never
+/// removed by unregister. Returns true when a pin was dropped.
+fn apply_unregister(reg: &mut HashMap<String, AgentRecord>, pane: &str) -> bool {
+    let _ = (reg, pane);
+    todo!("placeholder");
 }
 
 /// Apply one hook event to the registry and report its transitions.
