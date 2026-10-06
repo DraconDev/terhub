@@ -549,8 +549,11 @@ act on the wrong machine. `attend` considers cached remotes too.
 tmux only sees its own panes; the terminals hosting them have their own
 tabs. terhub reads Konsole (over `qdbus`), kitty (`kitty @`, needs
 `allow_remote_control` plus `TERHUB_KITTY_TO` pointing at the socket when
-run from outside kitty), and WezTerm (`wezterm cli`, never auto-starting
-a server) as first-class rows:
+run from outside kitty — without either the probe is skipped outright,
+since `kitty @` would otherwise wait 10s on the terminal), and WezTerm
+(`wezterm cli`, never auto-starting a server) as first-class rows. Every
+backend call carries a 5s timeout, so a wedged helper degrades to "no
+tabs", never a frozen TUI:
 
 ```sh
 terhub native list [--json]
