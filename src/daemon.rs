@@ -586,6 +586,21 @@ fn merge_mid_poll_hooks(
         if rec.source == Source::Hook && rec.updated_at >= poll_start {
             next.insert(pane.clone(), rec.clone());
         }
+        // A register that landed mid-poll is fresher than the poll's
+        // clone and wins the same way hook events do.
+        if rec.source == Source::Manual && rec.updated_at >= poll_start {
+            next.insert(pane.clone(), rec.clone());
+        }
+    }
+    // ...while an unregister that landed mid-poll must not be
+    // resurrected from the pre-poll clone.
+    let dropped: Vec<String> = next
+        .iter()
+        .filter(|(pane, rec)| rec.source == Source::Manual && !live.contains_key(*pane))
+        .map(|(pane, _)| pane.clone())
+        .collect();
+    for pane in dropped {
+        next.remove(&pane);
     }
 }
 
