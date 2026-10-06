@@ -14,8 +14,15 @@ pub enum Mode {
     PromptNew,
     PromptRename(String),
     PromptFilter,
+    PromptSpawn {
+        profile: usize,
+    },
     ConfirmKill(String),
     ConfirmKillPane(String),
+    ConfirmRestartPane {
+        id: String,
+        command: String,
+    },
     ConfirmKillMarked(Vec<String>),
     CommandOutput {
         name: String,
@@ -793,8 +800,10 @@ impl App {
         match self.mode.clone() {
             Mode::PromptNew | Mode::PromptRename(_) => self.on_prompt_key(key, tmux),
             Mode::PromptFilter => self.on_filter_key(key, tmux),
+            Mode::PromptSpawn { .. } => self.on_spawn_key(key, tmux),
             Mode::ConfirmKill(_) => self.on_confirm_key(key, tmux),
             Mode::ConfirmKillPane(_) => self.on_confirm_pane_key(key, tmux),
+            Mode::ConfirmRestartPane { .. } => self.on_confirm_restart_key(key, tmux),
             Mode::ConfirmKillMarked(_) => self.on_confirm_marked_key(key, tmux),
             Mode::CommandOutput { .. } => self.on_command_output_key(key),
             Mode::Settings => self.on_settings_key(key),
@@ -941,6 +950,98 @@ impl App {
         let at = self.cursor_offset();
         if at < self.input.len() {
             self.input.remove(at);
+        }
+    }
+
+    /// Spawn modal: type the opening prompt, Tab cycles the agent
+    /// profile. Enter spawns even with an empty prompt (a bare agent);
+    /// Esc cancels. Everything runs in-loop (stay-open).
+    fn on_spawn_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
+        let n = self.config.profiles.len();
+        if n == 0 {
+            self.set_status("no spawn profiles (every [[profile]] invalid?)".to_string());
+            self.cancel_modal();
+            return None;
+        }
+        match key.code {
+            KeyCode::Esc => self.cancel_modal(),
+            KeyCode::Tab | KeyCode::Down => {
+                if let Mode::PromptSpawn { profile } = &mut self.mode {
+                    *profile = (*profile + 1) % n;
+                }
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                if let Mode::PromptSpawn { profile } = &mut self.mode {
+                    *profile = (*profile + n - 1) % n;
+                }
+            }
+            KeyCode::Enter => self.submit_spawn(tmux),
+            KeyCode::Backspace => {
+                self.delete_before_cursor();
+            }
+            KeyCode::Delete => {
+                self.delete_at_cursor();
+            }
+            KeyCode::Left => {
+                self.cursor = self.cursor.saturating_sub(1);
+            }
+            KeyCode::Right => {
+                let len = self.input.chars().count();
+                self.cursor = (self.cursor + 1).min(len);
+            }
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.input.chars().count(),
+            KeyCode::Char(c) if !c.is_control() => self.insert_at_cursor(c),
+            _ => {}
+        }
+        None
+    }
+
+    fn submit_spawn(&mut self, tmux: &Tmux) {
+        let idx = match self.mode {
+            Mode::PromptSpawn { profile } => profile,
+            _ => {
+                self.cancel_modal();
+                return;
+            }
+        };
+        let prompt = self.input.trim().to_string();
+        let (Some(prof), Some(session)) = (
+            self.config.profiles.get(idx).cloned(),
+            self.spawn_target_session(),
+        ) else {
+            self.set_status("pick a session row (All doesn't count)".to_string());
+            self.cancel_modal();
+            return;
+        };
+        let name = spawn_window_name(&prof.name, &prompt);
+        match tmux.new_window(&session, &name, prof.dir.as_deref(), Some(&prof.program)) {
+            Ok(pane_id) => {
+                if prompt.is_empty() {
+                    self.set_status(format!("spawned {pane_id} ({})", prof.name));
+                } else {
+                    match tmux.send_keys(&pane_id, &prompt, true) {
+                        Ok(_) => self.set_status(format!("spawned {pane_id} ({})", prof.name)),
+                        Err(e) => self.set_status(format!("spawned {pane_id}, prompt failed: {e}")),
+                    }
+                }
+                self.refresh(tmux);
+                if let Some(i) = self.filtered.iter().position(|p| p.id == pane_id) {
+                    self.select_pane(i);
+                }
+            }
+            Err(e) => self.set_status(format!("spawn failed: {e}")),
+        }
+        self.cancel_modal();
+    }
+
+    /// Session the spawn lands in: the selected pane's session from the
+    /// table, the sidebar cursor otherwise (All doesn't count).
+    fn spawn_target_session(&self) -> Option<String> {
+        if self.focus == Focus::Panes {
+            self.selected_pane().map(|p| p.session.clone())
+        } else {
+            self.side_session().map(|s| s.name.clone())
         }
     }
 
