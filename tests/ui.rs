@@ -937,6 +937,102 @@ fn self_and_deleted_rows_recede() {
     );
 }
 
+fn press(code: crossterm::event::KeyCode) -> crossterm::event::KeyEvent {
+    crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::empty())
+}
+
+/// Fake tmux that logs argv next to itself (no env, parallel-safe) and
+/// answers the verbs spawn/restart/refresh need.
+fn fake_tmux(tag: &str) -> (terhub::tmux::Tmux, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let base = std::env::temp_dir().join(format!("terhub-ui-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let bin = base.join("tmux");
+    std::fs::write(
+        &bin,
+        "#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/argv.log\"\n\
+         case \"$1\" in new-window) echo \"%99\";; esac\nexit 0\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (terhub::tmux::Tmux::test(bin), base.join("argv.log"))
+}
+
+fn argv_log(log: &std::path::Path) -> String {
+    std::fs::read_to_string(log).unwrap_or_default()
+}
+
+#[test]
+fn spawn_modal_cycles_profile_and_spawns_with_prompt() {
+    use crossterm::event::KeyCode;
+    let mut app = app_with_panes();
+    let (tmux, log) = fake_tmux("spawn");
+    app.on_key(press(KeyCode::Char('w')), &tmux);
+    assert!(matches!(app.mode, terhub::app::Mode::PromptSpawn { profile: 0 }));
+    let lines = render_lines(&mut app, 120, 30);
+    assert!(lines.iter().any(|l| l.contains("Spawn")), "no modal:\n{}", lines.join("\n"));
+    // Tab cycles to the second builtin profile (codex).
+    app.on_key(press(KeyCode::Tab), &tmux);
+    assert!(matches!(app.mode, terhub::app::Mode::PromptSpawn { profile: 1 }));
+    for c in "hello".chars() {
+        app.on_key(press(KeyCode::Char(c)), &tmux);
+    }
+    app.on_key(press(KeyCode::Enter), &tmux);
+    assert_eq!(app.mode, terhub::app::Mode::Normal);
+    let argv = argv_log(&log);
+    assert!(argv.contains("new-window"), "no spawn:\n{argv}");
+    assert!(argv.contains("codex"), "wrong profile:\n{argv}");
+    assert!(argv.contains("send-keys"), "prompt not sent:\n{argv}");
+    assert!(argv.contains("hello"), "prompt text lost:\n{argv}");
+}
+
+#[test]
+fn restart_confirm_respawns_pane_command() {
+    use crossterm::event::KeyCode;
+    let mut app = app_with_panes();
+    let (tmux, log) = fake_tmux("restart");
+    app.on_key(press(KeyCode::Char('e')), &tmux);
+    assert!(matches!(
+        app.mode,
+        terhub::app::Mode::ConfirmRestartPane { .. }
+    ));
+    app.on_key(press(KeyCode::Enter), &tmux);
+    assert_eq!(app.mode, terhub::app::Mode::Normal);
+    let argv = argv_log(&log);
+    assert!(argv.contains("respawn-pane -k -t %1"), "no respawn:\n{argv}");
+    assert!(argv.contains("nvim"), "command lost:\n{argv}");
+}
+
+#[test]
+fn pause_key_toggles_live_process_tree() {
+    use crossterm::event::KeyCode;
+    struct Guard(std::process::Child);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = terhub::proc::resume_group(self.0.id());
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let child = std::process::Command::new("sleep")
+        .arg("30")
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut guard = Guard(child);
+    let pid = guard.0.id();
+    let mut app = app_with_panes();
+    app.panes[0].pid = pid;
+    app.refresh_filtered();
+    let (tmux, _) = fake_tmux("pause");
+    app.on_key(press(KeyCode::Char('z')), &tmux);
+    assert!(terhub::proc::is_stopped(pid), "first z must stop");
+    app.on_key(press(KeyCode::Char('z')), &tmux);
+    assert!(!terhub::proc::is_stopped(pid), "second z must resume");
+    let _ = &mut guard;
+}
+
 #[test]
 fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
     let mut app = app_with_panes();
