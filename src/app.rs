@@ -189,8 +189,9 @@ pub enum Focus {
     Panes,
 }
 
-/// Lines of scrollback captured for the fullscreen preview.
-pub const PREVIEW_LINES: u32 = 60;
+/// Lines of scrollback captured for the fullscreen preview. The reader
+/// shows a window into this buffer and scrolls through it.
+pub const PREVIEW_SCROLLBACK: u32 = 500;
 
 /// Table column the pane rows sort by. Every data header is clickable;
 /// the mark column is not sortable.
@@ -446,6 +447,10 @@ pub struct App {
     pub preview_width: Option<usize>,
     /// Fullscreen preview open (captured on demand, never by default).
     pub show_preview: bool,
+    /// Reader offset into the preview buffer (wheel / PgUp / PgDn / Home / End).
+    pub preview_scroll: usize,
+    /// Preview inner height in lines, recorded by render for page steps.
+    pub preview_visible: usize,
     /// Latest daemon snapshot by pane id (empty when the daemon is down).
     pub agents: HashMap<String, AgentRecord>,
     /// Last snapshot fetch succeeded. False reads as "daemon down" in the
@@ -523,6 +528,8 @@ impl App {
             preview: String::new(),
             preview_width: None,
             show_preview: false,
+            preview_scroll: 0,
+            preview_visible: 0,
             agents: HashMap::new(),
             agents_live: true,
             session_scroll: 0,
@@ -994,7 +1001,7 @@ impl App {
         let pane = id.split_once(':').map(|(_, p)| p).unwrap_or("");
         match (target, pane) {
             (Some(t), p) if !p.is_empty() => {
-                match crate::fleet::remote_capture(&t, p, PREVIEW_LINES) {
+                match crate::fleet::remote_capture(&t, p, PREVIEW_SCROLLBACK) {
                     Ok(text) => {
                         self.preview = text;
                         self.preview_width = None;
@@ -1055,12 +1062,49 @@ impl App {
         self.preview_git_line = line;
     }
 
+    /// Preview buffer height in lines (a trailing newline adds no row).
+    pub fn preview_line_count(&self) -> usize {
+        if self.preview.is_empty() {
+            0
+        } else {
+            self.preview.lines().count()
+        }
+    }
+
+    /// Deepest legal reader offset: last page when the height is known,
+    /// last line before the first render.
+    pub fn preview_max_scroll(&self) -> usize {
+        let total = self.preview_line_count();
+        if self.preview_visible == 0 {
+            total.saturating_sub(1)
+        } else {
+            total.saturating_sub(self.preview_visible)
+        }
+    }
+
+    /// Move the reader by `delta` lines, clamped to the buffer.
+    pub fn scroll_preview(&mut self, delta: isize) {
+        let max = self.preview_max_scroll();
+        let next = self.preview_scroll as isize + delta;
+        self.preview_scroll = next.clamp(0, max as isize) as usize;
+    }
+
+    /// Page the reader by the last rendered height (20 lines pre-render).
+    fn scroll_preview_page(&mut self, up: bool) {
+        let page = if self.preview_visible == 0 {
+            20
+        } else {
+            self.preview_visible.max(1)
+        } as isize;
+        self.scroll_preview(if up { -page } else { page });
+    }
+
     fn capture_preview(&mut self, tmux: &Tmux) {
         self.update_preview_cpu();
         self.update_preview_git();
         match self.selected_pane().map(|p| p.id.clone()) {
             Some(id) if is_remote_pane(&id) => self.capture_remote_preview(&id),
-            Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_LINES) {
+            Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_SCROLLBACK) {
                 Ok(text) => {
                     self.preview = text;
                     self.preview_width = tmux
