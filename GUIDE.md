@@ -316,6 +316,7 @@ Hooks are fire-and-forget, made for agent lifecycle scripts:
 
 ```sh
 terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
+terhub hook --agent pi --pane %2 --state working --prompt "fix the parser"
 ```
 
 - `--state` accepts `working|waiting|error|idle|stuck|limited|unknown`
@@ -325,6 +326,10 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
   `start`/`stop` match the lifecycle states that spawning harnesses emit.
 - `--pane` is the pane id (`%N`); inside tmux, `$TMUX_PANE` has it.
 - `--summary` is free text shown in peek/status and matchable by rules.
+- `--prompt` records what the user asked: it lands in the prompt ledger
+  (`recap` reads it back) and on the record peek shows. `--prompt-stdin`
+  reads it from stdin (a JSON `{"prompt": …}` wins, else the first raw
+  line) — both stdin flags can be combined; the pipe is read once.
 - Unknown states are rejected; if the daemon is down the hook warns on
   stderr but still exits 0 — fire-and-forget, so a hook can never break
   the agent lifecycle script that called it.
@@ -333,17 +338,23 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
   guessing.
 
 State changes from hooks are logged to the ledger and fire desktop
-notifications (unless disabled).
+notifications (unless disabled). Prompts log as their own `prompt`
+ledger entries even when the state didn't move — asking again is itself
+the event.
 
 `terhub hooks install [claude|pi|all]` wires agents up for you: claude
-gets `SessionStart`/`Notification`/`Stop` entries merged into
-`~/.claude/settings.json` (idempotent, user hooks kept, first write
-backed up to `settings.json.terhub-bak`), pi gets a lifecycle reporter
-at `~/.pi/agent/extensions/terhub.ts`. `hooks status` shows what is
-wired, `hooks uninstall` removes only terhub's entries. Restart running
-agents so they pick the hooks up. `--summary-stdin` reads a hook's
-summary from stdin (a JSON `{"message": …}` wins, else the first raw
-line) for shims whose platform delivers context on stdin.
+gets `SessionStart`/`UserPromptSubmit`/`Notification`/`Stop` entries
+merged into `~/.claude/settings.json` (idempotent, user hooks kept,
+first write backed up to `settings.json.terhub-bak`; re-run install to
+gain newly added events), pi gets a lifecycle reporter at
+`~/.pi/agent/extensions/terhub.ts` (a stale ours-file is rewritten in
+place so hook upgrades land; foreign files are backed up, never
+clobbered). The prompt hooks are `UserPromptSubmit` (claude) and
+`before_agent_start` (pi, carrying the raw prompt text). `hooks status`
+shows what is wired, `hooks uninstall` removes only terhub's entries.
+Restart running agents so they pick the hooks up. `--summary-stdin`
+reads a hook's summary from stdin (a JSON `{"message": …}` wins, else
+the first raw line) for shims whose platform delivers context on stdin.
 
 ## Attention: attend, peek, status line
 
