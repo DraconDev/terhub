@@ -371,6 +371,7 @@ impl CompiledManifest {
             error: compile_all(&m.agent, "error", &m.error)?,
             limited: compile_all(&m.agent, "limited", &m.limited)?,
             waiting_unless: compile_all(&m.agent, "waiting_unless", &m.waiting_unless)?,
+            idle: compile_all(&m.agent, "idle", &m.idle)?,
         })
     }
 
@@ -412,6 +413,10 @@ impl CompiledManifest {
                 hit = Some((AgentState::Waiting, i));
             } else if is_work {
                 hit = Some((AgentState::Working, i));
+            } else if self.idle.iter().any(|r| r.is_match(line)) {
+                // Done loses every within-line tie: any hint of need or
+                // activity on the same line outranks a completion marker.
+                hit = Some((AgentState::Idle, i));
             }
         }
         // A vetoed prompt is an input box under a live task, not a plea:
@@ -1182,6 +1187,7 @@ mod tests {
             waiting: vec!["^❯".to_string()],
             error: vec![],
             limited: vec![],
+            idle: vec![],
             waiting_unless: vec!["busy".to_string()],
         })
         .unwrap();
