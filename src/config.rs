@@ -1207,7 +1207,7 @@ mod tests {
             &path,
             "[[command]]\nname = \"gs\"\nkey = \"G\"\nrun = \"git -C {dir} status\"\n\n\
              [[command]]\nname = \"bad\"\nkey = \"n\"\nrun = \"echo x\"\n\n\
-             [[command]]\nname = \"bogus\"\nkey = \"B\"\nrun = \"echo {bogus}\"\n\n\
+             [[command]]\nname = \"bogus\"\nkey = \"Y\"\nrun = \"echo {bogus}\"\n\n\
              [[command]]\nname = \"\"\nkey = \"E\"\nrun = \"echo x\"\n",
         )
         .unwrap();
