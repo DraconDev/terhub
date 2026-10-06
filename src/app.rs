@@ -2578,6 +2578,73 @@ mod tests {
     }
 
     #[test]
+    fn hosts_modal_add_remove_roundtrip() {
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with(&["a"]);
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        app.on_key(press(KeyCode::Char('m')), &tmux);
+        assert_eq!(app.mode, Mode::Hosts);
+        app.on_key(press(KeyCode::Char('a')), &tmux);
+        assert_eq!(app.mode, Mode::PromptHostAdd);
+        for c in "dev user@host control".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.mode, Mode::Hosts);
+        assert_eq!(app.fleet_hosts.len(), 1);
+        assert_eq!(app.fleet_hosts[0].name, "dev");
+        assert_eq!(app.fleet_hosts[0].mode, crate::fleet::Mode::Control);
+        app.on_key(press(KeyCode::Char('x')), &tmux);
+        assert!(app.fleet_hosts.is_empty());
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn host_add_rejects_garbage_and_stays_open() {
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with(&["a"]);
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        app.on_key(press(KeyCode::Char('m')), &tmux);
+        app.on_key(press(KeyCode::Char('a')), &tmux);
+        for c in "justname".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.mode, Mode::PromptHostAdd);
+        assert!(app.status.as_deref().unwrap_or("").contains("want"));
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Hosts);
+    }
+
+    #[test]
+    fn hosts_enter_jumps_to_needy_remote() {
+        use crate::agent::AgentState;
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with(&["a"]);
+        app.fleet_hosts = vec![crate::fleet::Host {
+            name: "dev".to_string(),
+            target: "t".to_string(),
+            mode: crate::fleet::Mode::Observe,
+        }];
+        let mut rec = record("dev:%1", "pi", AgentState::Waiting, 5);
+        rec.session = "web".to_string();
+        app.fleet_agents = vec![rec];
+        app.fleet_index
+            .insert("dev:%1".to_string(), ("dev".to_string(), "web".to_string()));
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        app.mode = Mode::Hosts;
+        let ev = app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(
+            ev,
+            Some(AppEvent::RemoteAttach {
+                host: "dev".to_string(),
+                session: "web".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.
