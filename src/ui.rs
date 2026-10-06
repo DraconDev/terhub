@@ -178,8 +178,10 @@ pub fn render(frame: &mut Frame, app: &mut App) -> ClickAreas {
             pal.dim,
         ),
         None => (
-            "left-click = jump · right-click = preview · 2×click session = attach · tab = switch list · ←/→ sessions · ↑/↓ move · click header = sort"
-                .to_string(),
+            format!(
+                "left-click = jump · right-click = preview · ctrl+click session = attach · tab = switch list · ←/→ sessions · ↑/↓ move · click header = sort · {} = settings",
+                app.config.key("settings")
+            ),
             pal.dim,
         ),
     };
