@@ -442,6 +442,7 @@ impl Default for UiSection {
             theme: default_theme(),
             density: default_density(),
             highlight_attached: true,
+            mru_tabs: false,
         }
     }
 }
@@ -561,8 +562,16 @@ pub fn persist_ui_settings(
     density: &str,
     notifications: bool,
     highlight: bool,
+    mru_tabs: bool,
 ) -> anyhow::Result<()> {
-    persist_ui_settings_to(&config_path(), theme, density, notifications, highlight)
+    persist_ui_settings_to(
+        &config_path(),
+        theme,
+        density,
+        notifications,
+        highlight,
+        mru_tabs,
+    )
 }
 
 fn persist_ui_settings_to(
@@ -571,11 +580,12 @@ fn persist_ui_settings_to(
     density: &str,
     notifications: bool,
     highlight: bool,
+    mru_tabs: bool,
 ) -> anyhow::Result<()> {
     let text = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
     let mut out: Vec<String> = Vec::new();
     let mut section = String::new();
-    let mut seen = [false; 4]; // theme, density, highlight, enabled
+    let mut seen = [false; 5]; // theme, density, highlight, enabled, mru_tabs
     let (mut ui_at, mut notif_at): (Option<usize>, Option<usize>) = (None, None);
     for line in text.lines() {
         // Refresh our own stale generated header while we're here.
@@ -608,6 +618,9 @@ fn persist_ui_settings_to(
         } else if section == "[ui]" && is_key_line(line, "highlight_attached") {
             out.push(format!("highlight_attached = {highlight}"));
             seen[2] = true;
+        } else if section == "[ui]" && is_key_line(line, "mru_tabs") {
+            out.push(format!("mru_tabs = {mru_tabs}"));
+            seen[4] = true;
         } else if section == "[notifications]" && is_key_line(line, "enabled") {
             out.push(format!("enabled = {notifications}"));
             seen[3] = true;
@@ -626,6 +639,9 @@ fn persist_ui_settings_to(
     }
     if !seen[2] {
         missing_ui.push(format!("highlight_attached = {highlight}"));
+    }
+    if !seen[4] {
+        missing_ui.push(format!("mru_tabs = {mru_tabs}"));
     }
     let mut ui_inserted = 0;
     if !missing_ui.is_empty() {
@@ -759,6 +775,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         ));
     }
     cfg.highlight_attached = file.ui.highlight_attached;
+    cfg.mru_tabs = file.ui.mru_tabs;
     cfg.notifications_enabled = file.notifications.enabled;
     // Zero poll/stale would wedge or blind the daemon; stuck_secs = 0 is a
     // legitimate "off switch" and stays.
@@ -1255,7 +1272,7 @@ mod tests {
             "# terhub config: keys are single-key bindings, theme is dark or light.\n# my fancy config\n[ui]\ntheme = \"dark\"\n# density = \"compact\"\n\n[keys]\nnew = \"c\"\n",
         )
         .unwrap();
-        persist_ui_settings_to(&path, "nord", "compact", false, false).unwrap();
+        persist_ui_settings_to(&path, "nord", "compact", false, false, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my fancy config"), "{text}");
         assert!(

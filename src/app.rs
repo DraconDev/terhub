@@ -1488,6 +1488,7 @@ impl App {
             &self.config.density,
             self.config.notifications_enabled,
             self.config.highlight_attached,
+            self.config.mru_tabs,
         ) {
             Ok(()) => self.set_status(format!("{label} (saved)")),
             Err(e) => self.set_status(format!("{label} (live only: {e})")),
