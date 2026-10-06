@@ -617,23 +617,36 @@ fn cmd_hook(
     state: &str,
     summary: Option<&str>,
     summary_stdin: bool,
+    prompt: Option<&str>,
+    prompt_stdin: bool,
 ) -> i32 {
     let Some(state) = AgentState::parse(state) else {
         eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
         return 1;
     };
-    let from_stdin;
-    let summary = if summary_stdin {
-        from_stdin = read_stdin_summary();
-        from_stdin.as_str()
+    // Both stdin readers drain the same pipe: --summary-stdin and
+    // --prompt-stdin together would split it, so read once and share.
+    let stdin_text = if summary_stdin || prompt_stdin {
+        read_stdin_text()
     } else {
-        summary.unwrap_or("")
+        String::new()
+    };
+    let summary = if summary_stdin {
+        terhub::hooks::stdin_summary(&stdin_text)
+    } else {
+        summary.unwrap_or("").to_string()
+    };
+    let prompt = if prompt_stdin {
+        terhub::hooks::stdin_prompt(&stdin_text)
+    } else {
+        prompt.unwrap_or("").to_string()
     };
     let ev = HookEvent {
         pane: pane.to_string(),
         agent: agent.to_string(),
         state,
-        summary: summary.to_string(),
+        summary,
+        prompt,
     };
     // Fire-and-forget: hooks must never break the agent they observe.
     if let Err(e) = daemon::send_event(&ev, Duration::from_secs(1)) {
@@ -642,13 +655,13 @@ fn cmd_hook(
     0
 }
 
-/// Read hook stdin for `--summary-stdin`; unreadable stdin degrades to
-/// an empty summary (fire-and-forget must not fail the hook).
-fn read_stdin_summary() -> String {
+/// Read hook stdin once for `--summary-stdin` / `--prompt-stdin`;
+/// unreadable stdin degrades to empty (fire-and-forget must not fail).
+fn read_stdin_text() -> String {
     use std::io::Read;
     let mut raw = String::new();
     if std::io::stdin().read_to_string(&mut raw).is_ok() {
-        terhub::hooks::stdin_summary(&raw)
+        raw
     } else {
         String::new()
     }
@@ -1146,6 +1159,8 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
                 e.event.as_deref().unwrap_or("?"),
                 e.pane,
             ));
+        } else if e.kind == "prompt" {
+            print_out(&format!("{when} prompt {} {} {}", e.pane, e.agent, e.summary));
         } else {
             let from = e.from.map(|s| s.label()).unwrap_or("?");
             let to = e.to.map(|s| s.label()).unwrap_or("?");
@@ -1154,6 +1169,29 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
                 e.pane, e.agent, e.session, e.window, e.summary,
             ));
         }
+    }
+    0
+}
+
+fn cmd_recap(since: &str, pane: Option<&str>, limit: usize) -> i32 {
+    use terhub::history as h;
+    let now = terhub::agent::now_unix();
+    let Some(since) = resolve_since(since, now) else {
+        return 1;
+    };
+    let entries: Vec<h::Entry> = h::read_entries(&h::ledger_path())
+        .into_iter()
+        .filter(|e| since.is_none_or(|c| e.t >= c))
+        .collect();
+    let prompts = h::recent_prompts(&entries, pane, limit.max(1));
+    if prompts.is_empty() {
+        print_out("no prompts in range");
+        return 0;
+    }
+    for e in &prompts {
+        let when = format!("{} {}", h::ymd_label(h::day_of(e.t)), h::hm_label(e.t));
+        let age = h::fmt_dur(now.saturating_sub(e.t));
+        print_out(&format!("{when} ({age} ago) {} {}: {}", e.pane, e.agent, e.summary));
     }
     0
 }
@@ -2063,7 +2101,17 @@ fn real_main() -> i32 {
             state,
             summary,
             summary_stdin,
-        }) => cmd_hook(&agent, &pane, &state, summary.as_deref(), summary_stdin),
+            prompt,
+            prompt_stdin,
+        }) => cmd_hook(
+            &agent,
+            &pane,
+            &state,
+            summary.as_deref(),
+            summary_stdin,
+            prompt.as_deref(),
+            prompt_stdin,
+        ),
         Some(Cmd::Daemon { action }) => cmd_daemon(&action),
         Some(Cmd::Hooks { action }) => cmd_hooks(&action),
         Some(Cmd::Attend { cycle, list }) => cmd_attend(cycle, list),
@@ -2076,6 +2124,9 @@ fn real_main() -> i32 {
             markdown,
         }) => cmd_report(&since, json, markdown),
         Some(Cmd::Activity { since, kind, json }) => cmd_activity(&since, &kind, json),
+        Some(Cmd::Recap { since, pane, limit }) => {
+            cmd_recap(&since, pane.as_deref(), limit)
+        }
         Some(Cmd::Timeline {
             since,
             session,
