@@ -2939,6 +2939,53 @@ mod tests {
     }
 
     #[test]
+    fn parse_shortstat_handles_missing_parts() {
+        assert_eq!(parse_shortstat(" 2 files changed, 45 insertions(+), 12 deletions(-)"), (2, 45, 12));
+        assert_eq!(parse_shortstat(" 1 file changed, 1 insertion(+)"), (1, 1, 0));
+        assert_eq!(parse_shortstat(" 1 file changed, 3 deletions(-)"), (1, 0, 3));
+        assert_eq!(parse_shortstat(""), (0, 0, 0));
+    }
+
+    #[test]
+    fn git_stat_reads_branch_diff_and_untracked() {
+        let dir = std::env::temp_dir().join(format!("terhub-git-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        git(&["init", "-b", "main", "-q"]);
+        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "init"]);
+        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+        std::fs::write(dir.join("new.txt"), "brand new\n").unwrap();
+        let stat = git_diff_stat(dir.to_str().unwrap()).expect("repo stats");
+        assert_eq!(stat.branch, "main");
+        assert_eq!(stat.files, 1);
+        assert!(stat.ins >= 2, "ins={}", stat.ins);
+        assert!(stat.del >= 1, "del={}", stat.del);
+        assert_eq!(stat.untracked, 1);
+        let line = stat.render();
+        assert!(line.contains("main"), "{line}");
+        assert!(line.contains("1 new"), "{line}");
+        // Clean tree renders as clean; non-repo renders nothing.
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "all"]);
+        let clean = git_diff_stat(dir.to_str().unwrap()).unwrap();
+        assert!(clean.render().contains("clean"), "{}", clean.render());
+        assert!(git_diff_stat("/nonexistent-terhub-dir").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.
