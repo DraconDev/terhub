@@ -195,8 +195,9 @@ pub fn status_line(snapshot: &[AgentRecord], pane: Option<&str>) -> String {
 /// time-in-state, last turn, quiet age) in CLI form. Unknown turn/quiet
 /// clocks read `—`, mirroring the table.
 pub fn status_table(agents: &[AgentRecord], now: u64) -> String {
-    let mut out =
-        String::from("PANE  AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY\n");
+    let mut out = String::from(
+        "PANE  HANDLE       AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY\n",
+    );
     for a in agents {
         let src = match a.source {
             Source::Hook => "hook",
@@ -350,16 +351,17 @@ mod tests {
         a.last_turn_secs = 90;
         a.quiet_since = now - 60;
         a.summary = "building".to_string();
+        a.handle = "@claude-s".to_string();
         let b = rec("%2", AgentState::Waiting, now - 120);
         let table = status_table(&[a, b], now);
         let mut lines = table.lines();
         assert_eq!(
             lines.next().unwrap(),
-            "PANE  AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY"
+            "PANE  HANDLE       AGENT    STATE    SRC  FOR   TURN  IDLE  SESSION   SUMMARY"
         );
         assert_eq!(
             lines.next().unwrap(),
-            "%1    claude   working  hook 5m    1m    1m    s         building"
+            "%1    @claude-s    claude   working  hook 5m    1m    1m    s         building"
         );
         // Unknown clocks read as dashes, like the TUI table.
         let row2 = lines.next().unwrap();
