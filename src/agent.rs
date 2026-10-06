@@ -1354,8 +1354,10 @@ mod tests {
             hit(Some("claude"), AgentState::Error, "Error: socket timeout")
         );
         // Only the footer prefix strips: prose merely starting with Tip stays.
-        assert_eq!(strip_tip_lines("Tipper: hello\nok\n"), "Tipper: hello\nok\n");
-        assert_eq!(strip_tip_lines("  Tip: indented\nok\n"), "ok\n");
+        // (Line-join normalizes the trailing newline; classification and
+        // hashing are line-based, so this is invisible downstream.)
+        assert_eq!(strip_tip_lines("Tipper: hello\nok\n"), "Tipper: hello\nok");
+        assert_eq!(strip_tip_lines("  Tip: indented\nok\n"), "ok");
     }
 
     #[test]
