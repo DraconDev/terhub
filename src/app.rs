@@ -1122,6 +1122,9 @@ impl App {
                 self.preview_width = None;
             }
         }
+        // Tick re-captures keep the reader position; new content only clamps it.
+        let max = self.preview_max_scroll();
+        self.preview_scroll = self.preview_scroll.min(max);
     }
 
     /// Right-click: with the preview open it closes from anywhere,
@@ -1159,13 +1162,16 @@ impl App {
             self.set_status("no pane selected".to_string());
             return;
         }
+        self.preview_scroll = 0;
         self.capture_preview(tmux);
         self.show_preview = true;
     }
 
     /// Re-capture while the preview is open so it follows the selection.
+    /// A new pane means a new buffer, so the reader restarts at the top.
     pub fn follow_preview(&mut self, tmux: &Tmux) {
         if self.show_preview {
+            self.preview_scroll = 0;
             self.capture_preview(tmux);
         }
     }
