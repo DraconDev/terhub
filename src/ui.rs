@@ -393,8 +393,29 @@ pub fn row_mark(
     }
 }
 
-/// One selector segment's text parts: (marker, name, counts, attached).
-fn selector_segments(app: &App) -> Vec<(String, String, String, bool)> {
+/// One selector segment's parts: (marker, name, counts, attached, dot).
+/// The dot is the session's worst live state; idle/unknown-only tabs
+/// stay dotless so the bar reads as an exception list, not wallpaper.
+fn selector_segments(
+    app: &App,
+) -> Vec<(
+    String,
+    String,
+    String,
+    bool,
+    Option<crate::agent::AgentState>,
+)> {
+    use crate::agent::AgentState;
+    let dot = |worst: Option<AgentState>| match worst {
+        Some(
+            AgentState::Waiting
+            | AgentState::Stuck
+            | AgentState::Error
+            | AgentState::Limited
+            | AgentState::Working,
+        ) => worst,
+        _ => None,
+    };
     let counts = app.session_counts();
     let mut rows = Vec::with_capacity(app.sessions.len() + 1);
     let total_needy = app.attention_count();
@@ -403,7 +424,13 @@ fn selector_segments(app: &App) -> Vec<(String, String, String, bool)> {
     } else {
         format!("({})", app.panes.len())
     };
-    rows.push(("".to_string(), "All".to_string(), all_counts, false));
+    rows.push((
+        "".to_string(),
+        "All".to_string(),
+        all_counts,
+        false,
+        dot(app.session_worst(None)),
+    ));
     for s in &app.sessions {
         let (panes, needy) = counts.get(&s.name).copied().unwrap_or((0, 0));
         let count_text = if needy > 0 {
@@ -412,7 +439,13 @@ fn selector_segments(app: &App) -> Vec<(String, String, String, bool)> {
             format!("({panes})")
         };
         let mark = if s.attached { "●" } else { "○" };
-        rows.push((mark.to_string(), s.name.clone(), count_text, s.attached));
+        rows.push((
+            mark.to_string(),
+            s.name.clone(),
+            count_text,
+            s.attached,
+            dot(app.session_worst(Some(&s.name))),
+        ));
     }
     rows
 }

@@ -140,16 +140,23 @@ fn summary_text(rec: Option<&AgentRecord>) -> &str {
 
 /// Attention first, unknowns last.
 fn state_rank(rec: Option<&AgentRecord>) -> u8 {
-    use crate::agent::AgentState;
     match rec.map(|r| r.state) {
-        Some(AgentState::Waiting) => 0,
-        Some(AgentState::Stuck) => 1,
-        Some(AgentState::Error) => 2,
-        Some(AgentState::Limited) => 3,
-        Some(AgentState::Working) => 4,
-        Some(AgentState::Idle) => 5,
-        Some(AgentState::Unknown) => 6,
+        Some(st) => state_rank_of(st),
         None => 7,
+    }
+}
+
+/// Attention order shared by sort and tab dots: the lower, the needier.
+fn state_rank_of(state: crate::agent::AgentState) -> u8 {
+    use crate::agent::AgentState;
+    match state {
+        AgentState::Waiting => 0,
+        AgentState::Stuck => 1,
+        AgentState::Error => 2,
+        AgentState::Limited => 3,
+        AgentState::Working => 4,
+        AgentState::Idle => 5,
+        AgentState::Unknown => 6,
     }
 }
 
@@ -648,6 +655,28 @@ impl App {
             };
             if asc { ord } else { ord.reverse() }
         });
+    }
+
+    /// Worst agent state in a session (None = everywhere): the tab dot.
+    /// Unclaimed panes don't vote; with no agent rows there is no dot.
+    pub fn session_worst(&self, session: Option<&str>) -> Option<crate::agent::AgentState> {
+        let mut best: Option<crate::agent::AgentState> = None;
+        for p in &self.panes {
+            if session.is_some_and(|s| p.session != s) {
+                continue;
+            }
+            let Some(rec) = self.agents.get(&p.id) else {
+                continue;
+            };
+            let take = match best {
+                None => true,
+                Some(b) => state_rank_of(rec.state) < state_rank_of(b),
+            };
+            if take {
+                best = Some(rec.state);
+            }
+        }
+        best
     }
 
     /// (panes, needy) per session for the sidebar counts.
