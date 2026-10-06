@@ -207,3 +207,13 @@ fn zellij_list_without_binary_exits_1() {
     let out = run_isolated("zlist", &["zellij", "list"]);
     assert_eq!(out.status.code(), Some(1));
 }
+
+#[test]
+fn init_dry_run_lists_steps_without_acting() {
+    let out = run_isolated("initdry", &["init", "--dry-run"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    for step in ["config", "hooks", "daemon"] {
+        assert!(text.contains(step), "missing {step}:\n{text}");
+    }
+}
