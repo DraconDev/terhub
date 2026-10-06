@@ -2066,6 +2066,25 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn spawn_window_name_sanitizes_and_caps() {
+        assert_eq!(spawn_window_name("pi", "fix the login bug now"), "pi-fix-the-login");
+        assert_eq!(spawn_window_name("pi", ""), "pi");
+        assert_eq!(spawn_window_name("pi", "   "), "pi");
+        // Shell metachars and slashes can't smuggle through the name.
+        assert_eq!(
+            spawn_window_name("pi", "a; rm -rf / && echo hi"),
+            "pi-a-rm--rf"
+        );
+        // Long prompts cap at 32 chars; weird profile falls back.
+        let long = "word ".repeat(20);
+        let name = spawn_window_name("codex", &long);
+        assert!(name.chars().count() <= 32, "{name}");
+        assert!(name.starts_with("codex-word-word"), "{name}");
+        assert_eq!(spawn_window_name("!!!", "hi"), "agent-hi");
+    }
+
+    #[test]
     fn prompt_input_edits_and_cancels() {
         let mut app = app_with(&["a"]);
         app.focus = Focus::Sessions;
