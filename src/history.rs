@@ -192,7 +192,7 @@ pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Ve
         .filter(|e| e.kind == "prompt" && pane.is_none_or(|p| e.pane == p))
         .cloned()
         .collect();
-    out.sort_by(|a, b| b.t.cmp(&a.t));
+    out.sort_by_key(|e| std::cmp::Reverse(e.t));
     out.truncate(limit);
     out
 }
