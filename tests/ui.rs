@@ -1175,6 +1175,24 @@ fn preview_title_shows_cpu_and_git_segments() {
 }
 
 #[test]
+fn refresh_keeps_preview_when_filter_matches_only_foreign_rows() {
+    let mut app = app_with_panes();
+    let (tmux, _) = fake_tmux("keepprev");
+    app.native_rows = vec![pane("konsole:999:6", "konsole", "tab", "pi")];
+    app.merge_native();
+    app.filter = "konsole".to_string();
+    app.refresh_filtered();
+    assert_eq!(app.filtered.len(), 1);
+    app.show_preview = true;
+    app.preview = "hello".to_string();
+    // Fake tmux reports zero local panes: the tick must not mid-pass
+    // through an empty list and close the preview.
+    app.refresh(&tmux);
+    assert!(app.show_preview, "tick closed foreign-only preview");
+    assert_eq!(app.filtered.len(), 1);
+}
+
+#[test]
 fn preview_scroll_renders_offset_content() {
     let mut app = app_with_panes();
     app.show_preview = true;
