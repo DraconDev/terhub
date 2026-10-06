@@ -1412,17 +1412,17 @@ impl App {
             kind: SettingKind::ToggleNotifications,
         });
         rows.push(SettingRow::Item {
+            label: format!("mru tabs: {}", Self::onoff(self.config.mru_tabs)),
+            active: self.config.mru_tabs,
+            kind: SettingKind::ToggleMruTabs,
+        });
+        rows.push(SettingRow::Item {
             label: format!(
                 "highlight attached: {}",
                 Self::onoff(self.config.highlight_attached)
             ),
             active: self.config.highlight_attached,
             kind: SettingKind::ToggleHighlight,
-        });
-        rows.push(SettingRow::Item {
-            label: format!("mru tabs: {}", Self::onoff(self.config.mru_tabs)),
-            active: self.config.mru_tabs,
-            kind: SettingKind::ToggleMruTabs,
         });
         rows
     }
