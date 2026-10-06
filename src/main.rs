@@ -1017,7 +1017,7 @@ fn cmd_report(since: &str, json: bool, markdown: bool) -> i32 {
         return 0;
     }
     if markdown {
-        print_out(&h::report_markdown(&data, since_label(since)));
+        print_out(&h::report_markdown(&data, &since_label(since)));
         return 0;
     }
     for (name, rows) in [

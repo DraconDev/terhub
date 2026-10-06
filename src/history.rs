@@ -417,7 +417,7 @@ pub fn build_foreground(entries: &[Entry], now: u64) -> Vec<ForeSpan> {
     human.sort_by_key(|e| e.t);
     let mut spans = Vec::new();
     let mut current: Option<(&str, u64)> = None;
-    let mut close = |cur: &mut Option<(&str, u64)>, end: u64, spans: &mut Vec<ForeSpan>| {
+    let close = |cur: &mut Option<(&str, u64)>, end: u64, spans: &mut Vec<ForeSpan>| {
         if let Some((pane, start)) = cur.take()
             && end > start
         {
