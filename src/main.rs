@@ -278,6 +278,21 @@ enum ZellijAction {
 }
 
 #[derive(Subcommand)]
+enum NativeAction {
+    /// List tabs across all native terminals.
+    List {
+        /// Print the tabs as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open a fresh tab in a backend.
+    Spawn {
+        /// Which terminal (konsole|kitty|wezterm).
+        backend: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum DaemonAction {
     Start,
     Stop,
@@ -1525,6 +1540,54 @@ fn cmd_fleet_attach(host: &str, session: Option<&str>) -> i32 {
     }
 }
 
+fn cmd_native(action: &NativeAction) -> i32 {
+    use terhub::native;
+    match action {
+        NativeAction::List { json } => {
+            let mut tabs = Vec::new();
+            for rep in native::list_all() {
+                if let Some(e) = rep.error {
+                    eprintln!("terhub: {}: {e}", rep.backend);
+                }
+                tabs.extend(rep.tabs);
+            }
+            if *json {
+                match serde_json::to_string(&tabs) {
+                    Ok(s) => print_out(&s),
+                    Err(e) => {
+                        eprintln!("terhub: {e:?}");
+                        return 1;
+                    }
+                }
+                return 0;
+            }
+            if tabs.is_empty() {
+                print_out("no native tabs");
+                return 0;
+            }
+            for t in &tabs {
+                print_out(&format!(
+                    "{:<22} {:<12} {}",
+                    t.id,
+                    t.window,
+                    if t.title.is_empty() { "(untitled)" } else { &t.title }
+                ));
+            }
+            0
+        }
+        NativeAction::Spawn { backend } => match native::spawn(backend) {
+            Ok(()) => {
+                print_out(&format!("opened a {backend} tab"));
+                0
+            }
+            Err(e) => {
+                eprintln!("terhub: {e:#}");
+                1
+            }
+        },
+    }
+}
+
 fn cmd_zellij(action: &ZellijAction) -> i32 {
     use terhub::zellij as z;
     match action {
@@ -1972,6 +2035,7 @@ fn real_main() -> i32 {
         Some(Cmd::Host { action }) => cmd_host(&action),
         Some(Cmd::Fleet { action }) => cmd_fleet(&action),
         Some(Cmd::Zellij { action }) => cmd_zellij(&action),
+        Some(Cmd::Native { action }) => cmd_native(&action),
         Some(Cmd::Mcp) => match terhub::mcp::run() {
             Ok(()) => 0,
             Err(e) => {
