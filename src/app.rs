@@ -2485,7 +2485,12 @@ mod tests {
         app.fleet_index
             .insert("dev:%1".to_string(), ("dev".to_string(), "web".to_string()));
         app.refresh_filtered();
-        app.select_pane(app.filtered.len() - 1);
+        let idx = app
+            .filtered
+            .iter()
+            .position(|p| p.id == "dev:%1")
+            .unwrap();
+        app.select_pane(idx);
         app
     }
 
