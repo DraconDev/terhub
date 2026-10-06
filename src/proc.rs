@@ -667,6 +667,29 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn minimax_code_detects_as_agent() {
+        let dir = fake_proc(
+            "minimax",
+            &[(
+                "810",
+                "1",
+                "minimax-code",
+                "minimax-code --yolo",
+                0,
+                0,
+                8010,
+            )],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(
+            snap.detect_agent(810).map(|h| h.agent),
+            Some("minimax-code".to_string())
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn substr_needles_need_token_boundaries() {
         // /bin/pip is not /bin/pi.
         let dir = fake_proc(
