@@ -3148,6 +3148,29 @@ mod tests {
     }
 
     #[test]
+    fn pause_and_restart_refuse_own_pane() {
+        let mut app = app_with_panes();
+        app.own_pane = Some("%1".to_string());
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        let idx = app.filtered.iter().position(|p| p.id == "%1").unwrap();
+        app.select_pane(idx);
+        app.on_key(press(KeyCode::Char('z')), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("own"),
+            "pause own: {:?}",
+            app.status
+        );
+        app.on_key(press(KeyCode::Char('e')), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("own"),
+            "restart own: {:?}",
+            app.status
+        );
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.
