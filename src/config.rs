@@ -350,6 +350,8 @@ struct FileConfig {
     #[serde(default)]
     command: Vec<CommandFile>,
     #[serde(default)]
+    profile: Vec<ProfileFile>,
+    #[serde(default)]
     style: StyleSection,
 }
 
@@ -854,6 +856,37 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
             spec,
             run: c.run.clone(),
         });
+    }
+    // Spawn profiles: user entries replace the builtins wholesale (an
+    // explicit list means "these are my agents"); invalid ones become
+    // problems and the survivors still apply.
+    if !file.profile.is_empty() {
+        let mut profiles = Vec::new();
+        for (i, p) in file.profile.iter().enumerate() {
+            let tag = if p.name.is_empty() {
+                format!("profile #{i}")
+            } else {
+                format!("profile '{}'", p.name)
+            };
+            if p.name.is_empty() {
+                problems.push(format!("{tag} has no name"));
+                continue;
+            }
+            if p.program.trim().is_empty() {
+                problems.push(format!("{tag} has no program"));
+                continue;
+            }
+            if profiles.iter().any(|q: &SpawnProfile| q.name == p.name) {
+                problems.push(format!("{tag} is a duplicate name"));
+                continue;
+            }
+            profiles.push(SpawnProfile {
+                name: p.name.clone(),
+                program: p.program.clone(),
+                dir: p.dir.clone(),
+            });
+        }
+        cfg.profiles = profiles;
     }
     (cfg, problems)
 }
