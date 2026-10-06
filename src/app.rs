@@ -1296,10 +1296,10 @@ impl App {
             return;
         }
         let snap = crate::proc::Snapshot::capture();
-        if let Some(hit) = snap.detect_agent(pane.pid) {
-            if let Some(rec) = self.agents.get_mut(id) {
-                rec.cpu_ticks = snap.subtree_ticks(hit.pid);
-            }
+        if let Some(hit) = snap.detect_agent(pane.pid)
+            && let Some(rec) = self.agents.get_mut(id)
+        {
+            rec.cpu_ticks = snap.subtree_ticks(hit.pid);
         }
     }
 
