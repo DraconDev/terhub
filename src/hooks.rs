@@ -19,17 +19,25 @@ pub fn stdin_summary(raw: &str) -> String {
         && let Some(m) = v.get("message").and_then(|m| m.as_str())
         && !m.trim().is_empty()
     {
-        return truncate_chars(m.trim(), CAP);
+        return crate::agent::cap_chars(m.trim(), CAP);
     }
-    truncate_chars(trimmed.lines().next().unwrap_or(""), CAP)
+    crate::agent::cap_chars(trimmed.lines().next().unwrap_or(""), CAP)
 }
 
-fn truncate_chars(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        s.chars().take(max).collect()
+/// Prompt text from hook stdin: Claude's UserPromptSubmit JSON carries the
+/// prompt under "prompt"; anything else degrades to the raw head line.
+pub fn stdin_prompt(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed)
+        && let Some(p) = v.get("prompt").and_then(|p| p.as_str())
+        && !p.trim().is_empty()
+    {
+        return crate::agent::cap_chars(p.trim(), crate::history::LEDGER_PROMPT_CAP);
     }
+    crate::agent::cap_chars(
+        trimmed.lines().next().unwrap_or(""),
+        crate::history::LEDGER_PROMPT_CAP,
+    )
 }
 
 /// One managed hook event: settings key, reported state, summary source.
@@ -38,6 +46,8 @@ struct HookDef {
     state: &'static str,
     /// Static summary, or None to read it from hook stdin.
     summary: Option<&'static str>,
+    /// The event carries the user's prompt on stdin (prompt ledger).
+    prompt_stdin: bool,
 }
 
 const CLAUDE_HOOKS: &[HookDef] = &[
@@ -45,16 +55,25 @@ const CLAUDE_HOOKS: &[HookDef] = &[
         event: "SessionStart",
         state: "working",
         summary: Some("session started"),
+        prompt_stdin: false,
+    },
+    HookDef {
+        event: "UserPromptSubmit",
+        state: "working",
+        summary: None,
+        prompt_stdin: true,
     },
     HookDef {
         event: "Notification",
         state: "waiting",
         summary: None,
+        prompt_stdin: false,
     },
     HookDef {
         event: "Stop",
         state: "waiting",
         summary: Some("response finished"),
+        prompt_stdin: false,
     },
 ];
 
@@ -63,8 +82,9 @@ fn hook_command(agent: &str, def: &HookDef) -> String {
         Some(s) => format!("--summary {}", crate::fleet::sh_quote(s)),
         None => "--summary-stdin".to_string(),
     };
+    let prompt = if def.prompt_stdin { " --prompt-stdin" } else { "" };
     format!(
-        "[ -n \"$TMUX_PANE\" ] && terhub hook --agent {agent} --pane \"$TMUX_PANE\" --state {} {summary}",
+        "[ -n \"$TMUX_PANE\" ] && terhub hook --agent {agent} --pane \"$TMUX_PANE\" --state {} {summary}{prompt}",
         def.state
     )
 }

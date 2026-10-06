@@ -111,6 +111,7 @@ pub fn peek_report(
         .filter(|r| r.agent.as_ref().is_some_and(|a| a.state.needs_attention()))
         .count();
     let mut out = format!("{session}:{window} — {total_panes} pane(s), {needy} need you\n");
+    let mut newest: Option<(&str, u64)> = None;
     for row in rows {
         let mark = if row.pane.active { "*" } else { " " };
         let (agent, state, age, summary) = match &row.agent {
@@ -130,6 +131,26 @@ pub fn peek_report(
         out.push_str(&format!(
             "[{}] {}{}  {:<8} {:<7} {:<4} {:<9} {}\n",
             row.digit, mark, row.pane.id, agent, state, age, row.pane.command, summary,
+        ));
+        // Last prompt under its row, so the eye keeps row context.
+        if let Some(a) = row.agent.as_ref()
+            && a.last_prompt_at > 0
+            && !a.last_prompt.is_empty()
+        {
+            out.push_str(&format!(
+                "      ↩ {} ago: {}\n",
+                fmt_dur(now.saturating_sub(a.last_prompt_at)),
+                truncate(&a.last_prompt, 60),
+            ));
+            if newest.is_none_or(|(_, t)| a.last_prompt_at > t) {
+                newest = Some((a.pane.as_str(), a.last_prompt_at));
+            }
+        }
+    }
+    if let Some((pane, at)) = newest {
+        out.push_str(&format!(
+            "newest prompt: {pane} ({} ago)\n",
+            fmt_dur(now.saturating_sub(at))
         ));
     }
     if total_panes > rows.len() {
