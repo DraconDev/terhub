@@ -109,6 +109,24 @@ pub struct AgentRecord {
     /// look busy forever; this clock only restarts on visible change.
     #[serde(default)]
     pub quiet_since: u64,
+    /// When the user last prompted this agent via hook (0 = never).
+    #[serde(default)]
+    pub last_prompt_at: u64,
+    /// That prompt's text, capped (empty = none yet).
+    #[serde(default)]
+    pub last_prompt: String,
+}
+
+/// Prompt text kept on the record (the ledger keeps the longer cut).
+pub const RECORD_PROMPT_CAP: usize = 200;
+
+/// Cap `s` to `max` chars (char-safe).
+pub fn cap_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max).collect()
+    }
 }
 
 /// A working turn completed: Working moved to a terminal-ish state.
@@ -133,6 +151,10 @@ pub struct HookEvent {
     pub state: AgentState,
     #[serde(default)]
     pub summary: String,
+    /// The user's prompt text (UserPromptSubmit / before_agent_start);
+    /// empty for lifecycle-only events.
+    #[serde(default)]
+    pub prompt: String,
 }
 
 pub fn now_unix() -> u64 {
@@ -531,6 +553,10 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
             rec.source = Source::Hook;
             rec.summary = ev.summary.clone();
             rec.updated_at = now;
+            if !ev.prompt.is_empty() {
+                rec.last_prompt = cap_chars(&ev.prompt, RECORD_PROMPT_CAP);
+                rec.last_prompt_at = now;
+            }
             registry.insert(ev.pane.clone(), rec);
         }
         _ => {
@@ -562,6 +588,17 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     // A hook event is not a screen change: carry the clock.
                     screen_hash: old.map(|r| r.screen_hash).unwrap_or(0),
                     quiet_since: old.map(|r| r.quiet_since).unwrap_or(0),
+                    // A prompt-less event keeps the old prompt, not a blank.
+                    last_prompt_at: if ev.prompt.is_empty() {
+                        old.map(|r| r.last_prompt_at).unwrap_or(0)
+                    } else {
+                        now
+                    },
+                    last_prompt: if ev.prompt.is_empty() {
+                        old.map(|r| r.last_prompt.clone()).unwrap_or_default()
+                    } else {
+                        cap_chars(&ev.prompt, RECORD_PROMPT_CAP)
+                    },
                 },
             );
         }

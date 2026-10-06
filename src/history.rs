@@ -113,6 +113,22 @@ impl Entry {
         }
     }
 
+    /// A user prompt (kind "prompt"): what the human asked, capped.
+    pub fn prompt(t: u64, pane: &str, agent: &str, prompt: &str) -> Self {
+        Entry {
+            t,
+            kind: "prompt".to_string(),
+            pane: pane.to_string(),
+            agent: agent.to_string(),
+            from: None,
+            to: None,
+            session: String::new(),
+            window: String::new(),
+            summary: crate::agent::cap_chars(prompt.trim(), LEDGER_PROMPT_CAP),
+            event: None,
+        }
+    }
+
     pub fn session_event(t: u64, session: &str, open: bool) -> Self {
         Entry {
             t,
@@ -166,6 +182,21 @@ pub fn read_rule_fires(path: &std::path::Path) -> Vec<(String, String, u64)> {
 }
 
 /// Drop entries older than `keep_days`; returns surviving count.
+/// Prompt text kept per ledger line (the record keeps a shorter cut).
+pub const LEDGER_PROMPT_CAP: usize = 500;
+
+/// Recent prompts, newest first, optionally scoped to one pane.
+pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Vec<Entry> {
+    let mut out: Vec<Entry> = entries
+        .iter()
+        .filter(|e| e.kind == "prompt" && pane.is_none_or(|p| e.pane == p))
+        .cloned()
+        .collect();
+    out.sort_by(|a, b| b.t.cmp(&a.t));
+    out.truncate(limit);
+    out
+}
+
 pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> usize {
     let cutoff = now.saturating_sub(keep_days * 86400);
     let kept: Vec<Entry> = read_entries(path)
