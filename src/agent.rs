@@ -559,17 +559,18 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
         },
         Manifest {
-            // minimax-code keeps its input chrome ("Message · Enter send",
-            // "Ask Mcode to do anything") visible under live tasks, so the
-            // box alone never waits: only completion banners and the Tasks
-            // verdict count. Failure counts stay Tasks-anchored — bare
-            // "failed" would fire on prose like "SPEC-200 failed".
+            // The "Message · Enter send" box only returns when the turn is
+            // over (live inference shows the Running footer instead), while
+            // the "Ask Mcode" placeholder persists under live tasks — so
+            // the box means done and the placeholder means nothing. Failure
+            // counts stay Tasks-anchored: bare "failed" would fire on prose
+            // like "SPEC-200 failed".
             agent: "minimax-code".to_string(),
             commands: vec!["minimax-code".to_string(), "minimax".to_string()],
             working: vec![
                 "esc stop".to_string(),
-                "tok/s".to_string(),
                 "running \\d".to_string(),
+                "loading \\d".to_string(),
                 "⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏".to_string(),
             ],
             waiting: vec![
@@ -581,6 +582,11 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![
                 "✓ goal complete".to_string(),
                 "todo list \\d+/\\d+ completed".to_string(),
+                // The input box only returns when the turn is over; live
+                // inference replaces it with the Running footer. (Bare
+                // "tok/s" is deliberately NOT a working signal: Completed
+                // lines keep a stale rate forever and would pin working.)
+                "enter send".to_string(),
             ],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
