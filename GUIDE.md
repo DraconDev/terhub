@@ -317,13 +317,19 @@ working = ["Thinking", "⠋|⠙|⠹"]
 waiting = ["confirm", "\\[y/n\\]"]
 error = ["\\berror\\b", "traceback"]
 limited = ["quota", "rate limit", "\\b429\\b"]
+idle = ["task complete", "all done"]
 waiting_unless = ["esc to interrupt"]
 ```
 
 Patterns are case-insensitive regexes; within one line the most specific
-signal wins (limited beats error beats waiting beats working), and the
-freshest matching line wins across lines. A `limited` list holds
-quota/rate-limit language so a quota wall never reads as a crash.
+signal wins (limited beats error beats waiting beats working beats idle),
+and the freshest matching line wins across lines. A `limited` list holds
+quota/rate-limit language so a quota wall never reads as a crash. An
+`idle` list holds done language (completion banners, all-tasks verdicts)
+so a finished agent reads `idle` instead of badging as `waiting` — and
+only `waiting` means "blocked on you". A transition into `idle` from a
+live state fires one desktop "done" note (same toggle as the
+needs-you notes).
 `waiting_unless` vetoes a waiting verdict when any of its patterns match
 the tail (an input prompt under a live task is an input box, not a plea),
 falling back to the freshest working line or no verdict. Without
