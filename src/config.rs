@@ -48,6 +48,7 @@ fn default_keys() -> HashMap<String, String> {
         ("spawn", "w"),
         ("restart", "e"),
         ("pause", "z"),
+        ("hosts", "m"),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

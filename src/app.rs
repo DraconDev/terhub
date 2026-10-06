@@ -23,6 +23,8 @@ pub enum Mode {
         id: String,
         command: String,
     },
+    Hosts,
+    PromptHostAdd,
     ConfirmKillMarked(Vec<String>),
     CommandOutput {
         name: String,
@@ -1058,6 +1060,8 @@ impl App {
             Mode::ConfirmRestartPane { .. } => self.on_confirm_restart_key(key, tmux),
             Mode::ConfirmKillMarked(_) => self.on_confirm_marked_key(key, tmux),
             Mode::CommandOutput { .. } => self.on_command_output_key(key),
+            Mode::Hosts => self.on_hosts_key(key),
+            Mode::PromptHostAdd => self.on_host_add_key(key),
             Mode::Settings => self.on_settings_key(key),
             Mode::Normal => self.on_normal_key(key, tmux),
         }
