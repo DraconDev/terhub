@@ -455,7 +455,8 @@ mod tests {
                 handle: "@pi-web".to_string(),
                 model: String::new(),
                 ctx_pct: None,
-                reg_pid: 0,            }],
+                reg_pid: 0,
+            }],
             updated_at: 1700,
         };
         let (rows, agents) = snapshot_rows(&host, &snap);

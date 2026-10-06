@@ -515,7 +515,8 @@ mod tests {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        }
+            reg_pid: 0,
+        }
     }
 
     #[test]

@@ -406,8 +406,8 @@ fn hook_model_and_ctx_flags_are_accepted() {
     let out = run_isolated(
         "hookmodel",
         &[
-            "hook", "--agent", "pi", "--pane", "%1", "--state", "working", "--model",
-            "opus-4.5", "--ctx", "72",
+            "hook", "--agent", "pi", "--pane", "%1", "--state", "working", "--model", "opus-4.5",
+            "--ctx", "72",
         ],
     );
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
@@ -425,7 +425,11 @@ fn hook_ctx_out_of_range_exits_1() {
             ],
         );
         assert_eq!(out.status.code(), Some(1), "ctx {bad}: {}", stderr(&out));
-        assert!(stderr(&out).contains("--ctx"), "ctx {bad}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("--ctx"),
+            "ctx {bad}: {}",
+            stderr(&out)
+        );
     }
 }
 
@@ -446,10 +450,7 @@ fn register_validates_before_touching_daemon() {
     assert_eq!(out.status.code(), Some(1));
     assert!(stderr(&out).contains("not running"), "{}", stderr(&out));
     // Native ids are not tmux panes.
-    let out = run_isolated(
-        "regnative",
-        &["register", "konsole:1:2", "--agent", "pi"],
-    );
+    let out = run_isolated("regnative", &["register", "konsole:1:2", "--agent", "pi"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(
         stderr(&out).contains("local tmux panes"),

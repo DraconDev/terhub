@@ -139,7 +139,8 @@ fn web_dashboard_and_apis() {
             summary: "web probe".to_string(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        },
+            ctx: None,
+        },
         Duration::from_secs(2),
     )
     .unwrap();

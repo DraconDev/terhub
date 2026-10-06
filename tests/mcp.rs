@@ -155,7 +155,8 @@ fn mcp_conversation_without_and_with_daemon() {
             summary: "mcp probe".to_string(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        },
+            ctx: None,
+        },
         Duration::from_secs(2),
     )
     .unwrap();

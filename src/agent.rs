@@ -830,7 +830,8 @@ mod tests {
                     handle: String::new(),
                     model: String::new(),
                     ctx_pct: None,
-                    reg_pid: 0,                },
+                    reg_pid: 0,
+                },
             );
         }
         ensure_handles(&mut reg);
@@ -878,7 +879,8 @@ mod tests {
             handle: "@pi-wez".to_string(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        }];
+            reg_pid: 0,
+        }];
         assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
         assert_eq!(resolve_handle(&recs, "@pi-other"), None);
         assert_eq!(resolve_handle(&recs, "%1"), None);
@@ -894,7 +896,8 @@ mod tests {
             summary: String::new(),
             prompt: "fix it".to_string(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &ev, 100);
         assert_eq!(reg["%1"].last_prompt, "fix it");
         assert_eq!(reg["%1"].last_prompt_at, 100);
@@ -906,7 +909,8 @@ mod tests {
             summary: String::new(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &ev2, 200);
         assert_eq!(reg["%1"].last_prompt, "fix it");
         assert_eq!(reg["%1"].last_prompt_at, 100);
@@ -967,7 +971,8 @@ mod tests {
             summary: String::new(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &ev, 100_000);
         assert_eq!(reg["%1"].agent, "claude");
         let ev2 = HookEvent {
@@ -977,7 +982,8 @@ mod tests {
             summary: String::new(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &ev2, 100_000);
         assert_eq!(reg["%2"].agent, "myagent");
     }
@@ -1324,7 +1330,8 @@ mod tests {
             summary: "a".to_string(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &ev, 100);
         reg.get_mut("%1").unwrap().session = "work".to_string();
         let ev2 = HookEvent {
@@ -1347,7 +1354,8 @@ mod tests {
             summary: "a".to_string(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &work, 100);
         apply_event_to(&mut reg, &work, 200);
         let wait = HookEvent {
@@ -1372,7 +1380,8 @@ mod tests {
             summary: "a".to_string(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         apply_event_to(&mut reg, &ev, 100);
         apply_event_to(&mut reg, &ev, 200);
         assert_eq!(reg["%1"].state_since, 100);

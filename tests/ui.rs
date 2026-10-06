@@ -184,7 +184,8 @@ fn title_needy_counts_visible_rows_only() {
         handle: String::new(),
         model: String::new(),
         ctx_pct: None,
-        reg_pid: 0,    };
+        reg_pid: 0,
+    };
     app.agents.insert("%1".to_string(), rec("%1"));
     app.agents.insert("%2".to_string(), rec("%2"));
     // Both needy, but the filter hides one: title must say 1, not 2.
@@ -223,7 +224,8 @@ fn proc_source_and_stuck_state_render() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let lines = render_lines(&mut app, 140, 20);
     let text = lines.join("\n");
@@ -281,7 +283,8 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
     let row = text.lines().find(|l| l.contains("%1")).unwrap();
@@ -328,7 +331,8 @@ fn agent_color_and_idle_warn_reach_cells() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let grid = render_grid(&mut app, 140, 20);
     let text: Vec<String> = grid
@@ -504,7 +508,8 @@ fn preview_title_shows_agent_context() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     app.show_preview = true;
     app.preview = "hello from pane".to_string();
@@ -701,7 +706,8 @@ fn agent_state_renders_in_table() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let lines = render_lines(&mut app, 140, 20);
     let text = lines.join("\n");
@@ -812,7 +818,8 @@ fn src_and_dir_columns_render() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     app.agents.insert(
         "%2".to_string(),
@@ -838,7 +845,8 @@ fn src_and_dir_columns_render() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let lines = render_lines(&mut app, 140, 20);
     let text = lines.join("\n");
@@ -940,7 +948,8 @@ fn wide_table_fits_long_commands_and_summaries() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let text = render_lines(&mut app, 195, 24).join("\n");
     assert!(text.contains("muse-bin-1.4.2-R4684.1"), "cmd cut:\n{text}");
@@ -975,7 +984,8 @@ fn title_nudges_hookless_setups() {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        },
+            reg_pid: 0,
+        },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
     assert!(text.contains("no hooks yet"), "missing nudge:\n{text}");
@@ -1207,7 +1217,8 @@ fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::a
         handle: String::new(),
         model: String::new(),
         ctx_pct: None,
-        reg_pid: 0,    }
+        reg_pid: 0,
+    }
 }
 
 #[test]

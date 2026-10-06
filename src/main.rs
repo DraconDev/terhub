@@ -292,7 +292,10 @@ enum HostAction {
         name: String,
     },
     /// Set (or clear, with "") a host's display label.
-    Label { name: String, label: String },
+    Label {
+        name: String,
+        label: String,
+    },
     Doctor {
         name: String,
     },
@@ -796,7 +799,8 @@ fn cmd_unregister(pane: &str) -> i32 {
         Ok(resp) => {
             eprintln!(
                 "terhub: {}",
-                resp.error.unwrap_or_else(|| "unregister failed".to_string())
+                resp.error
+                    .unwrap_or_else(|| "unregister failed".to_string())
             );
             1
         }

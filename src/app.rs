@@ -863,7 +863,8 @@ impl App {
                     handle: String::new(),
                     model: String::new(),
                     ctx_pct: None,
-                    reg_pid: 0,                });
+                    reg_pid: 0,
+                });
             }
         }
         self.native_rows = rows;
@@ -4530,7 +4531,8 @@ mod tests {
                 handle: String::new(),
                 model: String::new(),
                 ctx_pct: None,
-                reg_pid: 0,            },
+                reg_pid: 0,
+            },
         );
         let counts = app.session_counts();
         assert_eq!(counts.get("a"), Some(&(2, 1)));
@@ -4564,7 +4566,8 @@ mod tests {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        }
+            reg_pid: 0,
+        }
     }
 
     fn app_with_three() -> App {

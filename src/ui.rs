@@ -1438,7 +1438,8 @@ mod tests {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        };
+            reg_pid: 0,
+        };
         // Working + quiet past stuck_secs (600) → warn.
         let r = rec(AgentState::Working, now - 3600);
         assert_eq!(

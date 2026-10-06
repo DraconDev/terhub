@@ -110,7 +110,9 @@ fn lock_registry(
 pub enum Request {
     Ping,
     Snapshot,
-    Event { event: HookEvent },
+    Event {
+        event: HookEvent,
+    },
     Register {
         pane: String,
         agent: String,
@@ -479,9 +481,7 @@ fn apply_register(
     match reg.get(pane) {
         // Same pin refreshed: the new pid wins, the clock is kept so a
         // re-register after an agent restart doesn't renotify.
-        Some(old)
-            if old.source == Source::Manual && old.agent == agent && old.state == state =>
-        {
+        Some(old) if old.source == Source::Manual && old.agent == agent && old.state == state => {
             let mut rec = old.clone();
             rec.reg_pid = pid;
             rec.updated_at = now;
@@ -1265,7 +1265,8 @@ mod tests {
             summary: "Approve?".to_string(),
             prompt: String::new(),
             model: String::new(),
-            ctx: None,        };
+            ctx: None,
+        };
         let transitions = apply_hook_event(&mut reg, &ev, 100_000);
         assert_eq!(reg["%1"].state, AgentState::Waiting);
         assert_eq!(reg["%1"].summary, "Approve?");
@@ -1510,21 +1511,16 @@ mod tests {
     fn manual_pin_drops_when_reg_pid_dead() {
         // The pinned process is gone: the pin drops even though the pane
         // is alive (pid 999999999 cannot exist: over the kernel maximum).
-        let dir = std::env::temp_dir().join(format!("terhub-poll-manualdead-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-manualdead-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let tmux = fake_tmux_one_sleep_pane(&dir, 999_999_999);
         let now = now_unix();
         let mut prev = HashMap::new();
-        prev.insert(
-            "%50".to_string(),
-            manual_record("%50", 999_999_999, now),
-        );
+        prev.insert("%50".to_string(), manual_record("%50", 999_999_999, now));
         let (next, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
-        assert!(
-            !next.contains_key("%50"),
-            "dead-pin record should drop"
-        );
+        assert!(!next.contains_key("%50"), "dead-pin record should drop");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1585,7 +1581,8 @@ mod tests {
                 summary: "s".repeat(2 * 1024 * 1024),
                 prompt: String::new(),
                 model: String::new(),
-                ctx: None,            },
+                ctx: None,
+            },
         })
         .unwrap();
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -1647,7 +1644,8 @@ mod tests {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        }
+            reg_pid: 0,
+        }
     }
 
     #[test]
@@ -1773,7 +1771,8 @@ mod tests {
             handle: String::new(),
             model: String::new(),
             ctx_pct: None,
-            reg_pid: 0,        }
+            reg_pid: 0,
+        }
     }
 
     fn test_pane() -> crate::tmux::Pane {
