@@ -1048,6 +1048,23 @@ impl App {
         {
             return Some(AppEvent::Quit);
         }
+        // Alt+1..8 jumps to tabs (All + first 7 sessions), Normal mode
+        // only — everywhere else Alt keys stay ignored (typing safety).
+        if self.mode == Mode::Normal
+            && key.modifiers == KeyModifiers::ALT
+            && let KeyCode::Char(c) = key.code
+            && ('1'..='8').contains(&c)
+        {
+            let want = (c as usize) - ('1' as usize);
+            if want <= self.sessions.len() {
+                self.select(want);
+                self.refresh_filtered();
+                self.follow_preview(tmux);
+            } else {
+                self.set_status(format!("no tab {c}"));
+            }
+            return None;
+        }
         if key
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
