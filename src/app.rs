@@ -843,6 +843,9 @@ impl App {
                     last_turn_secs: 0,
                     screen_hash: 0,
                     quiet_since: 0,
+                    // Native tabs have no hooks: prompts never land here.
+                    last_prompt_at: 0,
+                    last_prompt: String::new(),
                 });
             }
         }

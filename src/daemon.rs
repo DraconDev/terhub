@@ -744,6 +744,9 @@ fn merge_record_owned(
         // Quiet is set by the poller post-merge (it owns the capture).
         screen_hash: 0,
         quiet_since: 0,
+        // Polls never wipe hook prompts: carry the old cut forward.
+        last_prompt_at: carried.map(|o| o.last_prompt_at).unwrap_or(0),
+        last_prompt: carried.map(|o| o.last_prompt.clone()).unwrap_or_default(),
     })
 }
 
