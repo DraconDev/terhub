@@ -652,6 +652,97 @@ mod tests {
     }
 
     #[test]
+    fn handles_mint_stable_and_suffixed() {
+        use std::collections::HashSet;
+        let used: HashSet<String> = HashSet::new();
+        assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez");
+        assert_eq!(mint_handle(&used, "pi", ""), "@pi");
+        assert_eq!(mint_handle(&used, "claude", "My Project!"), "@claude-my-project");
+        let mut used: HashSet<String> = ["@pi-wez".to_string()].into_iter().collect();
+        assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez-2");
+        used.insert("@pi-wez-2".to_string());
+        assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez-3");
+    }
+
+    #[test]
+    fn ensure_handles_keeps_minted_assigns_sorted() {
+        let mut reg = HashMap::new();
+        for pane in ["%9", "%1"] {
+            reg.insert(
+                pane.to_string(),
+                AgentRecord {
+                    pane: pane.to_string(),
+                    agent: "pi".to_string(),
+                    state: AgentState::Working,
+                    source: Source::Hook,
+                    summary: String::new(),
+                    session: "wez".to_string(),
+                    window: String::new(),
+                    command: String::new(),
+                    updated_at: 0,
+                    state_since: 0,
+                    cpu_ticks: 0,
+                    cpu_still_since: 0,
+                    agent_start: 0,
+                    last_turn_secs: 0,
+                    screen_hash: 0,
+                    quiet_since: 0,
+                    last_prompt_at: 0,
+                    last_prompt: String::new(),
+                    handle: String::new(),
+                },
+            );
+        }
+        ensure_handles(&mut reg);
+        // Sorted panes mint in order: lowest pane takes the bare handle.
+        assert_eq!(reg["%1"].handle, "@pi-wez");
+        assert_eq!(reg["%9"].handle, "@pi-wez-2");
+        // Re-runs never re-mint: handles are stable for the record's life.
+        ensure_handles(&mut reg);
+        assert_eq!(reg["%1"].handle, "@pi-wez");
+        // Agent-less records stay handle-less.
+        reg.insert(
+            "%2".to_string(),
+            AgentRecord {
+                pane: "%2".to_string(),
+                ..reg["%1"].clone()
+            },
+        );
+        reg.get_mut("%2").unwrap().agent.clear();
+        reg.get_mut("%2").unwrap().handle.clear();
+        ensure_handles(&mut reg);
+        assert!(reg["%2"].handle.is_empty());
+    }
+
+    #[test]
+    fn resolve_handle_matches_exact() {
+        let recs = vec![AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Hook,
+            summary: String::new(),
+            session: "wez".to_string(),
+            window: String::new(),
+            command: String::new(),
+            updated_at: 0,
+            state_since: 0,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: "@pi-wez".to_string(),
+        }];
+        assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
+        assert_eq!(resolve_handle(&recs, "@pi-other"), None);
+        assert_eq!(resolve_handle(&recs, "%1"), None);
+    }
+
+    #[test]
     fn hook_prompt_carries_to_record() {
         let mut reg = HashMap::new();
         let ev = HookEvent {
