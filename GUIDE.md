@@ -135,6 +135,11 @@ status bar, no modes except small popups:
 - **Refresh.** `F5` re-reads tmux and re-fetches native terminal tabs
   (Konsole/kitty/WezTerm show as `konsole:…` rows under `All` only; see
   [Native terminal tabs](#native-terminal-tabs)).
+- **Bulk prompt.** `b` sends one message to every marked pane — or, with
+  no marks, to every agent waiting on you. `Tab` cycles `[[template]]`
+  snippets into the text; `Enter` sends with submit (these are prompts,
+  not drafts). Remotes and your own pane are never targets; failures are
+  counted in the footer.
 - **Styles.** `t` cycles the ten built-in themes and `v` flips table
   density (comfortable shows the summary column, compact drops it and
   tightens columns) — both session-only try-outs. `s` opens the settings
@@ -201,6 +206,7 @@ mark = "space"
 unmark = "u"
 hide_shells = "h"
 hosts = "m"
+bulk = "b"
 
 [notifications]
 enabled = true
@@ -233,6 +239,12 @@ Spawn profiles name the agents `w` offers: `[[profile]]` with `name`,
 `[[profile]]` the builtins apply (`claude`, `codex`, `pi`, `gemini`,
 `muse`); user entries replace them wholesale. Example:
 `name = "pi-fast"`, `program = "pi --model fast"`.
+
+Message templates are reusable prompt snippets: `[[template]]` with
+`name` and `text`. Without any `[[template]]` the builtins apply
+(`continue`, `status`, `review`); user entries replace them wholesale.
+Templates feed the bulk prompt (`Tab` cycles them into the text) and
+`send --template NAME` for scripts.
 
 Key names: single characters, `enter`, `esc`, `tab`, `f5`, … Unknown keys
 fall back to defaults. Notifications gate the desktop popups on agent state
@@ -283,6 +295,16 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
    unclaimed, so plain terminals show no state instead of guessing one.
 
 The table's `Src` column tells you which signal each row stands on.
+
+Every agent record also carries a **handle**: a stable local name minted
+once (`@pi-wez`, `-2`/`-3`… on collision), surviving pane churn inside
+the session (pane ids don't). Handles persist across daemon restarts,
+follow the agent when it changes (a new agent in the pane mints fresh),
+and show in the table's `Handle` column (sortable), `status`, and
+`status --json`. Any command taking a pane id also takes a handle:
+`focus @pi-wez`, `send @pi-wez "go"`, `capture @pi-2`, `recap --pane
+@pi-wez`. Native tabs mint theirs against the same namespace
+(`@pi-konsole`); fleet rows carry none — handles are local-only.
 
 Custom agents go in `~/.config/terhub/manifests/*.toml`:
 
@@ -551,6 +573,8 @@ are tmux-backed.
 | `kill-pane <pane>` | Kill one pane |
 | `swap-pane <a> <b>` | Swap two panes |
 | `send <pane> <text> [--no-submit]` | Type into a pane |
+| `send <pane> --template <name>` | Type a `[[template]]` snippet instead |
+| Pane args | `%N`, native ids, `host:%N`, and `@handle` all work |
 | `status [--json]` | Agent states from the daemon |
 | `hook --agent A --pane P --state S [--summary T] [--prompt P]` | Push a hook event |
 | `recap [--since S] [--pane P] [--limit N]` | Recent prompts, newest first |
