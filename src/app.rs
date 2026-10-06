@@ -83,6 +83,16 @@ pub fn is_native_pane(id: &str) -> bool {
     crate::native::is_native_id(id)
 }
 
+/// Backend fetch failures stay one status line: first line, capped.
+fn short_native_error(e: &str) -> String {
+    let first = e.lines().next().unwrap_or(e).trim();
+    if first.chars().count() > 90 {
+        format!("{}…", first.chars().take(87).collect::<String>())
+    } else {
+        first.to_string()
+    }
+}
+
 /// CPU percent between two tick samples (None = re-baseline: first
 /// sample, zero elapsed, or ticks fell because the process restarted).
 /// Over 100% is real — agent subtrees span cores.
@@ -823,9 +833,13 @@ impl App {
         self.fleet_index.get(id).cloned()
     }
 
-    /// Jump event for a pane id: remote rows exit to ssh, local rows
-    /// focus in place. A remote id the cache forgot is stale, not fatal.
+    /// Jump event for a pane id: remote rows exit to ssh, native rows
+    /// switch the terminal's tab, local rows focus in place. A remote id
+    /// the cache forgot is stale, not fatal.
     pub fn jump_event(&mut self, id: &str) -> Option<AppEvent> {
+        if is_native_pane(id) {
+            return Some(AppEvent::FocusNative(id.to_string()));
+        }
         if !is_remote_pane(id) {
             return Some(AppEvent::FocusPane(id.to_string()));
         }
@@ -2361,6 +2375,9 @@ impl App {
     /// Route an attend winner: remote panes exit to ssh, local focus.
     fn attend_event(&self, agents: &[AgentRecord]) -> Option<AppEvent> {
         let winner = crate::attend::pick_attend(agents, None)?;
+        if is_native_pane(&winner.pane) {
+            return Some(AppEvent::FocusNative(winner.pane.clone()));
+        }
         if is_remote_pane(&winner.pane) {
             let (host, session) = self.remote_target(&winner.pane)?;
             Some(AppEvent::RemoteAttach { host, session })
@@ -2376,6 +2393,7 @@ impl App {
                 // Cached remotes join the search (marks scope to local:
                 // remote rows can't be marked, so a marked search skips them).
                 all.extend(self.fleet_agents.iter().cloned());
+                all.extend(self.native_agents.iter().cloned());
                 // Marked panes scope the search; unmarked behaves as before.
                 let agents: Vec<AgentRecord> = if self.marked.is_empty() {
                     all
