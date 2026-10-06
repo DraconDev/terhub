@@ -1344,14 +1344,6 @@ mod tests {
     }
 
     #[test]
-    fn scratch_live_75_bytes() {
-        let screen = std::fs::read_to_string("/tmp/th75.txt").unwrap();
-        let m = compiled();
-        let hit = classify_screen(&m, "minimax-code", &screen);
-        panic!("live75 verdict: {hit:?}");
-    }
-
-    #[test]
     fn minimax_completion_reads_idle() {
         let m = compiled();
         // Finished task banners: done (idle), not working — and not
@@ -1413,17 +1405,34 @@ mod tests {
             classify_screen(&m, "minimax-code", "Tasks · 0 failed · /tasks details\n"),
             None
         );
-        // …and the persistent input chrome never waits.
+        // The input box only returns when the turn is over (live
+        // inference replaces it with the Running footer), so the box
+        // alone means done — while the Ask placeholder persists under
+        // live tasks and means nothing.
         assert_eq!(
             classify_screen(
                 &m,
                 "minimax-code",
                 "Message · Enter send · Ctrl+J newline\n"
             ),
-            None
+            hit(
+                Some("minimax-code"),
+                AgentState::Idle,
+                "Message · Enter send · Ctrl+J newline"
+            )
         );
         assert_eq!(
             classify_screen(&m, "minimax-code", "› Ask Mcode to do anything\n"),
+            None
+        );
+        // A stale throughput rate on a Completed line must not pin
+        // working: live inference always brings a spinner verb too.
+        assert_eq!(
+            classify_screen(
+                &m,
+                "minimax-code",
+                "└ Completed in 1min22s · ⚡ 6535 tok/s\n"
+            ),
             None
         );
         // Live inference still reads working.
