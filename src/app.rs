@@ -2811,6 +2811,29 @@ mod tests {
     }
 
     #[test]
+    fn alt_digits_jump_to_tabs() {
+        let mut app = app_with(&["a", "b"]);
+        let tmux = Tmux::test("/nonexistent-tmux-binary".into());
+        let alt = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT);
+        app.on_key(alt('2'), &tmux);
+        assert_eq!(app.selected, 1);
+        assert_eq!(app.side_session().unwrap().name, "a");
+        app.on_key(alt('3'), &tmux);
+        assert_eq!(app.selected, 2);
+        app.on_key(alt('1'), &tmux);
+        assert_eq!(app.selected, 0);
+        // Out of range: loud no-op.
+        app.on_key(alt('8'), &tmux);
+        assert_eq!(app.selected, 0);
+        assert!(app.status.as_deref().unwrap_or("").contains("no tab"));
+        // Modals keep eating Alt keys (typing safety).
+        app.open_filter();
+        app.on_key(alt('2'), &tmux);
+        assert_eq!(app.mode, Mode::PromptFilter);
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.
