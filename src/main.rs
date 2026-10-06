@@ -1032,6 +1032,14 @@ fn peek_pick(rows: &[terhub::attend::PeekRow]) -> i32 {
 }
 
 fn cmd_status_line(pane: Option<&str>) -> i32 {
+    let owned;
+    let pane = match pane {
+        Some(p) => {
+            owned = pane_arg!(p);
+            Some(owned.as_str())
+        }
+        None => None,
+    };
     let text = daemon::fetch_snapshot(Duration::from_secs(1))
         .map(|s| terhub::attend::status_line(&s.agents, pane))
         .unwrap_or_else(|_| "◎ --".to_string());
@@ -1213,6 +1221,14 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
 }
 
 fn cmd_recap(since: &str, pane: Option<&str>, limit: usize) -> i32 {
+    let owned;
+    let pane = match pane {
+        Some(p) => {
+            owned = pane_arg!(p);
+            Some(owned.as_str())
+        }
+        None => None,
+    };
     use terhub::history as h;
     let now = terhub::agent::now_unix();
     let Some(since) = resolve_since(since, now) else {
@@ -1447,6 +1463,7 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
 }
 
 fn cmd_send(pane: &str, text: Option<&str>, template: Option<&str>, submit: bool) -> i32 {
+    let pane = &pane_arg!(pane);
     // Template resolution runs before any tmux call so a bad name fails
     // fast with the name, not a tmux error.
     let owned;
