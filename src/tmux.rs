@@ -267,6 +267,50 @@ impl Tmux {
         self.run(&["kill-session", "-t", name]).map(|_| ())
     }
 
+    /// Open a window in `session` running `command`, printing the new pane
+    /// id (`-P -F`) so callers can address it without a racy re-list.
+    /// Empty session/name fails loudly; no command means a plain shell.
+    pub fn new_window(
+        &self,
+        session: &str,
+        name: &str,
+        dir: Option<&str>,
+        command: Option<&str>,
+    ) -> Result<String> {
+        let (session, name) = (session.trim(), name.trim());
+        if session.is_empty() {
+            bail!("session must not be empty");
+        }
+        if name.is_empty() {
+            bail!("window name must not be empty");
+        }
+        let mut args = vec!["new-window", "-t", session, "-n", name];
+        if let Some(d) = dir {
+            args.extend(["-c", d]);
+        }
+        args.extend(["-P", "-F", "#{pane_id}"]);
+        let mut owned;
+        let slice: &[&str] = match command {
+            Some(c) if !c.trim().is_empty() => {
+                owned = args;
+                owned.push(c);
+                &owned
+            }
+            _ => &args,
+        };
+        Ok(self.run(slice)?.trim().to_string())
+    }
+
+    /// Kill whatever runs in `pane` and re-run `command` there
+    /// (`respawn-pane -k`): the dead-pane recovery behind restart.
+    pub fn respawn_pane(&self, pane: &str, command: &str) -> Result<()> {
+        if command.trim().is_empty() {
+            bail!("respawn command must not be empty");
+        }
+        self.run(&["respawn-pane", "-k", "-t", pane, command])
+            .map(|_| ())
+    }
+
     /// Type literal text into a pane, optionally submitting with Enter.
     pub fn send_keys(&self, pane: &str, text: &str, submit: bool) -> Result<()> {
         self.run(&["send-keys", "-l", "-t", pane, "--", text])?;
