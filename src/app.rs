@@ -974,10 +974,12 @@ impl App {
         let session = self.side_session().map(|s| s.name.clone());
         self.filtered = match session {
             None => self.panes.clone(),
+            // Foreign rows (fleet + native) live under All only, even if a
+            // tmux session ever shares their display name.
             Some(name) => self
                 .panes
                 .iter()
-                .filter(|p| p.session == name)
+                .filter(|p| p.session == name && !is_remote_pane(&p.id))
                 .cloned()
                 .collect(),
         };
@@ -2637,9 +2639,8 @@ impl App {
             } else {
                 match self.selected_pane() {
                     Some(p) if is_native_pane(&p.id) => self.set_status(format!(
-                        "can't close native tab {} from here (no tab-close over {})",
-                        p.id,
-                        p.session,
+                        "can't close native tab {} from here (close it in the terminal)",
+                        p.id
                     )),
                     Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
                         "can't kill remote row {} (jump in to manage it)",
