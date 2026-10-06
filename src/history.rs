@@ -662,6 +662,47 @@ fn heat_char(mins: u64) -> char {
     }
 }
 
+/// Rendered line count of the heatmap: header + one row per workish
+/// day (+ the empty note when there are none). Mirrors render_heatmap.
+pub fn heatmap_line_count(spans: &[Span]) -> usize {
+    use std::collections::HashSet;
+    let mut days = HashSet::new();
+    for s in spans {
+        let workish = matches!(
+            s.state,
+            AgentState::Working
+                | AgentState::Waiting
+                | AgentState::Error
+                | AgentState::Stuck
+                | AgentState::Limited
+        );
+        if workish && s.end > s.start {
+            days.insert(day_of(s.start));
+        }
+    }
+    // Multi-day spans heat later days render_heatmap rows for; count those too.
+    let mut extra = HashSet::new();
+    for s in spans {
+        let workish = matches!(
+            s.state,
+            AgentState::Working
+                | AgentState::Waiting
+                | AgentState::Error
+                | AgentState::Stuck
+                | AgentState::Limited
+        );
+        if workish && s.end > s.start {
+            let mut t = s.start;
+            while t < s.end {
+                extra.insert(day_of(t));
+                t = (t / 3600 + 1) * 3600;
+            }
+        }
+    }
+    let n = days.union(&extra).count();
+    if n == 0 { 2 } else { 1 + n }
+}
+
 /// Day × hour activity grid: one row per day, 24 hour cells. Only
 /// work-ish states (working/waiting/error/stuck/limited) heat a cell;
 /// idle and unknown stay cold.

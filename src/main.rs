@@ -939,6 +939,14 @@ fn resolve_since(since: &str, now: u64) -> Option<Option<u64>> {
     }
 }
 
+/// Human label for a resolved cutoff (report headers).
+fn since_label(since: Option<u64>) -> String {
+    match since {
+        None => "all".to_string(),
+        Some(t) => terhub::history::ymd_label(terhub::history::day_of(t)),
+    }
+}
+
 fn print_stats_table(rows: &[terhub::history::StatsRow]) {
     print_out("KEY             WORK    WAIT    ERR     IDLE    TOTAL");
     let mut tw = 0u64;
@@ -1089,7 +1097,13 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
     0
 }
 
-fn cmd_timeline(since: &str, session: Option<&str>, agent: Option<&str>) -> i32 {
+fn cmd_timeline(
+    since: &str,
+    session: Option<&str>,
+    agent: Option<&str>,
+    sort: &str,
+    view: &str,
+) -> i32 {
     use terhub::history as h;
     let now = terhub::agent::now_unix();
     let Some(since) = resolve_since(since, now) else {
@@ -1101,7 +1115,15 @@ fn cmd_timeline(since: &str, session: Option<&str>, agent: Option<&str>) -> i32 
             && session.is_none_or(|f| s.session.contains(f))
             && agent.is_none_or(|f| s.agent.contains(f))
     });
-    match run_timeline_tui(spans) {
+    h::sort_spans(
+        &mut spans,
+        if sort == "waiting" {
+            h::TimelineSort::Waiting
+        } else {
+            h::TimelineSort::Time
+        },
+    );
+    match run_timeline_tui(spans, view == "heatmap") {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("terhub: {e:?}");
@@ -1110,13 +1132,20 @@ fn cmd_timeline(since: &str, session: Option<&str>, agent: Option<&str>) -> i32 
     }
 }
 
-fn run_timeline_tui(spans: Vec<terhub::history::Span>) -> Result<()> {
+fn run_timeline_tui(spans: Vec<terhub::history::Span>, heatmap: bool) -> Result<()> {
     use terhub::history::TimelineView;
     let _guard = TerminalGuard::new()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut view = TimelineView { spans, scroll: 0 };
     let mut page_h: usize = 20;
     let pal = terhub::ui::palette(terhub::config::load_config(None).palette());
+    let line_count = |view: &TimelineView| -> usize {
+        if heatmap {
+            terhub::history::heatmap_line_count(&view.spans)
+        } else {
+            view.line_count()
+        }
+    };
     // Open at the newest (bottom) on the first frame, once the height is known.
     let mut jumped = false;
     loop {
@@ -1125,14 +1154,25 @@ fn run_timeline_tui(spans: Vec<terhub::history::Span>) -> Result<()> {
             page_h = area.height.saturating_sub(2).max(1) as usize;
             if !jumped {
                 jumped = true;
-                view.scroll = view.line_count().saturating_sub(page_h);
+                view.scroll = line_count(&view).saturating_sub(page_h);
             }
-            terhub::history::render_timeline(frame, &view, "timeline", area, &pal);
+            if heatmap {
+                terhub::history::render_heatmap(
+                    frame,
+                    &view.spans,
+                    "timeline heatmap",
+                    view.scroll,
+                    area,
+                    &pal,
+                );
+            } else {
+                terhub::history::render_timeline(frame, &view, "timeline", area, &pal);
+            }
         })?;
         if !event::poll(Duration::from_millis(250))? {
             continue;
         }
-        let max_scroll = view.line_count().saturating_sub(1);
+        let max_scroll = line_count(&view).saturating_sub(1);
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                 crossterm::event::KeyCode::Char('q') | crossterm::event::KeyCode::Esc => {
