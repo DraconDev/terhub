@@ -2444,6 +2444,122 @@ impl App {
         None
     }
 
+    /// Panes a bulk prompt may reach: local tmux panes and native tabs,
+    /// never remote rows and never the TUI's own pane. Marked panes win;
+    /// with no marks, every attention-state agent is the target. Sorted
+    /// so the modal and the send order read deterministically.
+    pub fn bulk_targets(&self) -> Vec<String> {
+        let live: std::collections::HashSet<&str> =
+            self.panes.iter().map(|p| p.id.as_str()).collect();
+        let sendable = |id: &str| -> bool {
+            live.contains(id)
+                && (id.starts_with('%') || is_native_pane(id))
+                && self.own_pane.as_deref() != Some(id)
+        };
+        let mut out: Vec<String> = if self.marked.is_empty() {
+            self.agents
+                .values()
+                .filter(|a| a.state.needs_attention() && sendable(&a.pane))
+                .map(|a| a.pane.clone())
+                .collect()
+        } else {
+            self.marked.iter().filter(|id| sendable(id)).cloned().collect()
+        };
+        out.sort();
+        out
+    }
+
+    /// Open the bulk-prompt modal, or say why there is nothing to send to.
+    pub fn do_bulk(&mut self) {
+        let targets = self.bulk_targets();
+        if targets.is_empty() {
+            self.set_status(
+                "nothing to prompt (mark panes, or wait for an agent to need you)".to_string(),
+            );
+            return;
+        }
+        self.input.clear();
+        self.cursor = 0;
+        self.mode = Mode::PromptBulk {
+            targets,
+            template: 0,
+        };
+    }
+
+    fn on_bulk_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
+        let n = self.config.templates.len().max(1);
+        match key.code {
+            KeyCode::Esc => self.cancel_modal(),
+            KeyCode::Tab | KeyCode::Down => {
+                if let Mode::PromptBulk { template, .. } = &mut self.mode {
+                    *template = (*template + 1) % n;
+                }
+                self.apply_bulk_template();
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                if let Mode::PromptBulk { template, .. } = &mut self.mode {
+                    *template = (*template + n - 1) % n;
+                }
+                self.apply_bulk_template();
+            }
+            KeyCode::Enter => self.submit_bulk(tmux),
+            KeyCode::Backspace => self.delete_before_cursor(),
+            KeyCode::Delete => self.delete_at_cursor(),
+            KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
+            KeyCode::Right => {
+                self.cursor = (self.cursor + 1).min(self.input.chars().count());
+            }
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.input.chars().count(),
+            KeyCode::Char(c) if !c.is_control() => self.insert_at_cursor(c),
+            _ => {}
+        }
+        None
+    }
+
+    /// Fill the bulk input from the cycled template.
+    fn apply_bulk_template(&mut self) {
+        let idx = match &self.mode {
+            Mode::PromptBulk { template, .. } => *template,
+            _ => return,
+        };
+        if let Some(t) = self.config.templates.get(idx) {
+            self.input = t.text.clone();
+            self.cursor = self.input.chars().count();
+        }
+    }
+
+    /// Send the bulk input to every target (Enter included: these are
+    /// prompts, not drafts). Failures are counted, never silent.
+    fn submit_bulk(&mut self, tmux: &Tmux) {
+        let Mode::PromptBulk { targets, .. } = self.mode.clone() else {
+            return;
+        };
+        let value = self.input.trim().to_string();
+        if value.is_empty() {
+            self.set_status("nothing to send (type a prompt or Tab a template)".to_string());
+            return;
+        }
+        let mut failed = 0;
+        for t in &targets {
+            let ok = if is_native_pane(t) {
+                crate::native::send_text(t, &value, true).is_ok()
+            } else {
+                tmux.send_keys(t, &value, true).is_ok()
+            };
+            if !ok {
+                failed += 1;
+            }
+        }
+        let sent = targets.len() - failed;
+        self.cancel_modal();
+        self.set_status(if failed == 0 {
+            format!("sent to {} pane(s)", targets.len())
+        } else {
+            format!("sent to {sent} pane(s) ({failed} failed)")
+        });
+    }
+
     /// Jump to the longest-waiting agent. Works from either focus.
     /// Route an attend winner: remote panes exit to ssh, local focus.
     fn attend_event(&self, agents: &[AgentRecord]) -> Option<AppEvent> {
