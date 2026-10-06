@@ -300,7 +300,9 @@ fn hook_prompt_flag_is_accepted() {
     // Fire-and-forget: exit 0 even with no daemon; the flag must parse.
     let out = run_isolated(
         "hookprompt",
-        &["hook", "--agent", "pi", "--pane", "%1", "--state", "working", "--prompt", "hi"],
+        &[
+            "hook", "--agent", "pi", "--pane", "%1", "--state", "working", "--prompt", "hi",
+        ],
     );
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
 }

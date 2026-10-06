@@ -1160,7 +1160,10 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
                 e.pane,
             ));
         } else if e.kind == "prompt" {
-            print_out(&format!("{when} prompt {} {} {}", e.pane, e.agent, e.summary));
+            print_out(&format!(
+                "{when} prompt {} {} {}",
+                e.pane, e.agent, e.summary
+            ));
         } else {
             let from = e.from.map(|s| s.label()).unwrap_or("?");
             let to = e.to.map(|s| s.label()).unwrap_or("?");
@@ -1191,7 +1194,10 @@ fn cmd_recap(since: &str, pane: Option<&str>, limit: usize) -> i32 {
     for e in &prompts {
         let when = format!("{} {}", h::ymd_label(h::day_of(e.t)), h::hm_label(e.t));
         let age = h::fmt_dur(now.saturating_sub(e.t));
-        print_out(&format!("{when} ({age} ago) {} {}: {}", e.pane, e.agent, e.summary));
+        print_out(&format!(
+            "{when} ({age} ago) {} {}: {}",
+            e.pane, e.agent, e.summary
+        ));
     }
     0
 }
@@ -2124,9 +2130,7 @@ fn real_main() -> i32 {
             markdown,
         }) => cmd_report(&since, json, markdown),
         Some(Cmd::Activity { since, kind, json }) => cmd_activity(&since, &kind, json),
-        Some(Cmd::Recap { since, pane, limit }) => {
-            cmd_recap(&since, pane.as_deref(), limit)
-        }
+        Some(Cmd::Recap { since, pane, limit }) => cmd_recap(&since, pane.as_deref(), limit),
         Some(Cmd::Timeline {
             since,
             session,

@@ -89,7 +89,11 @@ fn hook_command(agent: &str, def: &HookDef) -> String {
         Some(s) => format!("--summary {}", crate::fleet::sh_quote(s)),
         None => "--summary-stdin".to_string(),
     };
-    let prompt = if def.prompt_stdin { " --prompt-stdin" } else { "" };
+    let prompt = if def.prompt_stdin {
+        " --prompt-stdin"
+    } else {
+        ""
+    };
     format!(
         "[ -n \"$TMUX_PANE\" ] && terhub hook --agent {agent} --pane \"$TMUX_PANE\" --state {} {summary}{prompt}",
         def.state

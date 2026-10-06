@@ -106,7 +106,10 @@ fn daemon_hook_snapshot_expire_shutdown() {
         "ledger lacks state:\n{text}"
     );
     // So was the prompt, as its own entry kind.
-    assert!(text.contains("\"kind\":\"prompt\""), "ledger lacks prompt:\n{text}");
+    assert!(
+        text.contains("\"kind\":\"prompt\""),
+        "ledger lacks prompt:\n{text}"
+    );
     assert!(text.contains("do the thing"), "prompt text lost:\n{text}");
 
     // The poll notices %999999 is not a real pane and expires it.
