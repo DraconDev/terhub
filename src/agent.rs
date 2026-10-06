@@ -663,15 +663,27 @@ pub fn screen_summary_line(line: &str) -> String {
 /// stays unnamed unless the screen mentions it — a bare spinner is a
 /// working state with no identity, and a micro `>` bar is not gemini.
 /// Callers pair anonymous states with process identity, or drop them.
-/// Drop footer-carousel lines (`Tip: …`) from a capture. Terminal chrome
-/// rotates full text every few seconds; it must trip neither the
-/// classifier (a tip mentioning "quota" is not a quota wall) nor the
-/// quiet hash. Only the exact `Tip:` prefix strips — prose merely
-/// starting with "Tip" stays.
+/// Drop footer-carousel tips from a capture. Terminal chrome rotates
+/// full text every few seconds; it must trip neither the classifier (a
+/// tip mentioning "quota" is not a quota wall) nor the quiet hash. Two
+/// shapes: whole lines starting with `Tip:`, and minimax's right-aligned
+/// inline tail (`…Enter send…   Tip: /slash-cmd`), cut at the slash form
+/// (every observed tip is a slash command; prose reading `Tip: /…` is
+/// contrived enough to sacrifice). Anything else starting with "Tip" stays.
 pub fn strip_tip_lines(screen: &str) -> String {
     screen
         .lines()
-        .filter(|l| !l.trim_start().starts_with("Tip:"))
+        .filter_map(|l| {
+            if l.trim_start().starts_with("Tip:") {
+                return None;
+            }
+            match l.find("Tip: /") {
+                // Right-aligned tail: trim the padding too, or its width
+                // still fingerprints the tip length.
+                Some(i) => Some(l[..i].trim_end().to_string()),
+                None => Some(l.to_string()),
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -1410,6 +1422,16 @@ mod tests {
         // hashing are line-based, so this is invisible downstream.)
         assert_eq!(strip_tip_lines("Tipper: hello\nok\n"), "Tipper: hello\nok");
         assert_eq!(strip_tip_lines("  Tip: indented\nok\n"), "ok");
+        // minimax's inline tail truncates at the slash form…
+        assert_eq!(
+            strip_tip_lines("Message · Enter send      Tip: /steer guides\nok\n"),
+            "Message · Enter send\nok"
+        );
+        // …but a non-slash Tip: mid-line is prose, not chrome.
+        assert_eq!(
+            strip_tip_lines("Note Tip: restart it\nok\n"),
+            "Note Tip: restart it\nok"
+        );
     }
 
     #[test]
