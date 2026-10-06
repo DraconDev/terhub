@@ -5,7 +5,7 @@ use crate::tmux::Pane;
 use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Cell, Clear, Paragraph, Row, Table, Wrap},
@@ -962,7 +962,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     (rows_rect, hits)
 }
 
-fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
+fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
     let Some(p) = app.selected_pane() else {
         return;
     };
@@ -993,16 +993,32 @@ fn render_preview(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         .title(Line::from(title).style(pal.title))
         .border_style(pal.focus);
     let inner = block.inner(area);
+    app.preview_visible = inner.height as usize;
+    let total = app.preview_line_count();
     frame.render_widget(block, area);
+    let offset = app.preview_scroll.min(app.preview_max_scroll());
+    app.preview_scroll = offset;
     frame.render_widget(
         Paragraph::new(preview_text(
             &app.preview,
             app.preview_width.unwrap_or(inner.width as usize),
         ))
         .wrap(Wrap { trim: false })
+        .scroll((offset as u16, 0))
         .style(pal.status),
         inner,
     );
+    if total > inner.height as usize && inner.height > 0 {
+        let pos = format!(" {offset}/{total} ");
+        let x = inner
+            .x
+            .saturating_add(inner.width.saturating_sub(pos.len() as u16 + 1));
+        let y = inner.y.saturating_add(inner.height.saturating_sub(1));
+        frame.render_widget(
+            Paragraph::new(Line::from(pos).style(pal.dim)).alignment(Alignment::Right),
+            Rect::new(x, y, inner.width.min(16), 1),
+        );
+    }
 }
 
 fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) -> Rect {
