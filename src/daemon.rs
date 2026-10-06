@@ -2030,6 +2030,24 @@ mod tests {
     }
 
     #[test]
+    fn idle_verdict_keeps_its_completion_line() {
+        // Done rows show what finished ("✓ Todo list…"), like waiting
+        // rows show the plea — not a blank.
+        let rec = merge_record(
+            None,
+            false,
+            screen_hit(Some("minimax-code"), AgentState::Idle, "✓ Todo list 9/9"),
+            None,
+            &test_pane(),
+            100,
+            300,
+        )
+        .expect("screen verdict claims the pane");
+        assert_eq!(rec.state, AgentState::Idle);
+        assert_eq!(rec.summary, "✓ Todo list 9/9");
+    }
+
+    #[test]
     fn harness_screen_records_drop_as_ghosts() {
         let now = 100_000;
         let mut old = carried("claude", AgentState::Working, 0, 0, now - 60);

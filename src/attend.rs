@@ -310,6 +310,14 @@ pub fn detect_transitions(
         .collect()
 }
 
+/// A transition into Idle from a live state is a completion worth one
+/// desktop note (done, not needy: no badge, no attend). Unknown→Idle is
+/// a fresh discovery, not a finish, and never pings.
+pub fn is_completion(from: AgentState, to: AgentState) -> bool {
+    let _ = (from, to);
+    false
+}
+
 pub fn notify_transition(t: &Transition) {
     if !crate::config::load_config(None).notifications_enabled {
         return;
@@ -373,6 +381,19 @@ mod tests {
         // Unknown clocks read as dashes, like the TUI table.
         let row2 = lines.next().unwrap();
         assert!(row2.contains('—'), "{row2}");
+    }
+
+    #[test]
+    fn completion_pings_live_to_idle_only() {
+        use crate::agent::AgentState::*;
+        assert!(is_completion(Working, Idle));
+        assert!(is_completion(Waiting, Idle));
+        assert!(is_completion(Error, Idle));
+        // Fresh discoveries and non-endings stay silent.
+        assert!(!is_completion(Unknown, Idle));
+        assert!(!is_completion(Idle, Idle));
+        assert!(!is_completion(Working, Waiting));
+        assert!(!is_completion(Working, Working));
     }
 
     #[test]
