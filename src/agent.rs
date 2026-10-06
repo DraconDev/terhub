@@ -1344,6 +1344,14 @@ mod tests {
     }
 
     #[test]
+    fn scratch_live_75_bytes() {
+        let screen = std::fs::read_to_string("/tmp/th75.txt").unwrap();
+        let m = compiled();
+        let hit = classify_screen(&m, "minimax-code", &screen);
+        panic!("live75 verdict: {hit:?}");
+    }
+
+    #[test]
     fn minimax_completion_reads_idle() {
         let m = compiled();
         // Finished task banners: done (idle), not working — and not
