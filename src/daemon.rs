@@ -494,6 +494,12 @@ fn apply_register(
             // Fresh pin (or a pin over real evidence): fresh clock, but
             // keep pane metadata and model/ctx so the row isn't blank.
             let old = reg.get(pane);
+            // A changed agent drops the name so ensure_handles mints a
+            // fresh one (same rule as hook events).
+            let handle = match old {
+                Some(o) if o.agent == agent => o.handle.clone(),
+                _ => String::new(),
+            };
             reg.insert(
                 pane.to_string(),
                 AgentRecord {
@@ -515,12 +521,7 @@ fn apply_register(
                     quiet_since: old.map(|r| r.quiet_since).unwrap_or(0),
                     last_prompt_at: old.map(|r| r.last_prompt_at).unwrap_or(0),
                     last_prompt: old.map(|r| r.last_prompt.clone()).unwrap_or_default(),
-                    // A changed agent drops the name so ensure_handles
-                    // mints a fresh one (same rule as hook events).
-                    handle: match old {
-                        Some(o) if o.agent == agent => o.handle.clone(),
-                        _ => String::new(),
-                    },
+                    handle,
                     model: old.map(|r| r.model.clone()).unwrap_or_default(),
                     ctx_pct: old.and_then(|r| r.ctx_pct),
                     reg_pid: pid,
