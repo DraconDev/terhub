@@ -1409,6 +1409,31 @@ fn cmd_fleet(action: &FleetAction) -> i32 {
                 }
             }
         }
+        FleetAction::Attach { host, session } => cmd_fleet_attach(host, session.as_deref()),
+    }
+}
+
+/// SSH into a fleet host's tmux (TUI remote jump + `fleet attach`).
+/// Execs ssh, so a failure past the tty check can't clean up — the
+/// process image is already gone.
+fn cmd_fleet_attach(host: &str, session: Option<&str>) -> i32 {
+    let target = match terhub::fleet::load_hosts() {
+        Ok(hosts) => hosts.into_iter().find(|h| h.name == host).map(|h| h.target),
+        Err(e) => {
+            eprintln!("terhub: {e:#}");
+            return 1;
+        }
+    };
+    let Some(target) = target else {
+        eprintln!("terhub: no host '{host}'");
+        return 1;
+    };
+    match terhub::fleet::attach_remote(&target, session) {
+        Ok(()) => 0, // unreachable: attach execs
+        Err(e) => {
+            eprintln!("terhub: {e:?}");
+            1
+        }
     }
 }
 

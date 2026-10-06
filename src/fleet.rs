@@ -255,17 +255,18 @@ pub fn remote_capture(target: &str, pane: &str, lines: u32) -> Result<String> {
 
 /// argv for an interactive remote attach: `-t` for the tty, `--` so a
 /// dash-leading target can't become an ssh flag. No BatchMode — auth
-/// may legitimately prompt.
-pub fn attach_remote_argv(target: &str, session: &str) -> Vec<String> {
-    ["-t", "--", target, "tmux", "attach-session", "-t", session]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+/// may legitimately prompt. No session means the remote most-recent.
+pub fn attach_remote_argv(target: &str, session: Option<&str>) -> Vec<String> {
+    let mut argv = vec!["-t", "--", target, "tmux", "attach-session"];
+    if let Some(s) = session {
+        argv.extend(["-t", s]);
+    }
+    argv.into_iter().map(str::to_string).collect()
 }
 
 /// Replace this process with `ssh -t` into the remote session (the TUI
 /// exits: ssh owns the terminal from here). Only returns on failure.
-pub fn attach_remote(target: &str, session: &str) -> Result<()> {
+pub fn attach_remote(target: &str, session: Option<&str>) -> Result<()> {
     use std::os::unix::process::CommandExt;
     crate::tmux::Tmux::need_tty()?;
     let args = attach_remote_argv(target, session);
@@ -424,12 +425,14 @@ mod tests {
 
     #[test]
     fn attach_remote_argv_orders_ssh_flags() {
-        let argv = attach_remote_argv("dev.example", "web");
+        let argv = attach_remote_argv("dev.example", Some("web"));
         assert_eq!(
             argv,
             vec!["-t", "--", "dev.example", "tmux", "attach-session", "-t", "web"]
         );
         assert!(!argv.iter().any(|a| a.contains("BatchMode")));
+        let argv = attach_remote_argv("dev.example", None);
+        assert_eq!(argv, vec!["-t", "--", "dev.example", "tmux", "attach-session"]);
     }
 
     #[test]
