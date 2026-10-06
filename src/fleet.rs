@@ -112,7 +112,7 @@ pub fn validate_host_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn add_host(name: &str, target: &str, mode: Mode) -> Result<()> {
+pub fn add_host(name: &str, target: &str, mode: Mode, label: &str) -> Result<()> {
     let name = name.trim();
     let target = target.trim();
     validate_host_name(name)?;
@@ -127,8 +127,21 @@ pub fn add_host(name: &str, target: &str, mode: Mode) -> Result<()> {
         name: name.to_string(),
         target: target.to_string(),
         mode,
+        label: label.trim().to_string(),
     });
     save_hosts(&hosts)
+}
+
+/// Rename a host's display label (empty clears back to the name).
+/// Returns false when no host carries `name`.
+pub fn set_label(name: &str, label: &str) -> Result<bool> {
+    let mut hosts = load_hosts()?;
+    let Some(h) = hosts.iter_mut().find(|h| h.name == name) else {
+        return Ok(false);
+    };
+    h.label = label.trim().to_string();
+    save_hosts(&hosts)?;
+    Ok(true)
 }
 
 pub fn remove_host(name: &str) -> Result<bool> {
@@ -243,7 +256,7 @@ pub fn snapshot_rows(
         let id = format!("{}:{}", host.name, a.pane);
         rows.push(crate::tmux::Pane {
             id: id.clone(),
-            session: format!("{} \u{25b8} {}", host.name, a.session),
+            session: format!("{} \u{25b8} {}", host.display_name(), a.session),
             window_id: String::new(),
             window_name: a.window.clone(),
             window_active: false,
@@ -417,6 +430,7 @@ mod tests {
             name: "dev".to_string(),
             target: "dev.example".to_string(),
             mode: Mode::Observe,
+            label: String::new(),
         };
         let snap = crate::daemon::Snapshot {
             agents: vec![AgentRecord {
@@ -494,6 +508,7 @@ mod tests {
             name: "o".to_string(),
             target: "t".to_string(),
             mode: Mode::Observe,
+            label: String::new(),
         };
         assert!(fleet_send(&obs, "%1", "x", true).is_err());
     }

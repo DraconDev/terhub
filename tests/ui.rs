@@ -1208,6 +1208,7 @@ fn hosts_modal_lists_registry_and_cache_age() {
         name: "dev".to_string(),
         target: "user@host".to_string(),
         mode: terhub::fleet::Mode::Control,
+        label: String::new(),
     }];
     app.mode = terhub::app::Mode::Hosts;
     let lines = render_lines(&mut app, 120, 30);

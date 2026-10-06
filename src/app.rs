@@ -3701,6 +3701,7 @@ mod tests {
             name: "dev".to_string(),
             target: "t".to_string(),
             mode: crate::fleet::Mode::Observe,
+            label: String::new(),
         }];
         let mut rec = record("dev:%1", "pi", AgentState::Waiting, 5);
         rec.session = "web".to_string();
