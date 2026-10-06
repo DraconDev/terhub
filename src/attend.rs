@@ -475,6 +475,35 @@ mod tests {
     }
 
     #[test]
+    fn peek_report_shows_prompt_ages_and_newest() {
+        use crate::tmux::Pane;
+        let now = 10_000;
+        let mut a = rec("%1", AgentState::Working, now - 300);
+        a.last_prompt_at = now - 120;
+        a.last_prompt = "fix the parser".to_string();
+        let mut b = rec("%2", AgentState::Waiting, now - 60);
+        b.last_prompt_at = now - 30;
+        b.last_prompt = "ship it".to_string();
+        let panes = vec![
+            Pane::test("%1", "w", "claude"),
+            Pane::test("%2", "w", "claude"),
+        ];
+        let agents: HashMap<String, AgentRecord> =
+            [a, b].into_iter().map(|r| (r.pane.clone(), r)).collect();
+        let rows = peek_rows(panes, &agents);
+        let report = peek_report("s", "w", &rows, 2, now);
+        assert!(report.contains("2m ago: fix the parser"), "{report}");
+        assert!(report.contains("30s ago: ship it"), "{report}");
+        assert!(report.contains("newest prompt: %2"), "{report}");
+        // No prompts anywhere: no prompt lines, no newest note.
+        let panes = vec![Pane::test("%3", "w", "sh")];
+        let rows = peek_rows(panes, &HashMap::new());
+        let report = peek_report("s", "w", &rows, 1, now);
+        assert!(!report.contains("ago:"), "{report}");
+        assert!(!report.contains("newest prompt"), "{report}");
+    }
+
+    #[test]
     fn status_line_variants() {
         let snap = vec![rec("%1", AgentState::Waiting, 0)];
         assert!(status_line(&snap, None).contains("1 need you"));

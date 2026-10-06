@@ -831,6 +831,29 @@ mod tests {
     }
 
     #[test]
+    fn prompt_entries_cap_and_recap_newest_first() {
+        let long = "p".repeat(900);
+        let e = Entry::prompt(100, "%1", "pi", &long);
+        assert_eq!(e.kind, "prompt");
+        assert_eq!(e.summary.chars().count(), 500);
+        let entries = vec![
+            Entry::prompt(100, "%1", "pi", "first"),
+            entry(150, "%1", AgentState::Working),
+            Entry::prompt(200, "%2", "pi", "second"),
+            Entry::prompt(300, "%1", "pi", "third"),
+        ];
+        let all = recent_prompts(&entries, None, 10);
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].summary, "third");
+        assert_eq!(all[2].summary, "first");
+        let one = recent_prompts(&entries, Some("%1"), 10);
+        assert_eq!(one.len(), 2);
+        let capped = recent_prompts(&entries, None, 2);
+        assert_eq!(capped.len(), 2);
+        assert_eq!(capped[0].summary, "third");
+    }
+
+    #[test]
     fn fmt_dur_uses_days_past_two_days() {
         assert_eq!(fmt_dur(45), "45s");
         assert_eq!(fmt_dur(90), "1m");
