@@ -127,9 +127,10 @@ fn fleet_and_zellij_against_fakes() {
 
     // Batch 3: remote capture shells the same capture-pane argv over ssh.
     let out = f::remote_capture("fake-target", "%3", 60).unwrap();
-    assert!(out.contains("capture-pane"), "{out:?}");
-    assert!(out.contains("-t %3"), "{out:?}");
-    assert!(out.contains("-S -60"), "{out:?}");
+    let argv: Vec<&str> = out.lines().collect();
+    for want in ["tmux", "capture-pane", "-p", "-e", "-t", "%3", "-S", "-60"] {
+        assert!(argv.contains(&want), "missing {want}: {argv:?}");
+    }
 
     let _ = std::fs::remove_dir_all(&base);
 }
