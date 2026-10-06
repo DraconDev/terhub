@@ -2257,6 +2257,7 @@ impl App {
                 cfg.key("hide_shells"),
                 cfg.key("sort"),
                 cfg.key("settings"),
+                cfg.key("hosts"),
                 cfg.key("quit"),
             );
             if !cfg.commands.is_empty() {

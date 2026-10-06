@@ -1022,7 +1022,77 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
     }
 }
 
+/// Fleet hosts popup: registry rows with per-host agent counts and
+/// fetch errors, plus the cache age. Tall box with its own scroll.
+fn render_hosts(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
+    let w = area.width.saturating_sub(8).max(40);
+    let h = area.height.saturating_sub(6).max(8);
+    let popup = centered(area, w, h);
+    frame.render_widget(Clear, popup);
+    let age = match app.fleet_fetched_at {
+        Some(t) => {
+            let s = t.elapsed().as_secs();
+            if s < 90 {
+                format!("fetched {s}s ago")
+            } else {
+                format!("fetched {}m ago", s / 60)
+            }
+        }
+        None => "never fetched".to_string(),
+    };
+    let block = Block::bordered()
+        .title(Line::from(format!(" Fleet hosts ({age}) ")).style(pal.title))
+        .border_style(pal.border);
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let mut rows: Vec<Line> = Vec::new();
+    if app.fleet_hosts.is_empty() {
+        rows.push(Line::from("no hosts — press a to add one").style(pal.dim));
+    }
+    for (i, host) in app.fleet_hosts.iter().enumerate() {
+        let n = app
+            .fleet_agents
+            .iter()
+            .filter(|a| {
+                app.fleet_index
+                    .get(&a.pane)
+                    .is_some_and(|(h, _)| *h == host.name)
+            })
+            .count();
+        let err = app.fleet_errors.iter().find(|(h, _)| *h == host.name);
+        let mark = if i == app.hosts_selected { "› " } else { "  " };
+        let mut text = format!(
+            "{mark}{} {} [{}] ({n} agents)",
+            host.name,
+            host.target,
+            host.mode.label()
+        );
+        if let Some((_, e)) = err {
+            text.push_str(&format!(" ✗ {}", e.lines().next().unwrap_or("")));
+        }
+        let style = if i == app.hosts_selected {
+            pal.selected
+        } else if err.is_some() {
+            Style::default().fg(Color::Red)
+        } else {
+            pal.status
+        };
+        rows.push(Line::from(text).style(style));
+    }
+    rows.push(Line::from("a=add x=remove r=fetch enter=jump esc=close").style(pal.dim));
+    let shown: Vec<Line> = rows
+        .into_iter()
+        .skip(app.hosts_scroll)
+        .take(inner.height as usize)
+        .collect();
+    frame.render_widget(Paragraph::new(shown), inner);
+}
+
 fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
+    if matches!(app.mode, Mode::Hosts) {
+        render_hosts(frame, app, pal, area);
+        return;
+    }
     // Scrollable command output gets its own tall popup, not the 60x5 box.
     if let Mode::CommandOutput {
         name,
@@ -1097,8 +1167,14 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             format!("{} Enter=yes Esc=no", truncate(&ids.join(" "), 52)),
             None,
         ),
+        Mode::PromptHostAdd => (
+            " Add host ".to_string(),
+            "host target [mode]: ".to_string() + &app.input,
+            Some("host target [mode]: ".len()),
+        ),
         // Handled by the tall-popup branch above.
         Mode::CommandOutput { .. } => return,
+        Mode::Hosts => return,
         Mode::Normal | Mode::Settings => return,
     };
     let popup = centered(area, 60, 5);
