@@ -62,10 +62,13 @@ Run `terhub`. A one-line session bar on top, one huge pane table, one
 status bar, no modes except small popups:
 
 - **Top bar: sessions.** `All` (the default) plus one segment per session
-  with its attached marker (`●`/`○`) and `(panes·needy!)` counts; long
-  lists scroll horizontally (`‹ … ›`). `←`/`→` moves and filters the table
-  immediately, `Enter` attaches, `n` new, `r` rename, `x` kill (with
-  confirm), `d` detach, `q` quit, `?` shows the current bindings.
+  with its attached marker (`●`/`○`) and `(panes·needy!)` counts, plus a
+  worst-state dot (red = something needs you, green = working away;
+  idle-only tabs stay dotless); long lists scroll horizontally (`‹ … ›`).
+  `←`/`→` moves and filters the table immediately, `Enter` attaches,
+  `n` new, `w` spawn agent, `r` rename, `x` kill (with confirm), `d`
+  detach, `q` quit, `?` shows the current bindings. `mru_tabs` (settings
+  toggle) orders tabs by recent activity instead of tmux order.
 - **Table: panes.** Every pane on the server (or the bar session's):
   attention marker (`!` needs you; `*` marks the focused pane, but only
   in windows with several panes, where focus is ambiguous), pane id,
@@ -84,7 +87,10 @@ status bar, no modes except small popups:
   summoned `$EDITOR` and sits on keystrokes. The TUI's own row wears the
   attached accent on its id, and a vanished cwd reads struck-through.
   `↑`/`↓` moves, `Enter` jumps to the pane, `x` kills it (with confirm),
-  `a` attends, `Esc` steps back to the session bar. `Space` toggles a `+`
+  `a` attends, `Esc` steps back to the session bar. `w` spawns an agent
+  window with an opening prompt (profile picker on `Tab`), `e` restarts
+  the pane's command (with confirm), `z` freezes/thaws the pane's process
+  tree. `Space` toggles a `+`
   mark on the row and steps down (file-manager style), `u` clears all
   marks; with marks set, `x` kills the whole marked set under one
   confirmation and `a` attends the longest-waiting marked pane. Marks
@@ -116,11 +122,12 @@ status bar, no modes except small popups:
 - **Styles.** `t` cycles the six built-in themes and `v` flips table
   density (comfortable shows the summary column, compact drops it and
   tightens columns) — both session-only try-outs. `s` opens the settings
-  popup (style picker, density, notification and highlight toggles) which
-  applies and saves to the config file.
-- **Popups.** `n`/`r` open a text prompt with a real cursor (`←`/`→`,
-  `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc` cancels).
-  Kills ask for confirmation (`Enter`/`y` yes, `Esc`/`n` no).
+  popup (style picker, density, notification, mru-tabs and highlight
+  toggles) which applies and saves to the config file.
+- **Popups.** `n`/`r`/`w` open a text prompt with a real cursor
+  (`←`/`→`, `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc`
+  cancels); the spawn prompt also cycles agent profiles on `Tab`.
+  Kills and restarts ask for confirmation (`Enter`/`y` yes, `Esc`/`n` no).
 - **`Ctrl+C` always quits.** `Esc` quits from the session bar.
 - **Stays open.** Jumps, attends, and attaches only move your view to the
   target pane or session — the table keeps running behind it, so keep it
