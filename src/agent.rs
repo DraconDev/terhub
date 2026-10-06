@@ -115,6 +115,11 @@ pub struct AgentRecord {
     /// That prompt's text, capped (empty = none yet).
     #[serde(default)]
     pub last_prompt: String,
+    /// Stable local name (`@pi-wez`), minted once by the daemon, empty
+    /// until then. Survives pane churn inside the session; fleet rows
+    /// never carry one (handles are local-only).
+    #[serde(default)]
+    pub handle: String,
 }
 
 /// Prompt text kept on the record (the ledger keeps the longer cut).
@@ -127,6 +132,94 @@ pub fn cap_chars(s: &str, max: usize) -> String {
     } else {
         s.chars().take(max).collect()
     }
+}
+
+/// Slug for handle parts: lowercase alnum runs, anything else folds to
+/// one dash, edge dashes trimmed (`My Project!` → `my-project`).
+pub fn slug_handle_part(s: &str) -> String {
+    let mut out = String::new();
+    let mut dash = false;
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+            dash = false;
+        } else if !out.is_empty() && !dash {
+            out.push('-');
+            dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
+/// Mint a handle (`@agent-session`, `-2`/`-3`… on collision) against the
+/// used set. An empty session mints bare `@agent`.
+pub fn mint_handle(used: &std::collections::HashSet<String>, agent: &str, session: &str) -> String {
+    let agent = slug_handle_part(agent);
+    let session = slug_handle_part(session);
+    let base = if session.is_empty() {
+        format!("@{agent}")
+    } else {
+        format!("@{agent}-{session}")
+    };
+    if !used.contains(&base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let cand = format!("{base}-{n}");
+        if !used.contains(&cand) {
+            return cand;
+        }
+        n += 1;
+    }
+}
+
+/// Give every agent-carrying record without one a handle. Panes mint in
+/// sorted order so suffixes don't depend on HashMap iteration; already
+/// minted records (and agent-less ones) are never touched.
+pub fn ensure_handles(registry: &mut std::collections::HashMap<String, AgentRecord>) {
+    let mut used: std::collections::HashSet<String> = registry
+        .values()
+        .filter_map(|r| {
+            if r.handle.is_empty() {
+                None
+            } else {
+                Some(r.handle.clone())
+            }
+        })
+        .collect();
+    let mut panes: Vec<String> = registry
+        .iter()
+        .filter(|(_, r)| r.handle.is_empty() && !r.agent.is_empty())
+        .map(|(pane, _)| pane.clone())
+        .collect();
+    panes.sort();
+    for pane in panes {
+        let (agent, session) = match registry.get(&pane) {
+            Some(r) => (r.agent.clone(), r.session.clone()),
+            None => continue,
+        };
+        let handle = mint_handle(&used, &agent, &session);
+        used.insert(handle.clone());
+        if let Some(r) = registry.get_mut(&pane) {
+            r.handle = handle;
+        }
+    }
+}
+
+/// Resolve a `@handle` CLI arg to its pane id (exact match only).
+/// Non-handle args resolve to None (the caller passes them through).
+pub fn resolve_handle(records: &[AgentRecord], target: &str) -> Option<String> {
+    if !target.starts_with('@') {
+        return None;
+    }
+    records
+        .iter()
+        .find(|r| r.handle == target)
+        .map(|r| r.pane.clone())
 }
 
 /// A working turn completed: Working moved to a terminal-ish state.
