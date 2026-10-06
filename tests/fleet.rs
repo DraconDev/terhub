@@ -125,5 +125,11 @@ fn fleet_and_zellij_against_fakes() {
         "target must follow --: {argv:?}"
     );
 
+    // Batch 3: remote capture shells the same capture-pane argv over ssh.
+    let out = f::remote_capture("fake-target", "%3", 60).unwrap();
+    assert!(out.contains("capture-pane"), "{out:?}");
+    assert!(out.contains("-t %3"), "{out:?}");
+    assert!(out.contains("-S -60"), "{out:?}");
+
     let _ = std::fs::remove_dir_all(&base);
 }
