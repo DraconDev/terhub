@@ -45,8 +45,8 @@ fn default_keys() -> HashMap<String, String> {
         ("mark", "space"),
         ("unmark", "u"),
         ("hide_shells", "h"),
-        ("spawn", "N"),
-        ("restart", "R"),
+        ("spawn", "c"),
+        ("restart", "e"),
         ("pause", "z"),
     ]
     .into_iter()
@@ -1155,8 +1155,8 @@ mod tests {
     #[test]
     fn spawn_keys_have_defaults() {
         let cfg = AppConfig::default();
-        assert_eq!(cfg.key("spawn"), "N");
-        assert_eq!(cfg.key("restart"), "R");
+        assert_eq!(cfg.key("spawn"), "c");
+        assert_eq!(cfg.key("restart"), "e");
         assert_eq!(cfg.key("pause"), "z");
     }
 
