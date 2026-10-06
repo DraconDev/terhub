@@ -11,7 +11,7 @@ use std::io;
 use std::time::{Duration, Instant};
 use terhub::{
     agent::{AgentState, HookEvent},
-    app::{App, AppEvent, Focus},
+    app::{App, AppEvent},
     config,
     daemon::{self, Request},
     history::fmt_dur,
