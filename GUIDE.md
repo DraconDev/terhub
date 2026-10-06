@@ -159,11 +159,13 @@ status bar, no modes except small popups:
   (time in this state) and the title bar counts how many need you. Panes
   with no agent show no state (`—`): a shell was never expected to work
   on its own, so only agents get working/waiting/idle. The `Idle` column shows time since the
-  screen visibly changed (identical repaints don't count) — the fastest
-  way to judge a `working` row; unclaimed panes fall back to tmux's
-  window-activity age. Agent cells share one color per agent name (see
-  `[style]`), and `Idle` tints when a row is `working` but quiet past
-  `stuck_secs` — the stuck smell, without relabeling the state.
+  screen meaningfully changed — spinner frames, footer-tip carousels, and
+  counter ticks (elapsed times, token rates) don't count, so a spinner
+  can't look busy forever; a changed summary line still resets it.
+  Unclaimed panes fall back to tmux's window-activity age. Agent cells
+  share one color per agent name (see `[style]`), and `Idle` tints when
+  a row is `working` but quiet past `stuck_secs` — the stuck smell,
+  without relabeling the state.
 
 Everything except arrows/mouse/Tab/Esc/Alt+digits is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
