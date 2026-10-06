@@ -474,6 +474,32 @@ fn cmd_panes(session: &str) -> i32 {
     }
 }
 
+/// Resolve a `@handle` pane arg via the daemon snapshot; anything else
+/// (pane ids, native ids, remote ids) passes through untouched.
+fn resolve_pane_arg(pane: &str) -> Result<String, String> {
+    if !pane.starts_with('@') {
+        return Ok(pane.to_string());
+    }
+    let snap = daemon::fetch_snapshot(Duration::from_secs(2))
+        .map_err(|_| format!("terhub: daemon not running (needed to resolve '{pane}')"))?;
+    terhub::agent::resolve_handle(&snap.agents, pane)
+        .ok_or_else(|| format!("terhub: unknown handle '{pane}' (see `terhub status`)"))
+}
+
+/// Unwrap a pane arg or report and exit. Call at the top of every
+/// pane-taking command so `@handle` works uniformly.
+macro_rules! pane_arg {
+    ($pane:expr) => {
+        match resolve_pane_arg($pane) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{e}");
+                return 1;
+            }
+        }
+    };
+}
+
 fn cmd_capture(pane: &str, lines: u32) -> i32 {
     if terhub::native::is_native_id(pane) {
         return match terhub::native::capture(pane, lines) {

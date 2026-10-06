@@ -317,6 +317,15 @@ fn native_spawn_unknown_backend_exits_1() {
 }
 
 #[test]
+fn handle_args_resolve_via_daemon_not_tmux() {
+    // No daemon, no tmux: `@x` must fail naming the daemon, proving it
+    // took the handle path instead of the tmux path.
+    let out = run_isolated("handlex", &["focus", "@pi-wez"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("daemon"), "{}", stderr(&out));
+}
+
+#[test]
 fn hook_prompt_flag_is_accepted() {
     // Fire-and-forget: exit 0 even with no daemon; the flag must parse.
     let out = run_isolated(
