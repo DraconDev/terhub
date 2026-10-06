@@ -132,5 +132,22 @@ fn fleet_and_zellij_against_fakes() {
         assert!(argv.contains(&want), "missing {want}: {argv:?}");
     }
 
+    // Batch 3: fleet fetch turns a remote snapshot into table rows.
+    write_exe(&bin.join("ssh"), FAKE_SSH);
+    // The corrupt-file phase poisoned the registry; start that file over.
+    std::fs::write(f::fleet_path(), "").unwrap();
+    f::add_host("dev", "fake-target", f::Mode::Observe).unwrap();
+    let mut app = terhub::app::App::new(terhub::config::AppConfig::default());
+    app.fetch_fleet();
+    assert_eq!(app.fleet_rows.len(), 1);
+    assert_eq!(app.fleet_rows[0].id, "dev:%1");
+    assert_eq!(app.fleet_agents.len(), 1);
+    assert_eq!(app.fleet_agents[0].agent, "codex");
+    assert_eq!(
+        app.remote_target("dev:%1"),
+        Some(("dev".to_string(), "s".to_string()))
+    );
+    assert!(app.fleet_errors.is_empty());
+
     let _ = std::fs::remove_dir_all(&base);
 }
