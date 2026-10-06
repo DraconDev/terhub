@@ -78,11 +78,19 @@ enum Cmd {
         state: String,
         #[arg(long)]
         summary: Option<String>,
+        /// Read the summary from stdin (JSON {"message": ...} or raw head).
+        #[arg(long, conflicts_with = "summary")]
+        summary_stdin: bool,
     },
     /// Manage the terhubd daemon.
     Daemon {
         #[command(subcommand)]
         action: DaemonAction,
+    },
+    /// Install agent lifecycle hooks (claude settings, pi extension).
+    Hooks {
+        #[command(subcommand)]
+        action: HooksAction,
     },
     /// Jump to the agent waiting longest.
     Attend {
@@ -246,6 +254,24 @@ enum DaemonAction {
     Start,
     Stop,
     Status,
+}
+
+#[derive(Subcommand)]
+enum HooksAction {
+    /// Add terhub hooks (idempotent; backs up the first write).
+    Install {
+        /// Which agent to wire (default: all).
+        #[arg(value_parser = ["all", "claude", "pi"], default_value = "all")]
+        agent: String,
+    },
+    /// Show which agents are wired.
+    Status,
+    /// Remove terhub hooks (user hooks are kept).
+    Uninstall {
+        /// Which agent to unwire (default: all).
+        #[arg(value_parser = ["all", "claude", "pi"], default_value = "all")]
+        agent: String,
+    },
 }
 
 /// Print a line, silently tolerating closed pipes (`| head`).
