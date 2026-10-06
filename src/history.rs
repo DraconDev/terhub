@@ -676,31 +676,17 @@ pub fn heatmap_line_count(spans: &[Span]) -> usize {
                 | AgentState::Stuck
                 | AgentState::Limited
         );
-        if workish && s.end > s.start {
-            days.insert(day_of(s.start));
+        if !workish || s.end <= s.start {
+            continue;
+        }
+        // Hour-walk mirrors render_heatmap so multi-day spans count each row.
+        let mut t = s.start;
+        while t < s.end {
+            days.insert(day_of(t));
+            t = (t / 3600 + 1) * 3600;
         }
     }
-    // Multi-day spans heat later days render_heatmap rows for; count those too.
-    let mut extra = HashSet::new();
-    for s in spans {
-        let workish = matches!(
-            s.state,
-            AgentState::Working
-                | AgentState::Waiting
-                | AgentState::Error
-                | AgentState::Stuck
-                | AgentState::Limited
-        );
-        if workish && s.end > s.start {
-            let mut t = s.start;
-            while t < s.end {
-                extra.insert(day_of(t));
-                t = (t / 3600 + 1) * 3600;
-            }
-        }
-    }
-    let n = days.union(&extra).count();
-    if n == 0 { 2 } else { 1 + n }
+    if days.is_empty() { 2 } else { 1 + days.len() }
 }
 
 /// Day × hour activity grid: one row per day, 24 hour cells. Only
