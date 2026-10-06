@@ -483,14 +483,9 @@ fn kitty(args: &[&str]) -> Result<String> {
 }
 
 fn kitty_tabs() -> Result<Vec<NativeTab>> {
-    let out = kitty(&["ls"]).map_err(|e| {
-        if kitty_to_args().is_empty() {
-            anyhow::anyhow!("{e:#} (set TERHUB_KITTY_TO to the kitty socket, or run inside kitty)")
-        } else {
-            e
-        }
-    })?;
-    Ok(parse_kitty_ls(&out))
+    // The not-inside-kitty hint lives in the kitty() gate error; real
+    // failures here surface the helper's own stderr instead.
+    Ok(parse_kitty_ls(&kitty(&["ls"])?))
 }
 
 fn kitty_capture(local: &str, lines: u32) -> Result<String> {
