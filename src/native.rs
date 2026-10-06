@@ -181,9 +181,7 @@ fn qdbus_bin() -> &'static str {
     for bin in ["qdbus", "qdbus6"] {
         let mut probe = Command::new(bin);
         probe.arg("--version");
-        if run_timed(probe, &format!("{bin} --version"))
-            .is_ok_and(|o| o.status.success())
-        {
+        if run_timed(probe, &format!("{bin} --version")).is_ok_and(|o| o.status.success()) {
             return bin;
         }
     }
@@ -453,7 +451,12 @@ fn kitty_probe_allowed(to: &str, listen_on: &str, window_id: &str, term: &str) -
 
 fn kitty_reachable() -> bool {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
-    kitty_probe_allowed(&var("TERHUB_KITTY_TO"), &var("KITTY_LISTEN_ON"), &var("KITTY_WINDOW_ID"), &var("TERM"))
+    kitty_probe_allowed(
+        &var("TERHUB_KITTY_TO"),
+        &var("KITTY_LISTEN_ON"),
+        &var("KITTY_WINDOW_ID"),
+        &var("TERM"),
+    )
 }
 
 fn kitty(args: &[&str]) -> Result<String> {

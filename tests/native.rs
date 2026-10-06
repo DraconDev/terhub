@@ -169,12 +169,14 @@ fn native_backends_against_fakes() {
     let err = kitty.error.as_deref().unwrap_or("");
     assert!(err.contains("timed out"), "unexpected kitty error: {err}");
     // The other backends are unaffected by the wedge.
-    assert!(reports
-        .iter()
-        .find(|r| r.backend == "konsole")
-        .unwrap()
-        .error
-        .is_none());
+    assert!(
+        reports
+            .iter()
+            .find(|r| r.backend == "konsole")
+            .unwrap()
+            .error
+            .is_none()
+    );
 
     let _ = std::fs::remove_dir_all(&base);
 }
