@@ -67,7 +67,8 @@ status bar, no modes except small popups:
   idle-only tabs stay dotless); long lists scroll horizontally (`‹ … ›`).
   `←`/`→` moves and filters the table immediately, `Enter` attaches,
   `n` new, `w` spawn agent, `r` rename, `x` kill (with confirm), `d`
-  detach, `q` quit, `?` shows the current bindings. `mru_tabs` (settings
+  detach, `q` quit, `?` shows the current bindings; `Alt+1..8` jumps
+  straight to tabs (`All` + first 7 sessions). `mru_tabs` (settings
   toggle) orders tabs by recent activity instead of tmux order.
 - **Table: panes.** Every pane on the server (or the bar session's):
   attention marker (`!` needs you; `*` marks the focused pane, but only
@@ -101,7 +102,10 @@ status bar, no modes except small popups:
   own ANSI colors; right-click again (anywhere) or `Esc`/`p` closes it,
   left-click/`Enter` jumps to the previewed pane. Background fills reach
   the pane edge (tmux trims the painted EOL cells; the preview rebuilds
-  them from the leftover style codes).
+  them from the leftover style codes). The title carries the pane's live
+  CPU percent (over 100% is real — agent subtrees span cores) and, when
+  the pane sits in a git repo, the branch plus diff shortstat
+  (`git main +45/-12 · 2 changed · 1 new`, or `clean`).
 - **Mouse.** Left-click a row jumps to the pane (press and release must
   land on the same cell, so text drags never jump), right-click toggles
   the fullscreen preview, click a session segment to filter, double-click
@@ -144,7 +148,7 @@ status bar, no modes except small popups:
   `[style]`), and `Idle` tints when a row is `working` but quiet past
   `stuck_secs` — the stuck smell, without relabeling the state.
 
-Everything except arrows/mouse/Tab/Esc is rebindable (see
+Everything except arrows/mouse/Tab/Esc/Alt+digits is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
 bindings (press `?` again for the legend: marks, `Src`, `For`/`Turn`/`Idle`).
 Footer confirmations fade after a few seconds; the title names a dead
