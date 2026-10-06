@@ -17,6 +17,10 @@ pub enum Mode {
     PromptSpawn {
         profile: usize,
     },
+    PromptBulk {
+        targets: Vec<String>,
+        template: usize,
+    },
     ConfirmKill(String),
     ConfirmKillPane(String),
     ConfirmRestartPane {
@@ -1521,6 +1525,7 @@ impl App {
             Mode::PromptNew | Mode::PromptRename(_) => self.on_prompt_key(key, tmux),
             Mode::PromptFilter => self.on_filter_key(key, tmux),
             Mode::PromptSpawn { .. } => self.on_spawn_key(key, tmux),
+            Mode::PromptBulk { .. } => self.on_bulk_key(key, tmux),
             Mode::ConfirmKill(_) => self.on_confirm_key(key, tmux),
             Mode::ConfirmKillPane(_) => self.on_confirm_pane_key(key, tmux),
             Mode::ConfirmRestartPane { .. } => self.on_confirm_restart_key(key, tmux),
