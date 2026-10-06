@@ -241,6 +241,8 @@ enum FleetAction {
         #[arg(long)]
         no_submit: bool,
     },
+    /// SSH into a host's tmux (session defaults to most-recent).
+    Attach { host: String, session: Option<String> },
 }
 
 #[derive(Subcommand)]
@@ -1761,6 +1763,9 @@ fn real_main() -> i32 {
         None => match run_tui() {
             Ok(Some(TuiExit::Attach(name))) => cmd_attach(&name),
             Ok(Some(TuiExit::FocusPane(id))) => cmd_focus(&id),
+            Ok(Some(TuiExit::RemoteAttach { host, session })) => {
+                cmd_fleet_attach(&host, Some(&session))
+            }
             Ok(None) => 0,
             Err(e) => {
                 eprintln!("terhub: {e:?}");
