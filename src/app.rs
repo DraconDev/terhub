@@ -888,7 +888,10 @@ impl App {
                     ))
                 });
                 self.panes = panes;
-                self.refresh_filtered();
+                // No refresh_filtered here: filtering the tmux-only midway
+                // list would momentarily empty a foreign-only filter view
+                // and close the preview. The merges below re-filter once
+                // the row set is complete.
                 // Drop marks for dead panes; survivors keep theirs.
                 let live: std::collections::HashSet<&str> =
                     self.panes.iter().map(|p| p.id.as_str()).collect();
