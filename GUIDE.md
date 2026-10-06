@@ -352,6 +352,12 @@ terhub hook --agent pi --pane %2 --state working --prompt "fix the parser"
   (`recap` reads it back) and on the record peek shows. `--prompt-stdin`
   reads it from stdin (a JSON `{"prompt": …}` wins, else the first raw
   line) — both stdin flags can be combined; the pipe is read once.
+- `--model` records the model id (`opus-4.5`) and `--ctx` the
+  context-window fullness (0–100): both ride the record (polls carry
+  them, events that don't know keep the old cut) and show in the TUI
+  preview title strip next to agent/state, e.g.
+  `%1 · wez:dev · pi working 3m · opus-4.5 · ctx 72%`. Wrappers that
+  know their model report it; the stock claude/pi hooks don't set these.
 - Unknown states are rejected; if the daemon is down the hook warns on
   stderr but still exits 0 — fire-and-forget, so a hook can never break
   the agent lifecycle script that called it.
@@ -494,12 +500,17 @@ stay 200.
 Run terhub + daemon on each host, register them locally:
 
 ```sh
-terhub host add <name> <ssh-target> [--mode observe|control]
-terhub host list|doctor <name>|remove <name>
+terhub host add <name> <ssh-target> [--mode observe|control] [--label "Dev Box"]
+terhub host list|doctor <name>|remove <name>|label <name> "<label>"
 terhub fleet status [--json]
 terhub fleet send <host> <pane> <text>
 terhub fleet attach <host> [session]
 ```
+
+Host labels are display names: rows show `label ▸ session`, the hosts
+popup and `host list` show the label, but routing ids stay `name:%N`
+so labels are free-form and renamable (`host label <name> ""` clears
+back to the name).
 
 `fleet status` queries all hosts concurrently over `ssh` and reports each
 host's agents (or the ssh error) in config order. `fleet send` only works
