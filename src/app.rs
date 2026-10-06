@@ -65,12 +65,22 @@ pub enum AppEvent {
         host: String,
         session: String,
     },
+    /// Switch a native terminal to one of its tabs (stays open: only the
+    /// terminal's view moves).
+    FocusNative(String),
     Quit,
 }
 
 /// Remote rows carry `host:%N` ids; local tmux ids always start with `%`.
+/// Native terminal rows (`konsole:…`) are remote-shaped but local — every
+/// guard below checks [`is_native_pane`] first.
 pub fn is_remote_pane(id: &str) -> bool {
     !id.starts_with('%')
+}
+
+/// True for native terminal rows (Konsole/kitty/WezTerm tabs).
+pub fn is_native_pane(id: &str) -> bool {
+    crate::native::is_native_id(id)
 }
 
 /// CPU percent between two tick samples (None = re-baseline: first
@@ -499,6 +509,11 @@ pub struct App {
     pub fleet_errors: Vec<(String, String)>,
     /// When the fleet cache was last fetched (None = never).
     pub fleet_fetched_at: Option<std::time::Instant>,
+    /// Cached native terminal rows (startup + F5 fetch; re-merged every
+    /// refresh like the fleet cache).
+    pub native_rows: Vec<Pane>,
+    /// Cached native agent records, merged into `agents` on refresh.
+    pub native_agents: Vec<AgentRecord>,
     /// Hosts modal cursor.
     pub hosts_selected: usize,
     /// Hosts modal first visible row.
@@ -555,6 +570,8 @@ impl App {
             fleet_hosts: Vec::new(),
             fleet_errors: Vec::new(),
             fleet_fetched_at: None,
+            native_rows: Vec::new(),
+            native_agents: Vec::new(),
             hosts_selected: 0,
             hosts_scroll: 0,
             preview_cpu_prev: None,
@@ -636,6 +653,18 @@ impl App {
         self.panes.retain(|p| !is_remote_pane(&p.id));
         self.panes.extend(self.fleet_rows.iter().cloned());
         for a in &self.fleet_agents {
+            self.agents.insert(a.pane.clone(), a.clone());
+        }
+        self.refresh_filtered();
+    }
+
+    /// Re-apply the native cache after a local refresh. Runs after
+    /// [`merge_fleet`](Self::merge_fleet) (which strips all non-% rows),
+    /// so natives always come back; idempotent like the fleet merge.
+    pub fn merge_native(&mut self) {
+        self.panes.retain(|p| !is_native_pane(&p.id));
+        self.panes.extend(self.native_rows.iter().cloned());
+        for a in &self.native_agents {
             self.agents.insert(a.pane.clone(), a.clone());
         }
         self.refresh_filtered();
@@ -770,6 +799,7 @@ impl App {
         // Remote rows/badges ride the cache: local ticks must not drop
         // them (and a dead daemon must not take them with it).
         self.merge_fleet();
+        self.merge_native();
         self.follow_preview(tmux);
         if self.filtered.is_empty() {
             self.focus = Focus::Sessions;
