@@ -2202,20 +2202,14 @@ mod tests {
         let mut app = app_with_panes();
         assert_eq!(app.session_worst(Some("a")), None);
         assert_eq!(app.session_worst(None), None);
-        app.agents.insert(
-            "%1".to_string(),
-            record("%1", "pi", AgentState::Working, 1),
-        );
-        app.agents.insert(
-            "%2".to_string(),
-            record("%2", "pi", AgentState::Idle, 1),
-        );
+        app.agents
+            .insert("%1".to_string(), record("%1", "pi", AgentState::Working, 1));
+        app.agents
+            .insert("%2".to_string(), record("%2", "pi", AgentState::Idle, 1));
         assert_eq!(app.session_worst(Some("a")), Some(AgentState::Working));
         assert_eq!(app.session_worst(Some("zzz")), None);
-        app.agents.insert(
-            "%2".to_string(),
-            record("%2", "pi", AgentState::Waiting, 1),
-        );
+        app.agents
+            .insert("%2".to_string(), record("%2", "pi", AgentState::Waiting, 1));
         assert_eq!(app.session_worst(Some("a")), Some(AgentState::Waiting));
         assert_eq!(app.session_worst(None), Some(AgentState::Waiting));
     }

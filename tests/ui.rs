@@ -1084,8 +1084,10 @@ fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::a
 fn tabs_show_worst_state_dot() {
     use terhub::agent::AgentState;
     let mut app = app_with_panes();
-    app.agents.insert("%1".to_string(), rec("%1", "alpha", AgentState::Stuck));
-    app.agents.insert("%2".to_string(), rec("%2", "beta", AgentState::Working));
+    app.agents
+        .insert("%1".to_string(), rec("%1", "alpha", AgentState::Stuck));
+    app.agents
+        .insert("%2".to_string(), rec("%2", "beta", AgentState::Working));
     let grid = render_grid(&mut app, 140, 20);
     // Row 0 is the tab bar; attached marks here are all ○, so every ●
     // is a worst-state dot: All=stuck(red), alpha=stuck(red), beta=working(green).
@@ -1099,9 +1101,13 @@ fn tabs_show_worst_state_dot() {
     assert_eq!(dots.iter().filter(|c| **c == Color::Green).count(), 1);
     // Idle/unknown-only tabs stay dotless (noise discipline).
     let mut app = app_with_panes();
-    app.agents.insert("%1".to_string(), rec("%1", "alpha", AgentState::Idle));
+    app.agents
+        .insert("%1".to_string(), rec("%1", "alpha", AgentState::Idle));
     let grid = render_grid(&mut app, 140, 20);
-    assert!(!grid[0].iter().any(|(s, _, _)| s == "●"), "idle must be dotless");
+    assert!(
+        !grid[0].iter().any(|(s, _, _)| s == "●"),
+        "idle must be dotless"
+    );
 }
 
 #[test]

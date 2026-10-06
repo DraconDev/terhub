@@ -596,11 +596,8 @@ fn cmd_hooks(action: &HooksAction) -> i32 {
             if agent == "all" || agent == "claude" {
                 match hooks::claude_install(&hooks::claude_settings_path()) {
                     Ok(report) => {
-                        let added: Vec<_> = report
-                            .iter()
-                            .filter(|(_, a)| *a)
-                            .map(|(e, _)| *e)
-                            .collect();
+                        let added: Vec<_> =
+                            report.iter().filter(|(_, a)| *a).map(|(e, _)| *e).collect();
                         if added.is_empty() {
                             print_out("claude: already installed");
                         } else {
@@ -633,9 +630,7 @@ fn cmd_hooks(action: &HooksAction) -> i32 {
             if agent == "all" || agent == "claude" {
                 match hooks::claude_uninstall(&hooks::claude_settings_path()) {
                     Ok(cleaned) if cleaned.is_empty() => print_out("claude: not installed"),
-                    Ok(cleaned) => {
-                        print_out(&format!("claude: removed ({})", cleaned.join(", ")))
-                    }
+                    Ok(cleaned) => print_out(&format!("claude: removed ({})", cleaned.join(", "))),
                     Err(e) => {
                         eprintln!("terhub: claude uninstall failed: {e:?}");
                         code = 1;

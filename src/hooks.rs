@@ -94,7 +94,9 @@ pub fn pi_extension_path() -> PathBuf {
 }
 
 fn home_dir() -> PathBuf {
-    std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/tmp"))
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"))
 }
 
 /// Back up `path` once (first managed write); missing file needs none.
