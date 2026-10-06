@@ -147,24 +147,18 @@ pub fn claude_install(path: &Path) -> Result<Vec<(&'static str, bool)>> {
             continue;
         }
         changed = true;
-        let hooks = doc
-            .pointer_mut("/hooks")
-            .filter(|v| v.is_object())
-            .unwrap_or_else(|| {
-                doc.as_object_mut().unwrap().insert(
-                    "hooks".to_string(),
-                    serde_json::Value::Object(Default::default()),
-                );
-                doc.pointer_mut("/hooks").unwrap()
-            });
-        let hooks = hooks.as_object_mut().unwrap();
+        let root = doc.as_object_mut().unwrap();
+        if !root.get("hooks").is_some_and(|v| v.is_object()) {
+            root.insert("hooks".to_string(), serde_json::json!({}));
+        }
+        let hooks = root.get_mut("hooks").unwrap().as_object_mut().unwrap();
         let entry = hooks
             .entry(def.event.to_string())
             .or_insert_with(|| serde_json::json!([]));
-        let arr = entry.as_array_mut().unwrap_or_else(|| {
+        if !entry.is_array() {
             *entry = serde_json::json!([]);
-            entry.as_array_mut().unwrap()
-        });
+        }
+        let arr = entry.as_array_mut().unwrap();
         // Merge into the first matcher when it already holds hooks (keeps
         // one matcher per event); else append a fresh matcher.
         let slot = arr.iter_mut().find(|m| {
