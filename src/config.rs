@@ -45,6 +45,9 @@ fn default_keys() -> HashMap<String, String> {
         ("mark", "space"),
         ("unmark", "u"),
         ("hide_shells", "h"),
+        ("spawn", "N"),
+        ("restart", "R"),
+        ("pause", "z"),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -65,6 +68,8 @@ pub struct AppConfig {
     pub stale_secs: u64,
     /// Validated `[[command]]` entries (invalid ones become problems).
     pub commands: Vec<CustomCommand>,
+    /// Validated `[[profile]]` spawn entries; builtins when none given.
+    pub profiles: Vec<SpawnProfile>,
     /// Hash-color Agent cells so the same agent reads as a group.
     pub color_agents: bool,
     /// Style specs the agent hash picks from; empty = theme default.
@@ -89,6 +94,7 @@ impl Default for AppConfig {
             stuck_secs: crate::daemon::STUCK_SECS,
             stale_secs: crate::daemon::HOOK_STALE_SECS,
             commands: Vec::new(),
+            profiles: builtin_profiles(),
             color_agents: true,
             agent_palette: Vec::new(),
             agent_styles: HashMap::new(),
@@ -369,6 +375,37 @@ pub struct CustomCommand {
 }
 
 pub const COMMAND_VARS: &[&str] = &["pane", "session", "window", "dir", "cmd", "agent", "state"];
+
+/// One `[[profile]]` entry: a named agent program for spawn-with-prompt.
+#[derive(Debug, Deserialize, Default)]
+struct ProfileFile {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    program: String,
+    #[serde(default)]
+    dir: Option<String>,
+}
+
+/// Validated spawn profile. `dir` overrides the start directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpawnProfile {
+    pub name: String,
+    pub program: String,
+    pub dir: Option<String>,
+}
+
+/// Builtin agents offered when the user defines no `[[profile]]`.
+pub fn builtin_profiles() -> Vec<SpawnProfile> {
+    ["claude", "codex", "pi", "gemini", "muse"]
+        .into_iter()
+        .map(|a| SpawnProfile {
+            name: a.to_string(),
+            program: a.to_string(),
+            dir: None,
+        })
+        .collect()
+}
 
 #[derive(Debug, Deserialize)]
 struct NotificationsSection {
