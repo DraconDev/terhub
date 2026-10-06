@@ -4833,6 +4833,23 @@ mod tests {
     }
 
     #[test]
+    fn sort_by_handle_orders_names() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        let mut a = record("%1", "pi", AgentState::Working, 10);
+        a.handle = "@pi-b".to_string();
+        let mut b = record("%2", "pi", AgentState::Working, 10);
+        b.handle = "@pi-a".to_string();
+        app.agents.insert("%1".to_string(), a);
+        app.agents.insert("%2".to_string(), b);
+        app.sort_key = SortKey::Handle;
+        app.sort_asc = true;
+        app.apply_sort();
+        assert_eq!(app.filtered[0].id, "%2");
+        assert_eq!(app.filtered[1].id, "%1");
+    }
+
+    #[test]
     fn sort_key_o_cycles_with_status() {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();

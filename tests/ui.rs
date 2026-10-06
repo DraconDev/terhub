@@ -1115,6 +1115,12 @@ fn pause_key_toggles_live_process_tree() {
     let _ = &mut guard;
 }
 
+fn rec_with_handle(pane: &str, handle: &str) -> terhub::agent::AgentRecord {
+    let mut r = rec(pane, "alpha", terhub::agent::AgentState::Working);
+    r.handle = handle.to_string();
+    r
+}
+
 fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::agent::AgentRecord {
     use terhub::agent::Source;
     terhub::agent::AgentRecord {
@@ -1269,6 +1275,19 @@ fn preview_scroll_renders_offset_content() {
     );
     assert!(text.contains("pline 040"), "offset start missing:\n{text}");
     assert!(text.contains("40/60"), "scroll position missing:\n{text}");
+}
+
+#[test]
+fn table_shows_handle_column() {
+    let mut app = app_with_panes();
+    app.agents.insert(
+        "%1".to_string(),
+        rec_with_handle("%1", "@pi-alpha"),
+    );
+    let lines = render_lines(&mut app, 160, 24);
+    let text = lines.join("\n");
+    assert!(text.contains("Handle"), "no header:\n{text}");
+    assert!(text.contains("@pi-alpha"), "no handle:\n{text}");
 }
 
 #[test]
