@@ -402,6 +402,14 @@ mod tests {
     }
 
     #[test]
+    fn host_names_reject_colons() {
+        // A colon in the name would corrupt `host:%N` remote ids.
+        assert!(validate_host_name("bad:name").is_err());
+        assert!(validate_host_name("  ").is_err());
+        assert!(validate_host_name("good-name").is_ok());
+    }
+
+    #[test]
     fn attach_remote_argv_orders_ssh_flags() {
         let argv = attach_remote_argv("dev.example", "web");
         assert_eq!(
