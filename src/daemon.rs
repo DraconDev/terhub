@@ -1607,8 +1607,7 @@ mod tests {
     }
 
     fn builtin_compiled() -> Vec<crate::agent::CompiledManifest> {
-        let (compiled, _) =
-            crate::agent::compile_all_lossy(&crate::agent::builtin_manifests());
+        let (compiled, _) = crate::agent::compile_all_lossy(&crate::agent::builtin_manifests());
         compiled
     }
 
@@ -1617,8 +1616,7 @@ mod tests {
         // "Error: 1 failed" → "Error: 2 failed": digit-fuzzing hides the
         // step from the screen hash (same hash), but the changed summary
         // still restarts the quiet clock (a new failure is activity).
-        let dir =
-            std::env::temp_dir().join(format!("terhub-poll-digits-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-poll-digits-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         fake_tmux_file_screen(&dir, 999_999_999, "claude");
@@ -1626,7 +1624,8 @@ mod tests {
         let manifests = builtin_compiled();
         let screen = dir.join("screen.txt");
         std::fs::write(&screen, "Error: 1 failed\n$ \n").unwrap();
-        let (next, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+        let (next, _, _, _) =
+            poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
         let first = next.get("%50").expect("error record").clone();
         assert_eq!(first.summary, "Error: 1 failed");
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -1649,8 +1648,7 @@ mod tests {
     fn spinner_frames_do_not_restart_quiet() {
         // Spinner frame + elapsed counter advance, nothing else: the
         // quiet clock keeps growing instead of pegging near zero.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-poll-spinner-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-poll-spinner-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         fake_tmux_file_screen(&dir, 999_999_999, "claude");
@@ -1658,7 +1656,8 @@ mod tests {
         let manifests = builtin_compiled();
         let screen = dir.join("screen.txt");
         std::fs::write(&screen, "⠙ Running 13min40s\n$ \n").unwrap();
-        let (next, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+        let (next, _, _, _) =
+            poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
         let first = next.get("%50").expect("working record").clone();
         assert_eq!(first.state, AgentState::Working);
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -1825,7 +1824,14 @@ mod tests {
         );
         // Same screen + changed summary: a new failure is activity.
         assert_eq!(
-            track_quiet_merged((7, 100), Some(7), "1 failed", "2 failed", AgentState::Error, 200),
+            track_quiet_merged(
+                (7, 100),
+                Some(7),
+                "1 failed",
+                "2 failed",
+                AgentState::Error,
+                200
+            ),
             (7, 200)
         );
         // Changed screen: resets regardless of summaries.
