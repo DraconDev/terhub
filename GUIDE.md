@@ -111,9 +111,9 @@ status bar, no modes except small popups:
   the fullscreen preview, click a session segment to filter, ctrl+click a
   session to attach (double-click is gone: the first click already
   selects, so it could never fire). The row under the cursor highlights
-  (bold). There is no mouse-back support (crossterm only delivers
-  left/right/middle) — `Esc` steps back instead: it closes popups and
-  the preview, then clears the filter.
+  (bold). There is no mouse-back button (crossterm only delivers
+  left/right/middle) — `Esc` steps back instead: preview, then filter,
+  then the session bar, then quit.
 - **Sorting.** The table sorts by the `Idle` column
   (most-recently-active first) by default. Click any header to sort by
   it, click again to flip direction; `o` cycles columns from the
