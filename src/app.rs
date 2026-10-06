@@ -406,6 +406,14 @@ pub struct App {
     pub hosts_selected: usize,
     /// Hosts modal first visible row.
     pub hosts_scroll: usize,
+    /// Previous (pane, ticks, at) for preview CPU math.
+    preview_cpu_prev: Option<(String, u64, Instant)>,
+    /// Last computed preview CPU percent (None until two samples).
+    pub preview_cpu_pct: Option<f64>,
+    /// Git summary cache for the previewed dir: (dir, rendered, at).
+    preview_git: Option<(String, Option<String>, Instant)>,
+    /// Rendered git line for the preview title (None = no repo here).
+    pub preview_git_line: Option<String>,
 }
 
 impl App {
@@ -449,6 +457,10 @@ impl App {
             fleet_fetched_at: None,
             hosts_selected: 0,
             hosts_scroll: 0,
+            preview_cpu_prev: None,
+            preview_cpu_pct: None,
+            preview_git: None,
+            preview_git_line: None,
         }
     }
 
@@ -910,7 +922,54 @@ impl App {
         }
     }
 
+    /// Refresh the preview title's CPU segment from the selected pane's
+    /// daemon tick counter (two samples make a rate; a pane switch or a
+    /// restarted process re-baselines instead of spiking).
+    fn update_preview_cpu(&mut self) {
+        let now = Instant::now();
+        let sample = self
+            .selected_pane()
+            .and_then(|p| self.agents.get(&p.id).map(|r| (p.id.clone(), r.cpu_ticks)));
+        let pct = match (&sample, &self.preview_cpu_prev) {
+            (Some((id, ticks)), Some((prev_id, prev_ticks, prev_at)))
+                if id == prev_id =>
+            {
+                cpu_pct(*prev_ticks, *prev_at, *ticks, now, clock_hz())
+            }
+            _ => None,
+        };
+        self.preview_cpu_pct = pct;
+        self.preview_cpu_prev = sample.map(|(id, ticks)| (id, ticks, now));
+    }
+
+    /// Refresh the preview title's git segment for the selected pane's
+    /// dir (cached 30s per dir; empty dirs and non-repos stay blank).
+    fn update_preview_git(&mut self) {
+        const TTL_SECS: u64 = 30;
+        let now = Instant::now();
+        let dir = self
+            .selected_pane()
+            .map(|p| p.path.clone())
+            .unwrap_or_default();
+        if dir.is_empty() {
+            self.preview_git_line = None;
+            return;
+        }
+        if let Some((cached_dir, line, at)) = &self.preview_git
+            && *cached_dir == dir
+            && now.duration_since(*at).as_secs() < TTL_SECS
+        {
+            self.preview_git_line = line.clone();
+            return;
+        }
+        let line = git_diff_stat(&dir).map(|g| g.render());
+        self.preview_git = Some((dir, line.clone(), now));
+        self.preview_git_line = line;
+    }
+
     fn capture_preview(&mut self, tmux: &Tmux) {
+        self.update_preview_cpu();
+        self.update_preview_git();
         match self.selected_pane().map(|p| p.id.clone()) {
             Some(id) if is_remote_pane(&id) => self.capture_remote_preview(&id),
             Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_LINES) {
