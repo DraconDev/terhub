@@ -184,6 +184,7 @@ filter = "f"
 mark = "space"
 unmark = "u"
 hide_shells = "h"
+hosts = "m"
 
 [notifications]
 enabled = true
@@ -437,13 +438,26 @@ terhub host add <name> <ssh-target> [--mode observe|control]
 terhub host list|doctor <name>|remove <name>
 terhub fleet status [--json]
 terhub fleet send <host> <pane> <text>
+terhub fleet attach <host> [session]
 ```
 
 `fleet status` queries all hosts concurrently over `ssh` and reports each
 host's agents (or the ssh error) in config order. `fleet send` only works
 on `control`-mode hosts; `observe`-mode hosts refuse. `host doctor` checks
 the remote for ssh reachability, `terhub` on PATH, tmux, and a running
-daemon. Hosts live in `~/.config/terhub/hosts.toml`.
+daemon. Hosts live in `~/.config/terhub/hosts.toml` (names can't contain
+`:` — remote rows are `host:%N`).
+
+In the TUI, `m` opens the fleet hosts popup: `a` adds
+(`name target [observe|control]`), `x` removes, `r` fetches every host's
+agents into the main table as `host:%N` rows (under `All` only; fetch is
+manual — ssh has no place in the 3s tick), `Enter` jumps to the host's
+neediest cached agent. Remote rows are read-only in the table: preview
+works (captured over ssh) and `Enter`/click jumps out via `ssh -t`
+straight into the remote session (the TUI exits — ssh owns the terminal),
+but kill/restart/pause/mark/rename and custom commands refuse rather than
+act on the wrong machine. `attend` considers cached remotes too.
+`fleet attach` is the same jump for scripts (no session = most-recent).
 
 ## Zellij baseline
 
@@ -487,6 +501,7 @@ are tmux-backed.
 | `host add\|list\|doctor\|remove` | Fleet host registry |
 | `fleet status [--json]` | Agents across hosts |
 | `fleet send <host> <pane> <text>` | Drive a control-mode host |
+| `fleet attach <host> [session]` | SSH into a host's tmux |
 | `zellij list\|attach` | Zellij baseline |
 | `config --show\|--path\|--init\|--check` | Config file |
 
