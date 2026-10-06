@@ -1260,6 +1260,7 @@ mod tests {
             waiting: vec![],
             error: vec![],
             limited: vec![],
+            idle: vec![],
             waiting_unless: vec![],
         };
         assert!(CompiledManifest::compile(&m).is_err());
@@ -1516,6 +1517,7 @@ mod tests {
             waiting: vec![],
             error: vec![],
             limited: vec![],
+            idle: vec![],
             waiting_unless: vec![],
         });
         let (ok, warnings) = compile_all_lossy(&manifests);
