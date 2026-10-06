@@ -516,6 +516,45 @@ fn preview_title_shows_agent_context() {
 }
 
 #[test]
+fn preview_title_shows_model_and_ctx_strip() {
+    use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
+    let mut app = app_with_panes();
+    let now = now_unix();
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: now,
+            state_since: now - 100,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 1,
+            quiet_since: now - 180,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: String::new(),
+            model: "opus-4.5".to_string(),
+            ctx_pct: Some(72),
+            reg_pid: 0,
+        },
+    );
+    app.show_preview = true;
+    app.preview = "hello from pane".to_string();
+    let text = render_lines(&mut app, 160, 20).join("\n");
+    assert!(text.contains("opus-4.5"), "title lacks model:\n{text}");
+    assert!(text.contains("ctx 72%"), "title lacks ctx:\n{text}");
+}
+
+#[test]
 fn settings_selection_stays_visible() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use terhub::tmux::Tmux;

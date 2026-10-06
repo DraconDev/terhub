@@ -115,6 +115,37 @@ fn daemon_hook_snapshot_expire_shutdown() {
     );
     assert!(text.contains("do the thing"), "prompt text lost:\n{text}");
 
+    // Manual pins round-trip on a real pane (skipped when tmux has
+    // no panes at all — the daemon unit tests cover the logic).
+    let tmux = terhub::tmux::Tmux::new().unwrap();
+    let pinned: Option<String> = tmux
+        .list_all_panes()
+        .unwrap_or_default()
+        .first()
+        .map(|p| p.id.clone());
+    if let Some(target) = pinned.clone() {
+        let me = std::process::id();
+        daemon::send_request(
+            &Request::Register {
+                pane: target.clone(),
+                agent: "myagent".to_string(),
+                pid: me,
+                state: AgentState::Working,
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
+        let rec = snap
+            .agents
+            .iter()
+            .find(|a| a.pane == target)
+            .expect("manual pin present");
+        assert_eq!(rec.source, Source::Manual);
+        assert_eq!(rec.reg_pid, me);
+        assert_eq!(rec.handle, "@myagent");
+    }
+
     // The poll notices %999999 is not a real pane and expires it.
     assert!(
         wait_for(
@@ -127,6 +158,27 @@ fn daemon_hook_snapshot_expire_shutdown() {
         ),
         "dead pane was not expired by the poll"
     );
+
+    // A poll ran (the expiry above proves it): the manual pin on the
+    // live pane survived it, and unregister drops it.
+    if let Some(target) = pinned {
+        let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
+        assert!(
+            snap.agents.iter().any(|a| a.pane == target),
+            "manual pin did not survive the poll"
+        );
+        let resp = daemon::send_request(
+            &Request::Unregister { pane: target.clone() },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        assert!(resp.ok, "unregister failed: {resp:?}");
+        let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
+        assert!(
+            snap.agents.iter().all(|a| a.pane != target),
+            "unregister did not drop the pin"
+        );
+    }
 
     // Clean shutdown removes the socket.
     daemon::send_request(&Request::Shutdown, Duration::from_secs(2)).unwrap();
