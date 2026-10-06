@@ -628,6 +628,114 @@ pub fn render_timeline(
     frame.render_widget(Paragraph::new(styled).block(block), area);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimelineSort {
+    #[default]
+    Time,
+    /// Attention states first (by start), then the rest chronologically.
+    Waiting,
+}
+
+/// Order spans for the timeline. Waiting sort surfaces stuck/error/waiting
+/// spans above the work log without dropping anything.
+pub fn sort_spans(spans: &mut [Span], sort: TimelineSort) {
+    match sort {
+        TimelineSort::Time => spans.sort_by_key(|s| (s.start, s.pane.clone())),
+        TimelineSort::Waiting => spans.sort_by_key(|s| {
+            let attention = matches!(
+                s.state,
+                AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
+            );
+            (!attention, s.start, s.pane.clone())
+        }),
+    }
+}
+
+/// Heat level of one hour: work-ish minutes map to block density.
+fn heat_char(mins: u64) -> char {
+    match mins {
+        0 => '·',
+        1..=15 => '░',
+        16..=30 => '▒',
+        31..=45 => '▓',
+        _ => '█',
+    }
+}
+
+/// Day × hour activity grid: one row per day, 24 hour cells. Only
+/// work-ish states (working/waiting/error/stuck/limited) heat a cell;
+/// idle and unknown stay cold.
+pub fn render_heatmap(
+    frame: &mut ratatui::Frame,
+    spans: &[Span],
+    title: &str,
+    scroll: usize,
+    area: ratatui::layout::Rect,
+    pal: &crate::ui::Palette,
+) {
+    use ratatui::text::{Line, Span as TSpan};
+    use ratatui::widgets::{Block, Paragraph};
+
+    let mut days: std::collections::BTreeMap<i64, [u64; 24]> = std::collections::BTreeMap::new();
+    for s in spans {
+        let workish = matches!(
+            s.state,
+            AgentState::Working
+                | AgentState::Waiting
+                | AgentState::Error
+                | AgentState::Stuck
+                | AgentState::Limited
+        );
+        if !workish || s.end <= s.start {
+            continue;
+        }
+        let mut t = s.start;
+        while t < s.end {
+            let hour = t / 3600;
+            let hour_end = (hour + 1) * 3600;
+            let take = (s.end.min(hour_end) - t).min(3600);
+            let day_cells = days.entry(day_of(t)).or_insert([0; 24]);
+            day_cells[(hour % 24) as usize] += take / 60 + u64::from(take % 60 > 0);
+            t = hour_end;
+        }
+    }
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(TSpan::raw(
+        "            00 02 04 06 08 10 12 14 16 18 20 22",
+    )));
+    for (day, cells) in &days {
+        let row: String = cells.iter().map(|m| heat_char(*m)).collect();
+        let total: u64 = cells.iter().sum();
+        lines.push(Line::from(TSpan::raw(format!(
+            "{} {} {}",
+            ymd_label(*day),
+            row,
+            fmt_dur(total * 60)
+        ))));
+    }
+    if days.is_empty() {
+        lines.push(Line::raw("no activity in range"));
+    }
+    let total = lines.len();
+    let visible: Vec<Line> = lines.into_iter().skip(scroll).collect();
+    let block = Block::bordered()
+        .title(Line::from(format!(" {title} ({total} lines) ")).style(pal.title))
+        .border_style(pal.border);
+    let base = if total <= 2 && days.is_empty() {
+        pal.dim
+    } else {
+        pal.status
+    };
+    let styled: Vec<Line> = visible
+        .into_iter()
+        .map(|mut l| {
+            l.style = base;
+            l
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(styled).block(block), area);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -886,7 +994,7 @@ mod tests {
         terminal
             .draw(|f| {
                 let pal = crate::ui::palette("dracula");
-                render_heatmap(f, &spans, "timeline", f.area(), &pal)
+                render_heatmap(f, &spans, "timeline", 0, f.area(), &pal)
             })
             .unwrap();
         let buf = terminal.backend().buffer();
