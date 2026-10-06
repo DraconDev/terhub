@@ -1039,7 +1039,8 @@ fn cmd_status_line(pane: Option<&str>) -> i32 {
             let owned;
             let pane = match pane {
                 Some(p) => {
-                    owned = terhub::agent::resolve_handle(&s.agents, p).unwrap_or_else(|| p.to_string());
+                    owned = terhub::agent::resolve_handle(&s.agents, p)
+                        .unwrap_or_else(|| p.to_string());
                     Some(owned.as_str())
                 }
                 None => None,
@@ -1481,8 +1482,7 @@ fn cmd_send(pane: &str, text: Option<&str>, template: Option<&str>, submit: bool
                     &owned
                 }
                 None => {
-                    let names: Vec<&str> =
-                        cfg.templates.iter().map(|t| t.name.as_str()).collect();
+                    let names: Vec<&str> = cfg.templates.iter().map(|t| t.name.as_str()).collect();
                     eprintln!(
                         "terhub: unknown template '{name}' (have: {})",
                         names.join(", ")

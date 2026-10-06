@@ -214,7 +214,11 @@ pub fn status_table(agents: &[AgentRecord], now: u64) -> String {
         } else {
             fmt_dur(now.saturating_sub(a.quiet_since))
         };
-        let handle = if a.handle.is_empty() { "—" } else { &a.handle };
+        let handle = if a.handle.is_empty() {
+            "—"
+        } else {
+            &a.handle
+        };
         out.push_str(&format!(
             "{:<5} {:<12} {:<8} {:<8} {:<4} {:<5} {:<5} {:<5} {:<9} {}\n",
             a.pane,

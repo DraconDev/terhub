@@ -406,6 +406,7 @@ fn header_hits_align_with_labels() {
             Some(SortKey::Cmd),
             Some(SortKey::Dir),
             Some(SortKey::Agent),
+            Some(SortKey::Handle),
             Some(SortKey::State),
             Some(SortKey::Src),
             Some(SortKey::For),
@@ -1014,10 +1015,7 @@ fn bulk_modal_sends_to_marked_with_submit() {
     app.marked.insert("%1".to_string());
     app.marked.insert("%2".to_string());
     app.on_key(press(KeyCode::Char('b')), &tmux);
-    assert!(matches!(
-        app.mode,
-        terhub::app::Mode::PromptBulk { .. }
-    ));
+    assert!(matches!(app.mode, terhub::app::Mode::PromptBulk { .. }));
     let lines = render_lines(&mut app, 120, 30);
     let text = lines.join("\n");
     assert!(text.contains("Prompt 2 pane(s)"), "no modal:\n{text}");
@@ -1028,7 +1026,11 @@ fn bulk_modal_sends_to_marked_with_submit() {
     app.on_key(press(KeyCode::Enter), &tmux);
     assert_eq!(app.mode, terhub::app::Mode::Normal);
     let argv = argv_log(&log);
-    assert_eq!(argv.matches("send-keys").count(), 4, "want text+Enter per target:\n{argv}");
+    assert_eq!(
+        argv.matches("send-keys").count(),
+        4,
+        "want text+Enter per target:\n{argv}"
+    );
     assert!(argv.contains("go"), "text lost:\n{argv}");
     assert!(argv.contains("Enter"), "no submit:\n{argv}");
 }
@@ -1281,10 +1283,8 @@ fn preview_scroll_renders_offset_content() {
 #[test]
 fn table_shows_handle_column() {
     let mut app = app_with_panes();
-    app.agents.insert(
-        "%1".to_string(),
-        rec_with_handle("%1", "@pi-alpha"),
-    );
+    app.agents
+        .insert("%1".to_string(), rec_with_handle("%1", "@pi-alpha"));
     let lines = render_lines(&mut app, 160, 24);
     let text = lines.join("\n");
     assert!(text.contains("Handle"), "no header:\n{text}");

@@ -451,8 +451,14 @@ pub struct MessageTemplate {
 pub fn builtin_templates() -> Vec<MessageTemplate> {
     [
         ("continue", "continue"),
-        ("status", "Summarize your current status in two lines: what is done, what is next."),
-        ("review", "Review your own work for mistakes and fix what you find."),
+        (
+            "status",
+            "Summarize your current status in two lines: what is done, what is next.",
+        ),
+        (
+            "review",
+            "Review your own work for mistakes and fix what you find.",
+        ),
     ]
     .into_iter()
     .map(|(name, text)| MessageTemplate {

@@ -2505,7 +2505,11 @@ impl App {
                 .map(|a| a.pane.clone())
                 .collect()
         } else {
-            self.marked.iter().filter(|id| sendable(id)).cloned().collect()
+            self.marked
+                .iter()
+                .filter(|id| sendable(id))
+                .cloned()
+                .collect()
         };
         out.sort();
         out
@@ -3549,10 +3553,16 @@ mod tests {
             p
         }];
         app.merge_caches();
-        app.agents.insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 10));
-        app.agents.insert("%2".to_string(), record("%2", "pi", AgentState::Idle, 10));
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Waiting, 10),
+        );
         app.agents
-            .insert("dev:%9".to_string(), record("dev:%9", "pi", AgentState::Waiting, 10));
+            .insert("%2".to_string(), record("%2", "pi", AgentState::Idle, 10));
+        app.agents.insert(
+            "dev:%9".to_string(),
+            record("dev:%9", "pi", AgentState::Waiting, 10),
+        );
         assert_eq!(app.bulk_targets(), vec!["%1".to_string()]);
     }
 
@@ -3573,7 +3583,10 @@ mod tests {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
-        app.agents.insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 10));
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Waiting, 10),
+        );
         app.do_bulk();
         assert!(matches!(app.mode, Mode::PromptBulk { .. }));
         app.on_key(press(KeyCode::Tab), &tmux);
@@ -3587,12 +3600,18 @@ mod tests {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
-        app.agents.insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 10));
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Waiting, 10),
+        );
         app.do_bulk();
         app.on_key(press(KeyCode::Enter), &tmux);
         assert!(matches!(app.mode, Mode::PromptBulk { .. }));
         assert!(
-            app.status.as_deref().unwrap_or("").contains("nothing to send"),
+            app.status
+                .as_deref()
+                .unwrap_or("")
+                .contains("nothing to send"),
             "{:?}",
             app.status
         );

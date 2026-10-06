@@ -757,7 +757,10 @@ mod tests {
         let used: HashSet<String> = HashSet::new();
         assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez");
         assert_eq!(mint_handle(&used, "pi", ""), "@pi");
-        assert_eq!(mint_handle(&used, "claude", "My Project!"), "@claude-my-project");
+        assert_eq!(
+            mint_handle(&used, "claude", "My Project!"),
+            "@claude-my-project"
+        );
         let mut used: HashSet<String> = ["@pi-wez".to_string()].into_iter().collect();
         assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez-2");
         used.insert("@pi-wez-2".to_string());
