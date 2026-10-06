@@ -1260,6 +1260,90 @@ mod tests {
     }
 
     #[test]
+    fn minimax_completion_reads_waiting() {
+        let m = compiled();
+        // Finished task banners: waiting, not working.
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "✓ Goal complete · 31min38s · 352K tokens\n"),
+            hit(
+                Some("minimax-code"),
+                AgentState::Waiting,
+                "✓ Goal complete · 31min38s · 352K tokens"
+            )
+        );
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "✓ Todo list 15/15 completed\n"),
+            hit(
+                Some("minimax-code"),
+                AgentState::Waiting,
+                "✓ Todo list 15/15 completed"
+            )
+        );
+        // A failed task run is an error (and beats the goal banner below it).
+        assert_eq!(
+            classify_screen(
+                &m,
+                "minimax-code",
+                "✓ Goal complete · 2h11min8s\n× Tasks · 1 failed · 5 results ready\n"
+            ),
+            hit(
+                Some("minimax-code"),
+                AgentState::Error,
+                "× Tasks · 1 failed · 5 results ready"
+            )
+        );
+        // Partial progress is not completion…
+        assert_eq!(classify_screen(&m, "minimax-code", "Todo list 3/15\n"), None);
+        // …prose failures are not task failures…
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "SPEC-200 failed when gates ran\n"),
+            None
+        );
+        // …a zero count is not a failure…
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "Tasks · 0 failed · /tasks details\n"),
+            None
+        );
+        // …and the persistent input chrome never waits.
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "Message · Enter send · Ctrl+J newline\n"),
+            None
+        );
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "› Ask Mcode to do anything\n"),
+            None
+        );
+        // Live inference still reads working.
+        assert_eq!(
+            classify_screen(&m, "minimax-code", "⠙ Running 13min40s · ⚡ 15092 tok/s\n"),
+            hit(
+                Some("minimax-code"),
+                AgentState::Working,
+                "⠙ Running 13min40s · ⚡ 15092 tok/s"
+            )
+        );
+    }
+
+    #[test]
+    fn tip_lines_stripped_before_classify() {
+        let m = compiled();
+        // A footer tip must never trip the classifier, even one whose
+        // words would match ("quota" is a limited pattern).
+        assert_eq!(
+            classify_screen(&m, "claude", "$ working\nTip: quota for free tier\n"),
+            None
+        );
+        // …while real verdicts beside a tip still land, with real summaries.
+        assert_eq!(
+            classify_screen(&m, "claude", "Tip: quota for free tier\nError: socket timeout\n"),
+            hit(Some("claude"), AgentState::Error, "Error: socket timeout")
+        );
+        // Only the footer prefix strips: prose merely starting with Tip stays.
+        assert_eq!(strip_tip_lines("Tipper: hello\nok\n"), "Tipper: hello\nok\n");
+        assert_eq!(strip_tip_lines("  Tip: indented\nok\n"), "ok\n");
+    }
+
+    #[test]
     fn bare_prompt_borrows_context_line() {
         let m = compiled();
         // Empty prompt: the task line above, not the box rule, not "❯".

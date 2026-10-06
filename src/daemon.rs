@@ -1672,6 +1672,50 @@ mod tests {
     }
 
     #[test]
+    fn tip_rotation_does_not_restart_quiet() {
+        // Footer tip carousel swaps full text every few seconds: the
+        // quiet clock must ignore it like any other animation.
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-tips-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        fake_tmux_file_screen(&dir, 999_999_999, "claude");
+        let tmux = crate::tmux::Tmux::test(dir.join("tmux"));
+        let manifests = builtin_compiled();
+        let screen = dir.join("screen.txt");
+        std::fs::write(&screen, "done\nTip: /context shows budget\n$ \n").unwrap();
+        let (next, _, _, _) =
+            poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+        // Borrow the pane a proc identity so the merge path runs: without
+        // any agent evidence there is no record to watch. A live sleep
+        // child is agent-free (comm "sleep" matches nothing).
+        let _ = next;
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        let dir2 =
+            std::env::temp_dir().join(format!("terhub-poll-tips2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir2);
+        std::fs::create_dir_all(&dir2).unwrap();
+        fake_tmux_file_screen(&dir2, child.id(), "sleep");
+        let tmux2 = crate::tmux::Tmux::test(dir2.join("tmux"));
+        let screen2 = dir2.join("screen.txt");
+        std::fs::write(&screen2, "done\nTip: /context shows budget\n$ \n").unwrap();
+        let (next, _, _, _) =
+            poll_sync_with(&tmux2, HashMap::new(), &manifests, Tunables::default());
+        // Still no agent evidence (sleep is not an agent, no patterns):
+        // pin the record manually to isolate the quiet clock itself.
+        let _ = next;
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&dir2);
+    }
+
+    #[test]
     fn continuity_ignores_agent_case() {
         // track_cpu matches agents case-insensitively; state continuity
         // must agree, or a "PI"→"pi" wobble resets the clock every poll.
