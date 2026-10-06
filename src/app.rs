@@ -1234,6 +1234,7 @@ impl App {
         self.update_preview_cpu();
         self.update_preview_git();
         match self.selected_pane().map(|p| p.id.clone()) {
+            Some(id) if is_native_pane(&id) => self.capture_native_preview(&id),
             Some(id) if is_remote_pane(&id) => self.capture_remote_preview(&id),
             Some(id) => match tmux.capture_pane_styled(&id, PREVIEW_SCROLLBACK) {
                 Ok(text) => {
@@ -1256,6 +1257,41 @@ impl App {
         // Tick re-captures keep the reader position; new content only clamps it.
         let max = self.preview_max_scroll();
         self.preview_scroll = self.preview_scroll.min(max);
+    }
+
+    /// Preview a native row over its terminal's control channel.
+    fn capture_native_preview(&mut self, id: &str) {
+        match crate::native::capture(id, PREVIEW_SCROLLBACK) {
+            Ok(text) => {
+                self.preview = text;
+                self.preview_width = None;
+            }
+            Err(_) => {
+                self.preview = "(native capture failed)".to_string();
+                self.preview_width = None;
+            }
+        }
+        self.refresh_native_cpu(id);
+    }
+
+    /// Native agent records are fetch-time, so the preview's CPU clock
+    /// would freeze at one sample: re-read this row's subtree ticks live.
+    fn refresh_native_cpu(&mut self, id: &str) {
+        let (Some(pane), Some(rec)) = (
+            self.selected_pane().filter(|p| p.id == id),
+            self.agents.get(id),
+        ) else {
+            return;
+        };
+        if rec.agent.is_empty() || pane.pid == 0 {
+            return;
+        }
+        let snap = crate::proc::ProcSnapshot::capture();
+        if let Some(hit) = snap.detect_agent(pane.pid) {
+            if let Some(rec) = self.agents.get_mut(id) {
+                rec.cpu_ticks = snap.subtree_ticks(hit.pid);
+            }
+        }
     }
 
     /// Right-click: with the preview open it closes from anywhere,
