@@ -687,6 +687,7 @@ mod tests {
             agent: "claude-code".to_string(),
             state: AgentState::Waiting,
             summary: String::new(),
+            prompt: String::new(),
         };
         apply_event_to(&mut reg, &ev, 100_000);
         assert_eq!(reg["%1"].agent, "claude");
@@ -695,6 +696,7 @@ mod tests {
             agent: "MyAgent".to_string(),
             state: AgentState::Working,
             summary: String::new(),
+            prompt: String::new(),
         };
         apply_event_to(&mut reg, &ev2, 100_000);
         assert_eq!(reg["%2"].agent, "myagent");
