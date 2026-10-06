@@ -87,7 +87,28 @@ enum Cmd {
         /// Read the prompt from stdin (JSON {"prompt": ...} or raw head).
         #[arg(long, conflicts_with = "prompt")]
         prompt_stdin: bool,
+        /// Model id the agent runs (shown in the preview strip).
+        #[arg(long)]
+        model: Option<String>,
+        /// Context-window fullness 0-100 (shown in the preview strip).
+        #[arg(long)]
+        ctx: Option<String>,
     },
+    /// Pin an agent record to a pane the detector missed.
+    Register {
+        pane: String,
+        /// Agent name (pi, claude, codex, ...).
+        #[arg(long)]
+        agent: String,
+        /// Agent pid: the poll tracks CPU under it for stuck detection.
+        #[arg(long)]
+        pid: Option<u32>,
+        /// Initial state (default working).
+        #[arg(long, default_value = "working")]
+        state: String,
+    },
+    /// Drop a manually pinned agent record.
+    Unregister { pane: String },
     /// Manage the terhubd daemon.
     Daemon {
         #[command(subcommand)]
@@ -655,10 +676,22 @@ fn cmd_hook(
     summary_stdin: bool,
     prompt: Option<&str>,
     prompt_stdin: bool,
+    model: Option<&str>,
+    ctx: Option<&str>,
 ) -> i32 {
     let Some(state) = AgentState::parse(state) else {
         eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
         return 1;
+    };
+    let ctx: Option<u8> = match ctx {
+        None => None,
+        Some(raw) => match raw.trim().parse::<u8>() {
+            Ok(n) if n <= 100 => Some(n),
+            _ => {
+                eprintln!("terhub: bad --ctx '{raw}' (want 0-100)");
+                return 1;
+            }
+        },
     };
     // Both stdin readers drain the same pipe: --summary-stdin and
     // --prompt-stdin together would split it, so read once and share.
@@ -683,6 +716,8 @@ fn cmd_hook(
         state,
         summary,
         prompt,
+        model: model.unwrap_or("").to_string(),
+        ctx,
     };
     // Fire-and-forget: hooks must never break the agent they observe.
     if let Err(e) = daemon::send_event(&ev, Duration::from_secs(1)) {
@@ -2194,6 +2229,8 @@ fn real_main() -> i32 {
             summary_stdin,
             prompt,
             prompt_stdin,
+            model,
+            ctx,
         }) => cmd_hook(
             &agent,
             &pane,
@@ -2202,7 +2239,16 @@ fn real_main() -> i32 {
             summary_stdin,
             prompt.as_deref(),
             prompt_stdin,
+            model.as_deref(),
+            ctx.as_deref(),
         ),
+        Some(Cmd::Register {
+            pane,
+            agent,
+            pid,
+            state,
+        }) => cmd_register(&pane, &agent, pid, &state),
+        Some(Cmd::Unregister { pane }) => cmd_unregister(&pane),
         Some(Cmd::Daemon { action }) => cmd_daemon(&action),
         Some(Cmd::Hooks { action }) => cmd_hooks(&action),
         Some(Cmd::Attend { cycle, list }) => cmd_attend(cycle, list),
