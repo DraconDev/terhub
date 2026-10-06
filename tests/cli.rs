@@ -35,6 +35,81 @@ fn stdout(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).to_string()
 }
 
+fn run_with_env(tag: &str, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let rt = runtime_dir(tag);
+    let _ = std::fs::remove_dir_all(&rt);
+    std::fs::create_dir_all(&rt).unwrap();
+    let mut cmd = Command::new(bin());
+    cmd.args(args)
+        .env("TERHUB_RUNTIME_DIR", &rt)
+        .env("PATH", "/nonexistent-terhub-test");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().expect("spawn terhub");
+    let _ = std::fs::remove_dir_all(&rt);
+    out
+}
+
+#[test]
+fn hooks_install_status_uninstall_roundtrip() {
+    let base = std::env::temp_dir().join(format!("terhub-cli-hooks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let claude = base.join("settings.json").display().to_string();
+    let pi = base.join("terhub.ts").display().to_string();
+    let env = [("TERHUB_CLAUDE_SETTINGS", claude.as_str()), ("TERHUB_PI_EXTENSION", pi.as_str())];
+    let out = run_with_env("hstat0", &["hooks", "status"], &env);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(stdout(&out).contains("claude: not installed"), "{}", stdout(&out));
+    assert!(stdout(&out).contains("pi: not installed"), "{}", stdout(&out));
+    let out = run_with_env("hinst", &["hooks", "install"], &env);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stdout(&out).contains("claude: installed"), "{}", stdout(&out));
+    assert!(stdout(&out).contains("pi: installed"), "{}", stdout(&out));
+    let out = run_with_env("hstat1", &["hooks", "status"], &env);
+    assert!(stdout(&out).contains("claude: installed"), "{}", stdout(&out));
+    assert!(stdout(&out).contains("pi: installed"), "{}", stdout(&out));
+    let out = run_with_env("huninst", &["hooks", "uninstall", "claude"], &env);
+    assert!(stdout(&out).contains("claude: removed"), "{}", stdout(&out));
+    assert!(!stdout(&out).contains("pi: removed"), "{}", stdout(&out));
+    let out = run_with_env("huninst2", &["hooks", "uninstall"], &env);
+    assert!(stdout(&out).contains("pi: removed"), "{}", stdout(&out));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn hook_summary_stdin_reads_message() {
+    use std::io::Write;
+    let rt = runtime_dir("hookstdin");
+    let _ = std::fs::remove_dir_all(&rt);
+    std::fs::create_dir_all(&rt).unwrap();
+    let mut child = Command::new(bin())
+        .args(["hook", "--agent", "pi", "--pane", "%1", "--state", "waiting", "--summary-stdin"])
+        .env("TERHUB_RUNTIME_DIR", &rt)
+        .env("PATH", "/nonexistent-terhub-test")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn terhub");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(br#"{"message": "Approve plan?"}"#)
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    // --summary and --summary-stdin conflict.
+    let out = run_isolated(
+        "hookconflict",
+        &["hook", "--agent", "pi", "--pane", "%1", "--state", "waiting", "--summary", "x", "--summary-stdin"],
+    );
+    assert_eq!(out.status.code(), Some(2));
+    let _ = std::fs::remove_dir_all(&rt);
+}
+
 #[test]
 fn hook_bad_state_exits_1() {
     let out = run_isolated(
