@@ -132,6 +132,9 @@ status bar, no modes except small popups:
   reversible, hidden count in the title) — the fast way to drop idle
   shells from a dashboard view.
   Prompts eat all clicks; the settings popup rows are clickable.
+- **Refresh.** `F5` re-reads tmux and re-fetches native terminal tabs
+  (Konsole/kitty/WezTerm show as `konsole:…` rows under `All` only; see
+  [Native terminal tabs](#native-terminal-tabs)).
 - **Styles.** `t` cycles the ten built-in themes and `v` flips table
   density (comfortable shows the summary column, compact drops it and
   tightens columns) — both session-only try-outs. `s` opens the settings
@@ -477,6 +480,34 @@ but kill/restart/pause/mark/rename and custom commands refuse rather than
 act on the wrong machine. `attend` considers cached remotes too.
 `fleet attach` is the same jump for scripts (no session = most-recent).
 
+## Native terminal tabs
+
+tmux only sees its own panes; the terminals hosting them have their own
+tabs. terhub reads Konsole (over `qdbus`), kitty (`kitty @`, needs
+`allow_remote_control` plus `TERHUB_KITTY_TO` pointing at the socket when
+run from outside kitty), and WezTerm (`wezterm cli`, never auto-starting
+a server) as first-class rows:
+
+```sh
+terhub native list [--json]
+terhub native spawn konsole|kitty|wezterm
+terhub capture konsole:<kpid>:<sess> [--lines N]
+terhub focus kitty:3
+terhub send wezterm:7 "ls"   # --no-submit skips Enter
+```
+
+In the TUI, native tabs are fetched at startup and on `F5` (the 3s tick
+leaves them alone — tab enumeration is subprocess-heavy) and show under
+`All` only, with the backend as the session (`konsole:1535082:6`). Jump
+switches the terminal's tab and stays open; preview, pause, and custom
+commands work; kill/restart/mark/rename refuse (Konsole exposes no
+tab-close over DBus). Agent badges come from the process tree plus one
+screen classification at fetch time — shells in those tabs have no hooks,
+so states are screen-truth, frozen until the next fetch. Konsole capture
+is the visible screen (its scrollback offsets are undocumented);
+kitty/WezTerm capture honors `--lines`. Fleet host names can't collide
+with backend names (`konsole`, `kitty`, `wezterm` are reserved).
+
 ## Zellij baseline
 
 ```sh
@@ -521,6 +552,8 @@ are tmux-backed.
 | `fleet status [--json]` | Agents across hosts |
 | `fleet send <host> <pane> <text>` | Drive a control-mode host |
 | `fleet attach <host> [session]` | SSH into a host's tmux |
+| `native list [--json]` | Tabs across Konsole/kitty/WezTerm |
+| `native spawn <backend>` | Open a fresh native tab |
 | `zellij list\|attach` | Zellij baseline |
 | `config --show\|--path\|--init\|--check` | Config file |
 
