@@ -54,6 +54,34 @@ fn new_window_targets_session_and_reports_pane() {
 }
 
 #[test]
+fn pause_and_resume_stop_a_live_process() {
+    // Real child, real signals: pause must show T in /proc, resume must
+    // clear it. The child is reaped either way (Drop kills on unwind).
+    struct Guard(std::process::Child);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = terhub::proc::resume_group(self.0.id());
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let child = std::process::Command::new("sleep")
+        .arg("30")
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut guard = Guard(child);
+    let pid = guard.0.id();
+    assert!(!terhub::proc::is_stopped(pid));
+    terhub::proc::pause_group(pid).unwrap();
+    assert!(terhub::proc::is_stopped(pid), "sleep must show T after STOP");
+    terhub::proc::resume_group(pid).unwrap();
+    assert!(!terhub::proc::is_stopped(pid), "sleep must run after CONT");
+    assert!(terhub::proc::pause_group(0).is_err());
+    assert!(terhub::proc::pause_group(1).is_err());
+}
+
+#[test]
 fn respawn_pane_kills_and_reruns() {
     let (tmux, log) = harness("respawn");
     tmux.respawn_pane("%7", "pi --model fast").unwrap();
