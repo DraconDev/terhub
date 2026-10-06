@@ -345,7 +345,7 @@ impl Tmux {
     /// Attach replaces this process with a tmux client, which needs a real
     /// terminal. Callers that mutate server state first must check this
     /// upfront: a failed exec'd attach can't clean up (the image is gone).
-    fn need_tty() -> Result<()> {
+    pub(crate) fn need_tty() -> Result<()> {
         use std::io::IsTerminal;
         if std::io::stdout().is_terminal() {
             Ok(())

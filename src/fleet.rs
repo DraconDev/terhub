@@ -197,6 +197,68 @@ pub fn fleet_status(hosts: &[Host]) -> Vec<HostStatus> {
     })
 }
 
+/// Turn a remote snapshot into table rows: ids are `host:%N`, sessions
+/// `host ▸ session` (never matching a local tab, so remotes show under
+/// All only). Agents are re-keyed by remote id for badges and dots.
+pub fn snapshot_rows(
+    host: &Host,
+    snap: &crate::daemon::Snapshot,
+) -> (Vec<crate::tmux::Pane>, Vec<crate::agent::AgentRecord>) {
+    let mut rows = Vec::new();
+    let mut agents = Vec::new();
+    for a in &snap.agents {
+        let id = format!("{}:{}", host.name, a.pane);
+        rows.push(crate::tmux::Pane {
+            id: id.clone(),
+            session: format!("{} \u{25b8} {}", host.name, a.session),
+            window_id: String::new(),
+            window_name: a.window.clone(),
+            window_active: false,
+            index: 0,
+            command: a.command.clone(),
+            path: String::new(),
+            active: false,
+            width: 0,
+            height: 0,
+            activity: a.updated_at,
+            pid: 0,
+        });
+        let mut rec = a.clone();
+        rec.pane = id;
+        agents.push(rec);
+    }
+    (rows, agents)
+}
+
+/// Styled scrollback from a remote pane (the preview path for remote rows).
+pub fn remote_capture(target: &str, pane: &str, lines: u32) -> Result<String> {
+    let start = format!("-{lines}");
+    ssh_run(
+        target,
+        &["tmux", "capture-pane", "-p", "-e", "-t", pane, "-S", &start],
+        10,
+    )
+}
+
+/// argv for an interactive remote attach: `-t` for the tty, `--` so a
+/// dash-leading target can't become an ssh flag. No BatchMode — auth
+/// may legitimately prompt.
+pub fn attach_remote_argv(target: &str, session: &str) -> Vec<String> {
+    ["-t", "--", target, "tmux", "attach-session", "-t", session]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+/// Replace this process with `ssh -t` into the remote session (the TUI
+/// exits: ssh owns the terminal from here). Only returns on failure.
+pub fn attach_remote(target: &str, session: &str) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    crate::tmux::Tmux::need_tty()?;
+    let args = attach_remote_argv(target, session);
+    Err(std::process::Command::new("ssh").args(&args).exec().into())
+}
+
 /// Send input to a remote pane (control-mode hosts only).
 pub fn fleet_send(host: &Host, pane: &str, text: &str, submit: bool) -> Result<String> {
     if host.mode != Mode::Control {
