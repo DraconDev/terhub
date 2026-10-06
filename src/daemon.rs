@@ -336,7 +336,7 @@ async fn handle_conn(
                 let mut reg = lock_registry(&registry);
                 let now = now_unix();
                 apply_register(&mut reg, &pane, &agent, pid, state, now);
-                crate::agent::ensure_handles(&reg);
+                crate::agent::ensure_handles(&mut reg);
                 save_registry(&runtime.join("registry.json"), &reg);
             }
             Response::ok()
