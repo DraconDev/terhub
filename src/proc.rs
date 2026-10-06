@@ -32,6 +32,7 @@ const AGENT_BINS: &[&str] = &[
     "continue",
     "tabnine",
     "copilot",
+    "minimax-code",
 ];
 
 /// Versioned wrapper stems (lowercase). Match a program basename that is
@@ -666,7 +667,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    #[test]
     #[test]
     fn minimax_code_detects_as_agent() {
         let dir = fake_proc(
