@@ -544,6 +544,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\[y/n\\]".to_string(),
                 "press enter to send".to_string(),
             ],
+            idle: vec![],
             waiting_unless: vec!["esc to interrupt".to_string()],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
@@ -572,12 +573,14 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏".to_string(),
             ],
             waiting: vec![
-                "✓ goal complete".to_string(),
-                "todo list \\d+/\\d+ completed".to_string(),
                 "do you want to proceed".to_string(),
                 "\\bapprove\\b".to_string(),
                 "\\[y/n\\]".to_string(),
                 "enter to confirm".to_string(),
+            ],
+            idle: vec![
+                "✓ goal complete".to_string(),
+                "todo list \\d+/\\d+ completed".to_string(),
             ],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
@@ -592,7 +595,6 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
-            idle: vec![],
             waiting_unless: vec![],
         },
     ]
