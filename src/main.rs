@@ -501,6 +501,7 @@ macro_rules! pane_arg {
 }
 
 fn cmd_capture(pane: &str, lines: u32) -> i32 {
+    let pane = &pane_arg!(pane);
     if terhub::native::is_native_id(pane) {
         return match terhub::native::capture(pane, lines) {
             Ok(mut text) => {
@@ -539,6 +540,7 @@ fn cmd_capture(pane: &str, lines: u32) -> i32 {
 }
 
 fn cmd_focus(pane: &str) -> i32 {
+    let pane = &pane_arg!(pane);
     if terhub::native::is_native_id(pane) {
         return match terhub::native::focus(pane) {
             Ok(()) => 0,
@@ -565,6 +567,9 @@ fn cmd_focus(pane: &str) -> i32 {
 }
 
 fn cmd_swap_pane(a: &str, b: &str) -> i32 {
+    let owned_a = pane_arg!(a);
+    let owned_b = pane_arg!(b);
+    let (a, b) = (owned_a.as_str(), owned_b.as_str());
     let tmux = match Tmux::new() {
         Ok(t) => t,
         Err(e) => {
@@ -585,6 +590,7 @@ fn cmd_swap_pane(a: &str, b: &str) -> i32 {
 }
 
 fn cmd_kill_pane(pane: &str) -> i32 {
+    let pane = &pane_arg!(pane);
     let tmux = match Tmux::new() {
         Ok(t) => t,
         Err(e) => {
