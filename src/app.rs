@@ -750,7 +750,7 @@ impl App {
     pub fn fetch_native(&mut self) {
         use crate::agent::{Source, classify_screen, compile_all_lossy, load_manifests};
         let now = crate::agent::now_unix();
-        let snap = crate::proc::ProcSnapshot::capture();
+        let snap = crate::proc::Snapshot::capture();
         let mut manifests = crate::agent::builtin_manifests();
         manifests.extend(load_manifests(&crate::config::manifests_dir()).0);
         let (compiled, _) = compile_all_lossy(&manifests);
@@ -1288,7 +1288,7 @@ impl App {
         if rec.agent.is_empty() || pane.pid == 0 {
             return;
         }
-        let snap = crate::proc::ProcSnapshot::capture();
+        let snap = crate::proc::Snapshot::capture();
         if let Some(hit) = snap.detect_agent(pane.pid) {
             if let Some(rec) = self.agents.get_mut(id) {
                 rec.cpu_ticks = snap.subtree_ticks(hit.pid);
@@ -2468,9 +2468,11 @@ impl App {
             self.set_status(format!("remote attach to {host} exits the hub"));
             return;
         }
+        let native = matches!(ev, AppEvent::FocusNative(_));
         let (what, result) = match ev {
             AppEvent::Attach(ref name) => (format!("attach {name}"), tmux.switch_session(name)),
             AppEvent::FocusPane(ref id) => (format!("jump {id}"), tmux.focus_pane(id)),
+            AppEvent::FocusNative(ref id) => (format!("jump {id}"), crate::native::focus(id)),
             AppEvent::RemoteAttach { .. } => {
                 self.set_status("remote attach exits the hub".to_string());
                 return;
@@ -2478,9 +2480,14 @@ impl App {
             AppEvent::Quit => return,
         };
         if let Err(e) = result {
+            // A failed target is usually a dead row; re-read so it vanishes.
+            self.refresh(tmux);
+            if native {
+                self.fetch_native();
+            }
             self.set_status(format!("{what} failed: {e:#}"));
+            return;
         }
-        // A failed target is usually a dead row; re-read so it vanishes.
         self.refresh(tmux);
     }
 
@@ -3328,6 +3335,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn attend_event_routes_remote_winners_out() {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
