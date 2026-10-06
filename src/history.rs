@@ -690,7 +690,13 @@ mod tests {
         assert_eq!((spans[2].pane.as_str(), spans[2].start, spans[2].end), ("%1", 400, 500));
         // Totals attribute per pane, most-focused first.
         let totals = foreground_totals(&spans);
-        assert_eq!(totals, vec![("%1".to_string(), 200), ("%2".to_string(), 100)]);
+        assert_eq!(
+            totals,
+            vec![
+                ForeTotal { pane: "%1".to_string(), secs: 200 },
+                ForeTotal { pane: "%2".to_string(), secs: 100 },
+            ]
+        );
         // A stray detach with nothing focused invents no time.
         let spans = build_foreground(&[Entry::human_focus(50, None)], 500);
         assert!(spans.is_empty());
@@ -706,7 +712,7 @@ mod tests {
             by_day: stats(&spans, None, GroupBy::Day),
             by_agent: stats(&spans, None, GroupBy::Agent),
             by_session: stats(&spans, None, GroupBy::Session),
-            foreground: vec![("%1".to_string(), 250)],
+            foreground: vec![ForeTotal { pane: "%1".to_string(), secs: 250 }],
         }
     }
 
