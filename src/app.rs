@@ -1392,7 +1392,8 @@ impl App {
         // a session bar the preview covers up.
         if self.show_preview && key_matches(&self.config.spec("attach"), code) {
             if let Some(p) = self.selected_pane() {
-                return Some(AppEvent::FocusPane(p.id.clone()));
+                let id = p.id.clone();
+                return self.jump_event(&id);
             }
             self.set_status("no pane selected".to_string());
             return None;
@@ -1744,20 +1745,34 @@ impl App {
     }
 
     /// Jump to the longest-waiting agent. Works from either focus.
+    /// Route an attend winner: remote panes exit to ssh, local focus.
+    fn attend_event(&self, agents: &[AgentRecord]) -> Option<AppEvent> {
+        let winner = crate::attend::pick_attend(agents, None)?;
+        if is_remote_pane(&winner.pane) {
+            let (host, session) = self.remote_target(&winner.pane)?;
+            Some(AppEvent::RemoteAttach { host, session })
+        } else {
+            Some(AppEvent::FocusPane(winner.pane.clone()))
+        }
+    }
+
     fn do_attend(&mut self) -> Option<AppEvent> {
         match daemon::fetch_snapshot(Duration::from_millis(300)) {
             Ok(snap) => {
+                let mut all = snap.agents;
+                // Cached remotes join the search (marks scope to local:
+                // remote rows can't be marked, so a marked search skips them).
+                all.extend(self.fleet_agents.iter().cloned());
                 // Marked panes scope the search; unmarked behaves as before.
                 let agents: Vec<AgentRecord> = if self.marked.is_empty() {
-                    snap.agents
+                    all
                 } else {
-                    snap.agents
-                        .into_iter()
+                    all.into_iter()
                         .filter(|a| self.marked.contains(&a.pane))
                         .collect()
                 };
-                match crate::attend::pick_attend(&agents, None) {
-                    Some(a) => Some(AppEvent::FocusPane(a.pane.clone())),
+                match self.attend_event(&agents) {
+                    Some(ev) => Some(ev),
                     None => {
                         self.set_status(format!("all clear ({} agents)", agents.len()));
                         None
@@ -1798,6 +1813,12 @@ impl App {
                 return;
             }
         };
+        // Marks feed bulk kill/attend: remote rows stay out so a marked
+        // kill can never reach across ssh.
+        if is_remote_pane(&id) {
+            self.set_status(format!("can't mark remote row {id}"));
+            return;
+        }
         if self.marked.remove(&id) {
             self.set_status(format!("unmarked {id}"));
         } else {
@@ -1894,7 +1915,8 @@ impl App {
         }
         if key_matches(&cfg.spec("attach"), code) {
             if let Some(p) = self.selected_pane() {
-                return Some(AppEvent::FocusPane(p.id.clone()));
+                let id = p.id.clone();
+                return self.jump_event(&id);
             }
             self.set_status("no pane selected".to_string());
             return None;
@@ -1906,6 +1928,10 @@ impl App {
                 self.mode = Mode::ConfirmKillMarked(ids);
             } else {
                 match self.selected_pane() {
+                    Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
+                        "can't kill remote row {} (jump in to manage it)",
+                        p.id
+                    )),
                     Some(p) => self.mode = Mode::ConfirmKillPane(p.id.clone()),
                     None => self.set_status("no pane selected".to_string()),
                 }
@@ -1947,6 +1973,10 @@ impl App {
         }
         if key_matches(&cfg.spec("restart"), code) {
             match self.selected_pane() {
+                Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
+                    "can't restart remote row {} (jump in to manage it)",
+                    p.id
+                )),
                 Some(p) if p.command.trim().is_empty() => {
                     self.set_status(format!("nothing to re-run in {}", p.id))
                 }
