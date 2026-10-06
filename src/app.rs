@@ -718,8 +718,7 @@ impl App {
             self.fleet_errors.clear();
             self.fleet_fetched_at = None;
             self.set_status("no fleet hosts (terhub host add <name> <target>)".to_string());
-            self.merge_fleet();
-            self.merge_native();
+            self.merge_caches();
             return;
         }
         let mut rows = Vec::new();
@@ -759,8 +758,7 @@ impl App {
                 names.join(", ")
             ));
         }
-        self.merge_fleet();
-        self.merge_native();
+        self.merge_caches();
     }
 
     /// Fetch native terminal tabs into the table (startup + F5; replaces
@@ -851,7 +849,7 @@ impl App {
         self.native_rows = rows;
         self.native_agents = agents;
         self.set_status(format!("native: {}", notes.join("; ")));
-        self.merge_native();
+        self.merge_caches();
     }
 
     /// (host, remote session) for a remote row id, if the cache knows it.
@@ -927,8 +925,7 @@ impl App {
         self.refresh_agents();
         // Remote rows/badges ride the cache: local ticks must not drop
         // them (and a dead daemon must not take them with it).
-        self.merge_fleet();
-        self.merge_native();
+        self.merge_caches();
         self.follow_preview(tmux);
         if self.filtered.is_empty() {
             self.focus = Focus::Sessions;
