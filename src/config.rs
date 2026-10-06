@@ -1153,6 +1153,34 @@ mod tests {
     }
 
     #[test]
+    fn message_templates_validate_with_builtins() {
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("templates.toml");
+        std::fs::write(
+            &path,
+            "[[template]]\nname = \"go\"\ntext = \"continue\"\n\n\
+             [[template]]\nname = \"\"\ntext = \"x\"\n\n\
+             [[template]]\nname = \"empty\"\n\n\
+             [[template]]\nname = \"go\"\ntext = \"again\"\n",
+        )
+        .unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(cfg.templates.len(), 1);
+        assert_eq!(cfg.templates[0].name, "go");
+        assert_eq!(cfg.templates[0].text, "continue");
+        assert_eq!(problems.len(), 3);
+        assert!(problems.iter().any(|p| p.contains("no name")));
+        assert!(problems.iter().any(|p| p.contains("no text")));
+        assert!(problems.iter().any(|p| p.contains("duplicate")));
+        std::fs::remove_file(path).ok();
+        // No [[template]] at all: builtins keep bulk prompt usable.
+        let (cfg, _) = load_config_report(Some(dir.join("missing.toml")));
+        assert!(!cfg.templates.is_empty());
+        assert!(cfg.templates.iter().any(|t| t.name == "continue"));
+    }
+
+    #[test]
     fn spawn_profiles_validate_with_builtins() {
         // Valid entries survive; nameless, program-less, and duplicate
         // names become problems. Empty file still offers builtins.
