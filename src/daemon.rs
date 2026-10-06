@@ -718,14 +718,16 @@ fn track_cpu(o: &AgentRecord, agent: &str, ticks: u64, start: u64, now: u64) -> 
     }
 }
 
-/// Strip animation noise from a capture before hashing: braille spinner
-/// frames (⠙⠋), block-element meters (█▆▄), and digit runs (elapsed
-/// counters, token rates, relative times). Without this a spinner redraw
-/// restarts the quiet clock every poll and Idle pegs near zero forever.
-/// Digit-only semantic steps ("1 failed" → "2 failed") hide from the hash
-/// too — the summary comparison in [`track_quiet_merged`] catches the
-/// ones the classifier surfaces.
+/// Strip animation noise from a capture before hashing: footer-carousel
+/// lines (`Tip: …`, full-text rotation), braille spinner frames (⠙⠋),
+/// block-element meters (█▆▄), and digit runs (elapsed counters, token
+/// rates, relative times). Without this a spinner redraw restarts the
+/// quiet clock every poll and Idle pegs near zero forever. Digit-only
+/// semantic steps ("1 failed" → "2 failed") hide from the hash too — the
+/// summary comparison in [`track_quiet_merged`] catches the ones the
+/// classifier surfaces.
 fn denoise_screen(s: &str) -> String {
+    let s = crate::agent::strip_tip_lines(s);
     let mut out = String::with_capacity(s.len());
     let mut in_digits = false;
     for c in s.chars() {

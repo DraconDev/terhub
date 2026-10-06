@@ -626,11 +626,26 @@ pub fn screen_summary_line(line: &str) -> String {
 /// stays unnamed unless the screen mentions it — a bare spinner is a
 /// working state with no identity, and a micro `>` bar is not gemini.
 /// Callers pair anonymous states with process identity, or drop them.
+/// Drop footer-carousel lines (`Tip: …`) from a capture. Terminal chrome
+/// rotates full text every few seconds; it must trip neither the
+/// classifier (a tip mentioning "quota" is not a quota wall) nor the
+/// quiet hash. Only the exact `Tip:` prefix strips — prose merely
+/// starting with "Tip" stays.
+pub fn strip_tip_lines(screen: &str) -> String {
+    screen
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("Tip:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub fn classify_screen(
     manifests: &[CompiledManifest],
     command: &str,
     screen: &str,
 ) -> Option<ScreenHit> {
+    let clean = strip_tip_lines(screen);
+    let screen = clean.as_str();
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
         return m.classify(screen).map(|(state, summary)| ScreenHit {
             agent: Some(m.agent.clone()),
