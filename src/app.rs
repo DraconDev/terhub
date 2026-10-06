@@ -690,6 +690,7 @@ impl App {
             self.fleet_fetched_at = None;
             self.set_status("no fleet hosts (terhub host add <name> <target>)".to_string());
             self.merge_fleet();
+            self.merge_native();
             return;
         }
         let mut rows = Vec::new();
@@ -730,6 +731,91 @@ impl App {
             ));
         }
         self.merge_fleet();
+        self.merge_native();
+    }
+
+    /// Fetch native terminal tabs into the table (startup + F5; replaces
+    /// the cache). Agent state is fetch-time: proc identity plus one
+    /// screen classification, frozen until the next fetch.
+    pub fn fetch_native(&mut self) {
+        use crate::agent::{Source, classify_screen, compile_all_lossy, load_manifests};
+        let now = crate::agent::now_unix();
+        let snap = crate::proc::ProcSnapshot::capture();
+        let mut manifests = crate::agent::builtin_manifests();
+        manifests.extend(load_manifests(&crate::config::manifests_dir()).0);
+        let (compiled, _) = compile_all_lossy(&manifests);
+        let mut rows = Vec::new();
+        let mut agents = Vec::new();
+        let mut notes = Vec::new();
+        for rep in crate::native::list_all() {
+            if let Some(e) = rep.error {
+                notes.push(format!("{}: {}", rep.backend, short_native_error(&e)));
+                continue;
+            }
+            notes.push(format!("{}: {} tab(s)", rep.backend, rep.tabs.len()));
+            for tab in rep.tabs {
+                let fg_comm = crate::native::proc_comm(tab.fg_pid)
+                    .or_else(|| crate::native::proc_comm(tab.pid))
+                    .unwrap_or_default();
+                let reported = if fg_comm.is_empty() { &tab.title } else { &fg_comm };
+                let command = snap.display_command(tab.pid, reported);
+                rows.push(Pane {
+                    id: tab.id.clone(),
+                    session: tab.backend.clone(),
+                    window_id: String::new(),
+                    window_name: tab.title.clone(),
+                    window_active: tab.active,
+                    index: 0,
+                    command: command.clone(),
+                    path: crate::native::proc_cwd(tab.pid).unwrap_or_default(),
+                    active: tab.active,
+                    width: 0,
+                    height: 0,
+                    activity: 0,
+                    pid: tab.pid,
+                });
+                let Some(hit) = snap.detect_agent(tab.pid) else {
+                    continue;
+                };
+                // An agent with an editor in the tree summoned $EDITOR and
+                // sits on keystrokes: waiting, same as the daemon reads it.
+                let editor_wait =
+                    !fg_comm.is_empty() && crate::proc::is_editor_name(&fg_comm);
+                let screen = crate::native::capture(&tab.id, 60).unwrap_or_default();
+                let classified = classify_screen(&compiled, &command, &screen);
+                let (state, summary, source) = match classified {
+                    Some(h) => (h.state, h.summary, Source::Screen),
+                    None if editor_wait => (
+                        crate::agent::AgentState::Waiting,
+                        "editor in foreground".to_string(),
+                        Source::Proc,
+                    ),
+                    None => (crate::agent::AgentState::Unknown, String::new(), Source::Proc),
+                };
+                agents.push(AgentRecord {
+                    pane: tab.id.clone(),
+                    agent: hit.agent.clone(),
+                    state,
+                    source,
+                    summary,
+                    session: tab.backend.clone(),
+                    window: tab.title.clone(),
+                    command: command.clone(),
+                    updated_at: now,
+                    state_since: now,
+                    cpu_ticks: snap.subtree_ticks(hit.pid),
+                    cpu_still_since: 0,
+                    agent_start: hit.start,
+                    last_turn_secs: 0,
+                    screen_hash: 0,
+                    quiet_since: 0,
+                });
+            }
+        }
+        self.native_rows = rows;
+        self.native_agents = agents;
+        self.set_status(format!("native: {}", notes.join("; ")));
+        self.merge_native();
     }
 
     /// (host, remote session) for a remote row id, if the cache knows it.
