@@ -2178,6 +2178,34 @@ mod tests {
     }
 
     #[test]
+    fn mru_tab_order_sorts_by_activity_and_follows_selection() {
+        let mut app = app_with(&["a", "b", "c"]);
+        let mut p1 = Pane::test("%1", "w", "pi");
+        p1.session = "a".to_string();
+        p1.activity = 100;
+        let mut p2 = Pane::test("%2", "w", "pi");
+        p2.session = "b".to_string();
+        p2.activity = 300;
+        app.panes = vec![p1, p2];
+        // MRU off: tmux order untouched.
+        app.apply_tab_order();
+        let names: Vec<&str> = app.sessions.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
+        // MRU on: b(300) first, a(100) next, pane-less c sinks; the
+        // cursor on "a" (selected=1) follows it to position 2.
+        app.config.mru_tabs = true;
+        app.selected = 1;
+        app.apply_tab_order();
+        let names: Vec<&str> = app.sessions.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["b", "a", "c"]);
+        assert_eq!(app.selected, 2);
+        // All (selected=0) survives a reorder untouched.
+        app.selected = 0;
+        app.apply_tab_order();
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.

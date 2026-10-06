@@ -70,6 +70,8 @@ pub struct AppConfig {
     pub commands: Vec<CustomCommand>,
     /// Validated `[[profile]]` spawn entries; builtins when none given.
     pub profiles: Vec<SpawnProfile>,
+    /// Order session tabs by recent activity instead of tmux order.
+    pub mru_tabs: bool,
     /// Hash-color Agent cells so the same agent reads as a group.
     pub color_agents: bool,
     /// Style specs the agent hash picks from; empty = theme default.
@@ -95,6 +97,7 @@ impl Default for AppConfig {
             stale_secs: crate::daemon::HOOK_STALE_SECS,
             commands: Vec::new(),
             profiles: builtin_profiles(),
+            mru_tabs: false,
             color_agents: true,
             agent_palette: Vec::new(),
             agent_styles: HashMap::new(),
@@ -429,6 +432,8 @@ struct UiSection {
     density: String,
     #[serde(default = "default_true")]
     highlight_attached: bool,
+    #[serde(default)]
+    mru_tabs: bool,
 }
 
 impl Default for UiSection {
@@ -1158,6 +1163,19 @@ mod tests {
         assert_eq!(cfg.key("spawn"), "w");
         assert_eq!(cfg.key("restart"), "e");
         assert_eq!(cfg.key("pause"), "z");
+    }
+
+    #[test]
+    fn mru_tabs_defaults_off_and_parses() {
+        assert!(!AppConfig::default().mru_tabs);
+        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mru.toml");
+        std::fs::write(&path, "[ui]\nmru_tabs = true\n").unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(cfg.mru_tabs);
+        std::fs::remove_file(path).ok();
     }
 
     #[test]
