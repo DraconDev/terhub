@@ -492,6 +492,102 @@ impl App {
         self.clamp_selection();
     }
 
+    /// Re-apply the fleet cache after a local refresh (idempotent: old
+    /// remote rows are stripped first, so re-merges never duplicate).
+    pub fn merge_fleet(&mut self) {
+        self.panes.retain(|p| !is_remote_pane(&p.id));
+        self.panes.extend(self.fleet_rows.iter().cloned());
+        for a in &self.fleet_agents {
+            self.agents.insert(a.pane.clone(), a.clone());
+        }
+        self.refresh_filtered();
+    }
+
+    /// Fetch remote agents from every host (manual: ssh latency has no
+    /// place in the 3s tick). Replaces the cache; hosts that answer keep
+    /// their rows while failures are reported, never silent.
+    pub fn fetch_fleet(&mut self) {
+        let hosts = match crate::fleet::load_hosts() {
+            Ok(h) => h,
+            Err(e) => {
+                self.set_status(format!("fleet: {e:#}"));
+                return;
+            }
+        };
+        self.fleet_hosts = hosts.clone();
+        if hosts.is_empty() {
+            self.fleet_rows.clear();
+            self.fleet_agents.clear();
+            self.fleet_index.clear();
+            self.fleet_errors.clear();
+            self.fleet_fetched_at = None;
+            self.set_status("no fleet hosts (terhub host add <name> <target>)".to_string());
+            self.merge_fleet();
+            return;
+        }
+        let mut rows = Vec::new();
+        let mut agents = Vec::new();
+        let mut index: HashMap<String, (String, String)> = HashMap::new();
+        let mut errors = Vec::new();
+        for st in &crate::fleet::fleet_status(&hosts) {
+            match &st.result {
+                Ok(snap) => {
+                    let (r, a) = crate::fleet::snapshot_rows(&st.host, snap);
+                    for (row, rec) in r.iter().zip(a.iter()) {
+                        index.insert(
+                            row.id.clone(),
+                            (st.host.name.clone(), rec.session.clone()),
+                        );
+                    }
+                    rows.extend(r);
+                    agents.extend(a);
+                }
+                Err(e) => errors.push((st.host.name.clone(), e.clone())),
+            }
+        }
+        let hosts_ok = hosts.len() - errors.len();
+        self.fleet_rows = rows;
+        self.fleet_agents = agents;
+        self.fleet_index = index;
+        self.fleet_errors = errors.clone();
+        self.fleet_fetched_at = Some(std::time::Instant::now());
+        if errors.is_empty() {
+            self.set_status(format!(
+                "fleet: {} remote agents from {hosts_ok} host(s)",
+                self.fleet_agents.len()
+            ));
+        } else {
+            let names: Vec<&str> = errors.iter().map(|(h, _)| h.as_str()).collect();
+            self.set_status(format!(
+                "fleet: {} agents, {} host(s) failed ({})",
+                self.fleet_agents.len(),
+                errors.len(),
+                names.join(", ")
+            ));
+        }
+        self.merge_fleet();
+    }
+
+    /// (host, remote session) for a remote row id, if the cache knows it.
+    pub fn remote_target(&self, id: &str) -> Option<(String, String)> {
+        self.fleet_index.get(id).cloned()
+    }
+
+    /// Jump event for a pane id: remote rows exit to ssh, local rows
+    /// focus in place. A remote id the cache forgot is stale, not fatal.
+    pub fn jump_event(&mut self, id: &str) -> Option<AppEvent> {
+        if !is_remote_pane(id) {
+            return Some(AppEvent::FocusPane(id.to_string()));
+        }
+        match self.remote_target(id) {
+            Some((host, session)) => Some(AppEvent::RemoteAttach { host, session }),
+            None => {
+                self.set_status(format!("stale remote row {id} (fetch the fleet again)"));
+                None
+            }
+        }
+    }
+
     pub fn set_sessions(&mut self, sessions: Vec<Session>) {
         let keep = self.side_session().map(|s| s.name.clone());
         self.sessions = sessions;
@@ -536,6 +632,9 @@ impl App {
         }
         self.apply_tab_order();
         self.refresh_agents();
+        // Remote rows/badges ride the cache: local ticks must not drop
+        // them (and a dead daemon must not take them with it).
+        self.merge_fleet();
         if self.show_preview {
             self.capture_preview(tmux);
         }
