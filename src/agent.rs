@@ -615,6 +615,32 @@ mod tests {
     }
 
     #[test]
+    fn hook_prompt_carries_to_record() {
+        let mut reg = HashMap::new();
+        let ev = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+            prompt: "fix it".to_string(),
+        };
+        apply_event_to(&mut reg, &ev, 100);
+        assert_eq!(reg["%1"].last_prompt, "fix it");
+        assert_eq!(reg["%1"].last_prompt_at, 100);
+        // A prompt-less refresh keeps the old prompt, not a blank.
+        let ev2 = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+            prompt: String::new(),
+        };
+        apply_event_to(&mut reg, &ev2, 200);
+        assert_eq!(reg["%1"].last_prompt, "fix it");
+        assert_eq!(reg["%1"].last_prompt_at, 100);
+    }
+
+    #[test]
     fn hook_agent_names_canonicalize() {
         // Hooks report raw labels; the registry stores canonical names so
         // hook records compare equal to proc/screen records downstream.
