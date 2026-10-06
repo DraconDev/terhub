@@ -424,7 +424,9 @@ mod tests {
                 last_prompt_at: 0,
                 last_prompt: String::new(),
                 handle: "@pi-web".to_string(),
-            }],
+                model: String::new(),
+                ctx_pct: None,
+                reg_pid: 0,            }],
             updated_at: 1700,
         };
         let (rows, agents) = snapshot_rows(&host, &snap);

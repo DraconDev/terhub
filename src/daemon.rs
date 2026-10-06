@@ -751,7 +751,9 @@ fn merge_record_owned(
         source,
         summary,
         handle,
-        session: pane.session.clone(),
+        model: String::new(),
+        ctx_pct: None,
+        reg_pid: 0,        session: pane.session.clone(),
         window: pane.window_name.clone(),
         command: pane.command.clone(),
         updated_at: now,
@@ -1104,7 +1106,8 @@ mod tests {
             state: AgentState::Waiting,
             summary: "Approve?".to_string(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         let transitions = apply_hook_event(&mut reg, &ev, 100_000);
         assert_eq!(reg["%1"].state, AgentState::Waiting);
         assert_eq!(reg["%1"].summary, "Approve?");
@@ -1233,7 +1236,8 @@ mod tests {
                 state: AgentState::Waiting,
                 summary: "s".repeat(2 * 1024 * 1024),
                 prompt: String::new(),
-            },
+                model: String::new(),
+                ctx: None,            },
         })
         .unwrap();
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -1293,7 +1297,9 @@ mod tests {
             last_prompt_at: 0,
             last_prompt: String::new(),
             handle: String::new(),
-        }
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,        }
     }
 
     #[test]
@@ -1417,7 +1423,9 @@ mod tests {
             last_prompt_at: 0,
             last_prompt: String::new(),
             handle: String::new(),
-        }
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,        }
     }
 
     fn test_pane() -> crate::tmux::Pane {

@@ -860,7 +860,9 @@ impl App {
                     last_prompt: String::new(),
                     // Minted below against the daemon's handles (no clash).
                     handle: String::new(),
-                });
+                    model: String::new(),
+                    ctx_pct: None,
+                    reg_pid: 0,                });
             }
         }
         self.native_rows = rows;
@@ -4524,7 +4526,9 @@ mod tests {
                 last_prompt_at: 0,
                 last_prompt: String::new(),
                 handle: String::new(),
-            },
+                model: String::new(),
+                ctx_pct: None,
+                reg_pid: 0,            },
         );
         let counts = app.session_counts();
         assert_eq!(counts.get("a"), Some(&(2, 1)));
@@ -4556,7 +4560,9 @@ mod tests {
             last_prompt_at: 0,
             last_prompt: String::new(),
             handle: String::new(),
-        }
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,        }
     }
 
     fn app_with_three() -> App {

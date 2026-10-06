@@ -154,7 +154,8 @@ fn mcp_conversation_without_and_with_daemon() {
             state: terhub::agent::AgentState::Working,
             summary: "mcp probe".to_string(),
             prompt: String::new(),
-        },
+            model: String::new(),
+            ctx: None,        },
         Duration::from_secs(2),
     )
     .unwrap();

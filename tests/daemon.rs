@@ -81,7 +81,8 @@ fn daemon_hook_snapshot_expire_shutdown() {
         state: AgentState::Waiting,
         summary: "needs input".to_string(),
         prompt: "do the thing".to_string(),
-    };
+        model: String::new(),
+        ctx: None,    };
     daemon::send_event(&ev, Duration::from_secs(2)).unwrap();
     let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
     let rec = snap
@@ -172,7 +173,9 @@ fn daemon_hook_snapshot_expire_shutdown() {
         last_prompt_at: 0,
         last_prompt: String::new(),
         handle: String::new(),
-    };
+        model: String::new(),
+        ctx_pct: None,
+        reg_pid: 0,    };
     std::fs::write(
         runtime.join("registry.json"),
         serde_json::to_string(&[mk(&pane_a, Source::Hook), mk(&pane_b, Source::Screen)]).unwrap(),

@@ -67,6 +67,9 @@ pub enum Source {
     Screen,
     /// Process-tree identification: the agent binary is really there.
     Proc,
+    /// Pinned by `terhub register`: the detector missed this agent, a
+    /// human named it. Carried while its pane (and pid, if any) lives.
+    Manual,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +123,16 @@ pub struct AgentRecord {
     /// never carry one (handles are local-only).
     #[serde(default)]
     pub handle: String,
+    /// Model id reported by hooks/wrappers (`opus-4.5`, empty = unknown).
+    #[serde(default)]
+    pub model: String,
+    /// Context-window fullness 0-100 (None = unknown).
+    #[serde(default)]
+    pub ctx_pct: Option<u8>,
+    /// Agent pid pinned by `register` (0 = none). The poll tracks CPU
+    /// under it so stuck detection works for manually pinned agents.
+    #[serde(default)]
+    pub reg_pid: u32,
 }
 
 /// Prompt text kept on the record (the ledger keeps the longer cut).
@@ -248,6 +261,12 @@ pub struct HookEvent {
     /// empty for lifecycle-only events.
     #[serde(default)]
     pub prompt: String,
+    /// Model id (`hook --model`), empty when the reporter doesn't know.
+    #[serde(default)]
+    pub model: String,
+    /// Context fullness 0-100 (`hook --ctx`), None when unknown.
+    #[serde(default)]
+    pub ctx: Option<u8>,
 }
 
 pub fn now_unix() -> u64 {
@@ -676,7 +695,9 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     source: Source::Hook,
                     summary: ev.summary.clone(),
                     handle,
-                    session: old.map(|r| r.session.clone()).unwrap_or_default(),
+                    model: String::new(),
+                    ctx_pct: None,
+                    reg_pid: 0,                    session: old.map(|r| r.session.clone()).unwrap_or_default(),
                     window: old.map(|r| r.window.clone()).unwrap_or_default(),
                     command: old.map(|r| r.command.clone()).unwrap_or_default(),
                     updated_at: now,
@@ -793,7 +814,9 @@ mod tests {
                     last_prompt_at: 0,
                     last_prompt: String::new(),
                     handle: String::new(),
-                },
+                    model: String::new(),
+                    ctx_pct: None,
+                    reg_pid: 0,                },
             );
         }
         ensure_handles(&mut reg);
@@ -839,7 +862,9 @@ mod tests {
             last_prompt_at: 0,
             last_prompt: String::new(),
             handle: "@pi-wez".to_string(),
-        }];
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,        }];
         assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
         assert_eq!(resolve_handle(&recs, "@pi-other"), None);
         assert_eq!(resolve_handle(&recs, "%1"), None);
@@ -854,7 +879,8 @@ mod tests {
             state: AgentState::Working,
             summary: String::new(),
             prompt: "fix it".to_string(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &ev, 100);
         assert_eq!(reg["%1"].last_prompt, "fix it");
         assert_eq!(reg["%1"].last_prompt_at, 100);
@@ -865,7 +891,8 @@ mod tests {
             state: AgentState::Working,
             summary: String::new(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &ev2, 200);
         assert_eq!(reg["%1"].last_prompt, "fix it");
         assert_eq!(reg["%1"].last_prompt_at, 100);
@@ -882,7 +909,8 @@ mod tests {
             state: AgentState::Waiting,
             summary: String::new(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &ev, 100_000);
         assert_eq!(reg["%1"].agent, "claude");
         let ev2 = HookEvent {
@@ -891,7 +919,8 @@ mod tests {
             state: AgentState::Working,
             summary: String::new(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &ev2, 100_000);
         assert_eq!(reg["%2"].agent, "myagent");
     }
@@ -1237,7 +1266,8 @@ mod tests {
             state: AgentState::Working,
             summary: "a".to_string(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &ev, 100);
         reg.get_mut("%1").unwrap().session = "work".to_string();
         let ev2 = HookEvent {
@@ -1259,7 +1289,8 @@ mod tests {
             state: AgentState::Working,
             summary: "a".to_string(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &work, 100);
         apply_event_to(&mut reg, &work, 200);
         let wait = HookEvent {
@@ -1283,7 +1314,8 @@ mod tests {
             state: AgentState::Working,
             summary: "a".to_string(),
             prompt: String::new(),
-        };
+            model: String::new(),
+            ctx: None,        };
         apply_event_to(&mut reg, &ev, 100);
         apply_event_to(&mut reg, &ev, 200);
         assert_eq!(reg["%1"].state_since, 100);

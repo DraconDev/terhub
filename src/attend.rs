@@ -407,7 +407,9 @@ mod tests {
             last_prompt_at: 0,
             last_prompt: String::new(),
             handle: String::new(),
-        }
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,        }
     }
 
     #[test]
