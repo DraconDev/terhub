@@ -194,6 +194,11 @@ enum Cmd {
         #[command(subcommand)]
         action: ZellijAction,
     },
+    /// Native terminal tabs (Konsole, kitty, WezTerm).
+    Native {
+        #[command(subcommand)]
+        action: NativeAction,
+    },
     /// Show or init config.
     Config {
         #[arg(long)]
@@ -1703,6 +1708,7 @@ fn run_tui() -> Result<Option<TuiExit>> {
         app.status = Some(format!("config: {first}"));
     }
     app.refresh(&tmux);
+    app.fetch_native();
 
     let _guard = TerminalGuard::new()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -1735,6 +1741,11 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         AppEvent::RemoteAttach { host, session } => {
                             return Ok(Some(TuiExit::RemoteAttach { host, session }));
                         }
+                        // Native jumps only switch a terminal tab: always
+                        // stay open, in both modes.
+                        AppEvent::FocusNative(id) => {
+                            app.do_nav(&tmux, AppEvent::FocusNative(id));
+                        }
                         ev => {
                             if stay_open {
                                 app.do_nav(&tmux, ev);
@@ -1743,6 +1754,7 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                     AppEvent::Attach(n) => TuiExit::Attach(n),
                                     AppEvent::FocusPane(i) => TuiExit::FocusPane(i),
                                     AppEvent::RemoteAttach { .. } => unreachable!("matched above"),
+                                    AppEvent::FocusNative(_) => unreachable!("matched above"),
                                     AppEvent::Quit => unreachable!("matched above"),
                                 }));
                             }
@@ -1792,6 +1804,9 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                     } else {
                                         return Ok(Some(TuiExit::FocusPane(p)));
                                     }
+                                }
+                                Some(AppEvent::FocusNative(q)) => {
+                                    app.do_nav(&tmux, AppEvent::FocusNative(q));
                                 }
                                 // Stale remote row (status set) or events
                                 // jump_event never emits: swallow, stay open.
@@ -1847,6 +1862,9 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                         } else {
                                             return Ok(Some(TuiExit::FocusPane(q)));
                                         }
+                                    }
+                                    Some(AppEvent::FocusNative(q)) => {
+                                        app.do_nav(&tmux, AppEvent::FocusNative(q));
                                     }
                                     _ => {}
                                 }

@@ -18,7 +18,7 @@ use std::process::Command;
 pub const BACKENDS: &[&str] = &["konsole", "kitty", "wezterm"];
 
 /// One tab in a native terminal.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct NativeTab {
     /// Backend name ("konsole").
     pub backend: String,
