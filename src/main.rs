@@ -1537,6 +1537,7 @@ impl Drop for TerminalGuard {
 enum TuiExit {
     Attach(String),
     FocusPane(String),
+    RemoteAttach { host: String, session: String },
 }
 
 fn in_area(col: u16, row: u16, area: ratatui::layout::Rect) -> bool {
@@ -1583,6 +1584,10 @@ fn run_tui() -> Result<Option<TuiExit>> {
                 if let Some(ev) = app.on_key(key, &tmux) {
                     match ev {
                         AppEvent::Quit => return Ok(None),
+                        // Remote jumps always exit: ssh owns the terminal.
+                        AppEvent::RemoteAttach { host, session } => {
+                            return Ok(Some(TuiExit::RemoteAttach { host, session }));
+                        }
                         ev => {
                             if stay_open {
                                 app.do_nav(&tmux, ev);
@@ -1590,6 +1595,7 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                 return Ok(Some(match ev {
                                     AppEvent::Attach(n) => TuiExit::Attach(n),
                                     AppEvent::FocusPane(i) => TuiExit::FocusPane(i),
+                                    AppEvent::RemoteAttach { .. } => unreachable!("matched above"),
                                     AppEvent::Quit => unreachable!("matched above"),
                                 }));
                             }
@@ -1627,14 +1633,24 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         }
                         if let Some(id) = app.preview_jump_target() {
                             // Fullscreen preview: jump to the previewed pane.
-                            if stay_open {
-                                app.do_nav(&tmux, AppEvent::FocusPane(id));
-                                // Preview owns the click: never fall through
-                                // to header/session/pane handling below.
-                                continue;
-                            } else {
-                                return Ok(Some(TuiExit::FocusPane(id)));
+                            // Preview owns the click: never fall through
+                            // to header/session/pane handling below.
+                            match app.jump_event(&id) {
+                                Some(AppEvent::RemoteAttach { host, session }) => {
+                                    return Ok(Some(TuiExit::RemoteAttach { host, session }));
+                                }
+                                Some(AppEvent::FocusPane(p)) => {
+                                    if stay_open {
+                                        app.do_nav(&tmux, AppEvent::FocusPane(p));
+                                    } else {
+                                        return Ok(Some(TuiExit::FocusPane(p)));
+                                    }
+                                }
+                                // Stale remote row (status set) or events
+                                // jump_event never emits: swallow, stay open.
+                                _ => {}
                             }
+                            continue;
                         }
                         if let Some(hit) = areas
                             .headers
@@ -1682,10 +1698,18 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                 && let Some(p) = app.filtered.get(idx).map(|p| p.id.clone())
                             {
                                 // Left-click jumps straight to the pane.
-                                if stay_open {
-                                    app.do_nav(&tmux, AppEvent::FocusPane(p));
-                                } else {
-                                    return Ok(Some(TuiExit::FocusPane(p)));
+                                match app.jump_event(&p) {
+                                    Some(AppEvent::RemoteAttach { host, session }) => {
+                                        return Ok(Some(TuiExit::RemoteAttach { host, session }));
+                                    }
+                                    Some(AppEvent::FocusPane(q)) => {
+                                        if stay_open {
+                                            app.do_nav(&tmux, AppEvent::FocusPane(q));
+                                        } else {
+                                            return Ok(Some(TuiExit::FocusPane(q)));
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
