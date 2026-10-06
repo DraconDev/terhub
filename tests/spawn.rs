@@ -27,6 +27,18 @@ fn harness(tag: &str) -> (Tmux, std::path::PathBuf) {
     (Tmux::test(bin), base.join("argv.log"))
 }
 
+/// STOP/CONT land asynchronously: poll /proc briefly instead of
+/// asserting a single (racy under load) read.
+fn wait_stopped(pid: u32, want: bool) -> bool {
+    for _ in 0..200 {
+        if terhub::proc::is_stopped(pid) == want {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    false
+}
+
 fn argv_lines(log: &std::path::Path) -> Vec<String> {
     std::fs::read_to_string(log)
         .unwrap()
@@ -80,9 +92,9 @@ fn phase_pause_resume() {
     let pid = guard.0.id();
     assert!(!terhub::proc::is_stopped(pid));
     terhub::proc::pause_group(pid).unwrap();
-    assert!(terhub::proc::is_stopped(pid), "sleep must show T after STOP");
+    assert!(wait_stopped(pid, true), "sleep must show T after STOP");
     terhub::proc::resume_group(pid).unwrap();
-    assert!(!terhub::proc::is_stopped(pid), "sleep must run after CONT");
+    assert!(wait_stopped(pid, false), "sleep must run after CONT");
     assert!(terhub::proc::pause_group(0).is_err());
     assert!(terhub::proc::pause_group(1).is_err());
 }

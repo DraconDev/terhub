@@ -963,6 +963,18 @@ fn argv_log(log: &std::path::Path) -> String {
     std::fs::read_to_string(log).unwrap_or_default()
 }
 
+/// STOP/CONT land asynchronously: poll /proc briefly instead of
+/// asserting a single (racy under load) read.
+fn wait_stopped(pid: u32, want: bool) -> bool {
+    for _ in 0..200 {
+        if terhub::proc::is_stopped(pid) == want {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    false
+}
+
 #[test]
 fn spawn_modal_cycles_profile_and_spawns_with_prompt() {
     use crossterm::event::KeyCode;
@@ -1027,9 +1039,9 @@ fn pause_key_toggles_live_process_tree() {
     app.refresh_filtered();
     let (tmux, _) = fake_tmux("pause");
     app.on_key(press(KeyCode::Char('z')), &tmux);
-    assert!(terhub::proc::is_stopped(pid), "first z must stop");
+    assert!(wait_stopped(pid, true), "first z must stop");
     app.on_key(press(KeyCode::Char('z')), &tmux);
-    assert!(!terhub::proc::is_stopped(pid), "second z must resume");
+    assert!(wait_stopped(pid, false), "second z must resume");
     let _ = &mut guard;
 }
 
