@@ -3352,6 +3352,85 @@ mod tests {
     }
 
     #[test]
+    fn bulk_targets_prefers_marked_and_skips_unsendable() {
+        let mut app = app_with_panes();
+        app.native_rows = vec![native_pane()];
+        app.fleet_rows = vec![{
+            let mut p = Pane::test("dev:%9", "w", "pi");
+            p.session = "dev ▸ web".to_string();
+            p
+        }];
+        app.merge_caches();
+        app.marked.insert("%1".to_string());
+        app.marked.insert("konsole:999:6".to_string());
+        app.marked.insert("dev:%9".to_string());
+        app.marked.insert("%2".to_string());
+        app.own_pane = Some("%2".to_string());
+        let mut targets = app.bulk_targets();
+        targets.sort();
+        assert_eq!(targets, vec!["%1".to_string(), "konsole:999:6".to_string()]);
+    }
+
+    #[test]
+    fn bulk_targets_falls_back_to_waiting() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        app.fleet_rows = vec![{
+            let mut p = Pane::test("dev:%9", "w", "pi");
+            p.session = "dev ▸ web".to_string();
+            p
+        }];
+        app.merge_caches();
+        app.agents.insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 10));
+        app.agents.insert("%2".to_string(), record("%2", "pi", AgentState::Idle, 10));
+        app.agents
+            .insert("dev:%9".to_string(), record("dev:%9", "pi", AgentState::Waiting, 10));
+        assert_eq!(app.bulk_targets(), vec!["%1".to_string()]);
+    }
+
+    #[test]
+    fn bulk_empty_reports_instead_of_modal() {
+        let mut app = app_with_panes();
+        app.do_bulk();
+        assert!(matches!(app.mode, Mode::Normal));
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("nothing"),
+            "{:?}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn bulk_modal_tab_cycles_templates_and_esc_cancels() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.agents.insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 10));
+        app.do_bulk();
+        assert!(matches!(app.mode, Mode::PromptBulk { .. }));
+        app.on_key(press(KeyCode::Tab), &tmux);
+        assert_eq!(app.input, app.config.templates[1].text);
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
+    fn bulk_empty_input_refuses() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.agents.insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 10));
+        app.do_bulk();
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert!(matches!(app.mode, Mode::PromptBulk { .. }));
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("nothing to send"),
+            "{:?}",
+            app.status
+        );
+    }
+
+    #[test]
     fn attend_event_routes_native_winners_to_focus() {
         use crate::agent::AgentState;
         let app = app_with_panes();
