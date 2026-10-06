@@ -669,6 +669,12 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                 rec.last_prompt = cap_chars(&ev.prompt, RECORD_PROMPT_CAP);
                 rec.last_prompt_at = now;
             }
+            if !ev.model.is_empty() {
+                rec.model = ev.model.clone();
+            }
+            if ev.ctx.is_some() {
+                rec.ctx_pct = ev.ctx;
+            }
             registry.insert(ev.pane.clone(), rec);
         }
         _ => {
@@ -695,9 +701,17 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     source: Source::Hook,
                     summary: ev.summary.clone(),
                     handle,
-                    model: String::new(),
-                    ctx_pct: None,
-                    reg_pid: 0,                    session: old.map(|r| r.session.clone()).unwrap_or_default(),
+                    // Model/ctx/pid ride along when the event knows them,
+                    // else the old cut carries (a hook that can't report
+                    // them must not blank a wrapper's earlier report).
+                    model: if ev.model.is_empty() {
+                        old.map(|r| r.model.clone()).unwrap_or_default()
+                    } else {
+                        ev.model.clone()
+                    },
+                    ctx_pct: ev.ctx.or_else(|| old.and_then(|r| r.ctx_pct)),
+                    reg_pid: old.map(|r| r.reg_pid).unwrap_or(0),
+                    session: old.map(|r| r.session.clone()).unwrap_or_default(),
                     window: old.map(|r| r.window.clone()).unwrap_or_default(),
                     command: old.map(|r| r.command.clone()).unwrap_or_default(),
                     updated_at: now,

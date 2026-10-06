@@ -475,16 +475,72 @@ fn apply_register(
     state: AgentState,
     now: u64,
 ) {
-    let _ = (reg, pane, agent, pid, state, now);
-    todo!("placeholder");
+    let agent = crate::proc::canonical_agent(agent);
+    match reg.get(pane) {
+        // Same pin refreshed: the new pid wins, the clock is kept so a
+        // re-register after an agent restart doesn't renotify.
+        Some(old)
+            if old.source == Source::Manual && old.agent == agent && old.state == state =>
+        {
+            let mut rec = old.clone();
+            rec.reg_pid = pid;
+            rec.updated_at = now;
+            rec.cpu_ticks = 0;
+            rec.cpu_still_since = 0;
+            rec.agent_start = 0;
+            reg.insert(pane.to_string(), rec);
+        }
+        _ => {
+            // Fresh pin (or a pin over real evidence): fresh clock, but
+            // keep pane metadata and model/ctx so the row isn't blank.
+            let old = reg.get(pane);
+            reg.insert(
+                pane.to_string(),
+                AgentRecord {
+                    pane: pane.to_string(),
+                    agent,
+                    state,
+                    source: Source::Manual,
+                    summary: String::new(),
+                    session: old.map(|r| r.session.clone()).unwrap_or_default(),
+                    window: old.map(|r| r.window.clone()).unwrap_or_default(),
+                    command: old.map(|r| r.command.clone()).unwrap_or_default(),
+                    updated_at: now,
+                    state_since: now,
+                    cpu_ticks: 0,
+                    cpu_still_since: 0,
+                    agent_start: 0,
+                    last_turn_secs: old.map(|r| r.last_turn_secs).unwrap_or(0),
+                    screen_hash: old.map(|r| r.screen_hash).unwrap_or(0),
+                    quiet_since: old.map(|r| r.quiet_since).unwrap_or(0),
+                    last_prompt_at: old.map(|r| r.last_prompt_at).unwrap_or(0),
+                    last_prompt: old.map(|r| r.last_prompt.clone()).unwrap_or_default(),
+                    // A changed agent drops the name so ensure_handles
+                    // mints a fresh one (same rule as hook events).
+                    handle: match old {
+                        Some(o) if o.agent == agent => o.handle.clone(),
+                        _ => String::new(),
+                    },
+                    model: old.map(|r| r.model.clone()).unwrap_or_default(),
+                    ctx_pct: old.and_then(|r| r.ctx_pct),
+                    reg_pid: pid,
+                },
+            );
+        }
+    }
 }
 
 /// Drop a manual pin (`terhub unregister`). Only Manual records go:
 /// a hook/proc/screen record under the pane is real evidence, never
 /// removed by unregister. Returns true when a pin was dropped.
 fn apply_unregister(reg: &mut HashMap<String, AgentRecord>, pane: &str) -> bool {
-    let _ = (reg, pane);
-    todo!("placeholder");
+    match reg.get(pane) {
+        Some(old) if old.source == Source::Manual => {
+            reg.remove(pane);
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Apply one hook event to the registry and report its transitions.
