@@ -79,6 +79,8 @@ fn native_backends_against_fakes() {
         std::env::set_var("FAKE_KITTY_LS", base.join("kitty.json"));
         std::env::set_var("FAKE_WEZTERM_LIST", base.join("wezterm.json"));
         std::env::remove_var("TERHUB_KITTY_TO");
+        // Pretend to run inside kitty so the probe gate lets the fake through.
+        std::env::set_var("KITTY_WINDOW_ID", "1");
     }
 
     // Enumeration across all three backends.

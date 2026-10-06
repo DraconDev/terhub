@@ -341,9 +341,7 @@ fn konsole_spawn() -> Result<()> {
     let list = run_timed(
         Command::new(bin),
         &format!("{bin} (Konsole control channel)"),
-    )?
-    .stdout;
-    let list = String::from_utf8_lossy(&list).into_owned();
+    )?;
     let services = parse_qdbus_services(&String::from_utf8_lossy(&list.stdout));
     let service = services.first().context("no Konsole on the session bus")?;
     let xml = qdbus(
@@ -434,7 +432,30 @@ fn kitty_to_args() -> Vec<String> {
     }
 }
 
+/// Whether a `kitty @` spawn may run: an explicit socket, or signs of
+/// running inside kitty. Outside kitty with no socket, `kitty @` opens
+/// /dev/tty and waits 10s for a terminal reply that never comes — so
+/// the spawn is skipped, not attempted. Pure for testing; `kitty`
+/// feeds it the live environment.
+fn kitty_probe_allowed(to: &str, listen_on: &str, window_id: &str, term: &str) -> bool {
+    !to.trim().is_empty()
+        || !listen_on.trim().is_empty()
+        || !window_id.trim().is_empty()
+        || term == "xterm-kitty"
+}
+
+fn kitty_reachable() -> bool {
+    let var = |k: &str| std::env::var(k).unwrap_or_default();
+    kitty_probe_allowed(&var("TERHUB_KITTY_TO"), &var("KITTY_LISTEN_ON"), &var("KITTY_WINDOW_ID"), &var("TERM"))
+}
+
 fn kitty(args: &[&str]) -> Result<String> {
+    if !kitty_reachable() {
+        anyhow::bail!(
+            "kitty @ {} skipped: not inside kitty (set TERHUB_KITTY_TO to the kitty socket, or run inside kitty)",
+            args.join(" ")
+        );
+    }
     let mut cmd = Command::new("kitty");
     cmd.arg("@");
     for a in kitty_to_args() {
@@ -443,7 +464,7 @@ fn kitty(args: &[&str]) -> Result<String> {
     for a in args {
         cmd.arg(a);
     }
-    let out = cmd.output().context("kitty @")?;
+    let out = run_timed(cmd, &format!("kitty @ {}", args.join(" ")))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         anyhow::bail!("kitty @ {} failed: {}", args.join(" "), err.trim());
@@ -539,7 +560,7 @@ fn wezterm(args: &[&str]) -> Result<String> {
     for a in &full {
         cmd.arg(a);
     }
-    let out = cmd.output().context("wezterm cli")?;
+    let out = run_timed(cmd, "wezterm cli")?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         anyhow::bail!("wezterm cli {} failed: {}", args.join(" "), err.trim());
@@ -589,28 +610,38 @@ pub struct BackendReport {
     pub error: Option<String>,
 }
 
-/// Enumerate every backend. Backends fail independently — a dead WezTerm
-/// server never hides Konsole tabs.
+/// Enumerate every backend. Backends probe concurrently and fail
+/// independently — a dead WezTerm server never hides Konsole tabs, and
+/// one wedged helper costs one timeout, not the sum. Reports come back
+/// in [`BACKENDS`] order regardless of finish order.
 pub fn list_all() -> Vec<BackendReport> {
-    [
-        ("konsole", konsole_tabs as fn() -> Result<Vec<NativeTab>>),
-        ("kitty", kitty_tabs),
-        ("wezterm", wezterm_tabs),
-    ]
-    .into_iter()
-    .map(|(backend, fetch)| match fetch() {
-        Ok(tabs) => BackendReport {
-            backend,
-            tabs,
-            error: None,
-        },
-        Err(e) => BackendReport {
-            backend,
-            tabs: Vec::new(),
-            error: Some(format!("{e:#}")),
-        },
+    std::thread::scope(|s| {
+        let probes = [
+            ("konsole", s.spawn(konsole_tabs)),
+            ("kitty", s.spawn(kitty_tabs)),
+            ("wezterm", s.spawn(wezterm_tabs)),
+        ];
+        probes
+            .into_iter()
+            .map(|(backend, handle)| match handle.join() {
+                Ok(Ok(tabs)) => BackendReport {
+                    backend,
+                    tabs,
+                    error: None,
+                },
+                Ok(Err(e)) => BackendReport {
+                    backend,
+                    tabs: Vec::new(),
+                    error: Some(format!("{e:#}")),
+                },
+                Err(_) => BackendReport {
+                    backend,
+                    tabs: Vec::new(),
+                    error: Some("backend probe panicked".to_string()),
+                },
+            })
+            .collect()
     })
-    .collect()
 }
 
 /// Screen/scrollback text for a native row id.
@@ -680,6 +711,46 @@ pub fn proc_cwd(pid: u32) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kitty_probe_allowed_matrix() {
+        // Outside kitty with no socket: skip (the spawn would wait 10s
+        // on /dev/tty for a reply only kitty sends).
+        assert!(!kitty_probe_allowed("", "", "", "tmux-256color"));
+        assert!(!kitty_probe_allowed("", "", "", "xterm-256color"));
+        assert!(!kitty_probe_allowed("  ", "", "", "tmux-256color"));
+        // An explicit socket always allows the probe.
+        assert!(kitty_probe_allowed("/tmp/kitty", "", "", "tmux-256color"));
+        // Inside kitty: any one of these is proof enough.
+        assert!(kitty_probe_allowed("", "/tmp/kitty", "", "tmux-256color"));
+        assert!(kitty_probe_allowed("", "", "1", "tmux-256color"));
+        assert!(kitty_probe_allowed("", "", "", "xterm-kitty"));
+    }
+
+    #[test]
+    fn run_timed_returns_output_and_kills_wedges() {
+        let out = run_timed(Command::new("echo"), "echo").unwrap();
+        assert!(out.status.success());
+        // A wedged child is killed at the timeout, not awaited.
+        let start = std::time::Instant::now();
+        let err = run_timed(
+            {
+                let mut c = Command::new("sleep");
+                c.arg("30");
+                c
+            },
+            "sleep",
+        )
+        .expect_err("sleep 30 should time out");
+        assert!(
+            format!("{err:#}").contains("timed out"),
+            "unexpected error: {err:#}"
+        );
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(20),
+            "timeout not enforced"
+        );
+    }
 
     #[test]
     fn native_ids_split_by_backend() {
