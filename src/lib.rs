@@ -20,6 +20,7 @@ pub mod config;
 pub mod daemon;
 pub mod fleet;
 pub mod history;
+pub mod hooks;
 pub mod mcp;
 pub mod proc;
 pub mod tmux;
