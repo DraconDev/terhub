@@ -441,13 +441,13 @@ mod tests {
     fn claude_install_merges_idempotently() {
         let dir = scratch("install");
         let path = dir.join("settings.json");
-        // Missing file: created with our three events.
+        // Missing file: created with our four events.
         let report = claude_install(&path).unwrap();
-        assert_eq!(report.len(), 3);
+        assert_eq!(report.len(), 4);
         assert!(report.iter().all(|(_, added)| *added));
         let text = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(text.matches(MARKER).count(), 3);
-        assert_eq!(claude_status(&path).len(), 3);
+        assert_eq!(text.matches(MARKER).count(), 4);
+        assert_eq!(claude_status(&path).len(), 4);
         // Idempotent: second run adds nothing, writes nothing new.
         let before = text.clone();
         let report = claude_install(&path).unwrap();
@@ -465,7 +465,7 @@ mod tests {
         let text2 = std::fs::read_to_string(&path2).unwrap();
         assert!(text2.contains("echo hi"), "{text2}");
         assert!(text2.contains("\"other\": 1"), "{text2}");
-        assert_eq!(text2.matches(MARKER).count(), 3);
+        assert_eq!(text2.matches(MARKER).count(), 4);
         assert!(path2.with_extension("json.terhub-bak").exists());
     }
 
@@ -480,7 +480,7 @@ mod tests {
         .unwrap();
         claude_install(&path).unwrap();
         let cleaned = claude_uninstall(&path).unwrap();
-        assert_eq!(cleaned.len(), 3);
+        assert_eq!(cleaned.len(), 4);
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("echo hi"), "{text}");
         assert!(!text.contains(MARKER), "{text}");
