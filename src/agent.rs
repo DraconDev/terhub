@@ -542,6 +542,43 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\b429\\b".to_string(),
             ],
         },
+        Manifest {
+            // minimax-code keeps its input chrome ("Message · Enter send",
+            // "Ask Mcode to do anything") visible under live tasks, so the
+            // box alone never waits: only completion banners and the Tasks
+            // verdict count. Failure counts stay Tasks-anchored — bare
+            // "failed" would fire on prose like "SPEC-200 failed".
+            agent: "minimax-code".to_string(),
+            commands: vec!["minimax-code".to_string(), "minimax".to_string()],
+            working: vec![
+                "esc stop".to_string(),
+                "tok/s".to_string(),
+                "running \\d".to_string(),
+                "⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏".to_string(),
+            ],
+            waiting: vec![
+                "✓ goal complete".to_string(),
+                "todo list \\d+/\\d+ completed".to_string(),
+                "do you want to proceed".to_string(),
+                "\\bapprove\\b".to_string(),
+                "\\[y/n\\]".to_string(),
+                "enter to confirm".to_string(),
+            ],
+            error: vec![
+                "\\b(?-i:E)rror\\b".to_string(),
+                "traceback".to_string(),
+                "something went wrong".to_string(),
+                "× tasks".to_string(),
+                "tasks? · [1-9]\\d* failed".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
+                "quota".to_string(),
+                "\\b429\\b".to_string(),
+            ],
+            waiting_unless: vec![],
+        },
     ]
 }
 
