@@ -726,6 +726,82 @@ fn cmd_hook(
     0
 }
 
+fn cmd_register(pane: &str, agent: &str, pid: Option<u32>, state: &str) -> i32 {
+    let pane = &pane_arg!(pane);
+    if terhub::native::is_native_id(pane) || pane.contains(':') {
+        eprintln!("terhub: register works on local tmux panes only ({pane})");
+        return 1;
+    }
+    let Some(state) = AgentState::parse(state) else {
+        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
+        return 1;
+    };
+    let pid = pid.unwrap_or(0);
+    if pid != 0 && !terhub::proc::pid_alive(pid) {
+        eprintln!("terhub: pid {pid} is not running");
+        return 1;
+    }
+    let tmux = match Tmux::new() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("terhub: {e:?}");
+            return 1;
+        }
+    };
+    match tmux.list_all_panes() {
+        Ok(panes) if panes.iter().any(|p| p.id == *pane) => {}
+        _ => {
+            eprintln!("terhub: no such pane '{pane}'");
+            return 1;
+        }
+    }
+    let req = Request::Register {
+        pane: pane.clone(),
+        agent: agent.to_string(),
+        pid,
+        state,
+    };
+    match daemon::send_request(&req, Duration::from_secs(2)) {
+        Ok(resp) if resp.ok => {
+            println!("registered {agent} on {pane}");
+            0
+        }
+        Ok(resp) => {
+            eprintln!(
+                "terhub: {}",
+                resp.error.unwrap_or_else(|| "register failed".to_string())
+            );
+            1
+        }
+        Err(e) => {
+            eprintln!("terhub: daemon not running ({e:?})");
+            1
+        }
+    }
+}
+
+fn cmd_unregister(pane: &str) -> i32 {
+    let pane = &pane_arg!(pane);
+    let req = Request::Unregister { pane: pane.clone() };
+    match daemon::send_request(&req, Duration::from_secs(2)) {
+        Ok(resp) if resp.ok => {
+            println!("unregistered {pane}");
+            0
+        }
+        Ok(resp) => {
+            eprintln!(
+                "terhub: {}",
+                resp.error.unwrap_or_else(|| "unregister failed".to_string())
+            );
+            1
+        }
+        Err(e) => {
+            eprintln!("terhub: daemon not running ({e:?})");
+            1
+        }
+    }
+}
+
 /// Read hook stdin once for `--summary-stdin` / `--prompt-stdin`;
 /// unreadable stdin degrades to empty (fire-and-forget must not fail).
 fn read_stdin_text() -> String {

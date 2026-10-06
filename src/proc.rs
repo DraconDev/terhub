@@ -395,6 +395,13 @@ impl Snapshot {
     /// tree did any work. Immune to pid reuse — the tree is re-walked from
     /// the pane root every poll, and a shrunk sum (restarted agent) resets
     /// the still-clock rather than tripping stuck.
+    /// starttime (stat field 22) of a captured pid: the poll's
+    /// liveness + identity check for `register --pid` pins (None = the
+    /// process is gone from this snapshot).
+    pub fn proc_start(&self, pid: u32) -> Option<u64> {
+        self.procs.get(&pid).map(|info| info.start)
+    }
+
     pub fn subtree_ticks(&self, pid: u32) -> u64 {
         let mut total = 0;
         let mut queue = vec![pid];
@@ -423,6 +430,11 @@ impl Snapshot {
 /// same pipeline as process matching (`claude-code` → `claude`,
 /// `muse-bin-1.4.2` → `muse`), lowercasing anything unrecognized, so hook
 /// records compare equal to proc/screen records downstream.
+/// True while `/proc/<pid>` exists. `register --pid` validation.
+pub fn pid_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
 /// State letter from `/proc/<pid>/stat` (None when unreadable/gone).
 pub fn proc_state(pid: u32) -> Option<char> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;

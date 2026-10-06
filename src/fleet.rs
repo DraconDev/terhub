@@ -38,6 +38,21 @@ pub struct Host {
     pub target: String,
     #[serde(default)]
     pub mode: Mode,
+    /// Display name for rows and tabs (empty = show `name`). Routing
+    /// always uses `name`, so labels are free-form and renamable.
+    #[serde(default)]
+    pub label: String,
+}
+
+impl Host {
+    /// What the user sees: the label when set, else the routing name.
+    pub fn display_name(&self) -> &str {
+        if self.label.trim().is_empty() {
+            &self.name
+        } else {
+            self.label.trim()
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
