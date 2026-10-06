@@ -299,6 +299,57 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_rows_prefix_remote_identity() {
+        use crate::agent::{AgentRecord, AgentState, Source};
+        let host = Host {
+            name: "dev".to_string(),
+            target: "dev.example".to_string(),
+            mode: Mode::Observe,
+        };
+        let snap = crate::daemon::Snapshot {
+            agents: vec![AgentRecord {
+                pane: "%1".to_string(),
+                agent: "pi".to_string(),
+                state: AgentState::Waiting,
+                source: Source::Hook,
+                summary: "Approve?".to_string(),
+                session: "web".to_string(),
+                window: "srv".to_string(),
+                command: "pi".to_string(),
+                updated_at: 1700,
+                state_since: 1600,
+                cpu_ticks: 0,
+                cpu_still_since: 0,
+                agent_start: 0,
+                last_turn_secs: 0,
+                screen_hash: 0,
+                quiet_since: 0,
+            }],
+            updated_at: 1700,
+        };
+        let (rows, agents) = snapshot_rows(&host, &snap);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "dev:%1");
+        assert_eq!(rows[0].session, "dev \u{25b8} web");
+        assert_eq!(rows[0].command, "pi");
+        assert_eq!(rows[0].activity, 1700);
+        assert_eq!(rows[0].pid, 0);
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].pane, "dev:%1");
+        assert_eq!(agents[0].summary, "Approve?");
+    }
+
+    #[test]
+    fn attach_remote_argv_orders_ssh_flags() {
+        let argv = attach_remote_argv("dev.example", "web");
+        assert_eq!(
+            argv,
+            vec!["-t", "--", "dev.example", "tmux", "attach-session", "-t", "web"]
+        );
+        assert!(!argv.iter().any(|a| a.contains("BatchMode")));
+    }
+
+    #[test]
     fn control_gate() {
         let obs = Host {
             name: "o".to_string(),
