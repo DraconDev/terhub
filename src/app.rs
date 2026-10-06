@@ -193,6 +193,33 @@ fn turn_secs(rec: Option<&AgentRecord>) -> u64 {
 /// Expand a custom command template against the selected row. Unknown
 /// `{var}`s stay literal (config validation rejects them at load; this is
 /// the belt-and-braces path for programmatically built configs).
+/// Window name for a spawn: `{profile}-{first words of prompt}`,
+/// sanitized to tmux-safe chars and capped so tabs stay readable.
+/// Empty prompt degrades to the bare profile name.
+pub fn spawn_window_name(profile: &str, prompt: &str) -> String {
+    let clean = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect::<String>()
+    };
+    let prof = clean(profile);
+    let prof = if prof.is_empty() { "agent".to_string() } else { prof };
+    let slug: String = prompt
+        .split_whitespace()
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("-")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(20)
+        .collect();
+    if slug.is_empty() {
+        prof.chars().take(32).collect()
+    } else {
+        format!("{prof}-{slug}").chars().take(32).collect()
+    }
+}
+
 pub fn expand_command(
     template: &str,
     pane: &crate::tmux::Pane,
@@ -1198,6 +1225,10 @@ impl App {
             self.do_new_session();
             return None;
         }
+        if key_matches(&cfg.spec("spawn"), code) {
+            self.do_spawn();
+            return None;
+        }
         if key_matches(&cfg.spec("rename"), code) {
             self.do_rename_session();
             return None;
@@ -1579,6 +1610,46 @@ impl App {
         self.input.clear();
     }
 
+    fn do_spawn(&mut self) {
+        if self.config.profiles.is_empty() {
+            self.set_status("no spawn profiles (every [[profile]] invalid?)".to_string());
+            return;
+        }
+        if self.spawn_target_session().is_none() {
+            self.set_status("pick a session row (All doesn't count)".to_string());
+            return;
+        }
+        self.mode = Mode::PromptSpawn { profile: 0 };
+        self.input.clear();
+        self.cursor = 0;
+    }
+
+    /// Freeze/thaw the selected pane's process tree. Read-modify by live
+    /// /proc state (not a cached flag): an agent that exits while paused
+    /// resumes to a loud error, never a phantom toggle.
+    fn do_pause(&mut self) {
+        let Some(pane) = self.selected_pane() else {
+            self.set_status("no pane selected".to_string());
+            return;
+        };
+        let (id, pid) = (pane.id.clone(), pane.pid);
+        if pid == 0 {
+            self.set_status(format!("no pid for pane {id}"));
+            return;
+        }
+        if crate::proc::is_stopped(pid) {
+            match crate::proc::resume_group(pid) {
+                Ok(_) => self.set_status(format!("resumed {id}")),
+                Err(e) => self.set_status(format!("resume failed: {e}")),
+            }
+        } else {
+            match crate::proc::pause_group(pid) {
+                Ok(_) => self.set_status(format!("paused {id}")),
+                Err(e) => self.set_status(format!("pause failed: {e}")),
+            }
+        }
+    }
+
     fn do_rename_session(&mut self) {
         // Panes focus renames the selected pane's session (the sidebar may
         // sit on All); Sessions focus keeps the sidebar cursor.
@@ -1710,6 +1781,28 @@ impl App {
             }
             self.set_status(help);
             return None;
+        }
+        None
+    }
+
+    fn on_confirm_restart_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
+        let (id, command) = match &self.mode {
+            Mode::ConfirmRestartPane { id, command } => (id.clone(), command.clone()),
+            _ => return None,
+        };
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => self.cancel_modal(),
+            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                match tmux.respawn_pane(&id, &command) {
+                    Ok(_) => {
+                        self.set_status(format!("restarted {id}"));
+                        self.refresh(tmux);
+                    }
+                    Err(e) => self.set_status(format!("restart failed: {e}")),
+                }
+                self.cancel_modal();
+            }
+            _ => {}
         }
         None
     }
