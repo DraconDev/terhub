@@ -275,6 +275,42 @@ fn timeline_rejects_bad_view() {
 }
 
 #[test]
+fn native_list_without_terminals_exits_0() {
+    let out = run_isolated("natlist", &["native", "list"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stdout(&out).contains("no native tabs"), "{}", stdout(&out));
+}
+
+#[test]
+fn native_list_json_without_terminals_is_empty_array() {
+    let out = run_isolated("natjson", &["native", "list", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("valid json");
+    assert_eq!(v, serde_json::Value::Array(vec![]));
+}
+
+#[test]
+fn native_spawn_unknown_backend_exits_1() {
+    let out = run_isolated("natspawn", &["native", "spawn", "gnome"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+}
+
+#[test]
+fn send_capture_focus_route_native_ids_to_backends() {
+    // No tmux and no qdbus on PATH: the failure must name the native
+    // backend, proving the id never went down the tmux path.
+    let out = run_isolated("natsend", &["send", "konsole:1:2", "hi"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("qdbus"), "{}", stderr(&out));
+    let out = run_isolated("natcap", &["capture", "konsole:1:2"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("qdbus"), "{}", stderr(&out));
+    let out = run_isolated("natfocus", &["focus", "konsole:1:2"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("qdbus"), "{}", stderr(&out));
+}
+
+#[test]
 fn init_dry_run_lists_steps_without_acting() {
     let out = run_isolated("initdry", &["init", "--dry-run"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
