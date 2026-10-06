@@ -242,7 +242,10 @@ enum FleetAction {
         no_submit: bool,
     },
     /// SSH into a host's tmux (session defaults to most-recent).
-    Attach { host: String, session: Option<String> },
+    Attach {
+        host: String,
+        session: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

@@ -1149,7 +1149,10 @@ fn remote_rows_render_in_table() {
     let lines = render_lines(&mut app, 160, 24);
     let text = lines.join("\n");
     assert!(text.contains("dev:%1"), "remote id missing:\n{text}");
-    assert!(text.contains("dev \u{25b8} web"), "remote session missing:\n{text}");
+    assert!(
+        text.contains("dev \u{25b8} web"),
+        "remote session missing:\n{text}"
+    );
 }
 
 #[test]

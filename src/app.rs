@@ -61,7 +61,10 @@ pub enum AppEvent {
     FocusPane(String),
     /// Jump to a remote session: exits the TUI into `ssh -t` (ssh owns
     /// the terminal from there, so this never stays open).
-    RemoteAttach { host: String, session: String },
+    RemoteAttach {
+        host: String,
+        session: String,
+    },
     Quit,
 }
 
@@ -539,10 +542,7 @@ impl App {
                 Ok(snap) => {
                     let (r, a) = crate::fleet::snapshot_rows(&st.host, snap);
                     for (row, rec) in r.iter().zip(a.iter()) {
-                        index.insert(
-                            row.id.clone(),
-                            (st.host.name.clone(), rec.session.clone()),
-                        );
+                        index.insert(row.id.clone(), (st.host.name.clone(), rec.session.clone()));
                     }
                     rows.extend(r);
                     agents.extend(a);
@@ -2073,7 +2073,9 @@ impl App {
         };
         let (id, pid) = (pane.id.clone(), pane.pid);
         if is_remote_pane(&id) {
-            self.set_status(format!("can't pause remote row {id} (jump in to manage it)"));
+            self.set_status(format!(
+                "can't pause remote row {id} (jump in to manage it)"
+            ));
             return;
         }
         if pid == 0 {
@@ -2096,10 +2098,7 @@ impl App {
     fn do_rename_session(&mut self) {
         // Panes focus renames the selected pane's session (the sidebar may
         // sit on All); Sessions focus keeps the sidebar cursor.
-        if self.focus == Focus::Panes
-            && self
-                .selected_pane()
-                .is_some_and(|p| is_remote_pane(&p.id))
+        if self.focus == Focus::Panes && self.selected_pane().is_some_and(|p| is_remote_pane(&p.id))
         {
             self.set_status("can't rename remote sessions here (jump in)".to_string());
             return;
@@ -2656,11 +2655,7 @@ mod tests {
         app.fleet_index
             .insert("dev:%1".to_string(), ("dev".to_string(), "web".to_string()));
         app.refresh_filtered();
-        let idx = app
-            .filtered
-            .iter()
-            .position(|p| p.id == "dev:%1")
-            .unwrap();
+        let idx = app.filtered.iter().position(|p| p.id == "dev:%1").unwrap();
         app.select_pane(idx);
         app
     }

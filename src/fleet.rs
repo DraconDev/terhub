@@ -428,11 +428,22 @@ mod tests {
         let argv = attach_remote_argv("dev.example", Some("web"));
         assert_eq!(
             argv,
-            vec!["-t", "--", "dev.example", "tmux", "attach-session", "-t", "web"]
+            vec![
+                "-t",
+                "--",
+                "dev.example",
+                "tmux",
+                "attach-session",
+                "-t",
+                "web"
+            ]
         );
         assert!(!argv.iter().any(|a| a.contains("BatchMode")));
         let argv = attach_remote_argv("dev.example", None);
-        assert_eq!(argv, vec!["-t", "--", "dev.example", "tmux", "attach-session"]);
+        assert_eq!(
+            argv,
+            vec!["-t", "--", "dev.example", "tmux", "attach-session"]
+        );
     }
 
     #[test]

@@ -1060,7 +1060,11 @@ fn render_hosts(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             })
             .count();
         let err = app.fleet_errors.iter().find(|(h, _)| *h == host.name);
-        let mark = if i == app.hosts_selected { "› " } else { "  " };
+        let mark = if i == app.hosts_selected {
+            "› "
+        } else {
+            "  "
+        };
         let mut text = format!(
             "{mark}{} {} [{}] ({n} agents)",
             host.name,
