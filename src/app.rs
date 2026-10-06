@@ -6,7 +6,7 @@ use crate::daemon;
 use crate::tmux::{Pane, Session, Tmux};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
@@ -71,6 +71,24 @@ pub enum AppEvent {
 /// Remote rows carry `host:%N` ids; local tmux ids always start with `%`.
 pub fn is_remote_pane(id: &str) -> bool {
     !id.starts_with('%')
+}
+
+/// CPU percent between two tick samples (None = re-baseline: first
+/// sample, zero elapsed, or ticks fell because the process restarted).
+/// Over 100% is real — agent subtrees span cores.
+fn cpu_pct(prev_ticks: u64, prev_at: Instant, ticks: u64, at: Instant, hz: f64) -> Option<f64> {
+    let dt = at.duration_since(prev_at).as_secs_f64();
+    if dt <= 0.0 || ticks < prev_ticks || hz <= 0.0 {
+        return None;
+    }
+    Some((ticks - prev_ticks) as f64 / dt / hz * 100.0)
+}
+
+/// Clock ticks per second for CPU math (Linux almost always 100).
+fn clock_hz() -> f64 {
+    // SAFETY: sysconf with a valid name has no memory effects.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if hz > 0 { hz as f64 } else { 100.0 }
 }
 
 /// Which list keyboard input drives: the session sidebar or the pane table.
@@ -2848,6 +2866,17 @@ mod tests {
         app.on_key(alt('2'), &tmux);
         assert_eq!(app.mode, Mode::PromptFilter);
         assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn cpu_pct_needs_two_rising_samples() {
+        use std::time::{Duration, Instant};
+        let t0 = Instant::now();
+        // 150 ticks in 1s at 100Hz = 150% (subtrees span cores).
+        assert_eq!(cpu_pct(100, t0, 250, t0 + Duration::from_secs(1), 100.0), Some(150.0));
+        // Restarted process (ticks fell) and zero elapsed re-baseline.
+        assert_eq!(cpu_pct(250, t0, 10, t0 + Duration::from_secs(1), 100.0), None);
+        assert_eq!(cpu_pct(100, t0, 100, t0, 100.0), None);
     }
 
     #[test]
