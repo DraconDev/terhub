@@ -1592,8 +1592,6 @@ fn run_tui() -> Result<Option<TuiExit>> {
     // Left-press position for click-vs-drag: a jump only fires when press
     // and release land on the same cell, so text drags never jump.
     let mut press: Option<(u16, u16, Instant)> = None;
-    // Last session-segment click for double-click-to-attach.
-    let mut last_seg: Option<(Instant, usize)> = None;
     // Inside tmux a jump only moves the client's view, so the table stays
     // open behind it; outside tmux the attach must take over this terminal.
     let stay_open = std::env::var("TMUX").is_ok();
@@ -1701,25 +1699,17 @@ fn run_tui() -> Result<Option<TuiExit>> {
                             if let Some(pos) = hit {
                                 // Segments are windowed: offset by scroll.
                                 let idx = app.session_scroll + pos;
-                                if idx < app.side_rows() {
-                                    app.focus = Focus::Sessions;
-                                    app.select(idx);
-                                    app.refresh_filtered();
-                                    app.follow_preview(&tmux);
-                                    let now = Instant::now();
-                                    if matches!(last_seg, Some((t, i))
-                                        if i == idx
-                                            && now.duration_since(t)
-                                                < Duration::from_millis(500))
-                                        && let Some(s) = app.side_session()
-                                    {
-                                        if stay_open {
-                                            app.do_nav(&tmux, AppEvent::Attach(s.name.clone()));
-                                        } else {
-                                            return Ok(Some(TuiExit::Attach(s.name.clone())));
-                                        }
+                                let ctrl = mouse
+                                    .modifiers
+                                    .intersects(crossterm::event::KeyModifiers::CONTROL);
+                                if let Some(AppEvent::Attach(n)) =
+                                    app.click_session_segment(idx, ctrl, &tmux)
+                                {
+                                    if stay_open {
+                                        app.do_nav(&tmux, AppEvent::Attach(n));
+                                    } else {
+                                        return Ok(Some(TuiExit::Attach(n)));
                                     }
-                                    last_seg = Some((now, idx));
                                 }
                             }
                         } else if in_area(mouse.column, mouse.row, areas.panes) {

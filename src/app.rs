@@ -1178,6 +1178,32 @@ impl App {
         self.clamp_selection();
     }
 
+    /// Session-tab click: select the tab and refilter. With `attach`
+    /// (ctrl+click) also return the attach event for the tab's session.
+    /// The All tab never attaches (it isn't a session); double-click is
+    /// gone (the first click already selects, so it could never work).
+    pub fn click_session_segment(
+        &mut self,
+        idx: usize,
+        attach: bool,
+        tmux: &Tmux,
+    ) -> Option<AppEvent> {
+        if idx >= self.side_rows() {
+            return None;
+        }
+        self.focus = Focus::Sessions;
+        self.select(idx);
+        self.refresh_filtered();
+        self.follow_preview(tmux);
+        if attach {
+            if let Some(s) = self.side_session() {
+                return Some(AppEvent::Attach(s.name.clone()));
+            }
+            self.set_status("All isn't a session (pick a tab)".to_string());
+        }
+        None
+    }
+
     fn clamp_selection(&mut self) {
         let rows = self.side_rows();
         if self.selected >= rows {
