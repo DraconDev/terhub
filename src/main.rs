@@ -81,6 +81,12 @@ enum Cmd {
         /// Read the summary from stdin (JSON {"message": ...} or raw head).
         #[arg(long, conflicts_with = "summary")]
         summary_stdin: bool,
+        /// The user's prompt text (goes to the prompt ledger).
+        #[arg(long, conflicts_with = "prompt_stdin")]
+        prompt: Option<String>,
+        /// Read the prompt from stdin (JSON {"prompt": ...} or raw head).
+        #[arg(long, conflicts_with = "prompt")]
+        prompt_stdin: bool,
     },
     /// Manage the terhubd daemon.
     Daemon {
@@ -138,10 +144,21 @@ enum Cmd {
     Activity {
         #[arg(long, default_value = "today")]
         since: String,
-        #[arg(long, default_value = "all", value_parser = ["agent", "session", "rule", "human", "all"])]
+        #[arg(long, default_value = "all", value_parser = ["agent", "session", "rule", "human", "prompt", "all"])]
         kind: String,
         #[arg(long)]
         json: bool,
+    },
+    /// Recent user prompts from the ledger, newest first.
+    Recap {
+        #[arg(long, default_value = "today")]
+        since: String,
+        /// Only prompts for one pane.
+        #[arg(long)]
+        pane: Option<String>,
+        /// Most prompts to show.
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
     },
     /// Scrollable timeline of agent work.
     Timeline {
