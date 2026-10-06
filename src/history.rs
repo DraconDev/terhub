@@ -399,6 +399,127 @@ pub fn stats(spans: &[Span], since: Option<u64>, group: GroupBy) -> Vec<StatsRow
     out
 }
 
+// ---------------------------------------------------------------------------
+// Foreground time (human focus ledger)
+// ---------------------------------------------------------------------------
+
+/// One pane holding the human's focus, from a `focus` event to the next
+/// focus/detach (or `now` for the open tail).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForeSpan {
+    pub pane: String,
+    pub start: u64,
+    pub end: u64,
+}
+
+pub fn build_foreground(entries: &[Entry], now: u64) -> Vec<ForeSpan> {
+    let mut human: Vec<&Entry> = entries.iter().filter(|e| e.kind == "human").collect();
+    human.sort_by_key(|e| e.t);
+    let mut spans = Vec::new();
+    let mut current: Option<(&str, u64)> = None;
+    let mut close = |cur: &mut Option<(&str, u64)>, end: u64, spans: &mut Vec<ForeSpan>| {
+        if let Some((pane, start)) = cur.take()
+            && end > start
+        {
+            spans.push(ForeSpan {
+                pane: pane.to_string(),
+                start,
+                end,
+            });
+        }
+    };
+    for e in human {
+        match e.event.as_deref() {
+            Some("focus") if !e.pane.is_empty() => {
+                close(&mut current, e.t, &mut spans);
+                current = Some((e.pane.as_str(), e.t));
+            }
+            _ => close(&mut current, e.t, &mut spans),
+        }
+    }
+    close(&mut current, now, &mut spans);
+    spans
+}
+
+/// Focused seconds per pane, most-focused first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForeTotal {
+    pub pane: String,
+    pub secs: u64,
+}
+
+pub fn foreground_totals(spans: &[ForeSpan], since: Option<u64>) -> Vec<ForeTotal> {
+    let mut acc: HashMap<&str, u64> = HashMap::new();
+    for s in spans {
+        let start = since.map(|c| s.start.max(c)).unwrap_or(s.start);
+        if start >= s.end {
+            continue;
+        }
+        *acc.entry(s.pane.as_str()).or_default() += s.end - start;
+    }
+    let mut out: Vec<ForeTotal> = acc
+        .into_iter()
+        .map(|(pane, secs)| ForeTotal {
+            pane: pane.to_string(),
+            secs,
+        })
+        .collect();
+    out.sort_by(|a, b| b.secs.cmp(&a.secs).then(a.pane.cmp(&b.pane)));
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Report (all breakdowns at once, three renderings)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ReportData {
+    pub by_day: Vec<StatsRow>,
+    pub by_agent: Vec<StatsRow>,
+    pub by_session: Vec<StatsRow>,
+    pub foreground: Vec<ForeTotal>,
+}
+
+impl ReportData {
+    pub fn is_empty(&self) -> bool {
+        self.by_day.iter().all(|r| r.total() == 0)
+            && self.by_agent.iter().all(|r| r.total() == 0)
+            && self.by_session.iter().all(|r| r.total() == 0)
+            && self.foreground.iter().all(|f| f.secs == 0)
+    }
+}
+
+pub fn report_json(data: &ReportData) -> String {
+    serde_json::to_string_pretty(data).unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn report_markdown(data: &ReportData, since_label: &str) -> String {
+    let mut md = format!("# terhub report (since {since_label})\n");
+    for (name, rows) in [
+        ("by day", &data.by_day),
+        ("by agent", &data.by_agent),
+        ("by session", &data.by_session),
+    ] {
+        md.push_str(&format!("\n## {name}\n\n| key | work | wait | err | idle | total |\n| --- | --- | --- | --- | --- | --- |\n"));
+        for r in rows {
+            md.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} |\n",
+                r.key,
+                fmt_dur(r.work),
+                fmt_dur(r.wait),
+                fmt_dur(r.err),
+                fmt_dur(r.idle),
+                fmt_dur(r.total()),
+            ));
+        }
+    }
+    md.push_str("\n## foreground\n\n| pane | focused |\n| --- | --- |\n");
+    for f in &data.foreground {
+        md.push_str(&format!("| {} | {} |\n", f.pane, fmt_dur(f.secs)));
+    }
+    md
+}
+
 pub fn fmt_dur(secs: u64) -> String {
     if secs < 60 {
         format!("{secs}s")
@@ -689,7 +810,7 @@ mod tests {
         assert_eq!((spans[1].pane.as_str(), spans[1].start, spans[1].end), ("%2", 200, 300));
         assert_eq!((spans[2].pane.as_str(), spans[2].start, spans[2].end), ("%1", 400, 500));
         // Totals attribute per pane, most-focused first.
-        let totals = foreground_totals(&spans);
+        let totals = foreground_totals(&spans, None);
         assert_eq!(
             totals,
             vec![
