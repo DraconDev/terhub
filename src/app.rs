@@ -1523,7 +1523,7 @@ impl App {
                 self.set_status(LEGEND.to_string());
             } else {
                 self.set_status(format!(
-                    "sessions: {}=new {}=spawn {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hosts {}=hide {}=quit",
+                    "sessions: {}=new {}=spawn {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hosts {}=hide alt+1..8=tabs {}=quit",
                     cfg.key("new"),
                     cfg.key("spawn"),
                     cfg.key("rename"),
