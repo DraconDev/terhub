@@ -283,11 +283,16 @@ enum HostAction {
         target: String,
         #[arg(long, default_value = "observe")]
         mode: String,
+        /// Display label for rows and tabs (empty = show the name).
+        #[arg(long, default_value = "")]
+        label: String,
     },
     List,
     Remove {
         name: String,
     },
+    /// Set (or clear, with "") a host's display label.
+    Label { name: String, label: String },
     Doctor {
         name: String,
     },
@@ -1641,12 +1646,17 @@ fn cmd_send(pane: &str, text: Option<&str>, template: Option<&str>, submit: bool
 fn cmd_host(action: &HostAction) -> i32 {
     use terhub::fleet as f;
     match action {
-        HostAction::Add { name, target, mode } => {
+        HostAction::Add {
+            name,
+            target,
+            mode,
+            label,
+        } => {
             let Some(mode) = f::Mode::parse(mode) else {
                 eprintln!("terhub: bad mode (observe|control)");
                 return 1;
             };
-            match f::add_host(name, target, mode) {
+            match f::add_host(name, target, mode, label) {
                 Ok(()) => {
                     println!("added {name} ({target}, {})", mode.label());
                     0
@@ -1670,10 +1680,32 @@ fn cmd_host(action: &HostAction) -> i32 {
                 return 0;
             }
             for h in &hosts {
-                print_out(&format!("{} {} {}", h.name, h.target, h.mode.label()));
+                let mut line = format!("{} {} {}", h.name, h.target, h.mode.label());
+                if h.display_name() != h.name {
+                    line.push_str(&format!(" [{}]", h.display_name()));
+                }
+                print_out(&line);
             }
             0
         }
+        HostAction::Label { name, label } => match f::set_label(name, label) {
+            Ok(true) => {
+                if label.trim().is_empty() {
+                    println!("cleared label on {name}");
+                } else {
+                    println!("labeled {name} as '{}'", label.trim());
+                }
+                0
+            }
+            Ok(false) => {
+                eprintln!("terhub: no host '{name}'");
+                1
+            }
+            Err(e) => {
+                eprintln!("terhub: {e:?}");
+                1
+            }
+        },
         HostAction::Remove { name } => match f::remove_host(name) {
             Ok(true) => {
                 println!("removed {name}");

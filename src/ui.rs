@@ -1163,7 +1163,7 @@ fn render_hosts(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         };
         let mut text = format!(
             "{mark}{} {} [{}] ({n} agents)",
-            host.name,
+            host.display_name(),
             host.target,
             host.mode.label()
         );

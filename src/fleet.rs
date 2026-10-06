@@ -244,7 +244,7 @@ pub fn fleet_status(hosts: &[Host]) -> Vec<HostStatus> {
 }
 
 /// Turn a remote snapshot into table rows: ids are `host:%N`, sessions
-/// `host ▸ session` (never matching a local tab, so remotes show under
+/// `label ▸ session` (never matching a local tab, so remotes show under
 /// All only). Agents are re-keyed by remote id for badges and dots.
 pub fn snapshot_rows(
     host: &Host,

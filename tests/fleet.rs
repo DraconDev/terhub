@@ -57,9 +57,9 @@ fn fleet_and_zellij_against_fakes() {
 
     // Host CRUD.
     assert!(f::load_hosts().unwrap().is_empty());
-    f::add_host("dev", "fake-target", f::Mode::Control).unwrap();
-    f::add_host("obs", "fake-target", f::Mode::Observe).unwrap();
-    assert!(f::add_host("dev", "x", f::Mode::Observe).is_err());
+    f::add_host("dev", "fake-target", f::Mode::Control, "").unwrap();
+    f::add_host("obs", "fake-target", f::Mode::Observe, "").unwrap();
+    assert!(f::add_host("dev", "x", f::Mode::Observe, "").is_err());
     assert_eq!(f::load_hosts().unwrap().len(), 2);
 
     // Fleet status parses the remote snapshot, in config order even
@@ -92,7 +92,7 @@ fn fleet_and_zellij_against_fakes() {
     let fleet_file = f::fleet_path();
     std::fs::write(&fleet_file, "host = [unclosed\n").unwrap();
     assert!(f::load_hosts().is_err());
-    assert!(f::add_host("new", "t", f::Mode::Observe).is_err());
+    assert!(f::add_host("new", "t", f::Mode::Observe, "").is_err());
     assert!(f::remove_host("obs").is_err());
     assert_eq!(
         std::fs::read_to_string(&fleet_file).unwrap(),
@@ -136,7 +136,7 @@ fn fleet_and_zellij_against_fakes() {
     write_exe(&bin.join("ssh"), FAKE_SSH);
     // The corrupt-file phase poisoned the registry; start that file over.
     std::fs::write(f::fleet_path(), "").unwrap();
-    f::add_host("dev", "fake-target", f::Mode::Observe).unwrap();
+    f::add_host("dev", "fake-target", f::Mode::Observe, "").unwrap();
     let mut app = terhub::app::App::new(terhub::config::AppConfig::default());
     app.fetch_fleet();
     assert_eq!(app.fleet_rows.len(), 1);

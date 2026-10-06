@@ -2283,7 +2283,7 @@ impl App {
                         return None;
                     }
                 };
-                match crate::fleet::add_host(name, target, mode) {
+                match crate::fleet::add_host(name, target, mode, "") {
                     Ok(()) => {
                         self.set_status(format!("added host {name}"));
                         if let Ok(hosts) = crate::fleet::load_hosts() {
