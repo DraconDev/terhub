@@ -383,6 +383,8 @@ pub struct App {
     pub fleet_fetched_at: Option<std::time::Instant>,
     /// Hosts modal cursor.
     pub hosts_selected: usize,
+    /// Hosts modal first visible row.
+    pub hosts_scroll: usize,
 }
 
 impl App {
@@ -425,6 +427,7 @@ impl App {
             fleet_errors: Vec::new(),
             fleet_fetched_at: None,
             hosts_selected: 0,
+            hosts_scroll: 0,
         }
     }
 
@@ -1405,6 +1408,10 @@ impl App {
             self.open_settings();
             return None;
         }
+        if key_matches(&self.config.spec("hosts"), code) {
+            self.open_hosts();
+            return None;
+        }
         if key_matches(&self.config.spec("sort"), code) {
             self.resort_next();
             self.follow_preview(tmux);
@@ -1610,6 +1617,164 @@ impl App {
         self.mode = Mode::Settings;
         self.settings_selected = 0;
         self.settings_scroll = 0;
+    }
+
+    pub fn open_hosts(&mut self) {
+        match crate::fleet::load_hosts() {
+            Ok(hosts) => self.fleet_hosts = hosts,
+            Err(e) => {
+                self.fleet_hosts.clear();
+                self.set_status(format!("fleet: {e:#}"));
+            }
+        }
+        self.hosts_selected = 0;
+        self.hosts_scroll = 0;
+        self.mode = Mode::Hosts;
+    }
+
+    /// Hosts modal: navigate the registry, add/remove hosts, fetch the
+    /// fleet into the table, jump to a host's neediest remote agent.
+    fn on_hosts_key(&mut self, key: KeyEvent) -> Option<AppEvent> {
+        match key.code {
+            KeyCode::Esc => self.cancel_modal(),
+            KeyCode::Up => {
+                self.hosts_selected = self.hosts_selected.saturating_sub(1);
+                self.clamp_hosts_scroll();
+            }
+            KeyCode::Down => {
+                self.hosts_selected = self.hosts_selected.saturating_add(1);
+                self.clamp_hosts();
+                self.clamp_hosts_scroll();
+            }
+            KeyCode::Char('a') => {
+                self.mode = Mode::PromptHostAdd;
+                self.input.clear();
+                self.cursor = 0;
+            }
+            KeyCode::Char('x') | KeyCode::Char('d') => self.remove_selected_host(),
+            KeyCode::Char('r') => self.fetch_fleet(),
+            KeyCode::Enter => return self.jump_to_host_needy(),
+            _ => {}
+        }
+        None
+    }
+
+    fn clamp_hosts(&mut self) {
+        if self.fleet_hosts.is_empty() {
+            self.hosts_selected = 0;
+        } else if self.hosts_selected >= self.fleet_hosts.len() {
+            self.hosts_selected = self.fleet_hosts.len() - 1;
+        }
+    }
+
+    fn clamp_hosts_scroll(&mut self) {
+        if self.hosts_selected < self.hosts_scroll {
+            self.hosts_scroll = self.hosts_selected;
+        }
+    }
+
+    fn remove_selected_host(&mut self) {
+        let Some(host) = self.fleet_hosts.get(self.hosts_selected) else {
+            self.set_status("no hosts (a to add)".to_string());
+            return;
+        };
+        let name = host.name.clone();
+        match crate::fleet::remove_host(&name) {
+            Ok(true) => {
+                self.set_status(format!("removed host {name}"));
+                self.fleet_hosts.retain(|h| h.name != name);
+                self.clamp_hosts();
+            }
+            Ok(false) => self.set_status(format!("host {name} already gone")),
+            Err(e) => self.set_status(format!("remove failed: {e:#}")),
+        }
+    }
+
+    /// Jump to the selected host's neediest cached agent (fetch first).
+    fn jump_to_host_needy(&mut self) -> Option<AppEvent> {
+        let Some(host) = self.fleet_hosts.get(self.hosts_selected) else {
+            self.set_status("no hosts (a to add)".to_string());
+            return None;
+        };
+        let name = host.name.clone();
+        let candidates: Vec<AgentRecord> = self
+            .fleet_agents
+            .iter()
+            .filter(|a| {
+                self.fleet_index
+                    .get(&a.pane)
+                    .is_some_and(|(h, _)| *h == name)
+            })
+            .cloned()
+            .collect();
+        if candidates.is_empty() {
+            self.set_status(format!("no cached agents for {name} (r to fetch)"));
+            return None;
+        }
+        match self.attend_event(&candidates) {
+            Some(ev) => Some(ev),
+            None => {
+                self.set_status(format!("{name}: all clear"));
+                None
+            }
+        }
+    }
+
+    /// Add-host prompt: `name target [observe|control]`. Bad input keeps
+    /// the prompt open (the text is half the work); Esc steps back out.
+    fn on_host_add_key(&mut self, key: KeyEvent) -> Option<AppEvent> {
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Hosts;
+            }
+            KeyCode::Enter => {
+                let parts: Vec<&str> = self.input.split_whitespace().collect();
+                let (name, target, mode) = match parts.as_slice() {
+                    [name, target] => (*name, *target, crate::fleet::Mode::Observe),
+                    [name, target, mode] => match crate::fleet::Mode::parse(mode) {
+                        Some(m) => (*name, *target, m),
+                        None => {
+                            self.set_status(format!(
+                                "want: name target [observe|control] (bad mode '{mode}')"
+                            ));
+                            return None;
+                        }
+                    },
+                    _ => {
+                        self.set_status("want: name target [observe|control]".to_string());
+                        return None;
+                    }
+                };
+                match crate::fleet::add_host(name, target, mode) {
+                    Ok(()) => {
+                        self.set_status(format!("added host {name}"));
+                        if let Ok(hosts) = crate::fleet::load_hosts() {
+                            self.fleet_hosts = hosts;
+                        }
+                        self.mode = Mode::Hosts;
+                    }
+                    Err(e) => self.set_status(format!("add failed: {e:#}")),
+                }
+            }
+            KeyCode::Backspace => {
+                self.delete_before_cursor();
+            }
+            KeyCode::Delete => {
+                self.delete_at_cursor();
+            }
+            KeyCode::Left => {
+                self.cursor = self.cursor.saturating_sub(1);
+            }
+            KeyCode::Right => {
+                let len = self.input.chars().count();
+                self.cursor = (self.cursor + 1).min(len);
+            }
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.input.chars().count(),
+            KeyCode::Char(c) if !c.is_control() => self.insert_at_cursor(c),
+            _ => {}
+        }
+        None
     }
 
     /// Open the text filter, editing the current query in place.
