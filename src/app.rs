@@ -123,7 +123,10 @@ fn git_diff_stat(dir: &str) -> Option<GitStat> {
     };
     let short = git_out(dir, &["diff", "--shortstat"])?;
     let (files, ins, del) = parse_shortstat(&short);
-    let status = git_out(dir, &["status", "--porcelain=v1", "--untracked-files=normal"])?;
+    let status = git_out(
+        dir,
+        &["status", "--porcelain=v1", "--untracked-files=normal"],
+    )?;
     let untracked = status.lines().filter(|l| l.starts_with("??")).count() as u32;
     Some(GitStat {
         branch,
@@ -1018,9 +1021,7 @@ impl App {
             .selected_pane()
             .and_then(|p| self.agents.get(&p.id).map(|r| (p.id.clone(), r.cpu_ticks)));
         let pct = match (&sample, &self.preview_cpu_prev) {
-            (Some((id, ticks)), Some((prev_id, prev_ticks, prev_at)))
-                if id == prev_id =>
-            {
+            (Some((id, ticks)), Some((prev_id, prev_ticks, prev_at))) if id == prev_id => {
                 cpu_pct(*prev_ticks, *prev_at, *ticks, now, clock_hz())
             }
             _ => None,
@@ -3019,17 +3020,32 @@ mod tests {
         use std::time::{Duration, Instant};
         let t0 = Instant::now();
         // 150 ticks in 1s at 100Hz = 150% (subtrees span cores).
-        assert_eq!(cpu_pct(100, t0, 250, t0 + Duration::from_secs(1), 100.0), Some(150.0));
+        assert_eq!(
+            cpu_pct(100, t0, 250, t0 + Duration::from_secs(1), 100.0),
+            Some(150.0)
+        );
         // Restarted process (ticks fell) and zero elapsed re-baseline.
-        assert_eq!(cpu_pct(250, t0, 10, t0 + Duration::from_secs(1), 100.0), None);
+        assert_eq!(
+            cpu_pct(250, t0, 10, t0 + Duration::from_secs(1), 100.0),
+            None
+        );
         assert_eq!(cpu_pct(100, t0, 100, t0, 100.0), None);
     }
 
     #[test]
     fn parse_shortstat_handles_missing_parts() {
-        assert_eq!(parse_shortstat(" 2 files changed, 45 insertions(+), 12 deletions(-)"), (2, 45, 12));
-        assert_eq!(parse_shortstat(" 1 file changed, 1 insertion(+)"), (1, 1, 0));
-        assert_eq!(parse_shortstat(" 1 file changed, 3 deletions(-)"), (1, 0, 3));
+        assert_eq!(
+            parse_shortstat(" 2 files changed, 45 insertions(+), 12 deletions(-)"),
+            (2, 45, 12)
+        );
+        assert_eq!(
+            parse_shortstat(" 1 file changed, 1 insertion(+)"),
+            (1, 1, 0)
+        );
+        assert_eq!(
+            parse_shortstat(" 1 file changed, 3 deletions(-)"),
+            (1, 0, 3)
+        );
         assert_eq!(parse_shortstat(""), (0, 0, 0));
     }
 
@@ -3042,11 +3058,22 @@ mod tests {
             let out = std::process::Command::new("git")
                 .arg("-C")
                 .arg(&dir)
-                .args(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"])
+                .args([
+                    "-c",
+                    "user.email=t@t",
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "commit.gpgsign=false",
+                ])
                 .args(args)
                 .output()
                 .unwrap();
-            assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+            assert!(
+                out.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         };
         git(&["init", "-b", "main", "-q"]);
         std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
