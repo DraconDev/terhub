@@ -80,11 +80,24 @@ pub fn save_hosts(hosts: &[Host]) -> Result<()> {
     Ok(())
 }
 
+/// Host-name rules: non-empty, and no colon (remote ids are
+/// `host:%N`, so a colon would corrupt the split).
+pub fn validate_host_name(name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        bail!("host name must not be empty");
+    }
+    if name.contains(':') {
+        bail!("host name must not contain ':'");
+    }
+    Ok(())
+}
+
 pub fn add_host(name: &str, target: &str, mode: Mode) -> Result<()> {
     let name = name.trim();
     let target = target.trim();
-    if name.is_empty() || target.is_empty() {
-        bail!("name and target must not be empty");
+    validate_host_name(name)?;
+    if target.is_empty() {
+        bail!("target must not be empty");
     }
     let mut hosts = load_hosts()?;
     if hosts.iter().any(|h| h.name == name) {
