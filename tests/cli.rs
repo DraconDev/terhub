@@ -208,6 +208,69 @@ fn zellij_list_without_binary_exits_1() {
     assert_eq!(out.status.code(), Some(1));
 }
 
+fn run_with_ledger(tag: &str, args: &[&str], ledger: &str) -> Output {
+    let rt = runtime_dir(tag);
+    let _ = std::fs::remove_dir_all(&rt);
+    let data = rt.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("activity.jsonl"), ledger).unwrap();
+    let out = Command::new(bin())
+        .args(args)
+        .env("TERHUB_RUNTIME_DIR", &rt)
+        .env("TERHUB_DATA_DIR", &data)
+        .env("PATH", "/nonexistent-terhub-test")
+        .output()
+        .expect("spawn terhub");
+    let _ = std::fs::remove_dir_all(&rt);
+    out
+}
+
+const SEED_LEDGER: &str = "{\"t\":100,\"kind\":\"agent\",\"pane\":\"%1\",\"agent\":\"pi\",\"from\":\"idle\",\"to\":\"working\",\"session\":\"s\",\"window\":\"w\"}\n{\"t\":200,\"kind\":\"agent\",\"pane\":\"%1\",\"agent\":\"pi\",\"from\":\"working\",\"to\":\"waiting\",\"session\":\"s\",\"window\":\"w\"}\n{\"t\":150,\"kind\":\"human\",\"pane\":\"%1\",\"event\":\"focus\"}\n{\"t\":250,\"kind\":\"human\",\"event\":\"detach\"}\n";
+
+#[test]
+fn report_json_flag_emits_structured_report() {
+    let out = run_with_ledger(
+        "repjson",
+        &["report", "--since", "all", "--json"],
+        SEED_LEDGER,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("valid json");
+    assert_eq!(v["by_agent"][0]["key"], "pi");
+    assert_eq!(v["by_agent"][0]["work"], 100);
+    assert_eq!(v["foreground"][0]["pane"], "%1");
+    assert_eq!(v["foreground"][0]["secs"], 100);
+}
+
+#[test]
+fn report_markdown_flag_emits_tables() {
+    let out = run_with_ledger(
+        "repmd",
+        &["report", "--since", "all", "--markdown"],
+        SEED_LEDGER,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("## by agent"), "missing section:\n{text}");
+    assert!(text.contains("| pi |"), "missing row:\n{text}");
+    assert!(text.contains("## foreground"), "missing foreground:\n{text}");
+}
+
+#[test]
+fn report_text_includes_foreground_section() {
+    let out = run_with_ledger("repfg", &["report", "--since", "all"], SEED_LEDGER);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("foreground"), "missing section:\n{text}");
+    assert!(text.contains("%1"), "missing pane:\n{text}");
+}
+
+#[test]
+fn timeline_rejects_bad_view() {
+    let out = run_isolated("tlview", &["timeline", "--view", "bogus"]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+}
+
 #[test]
 fn init_dry_run_lists_steps_without_acting() {
     let out = run_isolated("initdry", &["init", "--dry-run"]);
