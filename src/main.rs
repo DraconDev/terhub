@@ -1032,16 +1032,20 @@ fn peek_pick(rows: &[terhub::attend::PeekRow]) -> i32 {
 }
 
 fn cmd_status_line(pane: Option<&str>) -> i32 {
-    let owned;
-    let pane = match pane {
-        Some(p) => {
-            owned = pane_arg!(p);
-            Some(owned.as_str())
-        }
-        None => None,
-    };
+    // Single fetch: resolve the handle against the same snapshot the
+    // line renders from (status-right polls this constantly).
     let text = daemon::fetch_snapshot(Duration::from_secs(1))
-        .map(|s| terhub::attend::status_line(&s.agents, pane))
+        .map(|s| {
+            let owned;
+            let pane = match pane {
+                Some(p) => {
+                    owned = terhub::agent::resolve_handle(&s.agents, p).unwrap_or_else(|| p.to_string());
+                    Some(owned.as_str())
+                }
+                None => None,
+            };
+            terhub::attend::status_line(&s.agents, pane)
+        })
         .unwrap_or_else(|_| "◎ --".to_string());
     println!("{text}");
     0
