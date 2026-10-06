@@ -901,16 +901,16 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         ]
         .map(Some),
     );
-    // Window/Cmd/Dir/Agent/Handle = 50%; with Session 9% + Summary 20% the
-    // percentage columns total 79%, so at 140 columns the fixed columns
-    // + spacing still fit and only Summary absorbs the small deficit;
-    // at 195+ the waiting summaries and versioned binaries fit uncut.
+    // Window/Cmd/Dir/Agent = 43%; with Session 9% + Summary 16% the
+    // percentage columns total 68%, so with the fixed Handle column
+    // (12) the 195-wide table still fits versioned binaries uncut and
+    // only Summary absorbs the deficit at narrower widths.
     widths.extend([
         Constraint::Percentage(9),
         Constraint::Percentage(13),
         Constraint::Percentage(13),
         Constraint::Percentage(8),
-        Constraint::Percentage(7),
+        Constraint::Length(12),
         Constraint::Length(8),
         Constraint::Length(4),
         Constraint::Length(6),
@@ -920,7 +920,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !compact {
         headers.push("Summary".to_string());
         keys.push(Some(SortKey::Summary));
-        widths.push(Constraint::Percentage(20));
+        widths.push(Constraint::Percentage(16));
     }
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });

@@ -369,6 +369,7 @@ fn header_hits_align_with_labels() {
         (Some(SortKey::Cmd), "Cmd"),
         (Some(SortKey::Dir), "Dir"),
         (Some(SortKey::Agent), "Agent"),
+        (Some(SortKey::Handle), "Handle"),
         (Some(SortKey::State), "State"),
         (Some(SortKey::Src), "Src"),
         (Some(SortKey::For), "For"),
