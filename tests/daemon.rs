@@ -80,6 +80,7 @@ fn daemon_hook_snapshot_expire_shutdown() {
         agent: "claude".to_string(),
         state: AgentState::Waiting,
         summary: "needs input".to_string(),
+        prompt: "do the thing".to_string(),
     };
     daemon::send_event(&ev, Duration::from_secs(2)).unwrap();
     let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
@@ -92,6 +93,8 @@ fn daemon_hook_snapshot_expire_shutdown() {
     assert_eq!(rec.state, AgentState::Waiting);
     assert_eq!(rec.source, Source::Hook);
     assert_eq!(rec.summary, "needs input");
+    assert_eq!(rec.last_prompt, "do the thing");
+    assert!(rec.last_prompt_at > 0);
     assert!(runtime.join("registry.json").is_file());
     // The transition was appended to the ledger.
     let ledger = data.join("activity.jsonl");
@@ -102,6 +105,9 @@ fn daemon_hook_snapshot_expire_shutdown() {
         text.contains("\"to\":\"waiting\""),
         "ledger lacks state:\n{text}"
     );
+    // So was the prompt, as its own entry kind.
+    assert!(text.contains("\"kind\":\"prompt\""), "ledger lacks prompt:\n{text}");
+    assert!(text.contains("do the thing"), "prompt text lost:\n{text}");
 
     // The poll notices %999999 is not a real pane and expires it.
     assert!(
