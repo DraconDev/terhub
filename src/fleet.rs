@@ -373,6 +373,19 @@ mod tests {
     }
 
     #[test]
+    fn host_names_reject_backend_reservations() {
+        assert!(validate_host_name("dev").is_ok());
+        for reserved in ["konsole", "kitty", "wezterm", "Konsole", " KITTY "] {
+            assert!(
+                validate_host_name(reserved).is_err(),
+                "{reserved} must be reserved"
+            );
+        }
+        assert!(validate_host_name("has:colon").is_err());
+        assert!(validate_host_name("  ").is_err());
+    }
+
+    #[test]
     fn shell_quoting() {
         assert_eq!(sh_quote("hi"), "'hi'");
         assert_eq!(sh_quote("don't"), "'don'\\''t'");

@@ -3023,6 +3023,114 @@ mod tests {
     }
 
     #[test]
+    fn native_pane() -> Pane {
+        let mut p = Pane::test("konsole:999:6", "tab six", "pi");
+        p.session = "konsole".to_string();
+        p.pid = 1001;
+        p
+    }
+
+    #[test]
+    fn native_rows_merge_all_only() {
+        let mut app = app_with_panes();
+        app.native_rows = vec![native_pane()];
+        app.merge_native();
+        assert!(app.panes.iter().any(|p| p.id == "konsole:999:6"));
+        assert_eq!(app.filtered.len(), 3);
+        // Foreign rows never leak into a session filter.
+        app.select(1); // session "a"
+        app.refresh_filtered();
+        assert!(app.filtered.iter().all(|p| p.id.starts_with('%')));
+        app.select(0); // All
+        app.refresh_filtered();
+        assert_eq!(app.filtered.len(), 3);
+        // Re-merge never duplicates.
+        app.merge_native();
+        assert_eq!(
+            app.panes.iter().filter(|p| p.id == "konsole:999:6").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn jump_event_routes_native_to_focus_native() {
+        let mut app = app_with_panes();
+        assert_eq!(
+            app.jump_event("konsole:999:6"),
+            Some(AppEvent::FocusNative("konsole:999:6".to_string()))
+        );
+        assert_eq!(
+            app.jump_event("%1"),
+            Some(AppEvent::FocusPane("%1".to_string()))
+        );
+    }
+
+    #[test]
+    fn mark_kill_restart_refuse_native_rows() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.native_rows = vec![native_pane()];
+        app.merge_native();
+        let idx = app
+            .filtered
+            .iter()
+            .position(|p| p.id == "konsole:999:6")
+            .unwrap();
+        app.select_pane(idx);
+        app.toggle_mark();
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("can't mark"),
+            "mark allowed native: {:?}",
+            app.status
+        );
+        assert!(app.marked.is_empty());
+        app.on_key(press(KeyCode::Char('x')), &tmux);
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("can't close"),
+            "kill allowed native: {:?}",
+            app.status
+        );
+        app.on_key(press(KeyCode::Char('e')), &tmux);
+        assert!(
+            app.status.as_deref().unwrap_or("").contains("can't restart"),
+            "restart allowed native: {:?}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn pause_passes_native_guard_to_pid_check() {
+        let mut app = app_with_panes();
+        let mut p = native_pane();
+        p.pid = 0;
+        app.native_rows = vec![p];
+        app.merge_native();
+        let idx = app
+            .filtered
+            .iter()
+            .position(|p| p.id == "konsole:999:6")
+            .unwrap();
+        app.select_pane(idx);
+        app.do_pause();
+        // Past the remote guard (pid-based pause works on native rows).
+        assert_eq!(
+            app.status.as_deref(),
+            Some("no pid for pane konsole:999:6")
+        );
+    }
+
+    #[test]
+    fn attend_event_routes_native_winners_to_focus() {
+        use crate::agent::AgentState;
+        let app = app_with_panes();
+        let native = record("konsole:999:6", "pi", AgentState::Waiting, 50);
+        let ev = app.attend_event(std::slice::from_ref(&native));
+        assert_eq!(
+            ev,
+            Some(AppEvent::FocusNative("konsole:999:6".to_string()))
+        );
+    }
+
     fn attend_event_routes_remote_winners_out() {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
