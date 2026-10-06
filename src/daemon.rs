@@ -1148,8 +1148,8 @@ fn poll_sync_with(
             let prev_quiet = carried
                 .map(|r| (r.screen_hash, r.quiet_since))
                 .unwrap_or((0, 0));
-            // Compare pre-fallback summaries: the fill below only runs on
-            // empty, and an empty-to-filled row is a new row, not news.
+            // Pre-fallback summaries: the fill below derives from the same
+            // screen the hash already judged, so only merge verdicts count.
             let carried_summary = carried.map(|r| r.summary.as_str()).unwrap_or("");
             (rec.screen_hash, rec.quiet_since) = track_quiet_merged(
                 prev_quiet,
@@ -1794,6 +1794,63 @@ mod tests {
             ctx_pct: None,
             reg_pid: 0,
         }
+    }
+
+    #[test]
+    fn denoise_screen_ignores_spinners_and_counters() {
+        // minimax spinner frame + elapsed counter: identical when clean.
+        let a = "⠙ Running 13min40s · ⚡ 15092 tok/s\n$ ";
+        let b = "⠋ Running 13min44s · ⚡ 15092 tok/s\n$ ";
+        assert_eq!(denoise_screen(a), denoise_screen(b));
+        assert_eq!(screen_hash(a), screen_hash(b));
+        // pi block-meter animation + cost/relative-time creep: identical.
+        let c = "[█▆▄▂▁▂ LIVE] · $15.443 · 5s ago\n$ ";
+        let d = "[▆█▆▄▂▁ LIVE] · $15.444 · 0s ago\n$ ";
+        assert_eq!(denoise_screen(c), denoise_screen(d));
+        // Digit-only semantic steps hide too (the summary comparison in
+        // track_quiet_merged catches the classifier-visible ones).
+        assert_eq!(denoise_screen("1 failed"), denoise_screen("2 failed"));
+        // Real changes still differ: new text, new lines, error lines.
+        assert_ne!(denoise_screen("ok"), denoise_screen("Error: boom"));
+        assert_ne!(denoise_screen("$ "), denoise_screen("done\n$ "));
+        assert_ne!(denoise_screen("pass"), denoise_screen("pass\nfail"));
+    }
+
+    #[test]
+    fn track_quiet_merged_matrix() {
+        // Same screen + same summary: the clock grows.
+        assert_eq!(
+            track_quiet_merged((7, 100), Some(7), "e1", "e1", AgentState::Error, 200),
+            (7, 100)
+        );
+        // Same screen + changed summary: a new failure is activity.
+        assert_eq!(
+            track_quiet_merged((7, 100), Some(7), "1 failed", "2 failed", AgentState::Error, 200),
+            (7, 200)
+        );
+        // Changed screen: resets regardless of summaries.
+        assert_eq!(
+            track_quiet_merged((7, 100), Some(9), "e1", "e1", AgentState::Error, 200),
+            (9, 200)
+        );
+        // A wiped summary is decay, not activity.
+        assert_eq!(
+            track_quiet_merged((7, 100), Some(7), "e1", "", AgentState::Error, 200),
+            (7, 100)
+        );
+        // Stuck rows are exempt: their "no cpu for {dur}" ticker must not
+        // read fresh forever.
+        assert_eq!(
+            track_quiet_merged(
+                (7, 100),
+                Some(7),
+                "no cpu for 10m",
+                "no cpu for 11m",
+                AgentState::Stuck,
+                200
+            ),
+            (7, 100)
+        );
     }
 
     #[test]
