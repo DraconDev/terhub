@@ -1217,6 +1217,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_theme_has_its_own_palette() {
+        use crate::config::THEMES;
+        let dark_title = palette("dark").title.fg;
+        for theme in THEMES {
+            // A missing arm silently falls into the dark palette.
+            if *theme != "dark" {
+                assert_ne!(
+                    palette(theme).title.fg,
+                    dark_title,
+                    "{theme} has no palette arm"
+                );
+            }
+        }
+        // Pin the new palettes' title colors (canonical hexes).
+        assert_eq!(
+            palette("tokyonight").title.fg,
+            Some(Color::Rgb(0x7D, 0xCF, 0xFF))
+        );
+        assert_eq!(
+            palette("catppuccin").title.fg,
+            Some(Color::Rgb(0x74, 0xC7, 0xEC))
+        );
+        assert_eq!(
+            palette("onedark").title.fg,
+            Some(Color::Rgb(0x56, 0xB6, 0xC2))
+        );
+        assert_eq!(
+            palette("monokai").title.fg,
+            Some(Color::Rgb(0x66, 0xD9, 0xEF))
+        );
+    }
+
+    #[test]
     fn window_label_hides_lone_suffix() {
         assert_eq!(window_label("chat", 1, 1), "chat");
         assert_eq!(window_label("chat", 1, 2), "chat:[1]");
