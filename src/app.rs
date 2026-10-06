@@ -2827,6 +2827,10 @@ impl App {
         if key_matches(&cfg.spec("attend"), code) {
             return self.do_attend();
         }
+        if key_matches(&cfg.spec("bulk"), code) {
+            self.do_bulk();
+            return None;
+        }
         if key_matches(&cfg.spec("refresh"), code) {
             self.refresh(tmux);
             self.fetch_native();
@@ -2898,7 +2902,7 @@ impl App {
                 return None;
             }
             let mut help = format!(
-                "panes: {}=jump {}=kill {}=spawn {}=restart {}=pause {}=preview {}=attend {}=mark {}=unmark {}=filter {}=hide {}=sort {}=settings {}=hosts tab=back {}=quit",
+                "panes: {}=jump {}=kill {}=spawn {}=restart {}=pause {}=preview {}=attend {}=bulk {}=mark {}=unmark {}=filter {}=hide {}=sort {}=settings {}=hosts tab=back {}=quit",
                 cfg.key("attach"),
                 cfg.key("kill"),
                 cfg.key("spawn"),
@@ -2906,6 +2910,7 @@ impl App {
                 cfg.key("pause"),
                 cfg.key("preview"),
                 cfg.key("attend"),
+                cfg.key("bulk"),
                 cfg.key("mark"),
                 cfg.key("unmark"),
                 cfg.key("filter"),
