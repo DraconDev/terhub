@@ -243,6 +243,9 @@ pub fn snapshot_rows(
         });
         let mut rec = a.clone();
         rec.pane = id;
+        // Handles are local-only: a remote `@pi-web` must never shadow or
+        // resolve as the local one.
+        rec.handle.clear();
         agents.push(rec);
     }
     (rows, agents)
@@ -420,7 +423,7 @@ mod tests {
                 quiet_since: 0,
                 last_prompt_at: 0,
                 last_prompt: String::new(),
-                handle: String::new(),
+                handle: "@pi-web".to_string(),
             }],
             updated_at: 1700,
         };
@@ -434,7 +437,7 @@ mod tests {
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].pane, "dev:%1");
         assert_eq!(agents[0].summary, "Approve?");
-    }
+        assert!(agents[0].handle.is_empty(), "remote handle leaked");
 
     #[test]
     fn host_names_reject_colons() {
