@@ -676,6 +676,7 @@ fn cmd_status(json: bool) -> i32 {
     0
 }
 
+#[allow(clippy::too_many_arguments)] // thin CLI adapter: one arg per hook flag by design
 fn cmd_hook(
     agent: &str,
     pane: &str,

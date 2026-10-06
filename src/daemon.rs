@@ -1504,6 +1504,7 @@ mod tests {
         let rec = next.get("%50").expect("manual pin carried");
         assert!(rec.agent_start > 0, "reg_pid ticks not tracked");
         let _ = child.kill();
+        let _ = child.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
