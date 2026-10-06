@@ -4116,6 +4116,50 @@ mod tests {
     }
 
     #[test]
+    fn preview_wheel_scrolls_content_not_selection() {
+        let mut app = app_with_panes();
+        app.show_preview = true;
+        app.preview = (0..100).map(|i| format!("line {i:03}")).collect::<Vec<_>>().join("\n");
+        app.select_pane(1);
+        app.on_wheel(false);
+        assert_eq!(app.preview_scroll, 3);
+        assert_eq!(app.pane_selected, 1);
+        app.on_wheel(true);
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
+    fn preview_page_keys_scroll_and_clamp() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.show_preview = true;
+        app.preview = (0..100).map(|i| format!("line {i:03}")).collect::<Vec<_>>().join("\n");
+        app.preview_visible = 10;
+        app.on_key(press(KeyCode::PageDown), &tmux);
+        assert_eq!(app.preview_scroll, 10);
+        app.on_key(press(KeyCode::End), &tmux);
+        assert_eq!(app.preview_scroll, 90);
+        app.on_key(press(KeyCode::PageDown), &tmux);
+        assert_eq!(app.preview_scroll, 90);
+        app.on_key(press(KeyCode::PageUp), &tmux);
+        assert_eq!(app.preview_scroll, 80);
+        app.on_key(press(KeyCode::Home), &tmux);
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
+    fn preview_open_resets_scroll() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.toggle_preview(&tmux);
+        assert!(app.show_preview);
+        app.preview_scroll = 7;
+        app.toggle_preview(&tmux);
+        app.toggle_preview(&tmux);
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
     fn sort_key_o_cycles_with_status() {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
