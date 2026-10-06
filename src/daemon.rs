@@ -861,6 +861,16 @@ fn merge_record_owned(
         Some(o) if o.agent == agent => o.handle.clone(),
         _ => String::new(),
     };
+    // Model/ctx ride every carry (polls never report them); the pinned
+    // pid follows the agent like the handle (a new agent owns a new pid).
+    let (model, ctx_pct, reg_pid) = match carried {
+        Some(o) => (
+            o.model.clone(),
+            o.ctx_pct,
+            if o.agent == agent { o.reg_pid } else { 0 },
+        ),
+        None => (String::new(), None, 0),
+    };
     Some(AgentRecord {
         pane: pane.id.clone(),
         agent,
@@ -868,9 +878,10 @@ fn merge_record_owned(
         source,
         summary,
         handle,
-        model: String::new(),
-        ctx_pct: None,
-        reg_pid: 0,        session: pane.session.clone(),
+        model,
+        ctx_pct,
+        reg_pid,
+        session: pane.session.clone(),
         window: pane.window_name.clone(),
         command: pane.command.clone(),
         updated_at: now,
@@ -994,12 +1005,14 @@ fn poll_sync_with(
         // without running them, but their pixels still go quiet.
         let screen = tmux.capture_pane(&pane.id, 30).ok();
         let hash = screen.as_ref().map(|s| screen_hash(s));
-        // Hook records stay authoritative; poll only refreshes their metadata.
+        // Hook and manual records stay authoritative; poll only refreshes
+        // their metadata.
         // NOTE: updated_at is deliberately NOT bumped here: it measures hook
         // freshness (time since the last event), and refreshing it every poll
-        // would make stale hooks live forever instead of lapsing.
+        // would make stale hooks live forever instead of lapsing. Manual
+        // pins never lapse (split_prev keeps them), so the same hold applies.
         if let Some(rec) = old
-            && rec.source == Source::Hook
+            && matches!(rec.source, Source::Hook | Source::Manual)
         {
             let mut r = rec.clone();
             r.session.clone_from(&pane.session);
@@ -1012,6 +1025,19 @@ fn poll_sync_with(
                     let t = snap.subtree_ticks(h.pid);
                     (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &h.agent, t, h.start, now);
                     r.agent_start = h.start;
+                }
+                // No detection hit, but the pin names a process: track CPU
+                // under it so stuck detection works for pinned agents.
+                None if r.source == Source::Manual && r.reg_pid != 0 => {
+                    let Some(start) = snap.proc_start(r.reg_pid) else {
+                        // Pinned process gone: the pin drops even though
+                        // the pane is alive.
+                        continue;
+                    };
+                    let agent = r.agent.clone();
+                    let t = snap.subtree_ticks(r.reg_pid);
+                    (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &agent, t, start, now);
+                    r.agent_start = start;
                 }
                 None => {
                     r.cpu_ticks = 0;
