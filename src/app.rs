@@ -4206,7 +4206,10 @@ mod tests {
     fn preview_wheel_scrolls_content_not_selection() {
         let mut app = app_with_panes();
         app.show_preview = true;
-        app.preview = (0..100).map(|i| format!("line {i:03}")).collect::<Vec<_>>().join("\n");
+        app.preview = (0..100)
+            .map(|i| format!("line {i:03}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         app.select_pane(1);
         app.on_wheel(false);
         assert_eq!(app.preview_scroll, 3);
@@ -4220,7 +4223,10 @@ mod tests {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.show_preview = true;
-        app.preview = (0..100).map(|i| format!("line {i:03}")).collect::<Vec<_>>().join("\n");
+        app.preview = (0..100)
+            .map(|i| format!("line {i:03}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         app.preview_visible = 10;
         app.on_key(press(KeyCode::PageDown), &tmux);
         assert_eq!(app.preview_scroll, 10);

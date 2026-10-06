@@ -1944,13 +1944,7 @@ fn real_main() -> i32 {
             agent,
             sort,
             view,
-        }) => cmd_timeline(
-            &since,
-            session.as_deref(),
-            agent.as_deref(),
-            &sort,
-            &view,
-        ),
+        }) => cmd_timeline(&since, session.as_deref(), agent.as_deref(), &sort, &view),
         Some(Cmd::Automation { action }) => cmd_automation(&action),
         Some(Cmd::Send {
             pane,

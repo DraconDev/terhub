@@ -941,16 +941,31 @@ mod tests {
         ];
         let spans = build_foreground(&entries, 500);
         assert_eq!(spans.len(), 3);
-        assert_eq!((spans[0].pane.as_str(), spans[0].start, spans[0].end), ("%1", 100, 200));
-        assert_eq!((spans[1].pane.as_str(), spans[1].start, spans[1].end), ("%2", 200, 300));
-        assert_eq!((spans[2].pane.as_str(), spans[2].start, spans[2].end), ("%1", 400, 500));
+        assert_eq!(
+            (spans[0].pane.as_str(), spans[0].start, spans[0].end),
+            ("%1", 100, 200)
+        );
+        assert_eq!(
+            (spans[1].pane.as_str(), spans[1].start, spans[1].end),
+            ("%2", 200, 300)
+        );
+        assert_eq!(
+            (spans[2].pane.as_str(), spans[2].start, spans[2].end),
+            ("%1", 400, 500)
+        );
         // Totals attribute per pane, most-focused first.
         let totals = foreground_totals(&spans, None);
         assert_eq!(
             totals,
             vec![
-                ForeTotal { pane: "%1".to_string(), secs: 200 },
-                ForeTotal { pane: "%2".to_string(), secs: 100 },
+                ForeTotal {
+                    pane: "%1".to_string(),
+                    secs: 200
+                },
+                ForeTotal {
+                    pane: "%2".to_string(),
+                    secs: 100
+                },
             ]
         );
         // A stray detach with nothing focused invents no time.
@@ -968,7 +983,10 @@ mod tests {
             by_day: stats(&spans, None, GroupBy::Day),
             by_agent: stats(&spans, None, GroupBy::Agent),
             by_session: stats(&spans, None, GroupBy::Session),
-            foreground: vec![ForeTotal { pane: "%1".to_string(), secs: 250 }],
+            foreground: vec![ForeTotal {
+                pane: "%1".to_string(),
+                secs: 250,
+            }],
         }
     }
 

@@ -1185,7 +1185,10 @@ fn preview_scroll_renders_offset_content() {
     app.preview_scroll = 40;
     let lines = render_lines(&mut app, 120, 12);
     let text = lines.join("\n");
-    assert!(!text.contains("pline 000"), "top leaked through scroll:\n{text}");
+    assert!(
+        !text.contains("pline 000"),
+        "top leaked through scroll:\n{text}"
+    );
     assert!(text.contains("pline 040"), "offset start missing:\n{text}");
     assert!(text.contains("40/60"), "scroll position missing:\n{text}");
 }

@@ -253,7 +253,10 @@ fn report_markdown_flag_emits_tables() {
     let text = stdout(&out);
     assert!(text.contains("## by agent"), "missing section:\n{text}");
     assert!(text.contains("| pi |"), "missing row:\n{text}");
-    assert!(text.contains("## foreground"), "missing foreground:\n{text}");
+    assert!(
+        text.contains("## foreground"),
+        "missing foreground:\n{text}"
+    );
 }
 
 #[test]
