@@ -196,6 +196,27 @@ fn send_without_tmux_exits_1() {
 }
 
 #[test]
+fn send_template_unknown_name_exits_1_without_tmux() {
+    // Template resolution runs before any tmux call, so the failure names
+    // the template even with tmux missing.
+    let out = run_isolated("sendtpl", &["send", "%1", "--template", "nope"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("nope"), "{}", stderr(&out));
+}
+
+#[test]
+fn send_text_and_template_together_exits_1() {
+    let out = run_isolated("sendboth", &["send", "%1", "hi", "--template", "continue"]);
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn send_needs_text_or_template() {
+    let out = run_isolated("sendnone", &["send", "%1"]);
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
 fn kill_pane_without_tmux_exits_1() {
     let out = run_isolated("killpane", &["kill-pane", "%1"]);
     assert_eq!(out.status.code(), Some(1));
