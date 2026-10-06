@@ -472,6 +472,65 @@ mod tests {
     }
 
     #[test]
+    fn display_name_prefers_label() {
+        let mut host = Host {
+            name: "dev".to_string(),
+            target: "t".to_string(),
+            mode: Mode::Observe,
+            label: String::new(),
+        };
+        assert_eq!(host.display_name(), "dev");
+        host.label = "Dev Box".to_string();
+        assert_eq!(host.display_name(), "Dev Box");
+        // Whitespace-only labels fall back to the name.
+        host.label = "   ".to_string();
+        assert_eq!(host.display_name(), "dev");
+    }
+
+    #[test]
+    fn snapshot_rows_use_label_for_session() {
+        use crate::agent::{AgentRecord, AgentState, Source};
+        let host = Host {
+            name: "dev".to_string(),
+            target: "dev.example".to_string(),
+            mode: Mode::Observe,
+            label: "Dev Box".to_string(),
+        };
+        let snap = crate::daemon::Snapshot {
+            agents: vec![AgentRecord {
+                pane: "%1".to_string(),
+                agent: "pi".to_string(),
+                state: AgentState::Waiting,
+                source: Source::Hook,
+                summary: String::new(),
+                session: "web".to_string(),
+                window: "srv".to_string(),
+                command: "pi".to_string(),
+                updated_at: 1700,
+                state_since: 1600,
+                cpu_ticks: 0,
+                cpu_still_since: 0,
+                agent_start: 0,
+                last_turn_secs: 0,
+                screen_hash: 0,
+                quiet_since: 0,
+                last_prompt_at: 0,
+                last_prompt: String::new(),
+                handle: String::new(),
+                model: String::new(),
+                ctx_pct: None,
+                reg_pid: 0,
+            }],
+            updated_at: 1700,
+        };
+        let (rows, agents) = snapshot_rows(&host, &snap);
+        assert_eq!(rows[0].session, "Dev Box \u{25b8} web");
+        // Routing ids stay on the name: labels are display-only.
+        assert_eq!(rows[0].id, "dev:%1");
+        assert_eq!(agents[0].pane, "dev:%1");
+    }
+
+    #[test]
     fn host_names_reject_colons() {
         // A colon in the name would corrupt `host:%N` remote ids.
         assert!(validate_host_name("bad:name").is_err());

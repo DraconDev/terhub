@@ -624,6 +624,18 @@ mod tests {
     }
 
     #[test]
+    fn pid_liveness_and_starttime() {
+        // Own pid is alive with a nonzero start; an impossible pid is
+        // neither (register pins and the poll's liveness check).
+        let me = std::process::id();
+        assert!(pid_alive(me));
+        assert!(!pid_alive(999_999_999));
+        let snap = Snapshot::capture();
+        assert!(snap.proc_start(me).is_some_and(|s| s > 0));
+        assert_eq!(snap.proc_start(999_999_999), None);
+    }
+
+    #[test]
     fn direct_binary_matches() {
         let dir = fake_proc(
             "direct",
