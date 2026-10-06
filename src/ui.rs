@@ -789,6 +789,10 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 }
                 None => ("—".to_string(), pal.dim),
             };
+            let handle = match rec {
+                Some(r) if !r.handle.is_empty() => truncate(&r.handle, 14),
+                _ => "—".to_string(),
+            };
             // No daemon record: no agent, no agent-state. A shell is not
             // "idle" the way a done agent is — it was never expected to
             // work on its own — so plain panes stay blank here. (Activity
