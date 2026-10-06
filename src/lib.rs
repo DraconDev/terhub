@@ -22,6 +22,7 @@ pub mod fleet;
 pub mod history;
 pub mod hooks;
 pub mod mcp;
+pub mod native;
 pub mod proc;
 pub mod tmux;
 pub mod ui;
