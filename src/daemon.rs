@@ -1525,6 +1525,93 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Fake tmux with a file-backed screen: rewrite `screen.txt` between
+    /// polls to change what the pane shows. Command + pid substituted in.
+    fn fake_tmux_file_screen(dir: &std::path::Path, pid: u32, command: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let sep = "\x1f";
+        let line = [
+            "%50", "@1", "w", "1", "0", command, "/tmp", "1", "80", "24", "sess", "0",
+        ]
+        .join(sep);
+        let payload = format!("{line}{sep}{pid}");
+        let screen = dir.join("screen.txt");
+        let script = format!(
+            "#!/bin/sh\ncase \"$1\" in\n  list-panes) printf '%s\\n' '{payload}' ;;\n  capture-pane) cat '{}' ;;\n  *) printf '' ;;\nesac\n",
+            screen.display()
+        );
+        let path = dir.join("tmux");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(&screen, "$ \n").unwrap();
+    }
+
+    fn builtin_compiled() -> Vec<crate::agent::CompiledManifest> {
+        let (compiled, _) =
+            crate::agent::compile_all_lossy(&crate::agent::builtin_manifests());
+        compiled
+    }
+
+    #[test]
+    fn digit_only_error_step_keeps_hash_but_resets_quiet() {
+        // "Error: 1 failed" → "Error: 2 failed": digit-fuzzing hides the
+        // step from the screen hash (same hash), but the changed summary
+        // still restarts the quiet clock (a new failure is activity).
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-digits-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        fake_tmux_file_screen(&dir, 999_999_999, "claude");
+        let tmux = crate::tmux::Tmux::test(dir.join("tmux"));
+        let manifests = builtin_compiled();
+        let screen = dir.join("screen.txt");
+        std::fs::write(&screen, "Error: 1 failed\n$ \n").unwrap();
+        let (next, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+        let first = next.get("%50").expect("error record").clone();
+        assert_eq!(first.summary, "Error: 1 failed");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::fs::write(&screen, "Error: 2 failed\n$ \n").unwrap();
+        let (next, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
+        let second = next.get("%50").expect("error record carried").clone();
+        assert_eq!(second.summary, "Error: 2 failed");
+        assert_eq!(
+            second.screen_hash, first.screen_hash,
+            "digit-only step should not change the hash"
+        );
+        assert!(
+            second.quiet_since > first.quiet_since,
+            "changed summary should restart quiet"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn spinner_frames_do_not_restart_quiet() {
+        // Spinner frame + elapsed counter advance, nothing else: the
+        // quiet clock keeps growing instead of pegging near zero.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-poll-spinner-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        fake_tmux_file_screen(&dir, 999_999_999, "claude");
+        let tmux = crate::tmux::Tmux::test(dir.join("tmux"));
+        let manifests = builtin_compiled();
+        let screen = dir.join("screen.txt");
+        std::fs::write(&screen, "⠙ Running 13min40s\n$ \n").unwrap();
+        let (next, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+        let first = next.get("%50").expect("working record").clone();
+        assert_eq!(first.state, AgentState::Working);
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::fs::write(&screen, "⠋ Running 13min44s\n$ \n").unwrap();
+        let (next, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
+        let second = next.get("%50").expect("working record carried").clone();
+        assert_eq!(
+            second.quiet_since, first.quiet_since,
+            "spinner-only change should not restart quiet"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn continuity_ignores_agent_case() {
         // track_cpu matches agents case-insensitively; state continuity
