@@ -152,5 +152,27 @@ fn native_backends_against_fakes() {
     assert!(n::proc_cwd(me).is_some_and(|c| !c.is_empty()));
     assert!(n::proc_comm(0).is_none());
 
+    // A wedged backend fails its probe fast instead of freezing list_all
+    // (real `kitty @` outside kitty waits 10s on /dev/tty; the harness
+    // wedges harder to prove the backstop, not the binary).
+    write_exe(&bin.join("kitty"), "#!/bin/sh\nsleep 30\n");
+    let start = std::time::Instant::now();
+    let reports = n::list_all();
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(20),
+        "wedged kitty stalled list_all"
+    );
+    let kitty = reports.iter().find(|r| r.backend == "kitty").unwrap();
+    assert!(kitty.tabs.is_empty());
+    let err = kitty.error.as_deref().unwrap_or("");
+    assert!(err.contains("timed out"), "unexpected kitty error: {err}");
+    // The other backends are unaffected by the wedge.
+    assert!(reports
+        .iter()
+        .find(|r| r.backend == "konsole")
+        .unwrap()
+        .error
+        .is_none());
+
     let _ = std::fs::remove_dir_all(&base);
 }
