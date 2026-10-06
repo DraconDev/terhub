@@ -454,6 +454,21 @@ fn cmd_panes(session: &str) -> i32 {
 }
 
 fn cmd_capture(pane: &str, lines: u32) -> i32 {
+    if terhub::native::is_native_id(pane) {
+        return match terhub::native::capture(pane, lines) {
+            Ok(mut text) => {
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                print_raw(&text);
+                0
+            }
+            Err(e) => {
+                eprintln!("terhub: {e:#}");
+                1
+            }
+        };
+    }
     let tmux = match Tmux::new() {
         Ok(t) => t,
         Err(e) => {
@@ -477,6 +492,15 @@ fn cmd_capture(pane: &str, lines: u32) -> i32 {
 }
 
 fn cmd_focus(pane: &str) -> i32 {
+    if terhub::native::is_native_id(pane) {
+        return match terhub::native::focus(pane) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("terhub: {e:#}");
+                1
+            }
+        };
+    }
     let tmux = match Tmux::new() {
         Ok(t) => t,
         Err(e) => {
@@ -1326,6 +1350,18 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
 }
 
 fn cmd_send(pane: &str, text: &str, submit: bool) -> i32 {
+    if terhub::native::is_native_id(pane) {
+        return match terhub::native::send_text(pane, text, submit) {
+            Ok(()) => {
+                println!("sent {} chars to {pane}", text.chars().count());
+                0
+            }
+            Err(e) => {
+                eprintln!("terhub: {e:#}");
+                1
+            }
+        };
+    }
     let tmux = match Tmux::new() {
         Ok(t) => t,
         Err(e) => {
