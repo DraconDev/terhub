@@ -36,7 +36,14 @@ fn argv_lines(log: &std::path::Path) -> Vec<String> {
 }
 
 #[test]
-fn new_window_targets_session_and_reports_pane() {
+fn spawn_restart_pause_against_fake_tmux() {
+    // Single test: phases share FAKE_ARGV, so they run sequentially.
+    phase_new_window();
+    phase_respawn();
+    phase_pause_resume();
+}
+
+fn phase_new_window() {
     let (tmux, log) = harness("newwin");
     let pane = tmux
         .new_window("dev", "agent-x", Some("/tmp"), Some("pi --model fast"))
@@ -53,8 +60,7 @@ fn new_window_targets_session_and_reports_pane() {
     assert!(tmux.new_window("dev", "  ", None, None).is_err());
 }
 
-#[test]
-fn pause_and_resume_stop_a_live_process() {
+fn phase_pause_resume() {
     // Real child, real signals: pause must show T in /proc, resume must
     // clear it. The child is reaped either way (Drop kills on unwind).
     struct Guard(std::process::Child);
@@ -81,8 +87,7 @@ fn pause_and_resume_stop_a_live_process() {
     assert!(terhub::proc::pause_group(1).is_err());
 }
 
-#[test]
-fn respawn_pane_kills_and_reruns() {
+fn phase_respawn() {
     let (tmux, log) = harness("respawn");
     tmux.respawn_pane("%7", "pi --model fast").unwrap();
     let lines = argv_lines(&log);
