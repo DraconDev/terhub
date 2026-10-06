@@ -34,11 +34,13 @@ Requires tmux 3.x on PATH and Rust 1.88+.
 
 ```sh
 cargo install --path .
+terhub init       # config + agent hooks + daemon, one shot
 terhub            # opens the TUI
 ```
 
 `terhub` with no arguments opens the TUI; every subcommand below also works
 from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
+`init --dry-run` prints the three steps without running them.
 
 ## Concepts
 
@@ -98,13 +100,16 @@ status bar, no modes except small popups:
   survive sort/filter and show as a count in the title bar. Long lists scroll;
   the selection is always kept in view.
 - **Preview on demand.** Nothing is previewed by default: right-click a
-  row or press `p` to open the pane's screen fullscreen, with the pane's
-  own ANSI colors; right-click again (anywhere) or `Esc`/`p` closes it,
-  left-click/`Enter` jumps to the previewed pane. Background fills reach
-  the pane edge (tmux trims the painted EOL cells; the preview rebuilds
-  them from the leftover style codes). The title carries the pane's live
-  CPU percent (over 100% is real — agent subtrees span cores) and, when
-  the pane sits in a git repo, the branch plus diff shortstat
+  row or press `p` to open a scrollable fullscreen reader over the pane's
+  last 500 lines, with the pane's own ANSI colors; right-click again
+  (anywhere) or `Esc`/`p` closes it, left-click/`Enter` jumps to the
+  previewed pane. Wheel, `PgUp`/`PgDn`, `Home`/`End` scroll the reader
+  (position shows bottom-right, `40/500`); `↑`/`↓` still moves the
+  selection and the reader follows the new pane from the top. Background
+  fills reach the pane edge (tmux trims the painted EOL cells; the preview
+  rebuilds them from the leftover style codes). The title carries the
+  pane's live CPU percent (over 100% is real — agent subtrees span cores)
+  and, when the pane sits in a git repo, the branch plus diff shortstat
   (`git main +45/-12 · 2 changed · 1 new`, or `clean`).
 - **Mouse.** Left-click a row jumps to the pane (press and release must
   land on the same cell, so text drags never jump), right-click toggles
@@ -360,15 +365,20 @@ terhub status-line [--pane %N]
 
 ```sh
 terhub stats [--since today] [--group-by day|agent|session]
-terhub report [--since today]
+terhub report [--since today] [--json|--markdown]
 terhub activity [--since 24h] [--kind agent|session|rule|human|all] [--json]
 terhub timeline [--since today] [--session S] [--agent A]
+  [--sort time|waiting] [--view time|heatmap]
 ```
 
 `--since` accepts `today|yesterday|week|month|all`, durations like `24h` /
 `7d`, or `YYYY-MM-DD` (impossible dates such as 02-31 are rejected, not
 normalized). Day boundaries are UTC. `timeline` opens at the newest entries;
-`q`/`Esc` quits, arrows/`PgUp`/`PgDn` scroll.
+`q`/`Esc` quits, arrows/`PgUp`/`PgDn` scroll. `--sort waiting` leads with
+the attention states; `--view heatmap` renders a day × hour activity grid
+instead of the entry log. `report` adds a foreground section (time your
+focus spent per pane, from the `human` ledger) to the three breakdowns;
+`--json` and `--markdown` export the same data for scripts and pasting.
 
 Entry kinds: `agent` (state transitions), `session` (open/close), `rule`
 (automation firings), `human` (your focus moving between panes). Every
@@ -482,6 +492,7 @@ are tmux-backed.
 | Command | What it does |
 |---|---|
 | `terhub` | Open the TUI hub |
+| `init [--dry-run]` | One-shot setup: config + hooks + daemon |
 | `list [--plain]` | List sessions |
 | `new <name> [--dir DIR] [--window NAME]` | Create a session |
 | `attach <name>` | Attach (needs a terminal) |
@@ -500,9 +511,9 @@ are tmux-backed.
 | `peek [--plain]` | This window's panes + states |
 | `status-line [--pane P]` | One line for tmux status-right |
 | `stats [--since S] [--group-by G]` | Time-in-state stats |
-| `report [--since S]` | All breakdowns at once |
+| `report [--since S] [--json\|--markdown]` | All breakdowns + foreground |
 | `activity [--since S] [--kind K] [--json]` | Raw ledger entries |
-| `timeline [--since S] [--session S] [--agent A]` | Scrollable timeline |
+| `timeline [--since S] [--session S] [--agent A] [--sort S] [--view V]` | Timeline log or heatmap |
 | `automation list\|test <name>` | Rules: validate / dry-run |
 | `mcp` | MCP stdio server |
 | `serve --port P` | Loopback web dashboard |
