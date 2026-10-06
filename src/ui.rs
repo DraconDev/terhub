@@ -1240,6 +1240,23 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
                 Some("Prompt: ".len()),
             )
         }
+        Mode::PromptBulk { targets, template } => {
+            let name = app
+                .config
+                .templates
+                .get(*template)
+                .map(|t| t.name.as_str())
+                .unwrap_or("none");
+            (
+                format!(" Prompt {} pane(s) ", targets.len()),
+                format!(
+                    "Text: {}\nTo: {}\nTemplate: {name} (Tab cycles, Enter sends + submits)",
+                    app.input,
+                    truncate(&targets.join(" "), 52),
+                ),
+                Some("Text: ".len()),
+            )
+        }
         Mode::ConfirmKill(name) => (
             format!(" Kill '{name}'? "),
             "This closes all its windows. Enter=yes Esc=no".to_string(),
