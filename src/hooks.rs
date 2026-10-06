@@ -353,6 +353,64 @@ mod tests {
     }
 
     #[test]
+    fn stdin_prompt_prefers_prompt_field_then_head() {
+        assert_eq!(stdin_prompt(r#"{"prompt": " fix it "}"#), "fix it");
+        assert_eq!(stdin_prompt("raw line\nsecond"), "raw line");
+        assert_eq!(stdin_prompt("   "), "");
+        // Not the summary's message field: prompts come from "prompt".
+        assert_eq!(stdin_prompt(r#"{"message": "hi"}"#), r#"{"message": "hi"}"#);
+        let long = "x".repeat(900);
+        assert_eq!(stdin_prompt(&long).chars().count(), 500);
+    }
+
+    #[test]
+    fn claude_install_wires_user_prompt_submit() {
+        let dir = scratch("promptsubmit");
+        let path = dir.join("settings.json");
+        claude_install(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("UserPromptSubmit"), "{text}");
+        assert!(text.contains("--prompt-stdin"), "{text}");
+        // And an existing three-event install gains only the new event.
+        let dir2 = scratch("promptsubmit2");
+        let path2 = dir2.join("settings.json");
+        std::fs::write(
+            &path2,
+            r#"{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "[ -n \"$TMUX_PANE\" ] && terhub hook --agent claude"}]}]}}"#,
+        )
+        .unwrap();
+        let report = claude_install(&path2).unwrap();
+        assert_eq!(report.len(), 4);
+        assert!(
+            report
+                .iter()
+                .find(|(e, _)| *e == "SessionStart")
+                .is_some_and(|(_, added)| !added)
+        );
+        assert!(
+            report
+                .iter()
+                .find(|(e, _)| *e == "UserPromptSubmit")
+                .is_some_and(|(_, added)| *added)
+        );
+    }
+
+    #[test]
+    fn pi_install_updates_stale_reporter() {
+        let dir = scratch("piupdate");
+        let path = dir.join("terhub.ts");
+        // A v1 install (marker, old body) is rewritten in place.
+        std::fs::write(&path, "// ours\nterhub hook --agent pi\n").unwrap();
+        assert!(pi_install(&path).unwrap());
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("before_agent_start"), "{text}");
+        assert!(text.contains("--prompt"), "{text}");
+        assert!(!pi_install(&path).unwrap());
+        // The shipped template carries the prompt handler.
+        assert!(PI_EXTENSION.contains("before_agent_start"));
+    }
+
+    #[test]
     fn claude_install_merges_idempotently() {
         let dir = scratch("install");
         let path = dir.join("settings.json");
