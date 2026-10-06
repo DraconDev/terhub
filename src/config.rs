@@ -82,6 +82,8 @@ pub struct AppConfig {
     pub commands: Vec<CustomCommand>,
     /// Validated `[[profile]]` spawn entries; builtins when none given.
     pub profiles: Vec<SpawnProfile>,
+    /// Validated `[[template]]` message snippets; builtins when none given.
+    pub templates: Vec<MessageTemplate>,
     /// Order session tabs by recent activity instead of tmux order.
     pub mru_tabs: bool,
     /// Hash-color Agent cells so the same agent reads as a group.
@@ -109,6 +111,7 @@ impl Default for AppConfig {
             stale_secs: crate::daemon::HOOK_STALE_SECS,
             commands: Vec::new(),
             profiles: builtin_profiles(),
+            templates: builtin_templates(),
             mru_tabs: false,
             color_agents: true,
             agent_palette: Vec::new(),
@@ -367,6 +370,8 @@ struct FileConfig {
     #[serde(default)]
     profile: Vec<ProfileFile>,
     #[serde(default)]
+    template: Vec<TemplateFile>,
+    #[serde(default)]
     style: StyleSection,
 }
 
@@ -422,6 +427,38 @@ pub fn builtin_profiles() -> Vec<SpawnProfile> {
             dir: None,
         })
         .collect()
+}
+
+/// One `[[template]]` entry: a named reusable message for bulk prompt
+/// and `send --template`.
+#[derive(Debug, Deserialize, Default)]
+struct TemplateFile {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    text: String,
+}
+
+/// Validated message template.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageTemplate {
+    pub name: String,
+    pub text: String,
+}
+
+/// Builtin messages offered when the user defines no `[[template]]`.
+pub fn builtin_templates() -> Vec<MessageTemplate> {
+    [
+        ("continue", "continue"),
+        ("status", "Summarize your current status in two lines: what is done, what is next."),
+        ("review", "Review your own work for mistakes and fix what you find."),
+    ]
+    .into_iter()
+    .map(|(name, text)| MessageTemplate {
+        name: name.to_string(),
+        text: text.to_string(),
+    })
+    .collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -922,6 +959,34 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         }
         cfg.profiles = profiles;
     }
+    // Message templates: same wholesale rule as profiles.
+    if !file.template.is_empty() {
+        let mut templates = Vec::new();
+        for (i, t) in file.template.iter().enumerate() {
+            let tag = if t.name.is_empty() {
+                format!("template #{i}")
+            } else {
+                format!("template '{}'", t.name)
+            };
+            if t.name.is_empty() {
+                problems.push(format!("{tag} has no name"));
+                continue;
+            }
+            if t.text.trim().is_empty() {
+                problems.push(format!("{tag} has no text"));
+                continue;
+            }
+            if templates.iter().any(|q: &MessageTemplate| q.name == t.name) {
+                problems.push(format!("{tag} is a duplicate name"));
+                continue;
+            }
+            templates.push(MessageTemplate {
+                name: t.name.clone(),
+                text: t.text.clone(),
+            });
+        }
+        cfg.templates = templates;
+    }
     (cfg, problems)
 }
 
@@ -978,6 +1043,9 @@ pub fn default_config_text() -> String {
     ));
     out.push_str(
         "\n# Custom pane commands (key must not collide with a built-in):\n# [[command]]\n# name = \"git status\"\n# key = \"G\"\n# run = \"git -C {dir} status -sb\"\n",
+    );
+    out.push_str(
+        "\n# Reusable messages for bulk prompt (Tab) and send --template (yours replace the builtins):\n# [[template]]\n# name = \"continue\"\n# text = \"continue\"\n",
     );
     out.push_str(
         "\n# Row styling (specs: modifiers + a color, e.g. \"bold yellow\", \"red\", \"#ff8800\"):\n# [style]\n# color_agents = true\n# agent_palette = []\n# idle_warn = true\n# idle_warn_style = \"bold yellow\"\n# [style.agents]\n# pi = \"cyan\"\n",
