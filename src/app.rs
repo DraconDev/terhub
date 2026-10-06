@@ -451,6 +451,8 @@ pub struct App {
     pub preview_scroll: usize,
     /// Preview inner height in lines, recorded by render for page steps.
     pub preview_visible: usize,
+    /// Pane id the preview buffer belongs to (follow resets on change).
+    preview_for: Option<String>,
     /// Latest daemon snapshot by pane id (empty when the daemon is down).
     pub agents: HashMap<String, AgentRecord>,
     /// Last snapshot fetch succeeded. False reads as "daemon down" in the
@@ -530,6 +532,7 @@ impl App {
             show_preview: false,
             preview_scroll: 0,
             preview_visible: 0,
+            preview_for: None,
             agents: HashMap::new(),
             agents_live: true,
             session_scroll: 0,
@@ -767,9 +770,7 @@ impl App {
         // Remote rows/badges ride the cache: local ticks must not drop
         // them (and a dead daemon must not take them with it).
         self.merge_fleet();
-        if self.show_preview {
-            self.capture_preview(tmux);
-        }
+        self.follow_preview(tmux);
         if self.filtered.is_empty() {
             self.focus = Focus::Sessions;
         }
@@ -1163,17 +1164,24 @@ impl App {
             return;
         }
         self.preview_scroll = 0;
+        self.preview_for = self.selected_pane().map(|p| p.id.clone());
         self.capture_preview(tmux);
         self.show_preview = true;
     }
 
     /// Re-capture while the preview is open so it follows the selection.
-    /// A new pane means a new buffer, so the reader restarts at the top.
+    /// A newly selected pane restarts the reader; the same pane (tick
+    /// refresh, clamped arrow key) keeps its scroll position.
     pub fn follow_preview(&mut self, tmux: &Tmux) {
-        if self.show_preview {
-            self.preview_scroll = 0;
-            self.capture_preview(tmux);
+        if !self.show_preview {
+            return;
         }
+        let cur = self.selected_pane().map(|p| p.id.clone());
+        if self.preview_for != cur {
+            self.preview_for = cur;
+            self.preview_scroll = 0;
+        }
+        self.capture_preview(tmux);
     }
 
     pub fn selected_pane(&self) -> Option<&Pane> {
@@ -1627,6 +1635,30 @@ impl App {
                     self.move_down();
                     self.refresh_filtered();
                     self.follow_preview(tmux);
+                    return None;
+                }
+            }
+            KeyCode::PageUp => {
+                if self.show_preview {
+                    self.scroll_preview_page(true);
+                    return None;
+                }
+            }
+            KeyCode::PageDown => {
+                if self.show_preview {
+                    self.scroll_preview_page(false);
+                    return None;
+                }
+            }
+            KeyCode::Home => {
+                if self.show_preview {
+                    self.preview_scroll = 0;
+                    return None;
+                }
+            }
+            KeyCode::End => {
+                if self.show_preview {
+                    self.preview_scroll = self.preview_max_scroll();
                     return None;
                 }
             }
@@ -2136,10 +2168,15 @@ impl App {
         }
     }
 
-    /// Mouse wheel: scroll the visible surface — the output popup, the
-    /// settings list, or the table/sidebar selection (scroll follows via
-    /// the existing ensure-visible paths). Prompts and confirms eat it.
+    /// Mouse wheel: scroll the visible surface — the fullscreen preview
+    /// reader, the output popup, the settings list, or the table/sidebar
+    /// selection (scroll follows via the existing ensure-visible paths).
+    /// Prompts and confirms eat it.
     pub fn on_wheel(&mut self, up: bool) {
+        if self.show_preview && matches!(self.mode, Mode::Normal) {
+            self.scroll_preview(if up { -3 } else { 3 });
+            return;
+        }
         if matches!(self.mode, Mode::CommandOutput { .. }) {
             let (len, scroll) = match &mut self.mode {
                 Mode::CommandOutput { lines, scroll, .. } => (lines.len(), scroll),
