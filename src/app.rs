@@ -50,6 +50,7 @@ pub enum SettingKind {
     Density(usize),
     ToggleNotifications,
     ToggleHighlight,
+    ToggleMruTabs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -432,6 +433,36 @@ impl App {
             .and_then(|i| self.sessions.get(i))
     }
 
+    /// MRU tab order: most recently active session first (max pane
+    /// activity per session), ties by name, pane-less sessions sink.
+    /// The cursor follows its session so a reorder never hijacks it.
+    /// No-op unless `mru_tabs` is set (tmux order is the default).
+    fn apply_tab_order(&mut self) {
+        if !self.config.mru_tabs {
+            return;
+        }
+        let keep = self.side_session().map(|s| s.name.clone());
+        let mut max_act: HashMap<&str, u64> = HashMap::new();
+        for p in &self.panes {
+            let e = max_act.entry(p.session.as_str()).or_insert(0);
+            *e = (*e).max(p.activity);
+        }
+        self.sessions.sort_by(|a, b| {
+            let (aa, bb) = (
+                max_act.get(a.name.as_str()).copied().unwrap_or(0),
+                max_act.get(b.name.as_str()).copied().unwrap_or(0),
+            );
+            bb.cmp(&aa).then_with(|| a.name.cmp(&b.name))
+        });
+        self.selected = 0;
+        if let Some(name) = keep
+            && let Some(i) = self.sessions.iter().position(|s| s.name == name)
+        {
+            self.selected = i + 1;
+        }
+        self.clamp_selection();
+    }
+
     pub fn set_sessions(&mut self, sessions: Vec<Session>) {
         let keep = self.side_session().map(|s| s.name.clone());
         self.sessions = sessions;
@@ -474,6 +505,7 @@ impl App {
                 self.set_status(format!("panes error: {e}"));
             }
         }
+        self.apply_tab_order();
         self.refresh_agents();
         if self.show_preview {
             self.capture_preview(tmux);
@@ -1387,6 +1419,11 @@ impl App {
             active: self.config.highlight_attached,
             kind: SettingKind::ToggleHighlight,
         });
+        rows.push(SettingRow::Item {
+            label: format!("mru tabs: {}", Self::onoff(self.config.mru_tabs)),
+            active: self.config.mru_tabs,
+            kind: SettingKind::ToggleMruTabs,
+        });
         rows
     }
 
@@ -1481,6 +1518,11 @@ impl App {
                     "highlight attached: {}",
                     Self::onoff(self.config.highlight_attached)
                 )
+            }
+            SettingKind::ToggleMruTabs => {
+                self.config.mru_tabs = !self.config.mru_tabs;
+                self.apply_tab_order();
+                format!("mru tabs: {}", Self::onoff(self.config.mru_tabs))
             }
         };
         match crate::config::persist_ui_settings(
