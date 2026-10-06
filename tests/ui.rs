@@ -981,12 +981,22 @@ fn spawn_modal_cycles_profile_and_spawns_with_prompt() {
     let mut app = app_with_panes();
     let (tmux, log) = fake_tmux("spawn");
     app.on_key(press(KeyCode::Char('w')), &tmux);
-    assert!(matches!(app.mode, terhub::app::Mode::PromptSpawn { profile: 0 }));
+    assert!(matches!(
+        app.mode,
+        terhub::app::Mode::PromptSpawn { profile: 0 }
+    ));
     let lines = render_lines(&mut app, 120, 30);
-    assert!(lines.iter().any(|l| l.contains("Spawn")), "no modal:\n{}", lines.join("\n"));
+    assert!(
+        lines.iter().any(|l| l.contains("Spawn")),
+        "no modal:\n{}",
+        lines.join("\n")
+    );
     // Tab cycles to the second builtin profile (codex).
     app.on_key(press(KeyCode::Tab), &tmux);
-    assert!(matches!(app.mode, terhub::app::Mode::PromptSpawn { profile: 1 }));
+    assert!(matches!(
+        app.mode,
+        terhub::app::Mode::PromptSpawn { profile: 1 }
+    ));
     for c in "hello".chars() {
         app.on_key(press(KeyCode::Char(c)), &tmux);
     }
@@ -1012,7 +1022,10 @@ fn restart_confirm_respawns_pane_command() {
     app.on_key(press(KeyCode::Enter), &tmux);
     assert_eq!(app.mode, terhub::app::Mode::Normal);
     let argv = argv_log(&log);
-    assert!(argv.contains("respawn-pane -k -t %1"), "no respawn:\n{argv}");
+    assert!(
+        argv.contains("respawn-pane -k -t %1"),
+        "no respawn:\n{argv}"
+    );
     assert!(argv.contains("nvim"), "command lost:\n{argv}");
 }
 

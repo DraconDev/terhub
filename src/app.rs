@@ -203,7 +203,11 @@ pub fn spawn_window_name(profile: &str, prompt: &str) -> String {
             .collect::<String>()
     };
     let prof = clean(profile);
-    let prof = if prof.is_empty() { "agent".to_string() } else { prof };
+    let prof = if prof.is_empty() {
+        "agent".to_string()
+    } else {
+        prof
+    };
     let slug: String = prompt
         .split_whitespace()
         .take(3)
@@ -2068,7 +2072,10 @@ mod tests {
     #[test]
     #[test]
     fn spawn_window_name_sanitizes_and_caps() {
-        assert_eq!(spawn_window_name("pi", "fix the login bug now"), "pi-fix-the-login");
+        assert_eq!(
+            spawn_window_name("pi", "fix the login bug now"),
+            "pi-fix-the-login"
+        );
         assert_eq!(spawn_window_name("pi", ""), "pi");
         assert_eq!(spawn_window_name("pi", "   "), "pi");
         // Shell metachars and slashes can't smuggle through the name.

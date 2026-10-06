@@ -104,7 +104,11 @@ fn phase_respawn() {
     tmux.respawn_pane("%7", "pi --model fast").unwrap();
     let lines = argv_lines(&log);
     assert_eq!(lines.len(), 1, "{lines:?}");
-    assert!(lines[0].starts_with("respawn-pane -k -t %7"), "{}", lines[0]);
+    assert!(
+        lines[0].starts_with("respawn-pane -k -t %7"),
+        "{}",
+        lines[0]
+    );
     assert!(lines[0].contains("pi --model fast"), "{}", lines[0]);
     assert!(tmux.respawn_pane("%7", "  ").is_err());
 }
