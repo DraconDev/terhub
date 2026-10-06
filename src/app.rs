@@ -1269,8 +1269,9 @@ impl App {
                 self.set_status(LEGEND.to_string());
             } else {
                 self.set_status(format!(
-                    "sessions: {}=new {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hide {}=quit",
+                    "sessions: {}=new {}=spawn {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hide {}=quit",
                     cfg.key("new"),
+                    cfg.key("spawn"),
                     cfg.key("rename"),
                     cfg.key("kill"),
                     cfg.key("attach"),
@@ -1732,8 +1733,31 @@ impl App {
             self.do_new_session();
             return None;
         }
+        if key_matches(&cfg.spec("spawn"), code) {
+            self.do_spawn();
+            return None;
+        }
         if key_matches(&cfg.spec("rename"), code) {
             self.do_rename_session();
+            return None;
+        }
+        if key_matches(&cfg.spec("restart"), code) {
+            match self.selected_pane() {
+                Some(p) if p.command.trim().is_empty() => {
+                    self.set_status(format!("nothing to re-run in {}", p.id))
+                }
+                Some(p) => {
+                    self.mode = Mode::ConfirmRestartPane {
+                        id: p.id.clone(),
+                        command: p.command.clone(),
+                    }
+                }
+                None => self.set_status("no pane selected".to_string()),
+            }
+            return None;
+        }
+        if key_matches(&cfg.spec("pause"), code) {
+            self.do_pause();
             return None;
         }
         if key_matches(&cfg.spec("detach"), code) {
@@ -1760,9 +1784,12 @@ impl App {
                 return None;
             }
             let mut help = format!(
-                "panes: {}=jump {}=kill {}=preview {}=attend {}=mark {}=unmark {}=filter {}=hide {}=sort {}=settings tab=back {}=quit",
+                "panes: {}=jump {}=kill {}=spawn {}=restart {}=pause {}=preview {}=attend {}=mark {}=unmark {}=filter {}=hide {}=sort {}=settings tab=back {}=quit",
                 cfg.key("attach"),
                 cfg.key("kill"),
+                cfg.key("spawn"),
+                cfg.key("restart"),
+                cfg.key("pause"),
                 cfg.key("preview"),
                 cfg.key("attend"),
                 cfg.key("mark"),

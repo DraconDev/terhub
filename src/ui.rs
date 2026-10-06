@@ -1027,6 +1027,19 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             "Text: ".to_string() + &app.input,
             Some("Text: ".len()),
         ),
+        Mode::PromptSpawn { profile } => {
+            let prof = app
+                .config
+                .profiles
+                .get(*profile)
+                .map(|p| format!("{} · {}", p.name, p.program))
+                .unwrap_or_else(|| "none".to_string());
+            (
+                " Spawn agent ".to_string(),
+                format!("Prompt: {}\nProfile: {prof} (Tab cycles)", app.input),
+                Some("Prompt: ".len()),
+            )
+        }
         Mode::ConfirmKill(name) => (
             format!(" Kill '{name}'? "),
             "This closes all its windows. Enter=yes Esc=no".to_string(),
@@ -1035,6 +1048,11 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         Mode::ConfirmKillPane(id) => (
             format!(" Kill pane '{id}'? "),
             "This closes that pane only. Enter=yes Esc=no".to_string(),
+            None,
+        ),
+        Mode::ConfirmRestartPane { id, command } => (
+            format!(" Restart pane '{id}'? "),
+            format!("This kills and re-runs {command}. Enter=yes Esc=no"),
             None,
         ),
         Mode::ConfirmKillMarked(ids) => (
