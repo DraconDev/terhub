@@ -2154,6 +2154,30 @@ mod tests {
     }
 
     #[test]
+    fn session_worst_picks_neediest_state() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        assert_eq!(app.session_worst(Some("a")), None);
+        assert_eq!(app.session_worst(None), None);
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Working, 1),
+        );
+        app.agents.insert(
+            "%2".to_string(),
+            record("%2", "pi", AgentState::Idle, 1),
+        );
+        assert_eq!(app.session_worst(Some("a")), Some(AgentState::Working));
+        assert_eq!(app.session_worst(Some("zzz")), None);
+        app.agents.insert(
+            "%2".to_string(),
+            record("%2", "pi", AgentState::Waiting, 1),
+        );
+        assert_eq!(app.session_worst(Some("a")), Some(AgentState::Waiting));
+        assert_eq!(app.session_worst(None), Some(AgentState::Waiting));
+    }
+
+    #[test]
     fn refresh_error_keeps_panes_and_marks() {
         // A tick that fails to list panes is non-destructive: stale rows
         // and the mark set survive, with the error in the status line.
