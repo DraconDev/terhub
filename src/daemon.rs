@@ -842,8 +842,14 @@ fn merge_record_owned(
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Idle, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
+        // A done screen beats a live process: finished agents keep their
+        // REPL open. (Stale banners can't pin this: freshest-line-wins
+        // means live footer chrome below them classifies first.)
         (Some((pa, _, _)), Some(hit))
-            if hit.state == Waiting || hit.state == Error || hit.state == Limited =>
+            if hit.state == Waiting
+                || hit.state == Error
+                || hit.state == Limited
+                || hit.state == Idle =>
         {
             (pa.to_string(), hit.state, Source::Proc)
         }
@@ -2036,19 +2042,22 @@ mod tests {
     #[test]
     fn idle_verdict_keeps_its_completion_line() {
         // Done rows show what finished ("✓ Todo list…"), like waiting
-        // rows show the plea — not a blank.
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(Some("minimax-code"), AgentState::Idle, "✓ Todo list 9/9"),
-            None,
-            &test_pane(),
-            100,
-            300,
-        )
-        .expect("screen verdict claims the pane");
-        assert_eq!(rec.state, AgentState::Idle);
-        assert_eq!(rec.summary, "✓ Todo list 9/9");
+        // rows show the plea — not a blank. And a done screen beats a
+        // live process: finished agents keep their REPL open.
+        for proc in [None, Some(("minimax-code", 10))] {
+            let rec = merge_record(
+                None,
+                false,
+                screen_hit(Some("minimax-code"), AgentState::Idle, "✓ Todo list 9/9"),
+                proc,
+                &test_pane(),
+                100,
+                300,
+            )
+            .expect("screen verdict claims the pane");
+            assert_eq!(rec.state, AgentState::Idle, "proc: {proc:?}");
+            assert_eq!(rec.summary, "✓ Todo list 9/9");
+        }
     }
 
     #[test]
