@@ -738,12 +738,19 @@ fn merge_record_owned(
         Some(o) => o.last_turn_secs,
         None => 0,
     };
+    // Handles follow the agent, not the pane: a changed agent drops the
+    // old name so ensure_handles mints a fresh one.
+    let handle = match carried {
+        Some(o) if o.agent == agent => o.handle.clone(),
+        _ => String::new(),
+    };
     Some(AgentRecord {
         pane: pane.id.clone(),
         agent,
         state: final_state,
         source,
         summary,
+        handle,
         session: pane.session.clone(),
         window: pane.window_name.clone(),
         command: pane.command.clone(),
@@ -759,12 +766,6 @@ fn merge_record_owned(
         // Polls never wipe hook prompts: carry the old cut forward.
         last_prompt_at: carried.map(|o| o.last_prompt_at).unwrap_or(0),
         last_prompt: carried.map(|o| o.last_prompt.clone()).unwrap_or_default(),
-        // Handles follow the agent, not the pane: a changed agent drops
-        // the old name so ensure_handles mints a fresh one.
-        handle: match carried {
-            Some(o) if o.agent == agent => o.handle.clone(),
-            _ => String::new(),
-        },
     })
 }
 

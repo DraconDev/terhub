@@ -661,6 +661,12 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                 Some(o) => o.last_turn_secs,
                 None => 0,
             };
+            // Handles follow the agent: a changed agent drops the old
+            // name so ensure_handles mints a fresh one.
+            let handle = match old {
+                Some(o) if o.agent == agent => o.handle.clone(),
+                _ => String::new(),
+            };
             registry.insert(
                 ev.pane.clone(),
                 AgentRecord {
@@ -669,6 +675,7 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     state: ev.state,
                     source: Source::Hook,
                     summary: ev.summary.clone(),
+                    handle,
                     session: old.map(|r| r.session.clone()).unwrap_or_default(),
                     window: old.map(|r| r.window.clone()).unwrap_or_default(),
                     command: old.map(|r| r.command.clone()).unwrap_or_default(),
