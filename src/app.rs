@@ -2288,7 +2288,7 @@ impl App {
         }
         // Freezing your own pane stops this process: instant fake-hang.
         if self.own_pane.as_deref() == Some(id.as_str()) {
-            self.set_status("not pausing this hub itself".to_string());
+            self.set_status("won't pause own pane".to_string());
             return;
         }
         if pid == 0 {
