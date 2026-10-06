@@ -1080,6 +1080,14 @@ pub fn ensure_config() -> Result<PathBuf> {
 mod tests {
     use super::*;
 
+    /// Unique scratch dir per call: lib tests run in parallel threads and
+    /// must never share one `config.toml` (write/read races flake).
+    fn test_dir() -> std::path::PathBuf {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        std::env::temp_dir().join(format!("terhub-test-{}-{n}", std::process::id()))
+    }
+
     #[test]
     fn truncate_msg_floors_to_char_boundary() {
         let s = format!("{}é{}", "a".repeat(159), "b".repeat(10));
@@ -1160,7 +1168,7 @@ mod tests {
 
     #[test]
     fn partial_config_merges_over_defaults() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         std::fs::write(&path, "[keys]\nnew = \"c\"\n").unwrap();
@@ -1173,7 +1181,7 @@ mod tests {
 
     #[test]
     fn daemon_section_parses_with_defaults() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("daemon.toml");
         std::fs::write(&path, "[daemon]\nstuck_secs = 60\n").unwrap();
@@ -1187,7 +1195,7 @@ mod tests {
 
     #[test]
     fn zero_poll_and_stale_fall_back_with_problems() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("daemon-zero.toml");
         std::fs::write(
@@ -1206,7 +1214,7 @@ mod tests {
 
     #[test]
     fn custom_commands_validate() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("commands.toml");
         std::fs::write(
@@ -1229,7 +1237,7 @@ mod tests {
 
     #[test]
     fn message_templates_validate_with_builtins() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("templates.toml");
         std::fs::write(
@@ -1259,7 +1267,7 @@ mod tests {
     fn spawn_profiles_validate_with_builtins() {
         // Valid entries survive; nameless, program-less, and duplicate
         // names become problems. Empty file still offers builtins.
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("profiles.toml");
         std::fs::write(
@@ -1300,7 +1308,7 @@ mod tests {
     #[test]
     fn mru_tabs_defaults_off_and_parses() {
         assert!(!AppConfig::default().mru_tabs);
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("mru.toml");
         std::fs::write(&path, "[ui]\nmru_tabs = true\n").unwrap();
@@ -1312,7 +1320,7 @@ mod tests {
 
     #[test]
     fn bad_builtin_key_value_warns_and_reverts() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("badkeys.toml");
         std::fs::write(&path, "[keys]\nattach = \"f99\"\nquit = \"\"\n").unwrap();
@@ -1332,7 +1340,7 @@ mod tests {
 
     #[test]
     fn builtin_key_collision_warns() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("keyclash.toml");
         // kill defaults to x; rebinding quit onto it shadows one of them.
@@ -1366,7 +1374,7 @@ mod tests {
 
     #[test]
     fn theme_and_density_match_case_insensitively() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("case.toml");
         std::fs::write(&path, "[ui]\ntheme = \"Dark\"\ndensity = \"Compact\"\n").unwrap();
@@ -1379,7 +1387,7 @@ mod tests {
 
     #[test]
     fn persist_touches_only_ui_keys() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("persist.toml");
         std::fs::write(
@@ -1411,7 +1419,7 @@ mod tests {
 
     #[test]
     fn report_names_syntax_and_unknowns() {
-        let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
+        let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
         let bad = dir.join("bad.toml");
         std::fs::write(&bad, "[keys\nnew = ").unwrap();
