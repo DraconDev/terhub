@@ -2286,6 +2286,11 @@ impl App {
             ));
             return;
         }
+        // Freezing your own pane stops this process: instant fake-hang.
+        if self.own_pane.as_deref() == Some(id.as_str()) {
+            self.set_status("not pausing this hub itself".to_string());
+            return;
+        }
         if pid == 0 {
             self.set_status(format!("no pid for pane {id}"));
             return;
@@ -2409,6 +2414,9 @@ impl App {
                     "can't restart remote row {} (jump in to manage it)",
                     p.id
                 )),
+                Some(p) if self.own_pane.as_deref() == Some(p.id.as_str()) => {
+                    self.set_status("won't restart own pane (q then reopen)".to_string())
+                }
                 Some(p) if p.command.trim().is_empty() => {
                     self.set_status(format!("nothing to re-run in {}", p.id))
                 }
