@@ -88,7 +88,7 @@ fn phase_pause_resume() {
         .stdin(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let mut guard = Guard(child);
+    let guard = Guard(child);
     let pid = guard.0.id();
     assert!(!terhub::proc::is_stopped(pid));
     terhub::proc::pause_group(pid).unwrap();

@@ -2070,7 +2070,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn spawn_window_name_sanitizes_and_caps() {
         assert_eq!(
             spawn_window_name("pi", "fix the login bug now"),
