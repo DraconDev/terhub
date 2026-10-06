@@ -2849,6 +2849,24 @@ mod tests {
     }
 
     #[test]
+    fn mru_toggle_flips_orders_and_persists() {
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with(&["a", "b"]);
+        let mut p = Pane::test("%1", "w", "pi");
+        p.session = "b".to_string();
+        p.activity = 50;
+        app.panes = vec![p];
+        assert!(!app.config.mru_tabs);
+        app.apply_setting(SettingKind::ToggleMruTabs);
+        assert!(app.config.mru_tabs);
+        assert!(app.status.as_ref().unwrap().contains("(saved)"));
+        let names: Vec<&str> = app.sessions.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["b", "a"]);
+        let text = std::fs::read_to_string(crate::config::config_path()).unwrap();
+        assert!(text.contains("mru_tabs = true"), "{text}");
+    }
+
+    #[test]
     fn settings_click_hits_items_not_headers() {
         let _scratch = ScratchConfig::new();
         let mut app = app_with(&["a"]);
