@@ -674,4 +674,103 @@ mod tests {
         assert!(text.contains("waiting"), "missing waiting:\n{text}");
         assert!(text.contains("1970-01-01"), "missing day header:\n{text}");
     }
+
+    #[test]
+    fn foreground_spans_track_focus_changes() {
+        let entries = vec![
+            Entry::human_focus(100, Some("%1")),
+            Entry::human_focus(200, Some("%2")),
+            Entry::human_focus(300, None),
+            Entry::human_focus(400, Some("%1")),
+        ];
+        let spans = build_foreground(&entries, 500);
+        assert_eq!(spans.len(), 3);
+        assert_eq!((spans[0].pane.as_str(), spans[0].start, spans[0].end), ("%1", 100, 200));
+        assert_eq!((spans[1].pane.as_str(), spans[1].start, spans[1].end), ("%2", 200, 300));
+        assert_eq!((spans[2].pane.as_str(), spans[2].start, spans[2].end), ("%1", 400, 500));
+        // Totals attribute per pane, most-focused first.
+        let totals = foreground_totals(&spans);
+        assert_eq!(totals, vec![("%1".to_string(), 200), ("%2".to_string(), 100)]);
+        // A stray detach with nothing focused invents no time.
+        let spans = build_foreground(&[Entry::human_focus(50, None)], 500);
+        assert!(spans.is_empty());
+    }
+
+    fn sample_report() -> ReportData {
+        let entries = vec![
+            entry(100, "%1", AgentState::Working),
+            entry(200, "%1", AgentState::Waiting),
+        ];
+        let spans = build_spans(&entries, 400);
+        ReportData {
+            by_day: stats(&spans, None, GroupBy::Day),
+            by_agent: stats(&spans, None, GroupBy::Agent),
+            by_session: stats(&spans, None, GroupBy::Session),
+            foreground: vec![("%1".to_string(), 250)],
+        }
+    }
+
+    #[test]
+    fn report_json_round_trips() {
+        let v: serde_json::Value = serde_json::from_str(&report_json(&sample_report())).unwrap();
+        assert_eq!(v["by_agent"][0]["key"], "claude");
+        assert_eq!(v["by_agent"][0]["work"], 100);
+        assert_eq!(v["foreground"][0]["pane"], "%1");
+        assert_eq!(v["foreground"][0]["secs"], 250);
+    }
+
+    #[test]
+    fn report_markdown_renders_tables() {
+        let md = report_markdown(&sample_report(), "today");
+        assert!(md.contains("## by agent"), "missing section:\n{md}");
+        assert!(md.contains("claude"), "missing key:\n{md}");
+        assert!(md.contains("## foreground"), "missing foreground:\n{md}");
+        assert!(md.contains("%1"), "missing pane:\n{md}");
+    }
+
+    #[test]
+    fn timeline_sort_waiting_leads_with_attention() {
+        let entries = vec![
+            entry(100, "%1", AgentState::Working),
+            entry(200, "%1", AgentState::Waiting),
+            entry(150, "%2", AgentState::Error),
+        ];
+        let mut spans = build_spans(&entries, 300);
+        sort_spans(&mut spans, TimelineSort::Waiting);
+        let states: Vec<AgentState> = spans.iter().map(|s| s.state).collect();
+        assert_eq!(states[0], AgentState::Error);
+        assert_eq!(states[1], AgentState::Waiting);
+        assert_eq!(states[2], AgentState::Working);
+        let mut spans = build_spans(&entries, 300);
+        sort_spans(&mut spans, TimelineSort::Time);
+        assert!(spans.windows(2).all(|w| w[0].start <= w[1].start));
+    }
+
+    #[test]
+    fn heatmap_renders_day_rows_with_blocks() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let entries = vec![
+            entry(3600, "%1", AgentState::Working),
+            entry(7200, "%1", AgentState::Idle),
+        ];
+        let spans = build_spans(&entries, 10800);
+        let backend = TestBackend::new(100, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let pal = crate::ui::palette("dracula");
+                render_heatmap(f, &spans, "timeline", f.area(), &pal)
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                text.push_str(buf[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+        assert!(text.contains("1970-01-01"), "missing day row:\n{text}");
+        assert!(text.contains('█'), "missing full block:\n{text}");
+    }
 }
