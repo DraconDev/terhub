@@ -25,6 +25,7 @@ pub mod mcp;
 pub mod native;
 pub mod proc;
 pub mod tmux;
+pub mod tray;
 pub mod ui;
 pub mod web;
 pub mod zellij;

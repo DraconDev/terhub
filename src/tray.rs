@@ -161,18 +161,15 @@ fn refresh_icon_cache() {
 /// read.
 type Shared = Arc<Mutex<TrayView>>;
 
-#[zbus::interface(name = "org.kde.StatusNotifierItem")]
 struct Tray {
     view: Shared,
 }
 
 impl Tray {
     fn read(&self) -> TrayView {
-        self.view.lock().map(|v| v.clone()).unwrap_or_else(|_| {
-            TrayView {
-                connected: false,
-                ..TrayView::default()
-            }
+        self.view.lock().map(|v| v.clone()).unwrap_or_else(|_| TrayView {
+            connected: false,
+            ..TrayView::default()
         })
     }
 
@@ -320,11 +317,33 @@ pub fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::Source;
 
     fn rec(state: AgentState) -> AgentRecord {
-        let mut r = crate::daemon::tests_support::blank_record();
-        r.state = state;
-        r
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state,
+            source: Source::Proc,
+            summary: String::new(),
+            session: "a".to_string(),
+            window: "w".to_string(),
+            command: "pi".to_string(),
+            updated_at: 1,
+            state_since: 1,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: String::new(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+        }
     }
 
     #[test]
