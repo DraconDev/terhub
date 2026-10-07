@@ -1736,6 +1736,136 @@ mod tests {
     }
 
     #[test]
+    fn frozen_screen_makes_a_live_agent_idle() {
+        let now = 100_000;
+        // The real failure case: the process is alive and its REPL keeps
+        // burning CPU, so Stuck never trips, but the screen has not moved
+        // for 10 minutes — it finished. No completion text, no pattern.
+        let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
+        old.quiet_since = now - 600;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Idle, "frozen screen read as busy");
+        assert!(rec.summary.contains("quiet"), "{:?}", rec.summary);
+        assert_eq!(rec.state_since, now);
+        // The quiet window is the completed turn.
+        assert_eq!(rec.last_turn_secs, 300);
+    }
+
+    #[test]
+    fn idle_flips_back_to_working_when_the_screen_moves() {
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
+        old.quiet_since = now - 900;
+        // quiet_since is one poll stale, so a resumed screen shows up here
+        // as "recently quiet" and must keep the row Working.
+        let mut fresh = old.clone();
+        fresh.quiet_since = now - 2;
+        let rec = merge_record_owned(
+            Some(&fresh),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(rec.state_since, now);
+    }
+
+    #[test]
+    fn quiet_idle_below_threshold_stays_working() {
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
+        old.quiet_since = now - 60;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working, "silent tool run read as idle");
+    }
+
+    #[test]
+    fn quiet_idle_zero_disables_the_flip() {
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
+        old.quiet_since = now - 100_000;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            0,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working, "0 must disable the flip");
+    }
+
+    #[test]
+    fn stuck_outranks_quiescent_idle() {
+        let now = 100_000;
+        // Hung, not finished: no CPU either. Stuck is the actionable
+        // signal, so it must win over the quiet flip.
+        let mut old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
+        old.quiet_since = now - 900;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Stuck);
+        // A row already flipped to Idle can still escalate to Stuck later.
+        let mut idle = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
+        idle.quiet_since = now - 900;
+        let rec = merge_record_owned(
+            Some(&idle),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Stuck, "idle masked a real hang");
+    }
+
+    #[test]
     fn runtime_dir_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("terhub-dirperms-{}", std::process::id()));
