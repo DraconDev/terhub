@@ -1801,6 +1801,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state_since, now - 600);
@@ -1825,6 +1826,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle, "frozen screen read as busy");
@@ -1855,6 +1857,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle);
@@ -1889,6 +1892,7 @@ mod tests {
             now + 2,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -1912,6 +1916,7 @@ mod tests {
             now + 4,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec3.state, AgentState::Idle);
@@ -1936,6 +1941,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -1957,6 +1963,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -1981,9 +1988,80 @@ mod tests {
             now,
             STUCK_SECS,
             0,
+            0,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working, "0 must disable the flip");
+    }
+
+    #[test]
+    fn long_untouched_waiting_prompt_becomes_idle() {
+        let now = 100_000;
+        // gemini's finished turn: the screen ends on a bare `>` that the
+        // classifier reads as waiting, and nobody has touched it for 40
+        // minutes. It must stop demanding attention.
+        let mut old = carried("gemini", AgentState::Waiting, 500, now - 4, now - 5_000);
+        old.quiet_since = now - 2_400;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(Some("gemini"), AgentState::Waiting, "1 artifact to review"),
+            Some(("gemini", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Idle, "stale prompt still nagging");
+        // The question survives: that is what you came back to read.
+        assert!(rec.summary.contains("artifact"), "{:?}", rec.summary);
+    }
+
+    #[test]
+    fn fresh_waiting_prompt_keeps_flagging() {
+        let now = 100_000;
+        // Stepping away for a few minutes must not silence a question.
+        let mut old = carried("gemini", AgentState::Waiting, 500, now - 4, now - 200);
+        old.quiet_since = now - 300;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(Some("gemini"), AgentState::Waiting, "approve?"),
+            Some(("gemini", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Waiting);
+        assert!(rec.state.needs_attention());
+    }
+
+    #[test]
+    fn waiting_idle_zero_keeps_every_prompt_flagged() {
+        let now = 100_000;
+        let mut old = carried("gemini", AgentState::Waiting, 500, now - 4, now - 5_000);
+        old.quiet_since = now - 100_000;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(Some("gemini"), AgentState::Waiting, "approve?"),
+            Some(("gemini", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            0,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Waiting, "0 must disable the demotion");
     }
 
     #[test]
@@ -2003,6 +2081,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Stuck);
@@ -2019,6 +2098,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Stuck, "idle masked a real hang");
@@ -2573,6 +2653,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2596,6 +2677,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2620,6 +2702,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
@@ -2643,6 +2726,7 @@ mod tests {
             now,
             STUCK_SECS,
             QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
