@@ -49,6 +49,7 @@ impl TrayView {
                 .count(),
             total: agents.len(),
             connected: true,
+            hub_open: false,
         }
     }
 
