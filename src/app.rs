@@ -892,6 +892,9 @@ impl App {
         }
         self.native_rows = rows;
         self.native_agents = agents;
+        // Closed tabs must not pin clocks forever.
+        let live: Vec<String> = self.native_rows.iter().map(|r| r.id.clone()).collect();
+        self.native_quiet.retain(|id, _| live.contains(id));
         self.assign_native_handles();
         self.set_status(format!("native: {}", notes.join("; ")));
         self.merge_caches();
