@@ -6,7 +6,7 @@
 //! badge — the StatusNotifierItem spec has no field for one — so the
 //! numbers live in the tooltip instead.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -174,7 +174,7 @@ fn refresh_icon_cache() {
 
 /// A live `terhub` TUI, advertised so the tray can focus it instead of
 /// starting a second one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HubSession {
     pub pid: u32,
     /// tmux pane id, when the TUI runs inside tmux. This is the reliable
@@ -216,12 +216,12 @@ impl HubSessionGuard {
         let session = HubSession {
             pid: std::process::id(),
             pane: std::env::var("TMUX_PANE").ok().filter(|p| !p.is_empty()),
-            tty: std::process::var("TTY").ok().or_else(|| {
+            tty: std::env::var("TTY").ok().or_else(|| {
                 // /proc/self/fd/0 points at the controlling terminal.
                 std::fs::read_link("/proc/self/fd/0")
                     .ok()
                     .map(|p| p.to_string_lossy().into_owned())
-                    .filter(|s| s.starts_with('/dev/'))
+                    .filter(|s| s.starts_with("/dev/"))
             }),
         };
         if let Ok(json) = serde_json::to_string(&session) {
