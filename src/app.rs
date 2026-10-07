@@ -1067,6 +1067,20 @@ impl App {
             .count()
     }
 
+    /// Visible agents that finished or are sitting idle. Disjoint from
+    /// `visible_needy` (idle never needs attention), so the two counters
+    /// together answer "how much is running vs. how much is done".
+    pub fn visible_idle(&self) -> usize {
+        self.filtered
+            .iter()
+            .filter(|p| {
+                self.agents
+                    .get(&p.id)
+                    .is_some_and(|a| a.state == crate::agent::AgentState::Idle)
+            })
+            .count()
+    }
+
     /// Rebuild the visible table rows from the sidebar filter, keeping the
     /// selected pane when it survives the filter.
     pub fn refresh_filtered(&mut self) {

@@ -583,6 +583,23 @@ mod tests {
     }
 
     #[test]
+    fn status_line_counts_idle_agents() {
+        // Idle and needy are disjoint, so both counters can show at once.
+        let snap = vec![
+            rec("%1", AgentState::Waiting, 0),
+            rec("%2", AgentState::Idle, 0),
+            rec("%3", AgentState::Idle, 0),
+            rec("%4", AgentState::Working, 0),
+        ];
+        let line = status_line(&snap, None);
+        assert!(line.contains("1 need you"), "{line}");
+        assert!(line.contains("2 idle"), "{line}");
+        // No idle rows: the counter stays out of the line entirely.
+        let busy = vec![rec("%1", AgentState::Working, 0)];
+        assert!(!status_line(&busy, None).contains("idle"), "{}", status_line(&busy, None));
+    }
+
+    #[test]
     fn notifier_result_follows_exit_code() {
         assert!(run_notifier("true", &[]).is_ok());
         assert!(run_notifier("false", &[]).is_err());
