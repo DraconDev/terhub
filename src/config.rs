@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 pub const DEFAULT_THEME: &str = "dark";
 pub const DEFAULT_DENSITY: &str = "comfortable";
+pub const DEFAULT_IDLE_FLAG_SECS: u64 = 21600;
 
 /// Built-in theme names, in live-cycle order.
 pub const THEMES: &[&str] = &[
@@ -97,6 +98,9 @@ pub struct AppConfig {
     pub idle_warn: bool,
     /// Style spec for that tint.
     pub idle_warn_style: String,
+    /// Tint Idle when idle + quiet past this (a day-scale idle stops
+    /// looking fine; `0` disables, like `stuck_secs`).
+    pub idle_flag_secs: u64,
 }
 
 impl Default for AppConfig {
@@ -119,6 +123,7 @@ impl Default for AppConfig {
             agent_styles: HashMap::new(),
             idle_warn: true,
             idle_warn_style: "bold yellow".to_string(),
+            idle_flag_secs: DEFAULT_IDLE_FLAG_SECS,
         }
     }
 }
@@ -559,6 +564,8 @@ struct StyleSection {
     idle_warn: bool,
     #[serde(default = "default_idle_warn_style")]
     idle_warn_style: String,
+    #[serde(default = "default_idle_flag_secs")]
+    idle_flag_secs: u64,
 }
 
 impl Default for StyleSection {
