@@ -838,6 +838,18 @@ mod tests {
     }
 
     #[test]
+    fn kwin_focus_script_targets_pid_and_title() {
+        let script = kwin_focus_script(1535082, "tab six");
+        assert!(script.contains("w.pid !== 1535082"), "{script}");
+        assert!(script.contains(r#"indexOf("tab six")"#), "{script}");
+        assert!(script.contains("minimized = false"), "{script}");
+        assert!(script.contains("workspace.activeWindow = t"), "{script}");
+        // Titles are JSON-escaped so quotes cannot break the script.
+        let quoted = kwin_focus_script(1, r#"say "hi""#);
+        assert!(quoted.contains(r#"indexOf("say \"hi\"")"#), "{quoted}");
+    }
+
+    #[test]
     fn qdbus_services_pick_konsole_lines() {
         let text = ":1.84\n org.kde.konsole-1535082\n:1.96\n org.kde.plasmashell\n";
         assert_eq!(
