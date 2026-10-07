@@ -1792,8 +1792,8 @@ mod tests {
         assert_eq!(rec.state, AgentState::Idle, "frozen screen read as busy");
         assert!(rec.summary.contains("quiet"), "{:?}", rec.summary);
         assert_eq!(rec.state_since, now);
-        // The quiet window is the completed turn.
-        assert_eq!(rec.last_turn_secs, 300);
+        // The whole working stretch is the completed turn.
+        assert_eq!(rec.last_turn_secs, 900);
     }
 
     #[test]
@@ -1802,14 +1802,14 @@ mod tests {
         let mut old = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
         old.quiet_since = now - 900;
         // quiet_since is one poll stale, so a resumed screen shows up here
-        // as "recently quiet" and must keep the row Working.
+        // as "recently quiet". Fresh CPU ticks keep Stuck out of it.
         let mut fresh = old.clone();
         fresh.quiet_since = now - 2;
         let rec = merge_record_owned(
             Some(&fresh),
             false,
             None,
-            Some(("pi", 500, 100)),
+            Some(("pi", 900, 100)),
             &test_pane(),
             false,
             now,
