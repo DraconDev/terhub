@@ -1767,6 +1767,7 @@ mod tests {
             false,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state_since, now - 600);
@@ -2255,14 +2256,7 @@ mod tests {
     fn proc_identity_beats_screen_guess() {
         // Screen says claude, process tree says pi: trust the tree.
         let now = 100_000;
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(Some("claude"), AgentState::Working, "⠋ Working…"),
-            Some(("pi", 100)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2276,14 +2270,7 @@ mod tests {
     #[test]
     fn screen_waiting_wins_state_proc_keeps_identity() {
         let now = 100_000;
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(Some("claude"), AgentState::Waiting, "Approve? [y/n]"),
-            Some(("pi", 50)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2295,18 +2282,7 @@ mod tests {
     #[test]
     fn screen_limited_wins_state_proc_keeps_identity() {
         let now = 100_000;
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(
-                Some("codex"),
-                AgentState::Limited,
-                "Error: rate limit reached",
-            ),
-            Some(("pi", 50)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2320,14 +2296,7 @@ mod tests {
     fn proc_without_screen_is_working() {
         // The %192 case: agent binary alive, screen unreadable.
         let now = 100_000;
-        let rec = merge_record(
-            None,
-            false,
-            None,
-            Some(("pi", 50)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2338,18 +2307,7 @@ mod tests {
     #[test]
     fn screen_only_record_keeps_screen_source() {
         let now = 100_000;
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(
-                Some("codex"),
-                AgentState::Error,
-                "Error: rate limit reached",
-            ),
-            None,
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "codex");
@@ -2368,14 +2326,7 @@ mod tests {
     fn anonymous_waiting_pairs_with_proc_or_drops() {
         let now = 100_000;
         // Approve prompt, no name, live pi: that agent waiting.
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(None, AgentState::Waiting, "Save changes? confirm"),
-            Some(("pi", 50)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2410,26 +2361,12 @@ mod tests {
         // Same editor, no agent anywhere: not our business.
         assert!(merge_record(None, false, None, None, &ed, now, STUCK_SECS).is_none());
         // Same agent, non-editor foreground: still working.
-        let rec = merge_record(
-            None,
-            false,
-            None,
-            Some(("pi", 50)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
         // An error on screen still wins over the editor foreground.
-        let rec = merge_record(
-            None,
-            false,
-            screen_hit(None, AgentState::Error, "boom"),
-            Some(("pi", 50)),
-            &ed,
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Error);
@@ -2451,6 +2388,7 @@ mod tests {
             false,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2473,6 +2411,7 @@ mod tests {
             true,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -2496,6 +2435,7 @@ mod tests {
             false,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
@@ -2518,6 +2458,7 @@ mod tests {
             false,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
@@ -2557,14 +2498,7 @@ mod tests {
         // works again — and pre-gate summaries must not ride the carry.
         let mut old = carried("pi", AgentState::Working, 50, now - 10, now - 100);
         old.summary = "● Chrome Bridge (indefinite)".to_string();
-        let rec = merge_record(
-            Some(&old),
-            false,
-            None,
-            Some(("pi", 60)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -2578,14 +2512,7 @@ mod tests {
         let now = 100_000;
         let mut old = carried("pi", AgentState::Waiting, 500, now - 60, now - 300);
         old.summary = "Approve? [y/n]".to_string();
-        let rec = merge_record(
-            Some(&old),
-            false,
-            screen_hit(Some("pi"), AgentState::Waiting, "❯ Try asking me instead"),
-            Some(("pi", 500)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Waiting);
@@ -2597,14 +2524,7 @@ mod tests {
     fn completed_turn_records_duration() {
         let now = 100_000;
         let old = carried("pi", AgentState::Working, 500, now - 60, now - 300);
-        let rec = merge_record(
-            Some(&old),
-            false,
-            screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]"),
-            Some(("pi", 500)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Waiting);
@@ -2616,28 +2536,14 @@ mod tests {
         let now = 100_000;
         let mut old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
         old.last_turn_secs = 120;
-        let stuck = merge_record(
-            Some(&old),
-            false,
-            None,
-            Some(("pi", 500)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let stuck = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(stuck.state, AgentState::Stuck);
         assert_eq!(stuck.last_turn_secs, 120);
         // Stuck → waiting: the grinding episode never completed, so the
         // previous completed turn still stands.
-        let waiting = merge_record(
-            Some(&stuck),
-            false,
-            screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]"),
-            Some(("pi", 500)),
-            &test_pane(),
-            now + 10,
-            STUCK_SECS,
+        let waiting = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(waiting.last_turn_secs, 120);
@@ -2647,14 +2553,7 @@ mod tests {
     fn stuck_after_still_cpu() {
         let now = 100_000;
         let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);
-        let rec = merge_record(
-            Some(&old),
-            false,
-            None,
-            Some(("pi", 500)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Stuck);
@@ -2667,14 +2566,7 @@ mod tests {
     fn stuck_keeps_clock_while_still() {
         let now = 100_000;
         let old = carried("pi", AgentState::Stuck, 500, now - 660, now - 660);
-        let rec = merge_record(
-            Some(&old),
-            false,
-            None,
-            Some(("pi", 500)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Stuck);
@@ -2747,14 +2639,7 @@ mod tests {
     fn cpu_movement_clears_stuck() {
         let now = 100_000;
         let old = carried("pi", AgentState::Stuck, 500, now - 900, now - 900);
-        let rec = merge_record(
-            Some(&old),
-            false,
-            None,
-            Some(("pi", 750)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -2767,14 +2652,7 @@ mod tests {
         // Shrunk sum = new process, not stillness: never stuck on sight.
         let now = 100_000;
         let old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
-        let rec = merge_record(
-            Some(&old),
-            false,
-            None,
-            Some(("pi", 100)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -2785,14 +2663,7 @@ mod tests {
     fn waiting_clears_stuck_with_fresh_clock() {
         let now = 100_000;
         let old = carried("pi", AgentState::Stuck, 500, now - 900, now - 900);
-        let rec = merge_record(
-            Some(&old),
-            false,
-            screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]"),
-            Some(("pi", 500)),
-            &test_pane(),
-            now,
-            STUCK_SECS,
+        let rec = merge_record(STUCK_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Waiting);
