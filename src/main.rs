@@ -668,7 +668,21 @@ fn cmd_status(json: bool) -> i32 {
             .then(a.state_since.cmp(&b.state_since))
     });
     let needy = agents.iter().filter(|a| a.state.needs_attention()).count();
-    print_out(&format!("{} agent(s), {} need you", agents.len(), needy));
+    let idle = agents
+        .iter()
+        .filter(|a| a.state == terhub::agent::AgentState::Idle)
+        .count();
+    // Disjoint from needy, so the two read together. Idle stays out at zero.
+    let idle_note = if idle > 0 {
+        format!(", {idle} idle")
+    } else {
+        String::new()
+    };
+    print_out(&format!(
+        "{} agent(s), {} need you{idle_note}",
+        agents.len(),
+        needy
+    ));
     if agents.is_empty() {
         return 0;
     }

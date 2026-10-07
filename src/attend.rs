@@ -110,7 +110,18 @@ pub fn peek_report(
         .iter()
         .filter(|r| r.agent.as_ref().is_some_and(|a| a.state.needs_attention()))
         .count();
-    let mut out = format!("{session}:{window} — {total_panes} pane(s), {needy} need you\n");
+    let idle = rows
+        .iter()
+        .filter(|r| r.agent.as_ref().is_some_and(|a| a.state == AgentState::Idle))
+        .count();
+    let idle_note = if idle > 0 {
+        format!(", {idle} idle")
+    } else {
+        String::new()
+    };
+    let mut out = format!(
+        "{session}:{window} — {total_panes} pane(s), {needy} need you{idle_note}\n"
+    );
     let mut newest: Option<(&str, u64)> = None;
     for row in rows {
         let mark = if row.pane.active { "*" } else { " " };
@@ -554,6 +565,25 @@ mod tests {
         let report = peek_report("s", "w", &rows, 40, 0);
         assert!(report.contains("40 pane(s)"), "{report}");
         assert!(report.contains("…and 4 more"), "{report}");
+    }
+
+    #[test]
+    fn peek_report_counts_idle_agents() {
+        use crate::tmux::Pane;
+        let now = 10_000;
+        let panes = vec![
+            Pane::test("%1", "w", "pi"),
+            Pane::test("%2", "w", "pi"),
+            Pane::test("%3", "w", "pi"),
+        ];
+        let mut agents = HashMap::new();
+        agents.insert("%1".to_string(), rec("%1", AgentState::Waiting, now - 60));
+        agents.insert("%2".to_string(), rec("%2", AgentState::Idle, now - 60));
+        agents.insert("%3".to_string(), rec("%3", AgentState::Idle, now - 60));
+        let rows = peek_rows(panes, &agents);
+        let report = peek_report("s", "w", &rows, 3, now);
+        assert!(report.contains("1 need you"), "{report}");
+        assert!(report.contains("2 idle"), "{report}");
     }
 
     #[test]
