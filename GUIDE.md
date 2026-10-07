@@ -588,7 +588,9 @@ fails the error says the tab was still switched. Preview, pause, and
 custom commands work; kill/restart/mark/rename refuse (Konsole exposes
 no tab-close over DBus). Agent badges come from the process tree plus one
 screen classification at fetch time — shells in those tabs have no hooks,
-so states are screen-truth, frozen until the next fetch. Konsole capture
+so states are screen-truth, frozen until the next fetch. `Idle` tracks
+visible screen change across fetches (same denoise as the daemon, so
+spinners don't restart it); first sighting starts fresh. Konsole capture
 is the visible screen (its scrollback offsets are undocumented);
 kitty/WezTerm capture honors `--lines`. Fleet host names can't collide
 with backend names (`konsole`, `kitty`, `wezterm` are reserved).
