@@ -524,8 +524,10 @@ mod tests {
         assert_eq!(mixed.title(), "terhub — 1 need you · 1 idle");
         let calm = TrayView::from_agents(&[rec(AgentState::Working)]);
         assert_eq!(calm.title(), "terhub — 1 agent(s)");
+        // The icon is always clickable, so the hint is always offered;
+        // it just says which way the click goes.
         assert!(
-            !calm.description().contains("click"),
+            calm.description().contains("click to open the hub"),
             "{}",
             calm.description()
         );
