@@ -143,6 +143,9 @@ enum Cmd {
         #[arg(long)]
         pane: Option<String>,
     },
+    /// Tray icon for KDE/Plasma: needs-attention state plus hover counts.
+    /// Runs until killed (ctrl-c removes the icon).
+    Tray,
     /// Time-in-state stats from the activity ledger.
     Stats {
         #[arg(long, default_value = "today")]
@@ -2381,6 +2384,13 @@ fn real_main() -> i32 {
         Some(Cmd::Attend { cycle, list }) => cmd_attend(cycle, list),
         Some(Cmd::Peek { plain, pick }) => cmd_peek(plain, pick),
         Some(Cmd::StatusLine { pane }) => cmd_status_line(pane.as_deref()),
+        Some(Cmd::Tray) => match terhub::tray::run() {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("terhub: tray: {e}");
+                1
+            }
+        },
         Some(Cmd::Stats { since, group_by }) => cmd_stats(&since, group_by),
         Some(Cmd::Report {
             since,
