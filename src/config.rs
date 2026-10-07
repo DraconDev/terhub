@@ -576,12 +576,17 @@ impl Default for StyleSection {
             agents: HashMap::new(),
             idle_warn: true,
             idle_warn_style: default_idle_warn_style(),
+            idle_flag_secs: default_idle_flag_secs(),
         }
     }
 }
 
 fn default_idle_warn_style() -> String {
     "bold yellow".to_string()
+}
+
+fn default_idle_flag_secs() -> u64 {
+    DEFAULT_IDLE_FLAG_SECS
 }
 
 /// User screen-pattern manifests live next to the config file.
@@ -881,6 +886,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.idle_warn = file.style.idle_warn;
     cfg.idle_warn_style = file.style.idle_warn_style;
+    cfg.idle_flag_secs = file.style.idle_flag_secs;
     if !valid_style_spec(&cfg.idle_warn_style) {
         problems.push(format!(
             "style idle_warn_style has bad style '{}'",
@@ -1062,7 +1068,7 @@ pub fn default_config_text() -> String {
         "\n# Reusable messages for bulk prompt (Tab) and send --template (yours replace the builtins):\n# [[template]]\n# name = \"continue\"\n# text = \"continue\"\n",
     );
     out.push_str(
-        "\n# Row styling (specs: modifiers + a color, e.g. \"bold yellow\", \"red\", \"#ff8800\"):\n# [style]\n# color_agents = true\n# agent_palette = []\n# idle_warn = true\n# idle_warn_style = \"bold yellow\"\n# [style.agents]\n# pi = \"cyan\"\n",
+        "\n# Row styling (specs: modifiers + a color, e.g. \"bold yellow\", \"red\", \"#ff8800\"):\n# [style]\n# color_agents = true\n# agent_palette = []\n# idle_warn = true\n# idle_warn_style = \"bold yellow\"\n# idle_flag_secs = 21600\n# [style.agents]\n# pi = \"cyan\"\n",
     );
     out
 }

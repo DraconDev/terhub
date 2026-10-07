@@ -677,9 +677,10 @@ fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&str> {
     }
 }
 
-/// Idle cell: duration text plus the stuck-smell flag — working with no
-/// visible change past the stuck threshold. Waiting is quiet by nature,
-/// so only working warns.
+/// Idle cell: duration text plus warn tints — working with no visible
+/// change past the stuck threshold (the stuck smell), and idle past
+/// `idle_flag_secs` (a day-scale idle stops looking fine). Waiting is
+/// quiet by nature, so only working and idle warn.
 fn idle_cell(
     rec: Option<&crate::agent::AgentRecord>,
     activity: u64,
@@ -698,12 +699,16 @@ fn idle_cell(
         }
     };
     let warn = cfg.idle_warn
-        && cfg.stuck_secs > 0
-        && matches!(
-            rec.map(|r| r.state),
-            Some(crate::agent::AgentState::Working)
-        )
-        && age.is_some_and(|a| a > cfg.stuck_secs);
+        && age.is_some_and(|a| {
+            matches!(
+                rec.map(|r| r.state),
+                Some(crate::agent::AgentState::Working)
+            ) && cfg.stuck_secs > 0
+                && a > cfg.stuck_secs
+                || matches!(rec.map(|r| r.state), Some(crate::agent::AgentState::Idle))
+                    && cfg.idle_flag_secs > 0
+                    && a > cfg.idle_flag_secs
+        });
     (text, warn)
 }
 
