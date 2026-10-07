@@ -84,6 +84,10 @@ pub struct AppConfig {
     /// screen has not changed this long finished; without it, finished
     /// agents read `working` forever.
     pub quiet_idle_secs: u64,
+    /// Untouched-waiting → Idle threshold (`0` disables). Longer than
+    /// `quiet_idle_secs` on purpose: a fresh question must keep flagging
+    /// even when you step away briefly.
+    pub waiting_idle_secs: u64,
     /// Validated `[[command]]` entries (invalid ones become problems).
     pub commands: Vec<CustomCommand>,
     /// Validated `[[profile]]` spawn entries; builtins when none given.
@@ -119,6 +123,7 @@ impl Default for AppConfig {
             stuck_secs: crate::daemon::STUCK_SECS,
             stale_secs: crate::daemon::HOOK_STALE_SECS,
             quiet_idle_secs: crate::daemon::QUIET_IDLE_SECS,
+            waiting_idle_secs: crate::daemon::WAITING_IDLE_SECS,
             commands: Vec::new(),
             profiles: builtin_profiles(),
             templates: builtin_templates(),
@@ -535,6 +540,8 @@ struct DaemonSection {
     stale_secs: u64,
     #[serde(default = "default_quiet_idle_secs")]
     quiet_idle_secs: u64,
+    #[serde(default = "default_waiting_idle_secs")]
+    waiting_idle_secs: u64,
 }
 
 impl Default for DaemonSection {
@@ -544,6 +551,7 @@ impl Default for DaemonSection {
             stuck_secs: default_stuck_secs(),
             stale_secs: default_stale_secs(),
             quiet_idle_secs: default_quiet_idle_secs(),
+            waiting_idle_secs: default_waiting_idle_secs(),
         }
     }
 }
@@ -562,6 +570,10 @@ fn default_stale_secs() -> u64 {
 
 fn default_quiet_idle_secs() -> u64 {
     crate::daemon::QUIET_IDLE_SECS
+}
+
+fn default_waiting_idle_secs() -> u64 {
+    crate::daemon::WAITING_IDLE_SECS
 }
 
 #[derive(Debug, Deserialize)]
@@ -869,6 +881,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.stuck_secs = file.daemon.stuck_secs;
     cfg.quiet_idle_secs = file.daemon.quiet_idle_secs;
+    cfg.waiting_idle_secs = file.daemon.waiting_idle_secs;
     cfg.stale_secs = file.daemon.stale_secs;
     if cfg.stale_secs == 0 {
         problems.push(format!(
@@ -1069,11 +1082,13 @@ pub fn default_config_text() -> String {
     }
     out.push_str("\n[notifications]\nenabled = true\n");
     out.push_str(&format!(
-        "\n[daemon]\n# Restart the daemon to apply. stuck_secs = 0 disables stuck detection.\n# quiet_idle_secs = 0 disables frozen-screen → idle.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\nquiet_idle_secs = {}\n",
+        "\n[daemon]\n# Restart the daemon to apply. stuck_secs = 0 disables stuck detection.\n# quiet_idle_secs = 0 disables frozen-screen → idle;
+# waiting_idle_secs = 0 keeps an untouched waiting prompt flagged.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\nquiet_idle_secs = {}\nwaiting_idle_secs = {}\n",
         crate::daemon::POLL_SECS,
         crate::daemon::STUCK_SECS,
         crate::daemon::HOOK_STALE_SECS,
-        crate::daemon::QUIET_IDLE_SECS
+        crate::daemon::QUIET_IDLE_SECS,
+        crate::daemon::WAITING_IDLE_SECS
     ));
     out.push_str(
         "\n# Custom pane commands (key must not collide with a built-in):\n# [[command]]\n# name = \"git status\"\n# key = \"G\"\n# run = \"git -C {dir} status -sb\"\n",
@@ -1218,6 +1233,7 @@ mod tests {
         assert_eq!(cfg.poll_secs, crate::daemon::POLL_SECS);
         assert_eq!(cfg.stale_secs, crate::daemon::HOOK_STALE_SECS);
         assert_eq!(cfg.quiet_idle_secs, crate::daemon::QUIET_IDLE_SECS);
+        assert_eq!(cfg.waiting_idle_secs, crate::daemon::WAITING_IDLE_SECS);
         std::fs::remove_file(path).ok();
     }
 

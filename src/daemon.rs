@@ -46,6 +46,11 @@ pub const STUCK_SECS: u64 = 600;
 /// burning CPU, so Stuck never trips either).
 pub const QUIET_IDLE_SECS: u64 = 300;
 
+/// A `waiting` prompt untouched this long stops counting as urgent.
+/// Longer than [`QUIET_IDLE_SECS`] on purpose: an agent that just asked
+/// something must keep flagging, even if you stepped away for a minute.
+pub const WAITING_IDLE_SECS: u64 = 1800;
+
 /// Daemon timing knobs from the `[daemon]` config section (restart to
 /// apply). `stuck_secs = 0` disables stuck detection entirely.
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +60,8 @@ pub struct Tunables {
     pub stale_secs: u64,
     /// Frozen-screen → Idle threshold (`0` disables).
     pub quiet_idle_secs: u64,
+    /// Untouched-waiting → Idle threshold (`0` disables).
+    pub waiting_idle_secs: u64,
 }
 
 impl Default for Tunables {
@@ -64,6 +71,7 @@ impl Default for Tunables {
             stuck_secs: STUCK_SECS,
             stale_secs: HOOK_STALE_SECS,
             quiet_idle_secs: QUIET_IDLE_SECS,
+            waiting_idle_secs: WAITING_IDLE_SECS,
         }
     }
 }
@@ -75,6 +83,7 @@ impl Tunables {
             stuck_secs: cfg.stuck_secs,
             stale_secs: cfg.stale_secs.max(1),
             quiet_idle_secs: cfg.quiet_idle_secs,
+            waiting_idle_secs: cfg.waiting_idle_secs,
         }
     }
 }
@@ -826,6 +835,7 @@ fn merge_record(
         now,
         stuck_secs,
         QUIET_IDLE_SECS,
+        WAITING_IDLE_SECS,
     )
 }
 
@@ -852,6 +862,7 @@ fn merge_record_owned(
     now: u64,
     stuck_secs: u64,
     quiet_idle_secs: u64,
+    waiting_idle_secs: u64,
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Idle, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
@@ -963,6 +974,25 @@ fn merge_record_owned(
         // already shows the duration; `fallback_summary_for` fills the
         // cell with the last screen line instead.
         summary = String::new();
+    }
+    // A prompt nobody has touched for a long time is no longer urgent.
+    // Agents whose CLI ends every turn with a bare `>` (gemini, and
+    // anything with the same shape) classify as `waiting` forever once
+    // the work is done, so without this they sit in "need you" long
+    // after you walked away. Deliberately a much longer threshold than
+    // the working flip: stepping away for a few minutes must not
+    // silence a question. The summary is kept — it is the question you
+    // would have come back to read — and being stable it does not feed
+    // the quiet clock.
+    if final_state == Waiting
+        && waiting_idle_secs > 0
+        && quiet_for >= waiting_idle_secs
+    {
+        final_state = Idle;
+        since = match carried {
+            Some(o) if o.state == Idle => o.state_since,
+            _ => now,
+        };
     }
     let last_turn_secs = match carried {
         Some(o) if crate::agent::turn_ended(o.state, final_state) => {
@@ -1196,6 +1226,7 @@ fn poll_sync_with(
             now,
             tune.stuck_secs,
             tune.quiet_idle_secs,
+            tune.waiting_idle_secs,
         ) {
             let prev_quiet = carried
                 .map(|r| (r.screen_hash, r.quiet_since))
