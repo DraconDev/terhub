@@ -955,7 +955,14 @@ fn merge_record_owned(
             Some(o) if o.state == Idle => o.state_since,
             _ => now,
         };
-        summary = format!("quiet {}", crate::history::fmt_dur(quiet_for));
+        // No summary here on purpose. The poller re-evaluates quiet with
+        // track_quiet_merged right after this, and a summary *derived from
+        // the quiet clock* reads as fresh activity and resets the clock
+        // this branch just measured — the row flickers Idle for exactly
+        // one poll and falls back to Working forever. The Idle column
+        // already shows the duration; `fallback_summary_for` fills the
+        // cell with the last screen line instead.
+        summary = String::new();
     }
     let last_turn_secs = match carried {
         Some(o) if crate::agent::turn_ended(o.state, final_state) => {
@@ -1038,7 +1045,7 @@ fn screen_fallback_summary(screen: Option<&str>) -> String {
 fn fallback_summary_for(state: AgentState, screen: Option<&str>) -> String {
     if matches!(
         state,
-        AgentState::Waiting | AgentState::Error | AgentState::Limited
+        AgentState::Waiting | AgentState::Error | AgentState::Limited | AgentState::Idle
     ) {
         screen_fallback_summary(screen)
     } else {
@@ -1790,10 +1797,93 @@ mod tests {
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle, "frozen screen read as busy");
-        assert!(rec.summary.contains("quiet"), "{:?}", rec.summary);
+        assert!(rec.summary.is_empty(), "{:?}", rec.summary);
         assert_eq!(rec.state_since, now);
         // The whole working stretch is the completed turn.
         assert_eq!(rec.last_turn_secs, 900);
+    }
+
+    #[test]
+    fn quiet_idle_survives_the_poll_loop() {
+        // The merge alone is not the feature: the poller re-evaluates quiet
+        // with track_quiet_merged right after, and a summary the flip itself
+        // invented reads as fresh activity and resets the clock the flip
+        // just measured. Drive three polls to prove Idle survives.
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
+        old.quiet_since = now - 600;
+        let h = 0xABCD_1234_u64; // screen has not moved across all polls
+
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Idle);
+
+        // What the poller does next, verbatim.
+        let carried_summary = old.summary.as_str();
+        let (nh, nq) = track_quiet_merged(
+            (h, old.quiet_since),
+            Some(h),
+            carried_summary,
+            &rec.summary,
+            rec.state,
+            now,
+        );
+        assert_eq!(
+            nq,
+            now - 600,
+            "the flip's own summary reset the clock it reads"
+        );
+
+        // Poll 2: same screen, so it must still be Idle — not one-poll flicker.
+        let mut carried2 = rec.clone();
+        carried2.screen_hash = nh;
+        carried2.quiet_since = nq;
+        let rec2 = merge_record_owned(
+            Some(&carried2),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now + 2,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(
+            rec2.state,
+            AgentState::Idle,
+            "flickered back to working after one poll"
+        );
+        assert_eq!(rec2.state_since, now, "idle clock must not restart");
+
+        // And it stays put on a third poll.
+        let mut carried3 = rec2.clone();
+        carried3.screen_hash = nh;
+        carried3.quiet_since = nq;
+        let rec3 = merge_record_owned(
+            Some(&carried3),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now + 4,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec3.state, AgentState::Idle);
     }
 
     #[test]
