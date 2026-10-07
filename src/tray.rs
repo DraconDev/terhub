@@ -176,15 +176,18 @@ impl Tray {
     /// Primary click: open the hub in a terminal. `TERMHUB_TERMINAL`
     /// overrides the guess; the first terminal that exists wins.
     fn open_hub() {
-        let cmds: Vec<Vec<&str>> = match std::env::var("TERMHUB_TERMINAL") {
-            Ok(custom) => vec![custom.split_whitespace().collect()],
-            Err(_) => vec![
+        let cmds: Vec<Vec<String>> = match std::env::var("TERMHUB_TERMINAL") {
+            Ok(custom) => vec![custom.split_whitespace().map(str::to_string).collect()],
+            Err(_) => [
                 vec!["konsole", "-e"],
                 vec!["foot"],
                 vec!["alacritty", "-e"],
                 vec!["kitty"],
                 vec!["xterm", "-e"],
-            ],
+            ]
+            .into_iter()
+            .map(|v| v.into_iter().map(str::to_string).collect())
+            .collect(),
         };
         for argv in cmds {
             let Some((head, rest)) = argv.split_first() else {
@@ -284,14 +287,10 @@ pub fn run() -> anyhow::Result<()> {
     let tray = Tray {
         view: Arc::clone(&view),
     };
-    conn.request_name(
-        &unique,
-        zbus::fdo::NameFlag::ReplaceExisting,
-        zbus::fdo::RequestNameReply::PrimaryOwner,
-    )?;
+    conn.request_name(&unique)?;
     // Export before registering: the watcher introspects the name as
     // soon as Register returns, and finds nothing if we register first.
-    conn.export(SNI_PATH, tray)?;
+    conn.object_server().at(SNI_PATH, tray)?;
 
     let watcher = zbus::blocking::Proxy::new(
         &conn,
