@@ -224,11 +224,12 @@ fn title_counts_idle_rows_scoped_to_the_filter() {
         ctx_pct: None,
         reg_pid: 0,
     };
+    // Both idle, but the filter (which matches the bash pane) hides one:
+    // title must say 1, not 2.
     app.agents
         .insert("%1".to_string(), rec("%1", "alpha", AgentState::Idle));
     app.agents
-        .insert("%2".to_string(), rec("%2", "alpha", AgentState::Working));
-    // Both idle, but the filter hides one: title must say 1, not 2.
+        .insert("%2".to_string(), rec("%2", "beta", AgentState::Idle));
     app.filter = "bash".to_string();
     app.refresh_filtered();
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -239,6 +240,8 @@ fn title_counts_idle_rows_scoped_to_the_filter() {
     let mut app = app_with_panes();
     app.agents
         .insert("%1".to_string(), rec("%1", "alpha", AgentState::Working));
+    app.agents
+        .insert("%2".to_string(), rec("%2", "beta", AgentState::Working));
     app.refresh_filtered();
     let text = render_lines(&mut app, 140, 20).join("\n");
     assert!(!text.contains("idle"), "phantom idle count:\n{text}");

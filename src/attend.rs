@@ -608,7 +608,11 @@ mod tests {
         assert!(line.contains("2 idle"), "{line}");
         // No idle rows: the counter stays out of the line entirely.
         let busy = vec![rec("%1", AgentState::Working, 0)];
-        assert!(!status_line(&busy, None).contains("idle"), "{}", status_line(&busy, None));
+        assert!(
+            !status_line(&busy, None).contains("idle"),
+            "{}",
+            status_line(&busy, None)
+        );
     }
 
     #[test]
