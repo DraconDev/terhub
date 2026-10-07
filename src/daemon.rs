@@ -1762,6 +1762,7 @@ mod tests {
             false,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state_since, now - 600);
@@ -2516,6 +2517,7 @@ mod tests {
             false,
             now,
             STUCK_SECS,
+            QUIET_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
