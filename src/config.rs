@@ -80,6 +80,10 @@ pub struct AppConfig {
     pub poll_secs: u64,
     pub stuck_secs: u64,
     pub stale_secs: u64,
+    /// Frozen-screen → Idle threshold (`0` disables). A live agent whose
+    /// screen has not changed this long finished; without it, finished
+    /// agents read `working` forever.
+    pub quiet_idle_secs: u64,
     /// Validated `[[command]]` entries (invalid ones become problems).
     pub commands: Vec<CustomCommand>,
     /// Validated `[[profile]]` spawn entries; builtins when none given.

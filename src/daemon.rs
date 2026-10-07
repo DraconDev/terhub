@@ -39,6 +39,13 @@ pub const HOOK_STALE_SECS: u64 = 1800;
 /// not busy.
 pub const STUCK_SECS: u64 = 600;
 
+/// A live agent whose screen has not changed for this long is finished,
+/// not busy. This is the honest signal: a completed turn prints whatever
+/// it prints, and most print nothing that matches an idle pattern, so
+/// without it finished agents read `Working` forever (their REPL keeps
+/// burning CPU, so Stuck never trips either).
+pub const QUIET_IDLE_SECS: u64 = 300;
+
 /// Daemon timing knobs from the `[daemon]` config section (restart to
 /// apply). `stuck_secs = 0` disables stuck detection entirely.
 #[derive(Debug, Clone, Copy)]
@@ -46,6 +53,8 @@ pub struct Tunables {
     pub poll_secs: u64,
     pub stuck_secs: u64,
     pub stale_secs: u64,
+    /// Frozen-screen → Idle threshold (`0` disables).
+    pub quiet_idle_secs: u64,
 }
 
 impl Default for Tunables {
@@ -54,6 +63,7 @@ impl Default for Tunables {
             poll_secs: POLL_SECS,
             stuck_secs: STUCK_SECS,
             stale_secs: HOOK_STALE_SECS,
+            quiet_idle_secs: QUIET_IDLE_SECS,
         }
     }
 }
@@ -64,6 +74,7 @@ impl Tunables {
             poll_secs: cfg.poll_secs.max(1),
             stuck_secs: cfg.stuck_secs,
             stale_secs: cfg.stale_secs.max(1),
+            quiet_idle_secs: cfg.quiet_idle_secs,
         }
     }
 }
