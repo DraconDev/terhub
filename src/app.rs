@@ -3528,6 +3528,33 @@ mod tests {
     }
 
     #[test]
+    fn native_quiet_tracks_screen_change() {
+        let mut app = app_with_panes();
+        let (h1, s1) = app.track_native_quiet("konsole:999:6", "hello", 1000);
+        assert_eq!(s1, 1000);
+        // Same screen keeps the clock; a changed screen restarts it.
+        assert_eq!(
+            app.track_native_quiet("konsole:999:6", "hello", 2000),
+            (h1, s1)
+        );
+        assert_eq!(
+            app.track_native_quiet("konsole:999:6", "hello world", 3000).1,
+            3000
+        );
+        // Spinner frames share the daemon's denoise: no clock restart.
+        let (_, sa) = app.track_native_quiet("konsole:999:6", "⠙ busy", 4000);
+        let (_, sb) = app.track_native_quiet("konsole:999:6", "⠋ busy", 5000);
+        assert_eq!(sa, sb);
+        // Failed capture preserves the clock instead of resetting it.
+        assert_eq!(
+            app.track_native_quiet("konsole:999:6", "", 6000).1,
+            4000
+        );
+        // Unknown ids with no capture stay unknown ("—", not 0s).
+        assert_eq!(app.track_native_quiet("konsole:999:7", "", 6000), (0, 0));
+    }
+
+    #[test]
     fn bulk_targets_prefers_marked_and_skips_unsendable() {
         let mut app = app_with_panes();
         app.native_rows = vec![native_pane()];
