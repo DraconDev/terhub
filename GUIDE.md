@@ -579,9 +579,12 @@ terhub send wezterm:7 "ls"   # --no-submit skips Enter
 In the TUI, native tabs are fetched at startup and on `F5` (the 3s tick
 leaves them alone — tab enumeration is subprocess-heavy) and show under
 `All` only, with the backend as the session (`konsole:1535082:6`). Jump
-switches the terminal's tab and stays open; preview, pause, and custom
-commands work; kill/restart/mark/rename refuse (Konsole exposes no
-tab-close over DBus). Agent badges come from the process tree plus one
+switches the terminal's tab and stays open; on Konsole the jump also
+raises the window through a one-shot KWin script (tab-select alone is
+invisible while Konsole sits behind other windows) — if the raise
+fails the error says the tab was still switched. Preview, pause, and
+custom commands work; kill/restart/mark/rename refuse (Konsole exposes
+no tab-close over DBus). Agent badges come from the process tree plus one
 screen classification at fetch time — shells in those tabs have no hooks,
 so states are screen-truth, frozen until the next fetch. Konsole capture
 is the visible screen (its scrollback offsets are undocumented);
