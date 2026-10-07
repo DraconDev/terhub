@@ -441,6 +441,33 @@ terhub status-line [--pane %N]
   `set -g status-right '#(terhub status-line)'`. Always exits 0 (prints
   `◎ --` when the daemon is down).
 
+## Tray icon (KDE/Plasma)
+
+```sh
+terhub tray
+```
+
+Runs a StatusNotifierItem in the system tray until killed (ctrl-c
+removes the icon). The icon switches to its attention variant when
+something needs you, and the hover tooltip carries the counts:
+
+```
+terhub — 8 need you · 2 idle
+18 tracked · 8 waiting on you · 2 idle
+click to open the hub
+```
+
+KDE's tray cannot draw a numeric badge — the StatusNotifierItem spec
+has no field for one — so the numbers live in the tooltip. Clicking
+opens the hub in a terminal: `konsole`, `foot`, `alacritty`, `kitty`,
+or `xterm`, first one found. Override with `TERMHUB_TERMINAL="… -e"`.
+
+Icons are written to `~/.local/share/icons/hicolor/scalable/apps/` on
+first run, and the shell icon cache is refreshed when the tooling
+exists. A down daemon reads as `terhub — daemon down`, never as a
+misleading zero. It is not started automatically with the daemon — run
+it yourself (or from a systemd user unit) if you want it always there.
+
 ## History: stats, report, activity, timeline
 
 ```sh
@@ -639,6 +666,7 @@ are tmux-backed.
 | `attend [--cycle] [--list]` | Jump to longest-waiting agent |
 | `peek [--plain]` | This window's panes + states |
 | `status-line [--pane P]` | One line for tmux status-right |
+| `tray` | KDE/Plasma tray icon with live counts |
 | `stats [--since S] [--group-by G]` | Time-in-state stats |
 | `report [--since S] [--json\|--markdown]` | All breakdowns + foreground |
 | `activity [--since S] [--kind K] [--json]` | Raw ledger entries |
