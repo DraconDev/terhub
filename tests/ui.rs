@@ -296,6 +296,73 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     );
 }
 
+fn idle_record(pane: &str, session: &str, quiet_age: u64, now: u64) -> terhub::agent::AgentRecord {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    AgentRecord {
+        pane: pane.to_string(),
+        agent: "pi".to_string(),
+        state: AgentState::Idle,
+        source: Source::Proc,
+        summary: "done".to_string(),
+        session: session.to_string(),
+        window: "editor".to_string(),
+        command: "pi".to_string(),
+        updated_at: now,
+        state_since: now - quiet_age,
+        cpu_ticks: 0,
+        cpu_still_since: 0,
+        agent_start: 0,
+        last_turn_secs: 0,
+        screen_hash: 7,
+        quiet_since: now - quiet_age,
+        last_prompt_at: 0,
+        last_prompt: String::new(),
+        handle: String::new(),
+        model: String::new(),
+        ctx_pct: None,
+        reg_pid: 0,
+    }
+}
+
+fn idle_cell_style(grid: &[Vec<(String, Color, Modifier)>], id: &str) -> (Color, Modifier) {
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains("Idle")).unwrap();
+    let ix = hdr[..hdr.find("Idle").unwrap()].chars().count();
+    let row = text.iter().position(|l| l.contains(id)).unwrap();
+    (grid[row][ix].1, grid[row][ix].2)
+}
+
+#[test]
+fn long_idle_tints_idle_cell() {
+    use terhub::agent::now_unix;
+    let mut app = app_with_panes();
+    app.config.idle_warn_style = "bold red".to_string();
+    let now = now_unix();
+    app.agents.insert(
+        "%1".to_string(),
+        idle_record("%1", "alpha", 7 * 3600, now),
+    );
+    app.agents.insert(
+        "%2".to_string(),
+        idle_record("%2", "beta", 3600, now),
+    );
+    // A day-scale idle tints under the default threshold; an hour doesn't.
+    let grid = render_grid(&mut app, 140, 20);
+    let (fg, mods) = idle_cell_style(&grid, "%1");
+    assert_eq!(fg, Color::Red, "long idle missing warn color");
+    assert!(mods.contains(Modifier::BOLD), "long idle missing warn bold");
+    let (fg, _) = idle_cell_style(&grid, "%2");
+    assert_ne!(fg, Color::Red, "fresh idle wrongly warned");
+    // idle_flag_secs = 0 is the off switch, like stuck_secs = 0.
+    app.config.idle_flag_secs = 0;
+    let grid = render_grid(&mut app, 140, 20);
+    let (fg, _) = idle_cell_style(&grid, "%1");
+    assert_ne!(fg, Color::Red, "idle_flag_secs = 0 still warns");
+}
+
 #[test]
 fn agent_color_and_idle_warn_reach_cells() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
