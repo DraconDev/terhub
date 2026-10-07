@@ -164,7 +164,8 @@ status bar, no modes except small popups:
   can't look busy forever; a changed summary line still resets it.
   Unclaimed panes fall back to tmux's window-activity age. Agent cells
   share one color per agent name (see `[style]`), and `Idle` tints when
-  a row is `working` but quiet past `stuck_secs` — the stuck smell,
+  a row is `working` but quiet past `stuck_secs` — the stuck smell —
+  or `idle` but quiet past `idle_flag_secs` (default 6h, `0` disables),
   without relabeling the state.
 
 Everything except arrows/mouse/Tab/Esc/Alt+digits is rebindable (see
@@ -223,6 +224,7 @@ color_agents = true  # hash-color Agent cells so one agent reads as a group
 agent_palette = []   # style specs for the hash; empty = theme default
 idle_warn = true     # tint Idle when working + quiet past stuck_secs
 idle_warn_style = "bold yellow"
+idle_flag_secs = 21600  # also tint Idle when idle + quiet past this (0 disables)
 
 [style.agents]        # per-agent overrides (style specs)
 pi = "cyan"
