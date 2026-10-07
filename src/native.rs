@@ -311,8 +311,61 @@ fn konsole_send(local: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
+/// One-shot KWin script: activate the window of `pid`, preferring the
+/// one whose caption carries the tab `title` (multi-window Konsole
+/// shares one pid, so the title picks the owning window).
+fn kwin_focus_script(pid: u32, title: &str) -> String {
+    let want = serde_json::to_string(title).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        "const wins = workspace.windowList();\n\
+         let any = null, best = null;\n\
+         for (const w of wins) {{\n\
+         if (w.pid !== {pid}) continue;\n\
+         any = w;\n\
+         if (w.caption.indexOf({want}) !== -1) best = w;\n\
+         }}\n\
+         const t = best || any;\n\
+         if (t) {{ t.minimized = false; workspace.activeWindow = t; }}\n"
+    )
+}
+
+/// Raise a window by PID through KWin scripting (Wayland has no
+/// xdotool). The script file is removed afterwards; non-Plasma
+/// compositors fail fast at loadScript.
+fn kwin_activate(pid: u32, title: &str) -> Result<()> {
+    let path = std::env::temp_dir().join(format!("terhub-kwin-{pid}.js"));
+    std::fs::write(&path, kwin_focus_script(pid, title))?;
+    let arg = path.to_string_lossy().to_string();
+    let started = qdbus(
+        "org.kde.KWin",
+        "/Scripting",
+        "org.kde.kwin.Scripting.loadScript",
+        &[&arg, "terhub-focus"],
+    )
+    .and_then(|_| {
+        qdbus(
+            "org.kde.KWin",
+            "/Scripting",
+            "org.kde.kwin.Scripting.start",
+            &[],
+        )
+    });
+    let _ = qdbus(
+        "org.kde.KWin",
+        "/Scripting",
+        "org.kde.kwin.Scripting.unloadScript",
+        &["terhub-focus"],
+    );
+    let _ = std::fs::remove_file(&path);
+    started.map(|_| ())
+}
+
 fn konsole_focus(local: &str) -> Result<()> {
     let (service, sess) = konsole_target(local)?;
+    let kpid: u32 = local
+        .split_once(':')
+        .and_then(|(k, _)| k.parse().ok())
+        .context("bad konsole id (want <kpid>:<sess>)")?;
     // Sessions hang off the service; only the jump needs the owning window.
     let xml = qdbus(
         &service,
@@ -335,6 +388,19 @@ fn konsole_focus(local: &str) -> Result<()> {
                 "org.kde.konsole.Window.setCurrentSession",
                 &[&sess.to_string()],
             )?;
+            // Selecting the tab is invisible while Konsole sits behind
+            // other windows, so the jump also raises it.
+            let title = qdbus(
+                &service,
+                &format!("/Sessions/{sess}"),
+                "org.kde.konsole.Session.title",
+                &["1"],
+            )
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default();
+            kwin_activate(kpid, &title).with_context(|| {
+                format!("konsole tab {sess} selected but window raise failed")
+            })?;
             return Ok(());
         }
     }
