@@ -716,6 +716,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     // Filtered to one session: its column would repeat on every row.
     let show_session = app.side_session().is_none();
     let needy = app.visible_needy();
+    let idle = app.visible_idle();
     let mut title = format!(" terhub — {} pane(s)", app.filtered.len());
     if !app.agents_live {
         title.push_str(" · daemon down");
@@ -725,6 +726,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     }
     if needy > 0 {
         title.push_str(&format!(" · {needy} need you"));
+    }
+    if idle > 0 {
+        title.push_str(&format!(" · {idle} idle"));
     }
     if !app.marked.is_empty() {
         title.push_str(&format!(" · {} marked", app.marked.len()));

@@ -182,10 +182,22 @@ pub fn status_line(snapshot: &[AgentRecord], pane: Option<&str>) -> String {
                 .iter()
                 .filter(|a| a.state.needs_attention())
                 .count();
-            if needy > 0 {
-                format!("◉ {needy} need you")
+            // Idle is disjoint from needy, so the two counters read
+            // together: how much is blocked vs. how much is finished.
+            // Omitted at zero — a quiet fleet shouldn't grow the line.
+            let idle = snapshot
+                .iter()
+                .filter(|a| a.state == AgentState::Idle)
+                .count();
+            let idle_note = if idle > 0 {
+                format!(" · {idle} idle")
             } else {
-                format!("◎ {} agent(s)", snapshot.len())
+                String::new()
+            };
+            if needy > 0 {
+                format!("◉ {needy} need you{idle_note}")
+            } else {
+                format!("◎ {} agent(s){idle_note}", snapshot.len())
             }
         }
     }
