@@ -446,10 +446,11 @@ pub fn run() -> anyhow::Result<()> {
     println!("terhub tray registered — ctrl-c to remove");
 
     loop {
-        let next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
+        let mut next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
             Ok(snap) => TrayView::from_agents(&snap.agents),
             Err(_) => TrayView::disconnected(),
         };
+        next.hub_open = read_hub_session().is_some();
         if let Ok(mut v) = view.lock() {
             *v = next;
         }
@@ -527,6 +528,70 @@ mod tests {
             "{}",
             calm.description()
         );
+    }
+
+    #[test]
+    fn open_hub_gets_its_own_icon() {
+        let v = TrayView::from_agents(&[rec(AgentState::Working)]);
+        assert_eq!(v.icon_name(), "terhub");
+        let mut live = v.clone();
+        live.hub_open = true;
+        assert_eq!(live.icon_name(), "terhub-live");
+        assert!(
+            live.description().contains("focus the open hub"),
+            "{}",
+            live.description()
+        );
+    }
+
+    #[test]
+    fn attention_outranks_the_live_badge() {
+        // Both facts matter, but "needs you" is the one that must change
+        // the icon: the running hub is still discoverable from the title.
+        let v = TrayView::from_agents(&[rec(AgentState::Waiting)]);
+        assert_eq!(v.icon_name(), "terhub-attention");
+        let mut live = v;
+        live.hub_open = true;
+        assert_eq!(live.icon_name(), "terhub-attention");
+        assert!(live.needs_attention());
+    }
+
+    #[test]
+    fn session_file_round_trips_and_ignores_dead_pids() {
+        let dir = std::env::temp_dir().join(format!("terhub-hubsess-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Point the helper at a scratch dir for the duration.
+        unsafe { std::env::set_var("TERHUB_RUNTIME_DIR", &dir) };
+
+        let session = HubSession {
+            pid: std::process::id(),
+            pane: Some("%42".into()),
+            tty: Some("/dev/pts/7".into()),
+        };
+        std::fs::write(
+            hub_session_path(),
+            serde_json::to_string(&session).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(read_hub_session(), Some(session));
+
+        // A hub that was killed leaves the file behind: it must not read
+        // as open forever.
+        std::fs::write(
+            hub_session_path(),
+            serde_json::to_string(&HubSession {
+                pid: 999_999_999,
+                pane: Some("%9".into()),
+                tty: None,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(read_hub_session(), None);
+        assert!(!hub_session_path().exists(), "stale file should be cleared");
+
+        unsafe { std::env::remove_var("TERHUB_RUNTIME_DIR") };
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

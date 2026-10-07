@@ -2118,6 +2118,8 @@ fn run_tui() -> Result<Option<TuiExit>> {
     let tmux = Tmux::new()?;
     let mut app = App::new(cfg);
     app.own_pane = std::env::var("TMUX_PANE").ok();
+    // Let a tray icon find this window instead of opening a second hub.
+    let _hub_session = terhub::tray::HubSessionGuard::publish();
     if let Some(first) = problems.first() {
         app.status = Some(format!("config: {first}"));
     }
