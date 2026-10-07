@@ -571,11 +571,7 @@ mod tests {
             pane: Some("%42".into()),
             tty: Some("/dev/pts/7".into()),
         };
-        std::fs::write(
-            hub_session_path(),
-            serde_json::to_string(&session).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(hub_session_path(), serde_json::to_string(&session).unwrap()).unwrap();
         assert_eq!(read_hub_session(), Some(session));
 
         // A hub that was killed leaves the file behind: it must not read
