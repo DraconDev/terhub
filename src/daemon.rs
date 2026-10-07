@@ -984,10 +984,7 @@ fn merge_record_owned(
     // silence a question. The summary is kept — it is the question you
     // would have come back to read — and being stable it does not feed
     // the quiet clock.
-    if final_state == Waiting
-        && waiting_idle_secs > 0
-        && quiet_for >= waiting_idle_secs
-    {
+    if final_state == Waiting && waiting_idle_secs > 0 && quiet_for >= waiting_idle_secs {
         final_state = Idle;
         since = match carried {
             Some(o) if o.state == Idle => o.state_since,
@@ -2061,7 +2058,11 @@ mod tests {
             0,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Waiting, "0 must disable the demotion");
+        assert_eq!(
+            rec.state,
+            AgentState::Waiting,
+            "0 must disable the demotion"
+        );
     }
 
     #[test]
