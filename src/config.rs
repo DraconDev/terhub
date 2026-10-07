@@ -1207,6 +1207,23 @@ mod tests {
     }
 
     #[test]
+    fn style_section_parses_idle_flag_with_default() {
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("style.toml");
+        std::fs::write(&path, "[style]\nidle_flag_secs = 60\n").unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert!(problems.is_empty());
+        assert_eq!(cfg.idle_flag_secs, 60);
+        assert!(cfg.idle_warn);
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, "[style]\n").unwrap();
+        let (cfg, _) = load_config_report(Some(path.clone()));
+        assert_eq!(cfg.idle_flag_secs, DEFAULT_IDLE_FLAG_SECS);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
     fn zero_poll_and_stale_fall_back_with_problems() {
         let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();

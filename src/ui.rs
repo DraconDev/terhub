@@ -700,14 +700,13 @@ fn idle_cell(
     };
     let warn = cfg.idle_warn
         && age.is_some_and(|a| {
-            matches!(
-                rec.map(|r| r.state),
-                Some(crate::agent::AgentState::Working)
-            ) && cfg.stuck_secs > 0
-                && a > cfg.stuck_secs
-                || matches!(rec.map(|r| r.state), Some(crate::agent::AgentState::Idle))
+            let state = rec.map(|r| r.state);
+            (matches!(state, Some(crate::agent::AgentState::Working))
+                && cfg.stuck_secs > 0
+                && a > cfg.stuck_secs)
+                || (matches!(state, Some(crate::agent::AgentState::Idle))
                     && cfg.idle_flag_secs > 0
-                    && a > cfg.idle_flag_secs
+                    && a > cfg.idle_flag_secs)
         });
     (text, warn)
 }
