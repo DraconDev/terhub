@@ -341,14 +341,10 @@ fn long_idle_tints_idle_cell() {
     let mut app = app_with_panes();
     app.config.idle_warn_style = "bold red".to_string();
     let now = now_unix();
-    app.agents.insert(
-        "%1".to_string(),
-        idle_record("%1", "alpha", 7 * 3600, now),
-    );
-    app.agents.insert(
-        "%2".to_string(),
-        idle_record("%2", "beta", 3600, now),
-    );
+    app.agents
+        .insert("%1".to_string(), idle_record("%1", "alpha", 7 * 3600, now));
+    app.agents
+        .insert("%2".to_string(), idle_record("%2", "beta", 3600, now));
     // A day-scale idle tints under the default threshold; an hour doesn't.
     let grid = render_grid(&mut app, 140, 20);
     let (fg, mods) = idle_cell_style(&grid, "%1");
