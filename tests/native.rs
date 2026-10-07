@@ -133,8 +133,7 @@ fn native_backends_against_fakes() {
     // Konsole focus also raises the window through a one-shot KWin
     // script (selecting the tab alone leaves Konsole behind everything).
     assert!(
-        log_text.contains("/Scripting loadScript")
-            && log_text.contains("terhub-focus"),
+        log_text.contains("/Scripting loadScript") && log_text.contains("terhub-focus"),
         "missing KWin raise:\n{log_text}"
     );
     assert!(

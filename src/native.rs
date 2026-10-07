@@ -398,9 +398,8 @@ fn konsole_focus(local: &str) -> Result<()> {
             )
             .map(|t| t.trim().to_string())
             .unwrap_or_default();
-            kwin_activate(kpid, &title).with_context(|| {
-                format!("konsole tab {sess} selected but window raise failed")
-            })?;
+            kwin_activate(kpid, &title)
+                .with_context(|| format!("konsole tab {sess} selected but window raise failed"))?;
             return Ok(());
         }
     }
