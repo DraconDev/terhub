@@ -448,8 +448,15 @@ terhub tray
 ```
 
 Runs a StatusNotifierItem in the system tray until killed (ctrl-c
-removes the icon). The icon switches to its attention variant when
-something needs you, and the hover tooltip carries the counts:
+removes the icon). Three icon states:
+
+| Icon | Meaning |
+|---|---|
+| `terhub` | daemon up, nothing needs you, no hub open |
+| `terhub-attention` | something needs you (wins over `terhub-live`) |
+| `terhub-live` | a hub is already open — click focuses it |
+
+The hover tooltip carries the counts:
 
 ```
 terhub — 8 need you · 2 idle
@@ -457,16 +464,23 @@ terhub — 8 need you · 2 idle
 click to open the hub
 ```
 
-KDE's tray cannot draw a numeric badge — the StatusNotifierItem spec
-has no field for one — so the numbers live in the tooltip. Clicking
-opens the hub in a terminal: `konsole`, `foot`, `alacritty`, `kitty`,
-or `xterm`, first one found. Override with `TERMHUB_TERMINAL="… -e"`.
+**Clicking** never opens a second hub. If one is already running the
+icon focuses it — `tmux switch-client` on its pane when it runs in
+tmux, otherwise the terminal window owning its tty (via `xdotool`).
+With no hub open, it starts one: `konsole`, `foot`, `alacritty`,
+`kitty`, or `xterm`, first one found. Override with
+`TERMHUB_TERMINAL="… -e"`.
 
-Icons are written to `~/.local/share/icons/hicolor/scalable/apps/` on
-first run, and the shell icon cache is refreshed when the tooling
-exists. A down daemon reads as `terhub — daemon down`, never as a
-misleading zero. It is not started automatically with the daemon — run
-it yourself (or from a systemd user unit) if you want it always there.
+A running TUI advertises itself in
+`$XDG_RUNTIME_DIR/terhub/hub-session.json` and clears it on exit; a
+file left behind by a killed hub is ignored (its pid is checked) and
+removed on sight.
+
+KDE's tray cannot draw a numeric badge — the StatusNotifierItem spec
+has no field for one — so the numbers live in the tooltip. A down
+daemon reads as `terhub — daemon down`, never as a misleading zero. It
+is not started automatically with the daemon — run it yourself (or
+from a systemd user unit) if you want it always there.
 
 ## History: stats, report, activity, timeline
 
