@@ -537,6 +537,10 @@ pub struct App {
     pub native_rows: Vec<Pane>,
     /// Cached native agent records, merged into `agents` on refresh.
     pub native_agents: Vec<AgentRecord>,
+    /// Native quiet clocks by tab id: (screen hash, since). The TUI owns
+    /// them (the daemon never fetches native tabs); first sighting starts
+    /// fresh, like a daemon restart.
+    native_quiet: HashMap<String, (u64, u64)>,
     /// Hosts modal cursor.
     pub hosts_selected: usize,
     /// Hosts modal first visible row.
@@ -595,6 +599,7 @@ impl App {
             fleet_fetched_at: None,
             native_rows: Vec::new(),
             native_agents: Vec::new(),
+            native_quiet: HashMap::new(),
             hosts_selected: 0,
             hosts_scroll: 0,
             preview_cpu_prev: None,
@@ -774,6 +779,22 @@ impl App {
         self.merge_caches();
     }
 
+    /// Advance one native tab's quiet clock over its capture. Same
+    /// semantics as the daemon's poll clock: same denoised hash keeps the
+    /// still-time, a new hash restarts it, an empty capture (fetch
+    /// failure) preserves it — or stays unknown for never-seen tabs.
+    fn track_native_quiet(&mut self, id: &str, screen: &str, now: u64) -> (u64, u64) {
+        let hash = if screen.is_empty() {
+            None
+        } else {
+            Some(crate::daemon::screen_hash(screen))
+        };
+        let prev = self.native_quiet.get(id).copied().unwrap_or((0, 0));
+        let next = crate::daemon::track_quiet(prev, hash, now);
+        self.native_quiet.insert(id.to_string(), next);
+        next
+    }
+
     /// Fetch native terminal tabs into the table (startup + F5; replaces
     /// the cache). Agent state is fetch-time: proc identity plus one
     /// screen classification, frozen until the next fetch.
@@ -825,6 +846,8 @@ impl App {
                 // sits on keystrokes: waiting, same as the daemon reads it.
                 let editor_wait = !fg_comm.is_empty() && crate::proc::is_editor_name(&fg_comm);
                 let screen = crate::native::capture(&tab.id, 60).unwrap_or_default();
+                let (screen_hash, quiet_since) =
+                    self.track_native_quiet(&tab.id, &screen, now);
                 let classified = classify_screen(&compiled, &command, &screen);
                 let (state, summary, source) = match classified {
                     Some(h) => (h.state, h.summary, Source::Screen),
@@ -854,8 +877,8 @@ impl App {
                     cpu_still_since: 0,
                     agent_start: hit.start,
                     last_turn_secs: 0,
-                    screen_hash: 0,
-                    quiet_since: 0,
+                    screen_hash,
+                    quiet_since,
                     // Native tabs have no hooks: prompts never land here.
                     last_prompt_at: 0,
                     last_prompt: String::new(),

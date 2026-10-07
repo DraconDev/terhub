@@ -754,14 +754,14 @@ fn denoise_screen(s: &str) -> String {
 /// spinner frames and counter ticks don't count as screen changes.
 /// (One break: hashes from before the denoise upgrade never match, so
 /// every quiet clock restarts once on the first post-upgrade poll.)
-fn screen_hash(s: &str) -> u64 {
+pub(crate) fn screen_hash(s: &str) -> u64 {
     crate::fnv1a(&denoise_screen(s))
 }
 
 /// Advance the visible-quiet clock: same screen hash keeps the old
 /// still-time, a new hash restarts it, and no capture (`None`) preserves
 /// the clock rather than resetting it on a transient failure.
-fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
+pub(crate) fn track_quiet(prev: (u64, u64), hash: Option<u64>, now: u64) -> (u64, u64) {
     match hash {
         None => prev,
         Some(h) if h == prev.0 => prev,
