@@ -18,12 +18,13 @@ const SNI_PATH: &str = "/StatusNotifierItem";
 
 /// Icon themes only resolve names they have files for, so the SVGs are
 /// written into the user's icon dir on first run.
-const ICONS: [(&str, &str); 2] = [
+const ICONS: [(&str, &str); 3] = [
     ("terhub.svg", include_str!("../assets/terhub.svg")),
     (
         "terhub-attention.svg",
         include_str!("../assets/terhub-attention.svg"),
     ),
+    ("terhub-live.svg", include_str!("../assets/terhub-live.svg")),
 ];
 
 /// What the tray shows, derived from one daemon snapshot.
@@ -34,6 +35,8 @@ pub struct TrayView {
     pub total: usize,
     /// True when the daemon could not be reached.
     pub connected: bool,
+    /// A live hub TUI the click should focus instead of opening another.
+    pub hub_open: bool,
 }
 
 impl TrayView {
@@ -80,9 +83,13 @@ impl TrayView {
             "{} tracked · {} waiting on you · {} idle",
             self.total, self.needy, self.idle
         );
-        if self.needy > 0 {
-            d.push_str("\nclick to open the hub");
-        }
+        d.push_str(if self.hub_open {
+            "\nclick to focus the open hub"
+        } else if self.needy > 0 {
+            "\nclick to open the hub"
+        } else {
+            "\nclick to open the hub"
+        });
         d
     }
 
@@ -91,9 +98,13 @@ impl TrayView {
         self.connected && self.needy > 0
     }
 
+    /// Attention wins over "a hub is already open": needing you is the
+    /// more urgent fact, and the live badge rides along on the tooltip.
     pub fn icon_name(&self) -> &'static str {
         if self.needs_attention() {
             "terhub-attention"
+        } else if self.hub_open {
+            "terhub-live"
         } else {
             "terhub"
         }
@@ -107,6 +118,7 @@ impl Default for TrayView {
             idle: 0,
             total: 0,
             connected: true,
+            hub_open: false,
         }
     }
 }
@@ -154,6 +166,125 @@ fn refresh_icon_cache() {
             return;
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Running-hub advertisement
+// ---------------------------------------------------------------------------
+
+/// A live `terhub` TUI, advertised so the tray can focus it instead of
+/// starting a second one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HubSession {
+    pub pid: u32,
+    /// tmux pane id, when the TUI runs inside tmux. This is the reliable
+    /// way back to it: `switch-client` lands the user on the pane.
+    pub pane: Option<String>,
+    /// Controlling terminal, used as a fallback for window activation.
+    pub tty: Option<String>,
+}
+
+pub const HUB_SESSION_FILE: &str = "hub-session.json";
+
+pub fn hub_session_path() -> PathBuf {
+    crate::daemon::runtime_dir().join(HUB_SESSION_FILE)
+}
+
+fn process_alive(pid: u32) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// Read the advertised hub, ignoring one whose process is gone. A TUI
+/// that was killed rather than quit leaves the file behind, and a stale
+/// pid must not make the tray think a hub is open forever.
+pub fn read_hub_session() -> Option<HubSession> {
+    let raw = std::fs::read_to_string(hub_session_path()).ok()?;
+    let s: HubSession = serde_json::from_str(&raw).ok()?;
+    if !process_alive(s.pid) {
+        let _ = std::fs::remove_file(hub_session_path());
+        return None;
+    }
+    Some(s)
+}
+
+/// Removes the advertisement when the TUI exits.
+pub struct HubSessionGuard;
+
+impl HubSessionGuard {
+    /// Advertise this process as the running hub.
+    pub fn publish() -> Self {
+        let session = HubSession {
+            pid: std::process::id(),
+            pane: std::env::var("TMUX_PANE").ok().filter(|p| !p.is_empty()),
+            tty: std::process::var("TTY").ok().or_else(|| {
+                // /proc/self/fd/0 points at the controlling terminal.
+                std::fs::read_link("/proc/self/fd/0")
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .filter(|s| s.starts_with('/dev/'))
+            }),
+        };
+        if let Ok(json) = serde_json::to_string(&session) {
+            let _ = std::fs::write(hub_session_path(), json);
+        }
+        HubSessionGuard
+    }
+}
+
+impl Drop for HubSessionGuard {
+    fn drop(&mut self) {
+        // Only clear it if it is still ours: a second hub may have
+        // started after this one exited.
+        if let Some(s) = read_hub_session()
+            && s.pid == std::process::id()
+        {
+            let _ = std::fs::remove_file(hub_session_path());
+        }
+    }
+}
+
+/// Bring the user back to an already-running hub. Returns false when we
+/// have no addressable way to focus it, so the caller can avoid spawning
+/// a duplicate TUI instead.
+pub fn focus_hub(s: &HubSession) -> bool {
+    if let Some(pane) = &s.pane
+        && !pane.is_empty()
+    {
+        if let Ok(tmux) = crate::tmux::Tmux::new()
+            && tmux.focus_pane(pane).is_ok()
+        {
+            return true;
+        }
+    }
+    // Not in tmux (or the jump failed): raise the terminal window that
+    // owns the TTY.
+    if let Some(tty) = &s.tty
+        && !tty.is_empty()
+    {
+        let ok = std::process::Command::new("xdotool")
+            .args(["search", "--tty", tty])
+            .output()
+            .map(|o| {
+                let ids: Vec<String> = String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                ids.iter().any(|id| {
+                    std::process::Command::new("xdotool")
+                        .args(["windowactivate", "--sync", id])
+                        .status()
+                        .map(|s| s.success())
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        if ok {
+            return true;
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +398,14 @@ impl Tray {
         false
     }
 
+    /// Primary click: go back to the hub that is already open, or open
+    /// one. Never both — a second TUI would fight the first for the pane.
     fn activate(&self) {
+        if let Some(session) = read_hub_session()
+            && focus_hub(&session)
+        {
+            return;
+        }
         Self::open_hub();
     }
 
