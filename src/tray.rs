@@ -86,8 +86,6 @@ impl TrayView {
         );
         d.push_str(if self.hub_open {
             "\nclick to focus the open hub"
-        } else if self.needy > 0 {
-            "\nclick to open the hub"
         } else {
             "\nclick to open the hub"
         });
@@ -250,12 +248,10 @@ impl Drop for HubSessionGuard {
 pub fn focus_hub(s: &HubSession) -> bool {
     if let Some(pane) = &s.pane
         && !pane.is_empty()
+        && let Ok(tmux) = crate::tmux::Tmux::new()
+        && tmux.focus_pane(pane).is_ok()
     {
-        if let Ok(tmux) = crate::tmux::Tmux::new()
-            && tmux.focus_pane(pane).is_ok()
-        {
-            return true;
-        }
+        return true;
     }
     // Not in tmux (or the jump failed): raise the terminal window that
     // owns the TTY.
