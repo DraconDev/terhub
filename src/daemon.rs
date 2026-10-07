@@ -1838,7 +1838,11 @@ mod tests {
             QUIET_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Working, "silent tool run read as idle");
+        assert_eq!(
+            rec.state,
+            AgentState::Working,
+            "silent tool run read as idle"
+        );
     }
 
     #[test]
