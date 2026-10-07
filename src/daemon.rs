@@ -1798,8 +1798,8 @@ mod tests {
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle, "frozen screen read as busy");
         // A quiet flip must leave the summary empty: the poller's own
-// // track_quiet_merged treats a changed non-empty summary as activity and
-// // would reset the clock the flip just read.
+// track_quiet_merged treats a changed non-empty summary as activity and
+// would reset the clock the flip just read.
 assert!(rec.summary.is_empty(), "{:?}", rec.summary);
         assert_eq!(rec.state_since, now);
         // The whole working stretch is the completed turn.
