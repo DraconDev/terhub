@@ -289,7 +289,14 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
    `working`. Its subtree CPU is tracked: `working` with no CPU for
    `stuck_secs` (default 10 minutes) becomes `stuck` (needs you), clearing
    the moment it computes again (`stuck_secs = 0` disables stuck
-   detection). Fresh hooks are never second-guessed this way.
+   detection). A live agent whose **screen has not changed** for
+   `quiet_idle_secs` (default 5 minutes) becomes `idle` — a finished turn
+   prints whatever it prints, and most print nothing that matches an idle
+   pattern, so without this they read `working` forever (their REPL keeps
+   burning CPU, so stuck detection never trips either). The screen moving
+   again flips them straight back to `working`; `0` disables it. Stuck is
+   still CPU-based, so it outranks the quiet flip and an `idle` row can
+   still escalate to `stuck`. Fresh hooks are never second-guessed this way.
 3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse
    match the pane's command and recent screen text. The freshest matching
    line decides, so current output overrides stale scrollback; `waiting`/
