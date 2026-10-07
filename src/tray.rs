@@ -287,7 +287,7 @@ pub fn run() -> anyhow::Result<()> {
     let tray = Tray {
         view: Arc::clone(&view),
     };
-    conn.request_name(&unique)?;
+    conn.request_name(unique.as_str())?;
     // Export before registering: the watcher introspects the name as
     // soon as Register returns, and finds nothing if we register first.
     conn.object_server().at(SNI_PATH, tray)?;
