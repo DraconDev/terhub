@@ -197,6 +197,54 @@ fn title_needy_counts_visible_rows_only() {
 }
 
 #[test]
+fn title_counts_idle_rows_scoped_to_the_filter() {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    let mut app = app_with_panes();
+    let rec = |pane: &str, session: &str, state: AgentState| AgentRecord {
+        pane: pane.to_string(),
+        agent: "pi".to_string(),
+        state,
+        source: Source::Proc,
+        summary: String::new(),
+        session: session.to_string(),
+        window: "editor".to_string(),
+        command: "pi".to_string(),
+        updated_at: 1,
+        state_since: 1,
+        cpu_ticks: 0,
+        cpu_still_since: 0,
+        agent_start: 0,
+        last_turn_secs: 0,
+        screen_hash: 0,
+        quiet_since: 1,
+        last_prompt_at: 0,
+        last_prompt: String::new(),
+        handle: String::new(),
+        model: String::new(),
+        ctx_pct: None,
+        reg_pid: 0,
+    };
+    app.agents
+        .insert("%1".to_string(), rec("%1", "alpha", AgentState::Idle));
+    app.agents
+        .insert("%2".to_string(), rec("%2", "alpha", AgentState::Working));
+    // Both idle, but the filter hides one: title must say 1, not 2.
+    app.filter = "bash".to_string();
+    app.refresh_filtered();
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(text.contains("1 idle"), "wrong idle count:\n{text}");
+    assert!(!text.contains("2 idle"), "global count leaked:\n{text}");
+
+    // Nothing idle: the segment disappears rather than reading "0 idle".
+    let mut app = app_with_panes();
+    app.agents
+        .insert("%1".to_string(), rec("%1", "alpha", AgentState::Working));
+    app.refresh_filtered();
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(!text.contains("idle"), "phantom idle count:\n{text}");
+}
+
+#[test]
 fn proc_source_and_stuck_state_render() {
     use terhub::agent::{AgentRecord, AgentState, Source};
     let mut app = app_with_panes();
