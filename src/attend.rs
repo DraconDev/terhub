@@ -112,16 +112,19 @@ pub fn peek_report(
         .count();
     let idle = rows
         .iter()
-        .filter(|r| r.agent.as_ref().is_some_and(|a| a.state == AgentState::Idle))
+        .filter(|r| {
+            r.agent
+                .as_ref()
+                .is_some_and(|a| a.state == AgentState::Idle)
+        })
         .count();
     let idle_note = if idle > 0 {
         format!(", {idle} idle")
     } else {
         String::new()
     };
-    let mut out = format!(
-        "{session}:{window} — {total_panes} pane(s), {needy} need you{idle_note}\n"
-    );
+    let mut out =
+        format!("{session}:{window} — {total_panes} pane(s), {needy} need you{idle_note}\n");
     let mut newest: Option<(&str, u64)> = None;
     for row in rows {
         let mark = if row.pane.active { "*" } else { " " };
