@@ -1069,10 +1069,11 @@ pub fn default_config_text() -> String {
     }
     out.push_str("\n[notifications]\nenabled = true\n");
     out.push_str(&format!(
-        "\n[daemon]\n# Restart the daemon to apply. stuck_secs = 0 disables stuck detection.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\n",
+        "\n[daemon]\n# Restart the daemon to apply. stuck_secs = 0 disables stuck detection.\n# quiet_idle_secs = 0 disables frozen-screen → idle.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\nquiet_idle_secs = {}\n",
         crate::daemon::POLL_SECS,
         crate::daemon::STUCK_SECS,
-        crate::daemon::HOOK_STALE_SECS
+        crate::daemon::HOOK_STALE_SECS,
+        crate::daemon::QUIET_IDLE_SECS
     ));
     out.push_str(
         "\n# Custom pane commands (key must not collide with a built-in):\n# [[command]]\n# name = \"git status\"\n# key = \"G\"\n# run = \"git -C {dir} status -sb\"\n",
@@ -1216,6 +1217,7 @@ mod tests {
         assert_eq!(cfg.stuck_secs, 60);
         assert_eq!(cfg.poll_secs, crate::daemon::POLL_SECS);
         assert_eq!(cfg.stale_secs, crate::daemon::HOOK_STALE_SECS);
+        assert_eq!(cfg.quiet_idle_secs, crate::daemon::QUIET_IDLE_SECS);
         std::fs::remove_file(path).ok();
     }
 

@@ -218,6 +218,7 @@ enabled = true
 poll_secs = 2        # re-poll cadence (restart daemon to apply)
 stuck_secs = 600     # still-CPU → stuck (0 disables)
 stale_secs = 1800    # evidence staleness for carry + hook lapse
+quiet_idle_secs = 300 # frozen screen → idle (0 disables)
 
 [style]
 color_agents = true  # hash-color Agent cells so one agent reads as a group
