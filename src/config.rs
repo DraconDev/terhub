@@ -118,6 +118,7 @@ impl Default for AppConfig {
             poll_secs: crate::daemon::POLL_SECS,
             stuck_secs: crate::daemon::STUCK_SECS,
             stale_secs: crate::daemon::HOOK_STALE_SECS,
+            quiet_idle_secs: crate::daemon::QUIET_IDLE_SECS,
             commands: Vec::new(),
             profiles: builtin_profiles(),
             templates: builtin_templates(),
@@ -532,6 +533,8 @@ struct DaemonSection {
     stuck_secs: u64,
     #[serde(default = "default_stale_secs")]
     stale_secs: u64,
+    #[serde(default = "default_quiet_idle_secs")]
+    quiet_idle_secs: u64,
 }
 
 impl Default for DaemonSection {
@@ -540,6 +543,7 @@ impl Default for DaemonSection {
             poll_secs: default_poll_secs(),
             stuck_secs: default_stuck_secs(),
             stale_secs: default_stale_secs(),
+            quiet_idle_secs: default_quiet_idle_secs(),
         }
     }
 }
@@ -554,6 +558,10 @@ fn default_stuck_secs() -> u64 {
 
 fn default_stale_secs() -> u64 {
     crate::daemon::HOOK_STALE_SECS
+}
+
+fn default_quiet_idle_secs() -> u64 {
+    crate::daemon::QUIET_IDLE_SECS
 }
 
 #[derive(Debug, Deserialize)]
@@ -860,6 +868,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         cfg.poll_secs = crate::daemon::POLL_SECS;
     }
     cfg.stuck_secs = file.daemon.stuck_secs;
+    cfg.quiet_idle_secs = file.daemon.quiet_idle_secs;
     cfg.stale_secs = file.daemon.stale_secs;
     if cfg.stale_secs == 0 {
         problems.push(format!(

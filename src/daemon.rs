@@ -825,6 +825,7 @@ fn merge_record(
         is_editor_command(&pane.command),
         now,
         stuck_secs,
+        QUIET_IDLE_SECS,
     )
 }
 
@@ -850,6 +851,7 @@ fn merge_record_owned(
     has_editor: bool,
     now: u64,
     stuck_secs: u64,
+    quiet_idle_secs: u64,
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Idle, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
@@ -918,7 +920,9 @@ fn merge_record_owned(
     };
     let mut final_state = state;
     // stuck_secs = 0 disables stuck detection (the user's off switch).
-    if final_state == Working
+    // Idle qualifies too: Stuck is decided by CPU, and an Idle row reached
+    // by a completion pattern can hang afterwards just the same.
+    if matches!(final_state, Working | Idle)
         && stuck_secs > 0
         && proc_hit.is_some()
         && still > 0
@@ -935,6 +939,28 @@ fn merge_record_owned(
             "no cpu for {}",
             crate::history::fmt_dur(now.saturating_sub(still))
         );
+    }
+    // Quiescence is evidence in its own right. A live process whose screen
+    // has not moved is finished: most agents print no completion line any
+    // idle pattern matches, and their REPL keeps burning CPU so Stuck never
+    // trips either. Text stays empty — `fallback_summary_for` fills Idle
+    // rows with the freshest screen line, which is the completion text.
+    // After the Stuck block so a real hang still wins.
+    let quiet_for = carried
+        .map(|o| o.quiet_since)
+        .filter(|q| *q > 0)
+        .map(|q| now.saturating_sub(q))
+        .unwrap_or(0);
+    if final_state == Working
+        && quiet_idle_secs > 0
+        && quiet_for >= quiet_idle_secs
+    {
+        final_state = Idle;
+        since = match carried {
+            Some(o) if o.state == Idle => o.state_since,
+            _ => now,
+        };
+        summary = format!("quiet {}", crate::history::fmt_dur(quiet_for));
     }
     let last_turn_secs = match carried {
         Some(o) if crate::agent::turn_ended(o.state, final_state) => {
@@ -1167,6 +1193,7 @@ fn poll_sync_with(
             has_editor,
             now,
             tune.stuck_secs,
+            tune.quiet_idle_secs,
         ) {
             let prev_quiet = carried
                 .map(|r| (r.screen_hash, r.quiet_since))
