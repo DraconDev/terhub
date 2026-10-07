@@ -40,7 +40,10 @@ impl TrayView {
     pub fn from_agents(agents: &[AgentRecord]) -> Self {
         TrayView {
             needy: agents.iter().filter(|a| a.state.needs_attention()).count(),
-            idle: agents.iter().filter(|a| a.state == AgentState::Idle).count(),
+            idle: agents
+                .iter()
+                .filter(|a| a.state == AgentState::Idle)
+                .count(),
             total: agents.len(),
             connected: true,
         }
@@ -167,10 +170,13 @@ struct Tray {
 
 impl Tray {
     fn read(&self) -> TrayView {
-        self.view.lock().map(|v| v.clone()).unwrap_or_else(|_| TrayView {
-            connected: false,
-            ..TrayView::default()
-        })
+        self.view
+            .lock()
+            .map(|v| v.clone())
+            .unwrap_or_else(|_| TrayView {
+                connected: false,
+                ..TrayView::default()
+            })
     }
 
     /// Primary click: open the hub in a terminal. `TERMHUB_TERMINAL`
@@ -374,14 +380,15 @@ mod tests {
     fn tooltip_states_read_as_sentences() {
         let busy = TrayView::from_agents(&[rec(AgentState::Waiting)]);
         assert_eq!(busy.title(), "terhub — 1 need you");
-        let mixed = TrayView::from_agents(&[
-            rec(AgentState::Waiting),
-            rec(AgentState::Idle),
-        ]);
+        let mixed = TrayView::from_agents(&[rec(AgentState::Waiting), rec(AgentState::Idle)]);
         assert_eq!(mixed.title(), "terhub — 1 need you · 1 idle");
         let calm = TrayView::from_agents(&[rec(AgentState::Working)]);
         assert_eq!(calm.title(), "terhub — 1 agent(s)");
-        assert!(!calm.description().contains("click"), "{}", calm.description());
+        assert!(
+            !calm.description().contains("click"),
+            "{}",
+            calm.description()
+        );
     }
 
     #[test]
@@ -390,6 +397,10 @@ mod tests {
         assert_eq!(v.title(), "terhub — daemon down");
         assert!(!v.needs_attention());
         assert_eq!(v.icon_name(), "terhub");
-        assert!(v.description().contains("daemon start"), "{}", v.description());
+        assert!(
+            v.description().contains("daemon start"),
+            "{}",
+            v.description()
+        );
     }
 }
