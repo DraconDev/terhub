@@ -21,6 +21,9 @@ case "$PATH_::$base" in
   "/Sessions/6::getAllDisplayedText") printf 'hello  \nworld\n';;
   "/Sessions/6::sendText"|"/Sessions/7::sendText"|"/Windows/1::setCurrentSession"|"/Windows/1::newSession")
     echo "$PATH_ $base $*" >> "$FAKE_LOG";;
+  "/Scripting::loadScript") echo "$PATH_ $base $*" >> "$FAKE_LOG"; echo 3;;
+  "/Scripting::start") echo "$PATH_ $base $*" >> "$FAKE_LOG";;
+  "/Scripting::unloadScript") echo "$PATH_ $base $*" >> "$FAKE_LOG"; echo true;;
   *) echo "unexpected: $SVC $PATH_ $METHOD $*" >&2; exit 1;;
 esac
 "#;
@@ -126,6 +129,21 @@ fn native_backends_against_fakes() {
     assert!(
         log_text.contains("setCurrentSession 7"),
         "missing focus:\n{log_text}"
+    );
+    // Konsole focus also raises the window through a one-shot KWin
+    // script (selecting the tab alone leaves Konsole behind everything).
+    assert!(
+        log_text.contains("/Scripting loadScript")
+            && log_text.contains("terhub-focus"),
+        "missing KWin raise:\n{log_text}"
+    );
+    assert!(
+        log_text.contains("/Scripting start"),
+        "KWin script never started:\n{log_text}"
+    );
+    assert!(
+        log_text.contains("/Scripting unloadScript terhub-focus"),
+        "KWin script never unloaded:\n{log_text}"
     );
     assert!(
         log_text.contains("newSession"),
