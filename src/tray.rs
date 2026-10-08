@@ -165,11 +165,47 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
     }
 }
 
-/// State × palette → SVG. The T-mark carries three colors
-/// (crossbar gradient + stem two-tone) so the icon changes with the
-/// theme, while the corner accent (none / red / green / strikethrough)
-/// carries the alert signal. The same brand mark, themed.
+/// The mark. One upside-down triangle for every state — the shape never
+/// changes, only the fill. At tray sizes (16-22px) a color difference
+/// survives the downscale where a shape difference smears into noise,
+/// so a single glyph is the legible choice rather than six near-miss
+/// variants of the same idea.
+///
+/// Sized on a 24px grid over a 5px-radius tile; the stroke only rounds
+/// the corners, it does not change the silhouette.
+const TRIANGLE: &str = "M6 8 L18 8 L12 18.4 Z";
+
+/// State → (fill, opacity). The four facts the tray has to communicate
+/// are "nothing to do", "something needs you", "a hub is running", and
+/// "the daemon is gone"; the two idle variants reuse their colour at
+/// reduced strength rather than inventing a second hue per theme.
+fn state_paint(state: IconState, p: TrayPalette) -> (&'static str, &'static str) {
+    match state {
+        IconState::Calm => (p.mark, "1"),
+        IconState::Idle => (p.mark, "0.45"),
+        IconState::Attention => (p.alarm, "1"),
+        IconState::Live => (p.live, "1"),
+        IconState::LiveIdle => (p.live, "0.45"),
+        IconState::Disconnected => (p.muted, "1"),
+    }
+}
+
+/// Palette × state → SVG. The triangle is a constant path; colour and
+/// opacity are the only variables, so the rendered geometry is provably
+/// identical across themes and states (see
+/// `every_state_renders_the_same_shape`).
 fn render_svg(state: IconState, p: TrayPalette) -> String {
+    let (fill, opacity) = state_paint(state, p);
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\">\
+         <rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5\" fill=\"{tile}\"/>\
+         <path d=\"{TRIANGLE}\" fill=\"{fill}\" opacity=\"{opacity}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
+         </svg>",
+        tile = p.tile,
+        fill = fill,
+        opacity = opacity,
+    )
+}
     let body = match state {
         IconState::Calm => format!(
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
