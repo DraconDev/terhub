@@ -810,9 +810,17 @@ impl App {
         let mut rows = Vec::new();
         let mut agents = Vec::new();
         let mut notes: Vec<String> = Vec::new();
+        let mut alerts: Vec<String> = Vec::new();
         for rep in crate::native::list_all() {
             match &rep.error {
-                Some(e) => notes.push(format!("{}: {}", rep.backend, short_native_error(e))),
+                Some(e) => {
+                    let short = short_native_error(e);
+                    if rep.informational {
+                        notes.push(format!("{}: {}", rep.backend, short));
+                    } else {
+                        alerts.push(format!("{}: {}", rep.backend, short));
+                    }
+                }
                 None => {
                     notes.push(format!("{}: {} tab(s)", rep.backend, rep.tabs.len()));
                 }
@@ -898,13 +906,21 @@ impl App {
         let live: Vec<String> = self.native_rows.iter().map(|r| r.id.clone()).collect();
         self.native_quiet.retain(|id, _| live.contains(id));
         self.assign_native_handles();
-        // The footer is a *hint surface*: re-assert the native note only
-        // when it actually changes, so an unchanged "konsole: 2 tab(s)" /
-        // error line doesn't pin the footer (and its warning color) for
-        // the whole session. The 5s TTL still fades it on genuine change.
-        let note = format!("native: {}", notes.join("; "));
-        if self.status.as_deref() != Some(note.as_str()) {
-            self.set_status(note);
+        // Split the footer into two surfaces:
+        //  - alerts (real backend failures) -> the sticky status line,
+        //    warning color, re-asserted only when the text changes.
+        //  - notes ("N tab(s)" / "absent here") -> informational, dim,
+        //    never the warning color. They don't pin the footer at all:
+        //    the tab counts are already visible in the table rows, so the
+        //    footer hint stays the standard dim help line.
+        if !alerts.is_empty() {
+            let alert = format!("native: {}", alerts.join("; "));
+            if self.status.as_deref() != Some(alert.as_str()) {
+                self.set_status(alert);
+            }
+        } else {
+            // No real failures: let the TTL-faded hint line win instead
+            // of re-asserting a note every 3s tick.
         }
         self.merge_caches();
     }
