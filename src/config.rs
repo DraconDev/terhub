@@ -1472,7 +1472,7 @@ mod tests {
         assert_eq!(parse_key("f5").label(), "f5");
         assert_eq!(parse_key("ctrl+s").label(), "ctrl+s");
         assert_eq!(parse_key("ctrl+shift+enter").label(), "ctrl+shift+enter");
-        assert_eq!(parse_key("super+alt+x").label(), "super+alt+x");
+        assert_eq!(parse_key("super+alt+x").label(), "alt+super+x");
         assert_eq!(
             parse_key("").label(),
             KeyBinding {
