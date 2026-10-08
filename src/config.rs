@@ -1441,10 +1441,11 @@ mod tests {
             &KeyCode::Char('s'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT
         ));
-        // A bare s does not fire when ctrl is held: a bare binding's
-        // KeyBinding.mods is NONE, and the press's modifiers are
-        // non-NONE — exact-match fails, so the press reaches no binding
-        // and is swallowed by the on_key guard (typing safety).
+        // A bare s does NOT fire when ctrl is held: a bare binding's
+        // KeyBinding.mods is NONE, so with press modifiers = CONTROL the
+        // press has no matching binding and is swallowed by the on_key
+        // guard (typing safety). Bare-key binding stays reachable by
+        // pressing without modifiers.
         let bare_s = parse_key("s");
         assert!(bare_s.matches(&KeyCode::Char('s'), KeyModifiers::NONE));
         assert!(!bare_s.matches(&KeyCode::Char('s'), KeyModifiers::CONTROL));
