@@ -51,8 +51,11 @@ const PATH_NEEDLES: &[(&str, &str)] = &[("/.pi/agent", "pi"), ("/bin/pi", "pi")]
 /// or a path token's basename) exactly or as a separator-led prefix:
 /// `claude-code` and `pi-agent-core-…` resolve, while bare argument
 /// tokens and URLs never match — so `ssh claude-code` and
-/// `curl …/claude-code` are not agents.
-const NAME_NEEDLES: &[(&str, &str)] = &[("pi-agent", "pi"), ("claude-code", "claude")];
+/// `curl …/claude-code` are not agents. `agy` is a Gemini-frontend CLI
+/// (its screens footer "Gemini X Flash"); it resolves to gemini so
+/// process detection names the agent even though no `gemini` binary
+/// exists in the tree.
+const NAME_NEEDLES: &[(&str, &str)] = &[("pi-agent", "pi"), ("claude-code", "claude"), ("agy", "gemini")];
 
 /// Lowercased basename for agent matching.
 fn proc_base(s: &str) -> String {

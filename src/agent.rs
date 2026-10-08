@@ -544,7 +544,11 @@ pub fn builtin_manifests() -> Vec<Manifest> {
         },
         Manifest {
             agent: "gemini".to_string(),
-            commands: vec!["gemini".to_string()],
+            // `agy` is a Gemini-frontend CLI (screens footer "Gemini X
+            // Flash"): pinning the command keeps quota/waiting screens on
+            // the gemini manifest even when they name other models (the
+            // quota wall lists Claude/GPT models as a group).
+            commands: vec!["gemini".to_string(), "agy".to_string()],
             working: vec![
                 "esc to cancel".to_string(),
                 "working".to_string(),
