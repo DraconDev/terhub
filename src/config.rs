@@ -1009,14 +1009,21 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     actions.sort();
     for action in &actions {
         let value = cfg.keys[action].clone();
-        if parse_key(&value).spec == KeySpec::None
-            && let Some(def) = defaults.get(action)
-            && !def.is_empty()
-        {
-            problems.push(format!(
-                "key '{action}' has bad value '{value}' (using default '{def}')"
-            ));
-            cfg.keys.insert(action.clone(), def.clone());
+        let parsed = parse_key(&value);
+        let default_val = defaults.get(action);
+        if parsed.spec == KeySpec::None {
+            match default_val {
+                Some(def) if !def.is_empty() => {
+                    // Typo/empty with a real default: revert and report.
+                    problems.push(format!(
+                        "key '{action}' has bad value '{value}' (using default '{def}')"
+                    ));
+                    cfg.keys.insert(action.clone(), def.clone());
+                }
+                // Empty default: unbound is the legal resting state;
+                // nothing to revert to, nothing to report.
+                _ => {}
+            }
         }
     }
     // Builtin-vs-builtin collisions after rebinding: first-match dispatch
