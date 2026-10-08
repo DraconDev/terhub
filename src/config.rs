@@ -406,19 +406,28 @@ fn split_modifiers(s: &str) -> (KeyModifiers, &str) {
     }
 }
 
-/// Modifier-aware fire test: `true` when the [`KeyBinding`] (a key spec
-/// plus its declared modifier set) fires on a physical press of `code`
-/// held with `mods`.
+/// Modifier-aware fire test: `true` when `binding` fires on a physical
+/// press of `code` held with `mods`.
 ///
 /// Bare bindings (`KeyBinding.mods == NONE`, every pre-modifier-era
 /// default) keep today's semantics: the modifiers held are irrelevant
 /// (stray ctrl while firing a bare `s` still works, exactly as before;
-/// only crossterm-level ctrl+C is reserved). Modifier-qualified bindings
-/// require an *exact* modifier match, so "ctrl+s" fires only on ctrl+s,
-/// never on a bare s.
+/// only crossterm-level ctrl+C is reserved). Modifier-qualified
+/// bindings require an *exact* modifier match, so "ctrl+s" fires only on
+/// ctrl+s, never on a bare s or on ctrl+shift+s.
 #[must_use]
 pub fn key_matches(binding: &KeyBinding, code: &KeyCode, mods: KeyModifiers) -> bool {
     binding.matches(code, mods)
+}
+
+/// Modifier-aware collision test: two bindings collide when a single
+/// physical press can fire both. Different modifier sets can never fire
+/// on the same press, so only identical-modifier pairs are compared
+/// (including the NONE era of bare keys, which is exactly the collision
+/// semantics bare keys always had).
+#[must_use]
+pub fn spec_conflicts(a: &KeyBinding, b: &KeyBinding) -> bool {
+    a.conflicts(b)
 }
 
 /// One token of a style spec: a modifier, a foreground color, an explicit
