@@ -1008,13 +1008,16 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     // collision check compares modifier sets before keys.
     let specs: Vec<(String, KeyBinding)> = actions
         .iter()
-        .filter(|a| defaults.contains_key(a.as_str()))
+                .filter(|a| defaults.contains_key(a.as_str()))
         .map(|a| (a.clone(), parse_key(&cfg.keys[a])))
         .collect();
     for (i, (a, sa)) in specs.iter().enumerate() {
         for (b, sb) in specs.iter().skip(i + 1) {
             if sa.spec != KeySpec::None && sa.conflicts(sb) {
-                problems.push(format!("keys '{a}' and '{b}' both use '{}'", cfg.keys[a]));
+                problems.push(format!(
+                    "keys '{a}' and '{b}' both use '{}'",
+                    sa.label()
+                ));
             }
         }
     }
@@ -1089,14 +1092,14 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     // Custom commands: built-ins win every key collision (checked against
     // effective bindings, so user rebinding is respected).
-    let builtin: Vec<(String, KeySpec)> = default_keys()
+    let builtin: Vec<(String, KeyBinding)> = default_keys()
         .into_keys()
         .map(|a| {
             let spec = cfg.spec(&a);
             (a, spec)
         })
         .collect();
-    let mut taken: Vec<KeySpec> = Vec::new();
+    let mut taken: Vec<KeyBinding> = Vec::new();
     for (i, c) in file.command.iter().enumerate() {
         let tag = if c.name.is_empty() {
             format!("command #{i}")
