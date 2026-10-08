@@ -3587,6 +3587,55 @@ mod tests {
         assert_eq!(app.on_key(key, &tmux), None);
     }
 
+    #[test]
+    fn modifier_binding_fires_and_bare_key_stays() {
+        // A ctrl+s bound to settings fires the settings popup; a bare s
+        // still does too (binding semantics: bare keys fire on unmodified
+        // presses, modifier bindings fire on exact combos).
+        let mut app = app_with(&["a"]);
+        app.config.keys.insert("settings".to_string(), "ctrl+s".to_string());
+        let tmux = Tmux::new().unwrap();
+        // Bare s: now unbound -> swallowed (no binding wants it bare).
+        assert_eq!(
+            app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE), &tmux),
+            None
+        );
+        assert_eq!(app.mode, Mode::Normal);
+        // ctrl+s: bound -> opens settings.
+        assert_eq!(
+            app.on_key(
+                KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
+                &tmux
+            ),
+            None
+        );
+        assert_eq!(app.mode, Mode::Settings);
+    }
+
+    #[test]
+    fn modifier_binding_on_filter_clear_wipes_in_prompt() {
+        let mut app = app_with(&["a"]);
+        app.config
+            .keys
+            .insert("filter_clear".to_string(), "ctrl+backspace".to_string());
+        let tmux = Tmux::new().unwrap();
+        app.open_filter();
+        app.input = "abc".to_string();
+        app.cursor = 3;
+        // ctrl+backspace in the prompt: hard-clears the query in place.
+        app.on_key(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL),
+            &tmux,
+        );
+        assert_eq!(app.input, "");
+        assert_eq!(app.filter, "");
+        // Esc still restores the pre-edit query — the two paths coexist.
+        app.open_filter();
+        app.input = "abc".to_string();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &tmux);
+        assert!(app.input.is_empty()); // pre-edit query was empty
+    }
+
     fn app_with_panes() -> App {
         let mut app = app_with(&["a"]);
         let mut p1 = Pane::test("%1", "editor", "nvim");
