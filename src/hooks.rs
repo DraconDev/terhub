@@ -411,7 +411,7 @@ mod tests {
         claude_install(&claude).unwrap();
         let text = std::fs::read_to_string(&claude).unwrap();
         assert!(
-            text.contains("--summary 'response finished' --state idle"),
+            text.contains("--state idle --summary 'response finished'"),
             "claude Stop must report idle:\n{text}"
         );
         // Only a real notification asks for your attention.
