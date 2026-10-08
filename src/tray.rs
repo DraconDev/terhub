@@ -24,18 +24,12 @@ const ICONS: [(&str, &str); 6] = [
         "terhub-attention.svg",
         include_str!("../assets/terhub-attention.svg"),
     ),
-    (
-        "terhub-idle.svg",
-        include_str!("../assets/terhub-idle.svg"),
-    ),
+    ("terhub-idle.svg", include_str!("../assets/terhub-idle.svg")),
     (
         "terhub-disconnected.svg",
         include_str!("../assets/terhub-disconnected.svg"),
     ),
-    (
-        "terhub-live.svg",
-        include_str!("../assets/terhub-live.svg"),
-    ),
+    ("terhub-live.svg", include_str!("../assets/terhub-live.svg")),
     (
         "terhub-live-idle.svg",
         include_str!("../assets/terhub-live-idle.svg"),
