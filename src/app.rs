@@ -2238,27 +2238,27 @@ impl App {
             _ => {}
         }
         // Style + preview keys work from either focus.
-        if key_matches(&self.config.spec("theme"), code) {
+        if key_matches(&self.config.spec("theme"), &code, KeyModifiers::NONE) {
             self.cycle_theme();
             return None;
         }
-        if key_matches(&self.config.spec("density"), code) {
+        if key_matches(&self.config.spec("density"), &code, KeyModifiers::NONE) {
             self.cycle_density();
             return None;
         }
-        if key_matches(&self.config.spec("preview"), code) {
+        if key_matches(&self.config.spec("preview"), &code, KeyModifiers::NONE) {
             self.toggle_preview(tmux);
             return None;
         }
-        if key_matches(&self.config.spec("settings"), code) {
+        if key_matches(&self.config.spec("settings"), &code, KeyModifiers::NONE) {
             self.open_settings();
             return None;
         }
-        if key_matches(&self.config.spec("hosts"), code) {
+        if key_matches(&self.config.spec("hosts"), &code, KeyModifiers::NONE) {
             self.open_hosts();
             return None;
         }
-        if key_matches(&self.config.spec("sort"), code) {
+        if key_matches(&self.config.spec("sort"), &code, KeyModifiers::NONE) {
             self.resort_next();
             self.follow_preview(tmux);
             self.set_status(format!(
@@ -2268,18 +2268,18 @@ impl App {
             ));
             return None;
         }
-        if key_matches(&self.config.spec("filter"), code) {
+        if key_matches(&self.config.spec("filter"), &code, KeyModifiers::NONE) {
             self.open_filter();
             return None;
         }
-        if key_matches(&self.config.spec("hide_shells"), code) {
+        if key_matches(&self.config.spec("hide_shells"), &code, KeyModifiers::NONE) {
             self.toggle_hide_quiet_shells();
             return None;
         }
         // Fullscreen preview owns the screen: Enter jumps to the previewed
         // pane from either focus (like left-click), instead of attaching to
         // a session bar the preview covers up.
-        if self.show_preview && key_matches(&self.config.spec("attach"), code) {
+        if self.show_preview && key_matches(&self.config.spec("attach"), &code, KeyModifiers::NONE) {
             if let Some(p) = self.selected_pane() {
                 let id = p.id.clone();
                 return self.jump_event(&id);
@@ -2291,43 +2291,43 @@ impl App {
             return self.on_pane_key(code, tmux);
         }
         let cfg = &self.config;
-        if key_matches(&cfg.spec("quit"), code) {
+        if key_matches(&cfg.spec("quit"), &code, KeyModifiers::NONE) {
             return Some(AppEvent::Quit);
         }
-        if key_matches(&cfg.spec("attach"), code) {
+        if key_matches(&cfg.spec("attach"), &code, KeyModifiers::NONE) {
             if let Some(s) = self.side_session() {
                 return Some(AppEvent::Attach(s.name.clone()));
             }
             self.set_status("pick a session row (All doesn't count)".to_string());
             return None;
         }
-        if key_matches(&cfg.spec("attend"), code) {
+        if key_matches(&cfg.spec("attend"), &code, KeyModifiers::NONE) {
             return self.do_attend();
         }
-        if key_matches(&cfg.spec("new"), code) {
+        if key_matches(&cfg.spec("new"), &code, KeyModifiers::NONE) {
             self.do_new_session();
             return None;
         }
-        if key_matches(&cfg.spec("spawn"), code) {
+        if key_matches(&cfg.spec("spawn"), &code, KeyModifiers::NONE) {
             self.do_spawn();
             return None;
         }
-        if key_matches(&cfg.spec("rename"), code) {
+        if key_matches(&cfg.spec("rename"), &code, KeyModifiers::NONE) {
             self.do_rename_session();
             return None;
         }
-        if key_matches(&cfg.spec("kill"), code) {
+        if key_matches(&cfg.spec("kill"), &code, KeyModifiers::NONE) {
             match self.side_session() {
                 Some(s) => self.mode = Mode::ConfirmKill(s.name.clone()),
                 None => self.set_status("pick a session row (All doesn't count)".to_string()),
             }
             return None;
         }
-        if key_matches(&cfg.spec("detach"), code) {
+        if key_matches(&cfg.spec("detach"), &code, KeyModifiers::NONE) {
             self.do_detach(tmux);
             return None;
         }
-        if key_matches(&cfg.spec("refresh"), code) {
+        if key_matches(&cfg.spec("refresh"), &code, KeyModifiers::NONE) {
             self.refresh(tmux);
             self.fetch_native();
             return None;
@@ -2337,13 +2337,13 @@ impl App {
         let custom = cfg
             .commands
             .iter()
-            .find(|c| key_matches(&c.spec, code))
+            .find(|c| key_matches(&c.spec, &code, KeyModifiers::NONE))
             .cloned();
         if let Some(cmd) = custom {
             self.run_custom(&cmd);
             return None;
         }
-        if key_matches(&cfg.spec("help"), code) {
+        if key_matches(&cfg.spec("help"), &code, KeyModifiers::NONE) {
             // Repeated `?` toggles between the key list and the legend.
             if self
                 .status
@@ -2792,7 +2792,7 @@ impl App {
             _ => {}
         }
         // The settings key toggles the popup closed.
-        if key_matches(&self.config.spec("settings"), key.code) {
+        if key_matches(&self.config.spec("settings"), &key.code, key.modifiers) {
             self.mode = Mode::Normal;
         }
         None
@@ -3136,10 +3136,10 @@ impl App {
     /// global meaning; attach jumps to the pane; kill closes it.
     fn on_pane_key(&mut self, code: KeyCode, tmux: &Tmux) -> Option<AppEvent> {
         let cfg = &self.config;
-        if key_matches(&cfg.spec("quit"), code) {
+        if key_matches(&cfg.spec("quit"), &code, KeyModifiers::NONE) {
             return Some(AppEvent::Quit);
         }
-        if key_matches(&cfg.spec("attach"), code) {
+        if key_matches(&cfg.spec("attach"), &code, KeyModifiers::NONE) {
             if let Some(p) = self.selected_pane() {
                 let id = p.id.clone();
                 return self.jump_event(&id);
@@ -3147,7 +3147,7 @@ impl App {
             self.set_status("no pane selected".to_string());
             return None;
         }
-        if key_matches(&cfg.spec("kill"), code) {
+        if key_matches(&cfg.spec("kill"), &code, KeyModifiers::NONE) {
             if !self.marked.is_empty() {
                 let mut ids: Vec<String> = self.marked.iter().cloned().collect();
                 ids.sort();
@@ -3168,11 +3168,11 @@ impl App {
             }
             return None;
         }
-        if key_matches(&cfg.spec("mark"), code) {
+        if key_matches(&cfg.spec("mark"), &code, KeyModifiers::NONE) {
             self.toggle_mark();
             return None;
         }
-        if key_matches(&cfg.spec("unmark"), code) {
+        if key_matches(&cfg.spec("unmark"), &code, KeyModifiers::NONE) {
             let n = self.marked.len();
             self.marked.clear();
             self.set_status(if n == 0 {
@@ -3182,31 +3182,31 @@ impl App {
             });
             return None;
         }
-        if key_matches(&cfg.spec("attend"), code) {
+        if key_matches(&cfg.spec("attend"), &code, KeyModifiers::NONE) {
             return self.do_attend();
         }
-        if key_matches(&cfg.spec("bulk"), code) {
+        if key_matches(&cfg.spec("bulk"), &code, KeyModifiers::NONE) {
             self.do_bulk();
             return None;
         }
-        if key_matches(&cfg.spec("refresh"), code) {
+        if key_matches(&cfg.spec("refresh"), &code, KeyModifiers::NONE) {
             self.refresh(tmux);
             self.fetch_native();
             return None;
         }
-        if key_matches(&cfg.spec("new"), code) {
+        if key_matches(&cfg.spec("new"), &code, KeyModifiers::NONE) {
             self.do_new_session();
             return None;
         }
-        if key_matches(&cfg.spec("spawn"), code) {
+        if key_matches(&cfg.spec("spawn"), &code, KeyModifiers::NONE) {
             self.do_spawn();
             return None;
         }
-        if key_matches(&cfg.spec("rename"), code) {
+        if key_matches(&cfg.spec("rename"), &code, KeyModifiers::NONE) {
             self.do_rename_session();
             return None;
         }
-        if key_matches(&cfg.spec("restart"), code) {
+        if key_matches(&cfg.spec("restart"), &code, KeyModifiers::NONE) {
             match self.selected_pane() {
                 Some(p) if is_native_pane(&p.id) => self.set_status(format!(
                     "can't restart native tab {} (re-run inside the tab)",
@@ -3232,24 +3232,24 @@ impl App {
             }
             return None;
         }
-        if key_matches(&cfg.spec("pause"), code) {
+        if key_matches(&cfg.spec("pause"), &code, KeyModifiers::NONE) {
             self.do_pause();
             return None;
         }
-        if key_matches(&cfg.spec("detach"), code) {
+        if key_matches(&cfg.spec("detach"), &code, KeyModifiers::NONE) {
             self.do_detach(tmux);
             return None;
         }
         let custom = cfg
             .commands
             .iter()
-            .find(|c| key_matches(&c.spec, code))
+            .find(|c| key_matches(&c.spec, &code, KeyModifiers::NONE))
             .cloned();
         if let Some(cmd) = custom {
             self.run_custom(&cmd);
             return None;
         }
-        if key_matches(&cfg.spec("help"), code) {
+        if key_matches(&cfg.spec("help"), &code, KeyModifiers::NONE) {
             // Repeated `?` toggles between the key list and the legend.
             if self
                 .status
