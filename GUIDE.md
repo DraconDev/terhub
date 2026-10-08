@@ -484,6 +484,13 @@ The eye learns three signals: red ⇒ needs you, teal ⇒ agents done,
 gray + strike ⇒ daemon down. A green corner dot layered on a calm or
 idle base says "a hub is already running — clicking focuses it".
 
+**Themed.** The mark is the same shape in every theme, but the colors
+pull from the active `theme` config (dracula's cyan + magenta,
+gruvbox's amber + orange, nord's frost + purple, etc.). The alarm
+badge uses the theme's existing accent so a "needs you" icon in nord
+is rust-red, in gruvbox it's bright red, in catppuccin it's pink — the
+icon is always part of the panel, never bolted on.
+
 The hover tooltip carries the counts:
 
 ```
