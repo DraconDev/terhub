@@ -974,4 +974,107 @@ mod tests {
             v.description()
         );
     }
+
+    #[test]
+    fn icon_state_matrix() {
+        // Disconnected wins over every other fact.
+        let mut v = TrayView::disconnected();
+        v.hub_open = true;
+        v.needy = 5;
+        assert_eq!(v.icon_state(), IconState::Disconnected);
+        // Attention wins over hub_open and over zero idle.
+        let v = TrayView::from_agents(&[rec(AgentState::Waiting)]);
+        let mut a = v;
+        a.hub_open = true;
+        assert_eq!(a.icon_state(), IconState::Attention);
+        // Live + zero idle (hub running, agents busy).
+        let mut live_busy = TrayView::from_agents(&[rec(AgentState::Working)]);
+        live_busy.hub_open = true;
+        assert_eq!(live_busy.icon_state(), IconState::Live);
+        // Live + non-zero idle (hub running, agents finished).
+        let mut live_idle = TrayView::from_agents(&[
+            rec(AgentState::Idle),
+            rec(AgentState::Idle),
+            rec(AgentState::Working),
+        ]);
+        live_idle.hub_open = true;
+        assert_eq!(live_idle.icon_state(), IconState::LiveIdle);
+        // Idle without hub: still uses the dedicated idle icon.
+        let v = TrayView::from_agents(&[rec(AgentState::Idle), rec(AgentState::Working)]);
+        assert_eq!(v.icon_state(), IconState::Idle);
+        // Pure working without idle: calm.
+        let v = TrayView::from_agents(&[rec(AgentState::Working)]);
+        assert_eq!(v.icon_state(), IconState::Calm);
+    }
+
+    #[test]
+    fn every_known_theme_has_a_palette() {
+        // No theme should fall through to the default by accident.
+        for theme in crate::config::THEMES {
+            let p = palette_for_theme(theme);
+            // Hex of length 7, starts with '#', no whitespace.
+            for field in [
+                p.tile,
+                p.crossbar_a,
+                p.crossbar_b,
+                p.stem_a,
+                p.stem_b,
+                p.live_dot,
+                p.alarm_bg,
+                p.alarm_fg,
+            ] {
+                assert!(
+                    field.starts_with('#') && field.len() == 7,
+                    "theme {theme} field {field:?} is not a 7-char hex"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_theme_falls_back_safely() {
+        // Empty, garbage, weird: should still produce a valid SVG.
+        for bad in ["", "not-a-theme", "DRACULA'", " "] {
+            let p = palette_for_theme(bad);
+            let svg = render_svg(IconState::Calm, p);
+            assert!(svg.contains("<svg"), "{bad} produced no <svg>: {svg}");
+            assert!(svg.contains("url(#cb)"), "{bad} missing crossbar gradient");
+        }
+    }
+
+    #[test]
+    fn render_svg_themes_differ_but_state_stable() {
+        // The same state rendered for two themes must differ (color
+        // injection works) and the structural shape must match (state
+        // branch picked correctly).
+        let drac = palette_for_theme("dracula");
+        let nord = palette_for_theme("nord");
+        for state in [
+            IconState::Calm,
+            IconState::Idle,
+            IconState::Attention,
+            IconState::Live,
+            IconState::LiveIdle,
+            IconState::Disconnected,
+        ] {
+            let a = render_svg(state, drac);
+            let b = render_svg(state, nord);
+            assert_ne!(a, b, "themes produced identical SVG for {state:?}");
+            // Strip colors and check the geometry is the same.
+            let a_struct = a.replace(&drac.crossbar_a, "X").replace(&drac.stem_a, "X");
+            let b_struct = b.replace(&nord.crossbar_a, "X").replace(&nord.stem_a, "X");
+            assert_eq!(a_struct, b_struct, "geometry differs for {state:?}");
+        }
+    }
+
+    #[test]
+    fn attention_carry_uses_alarm_color() {
+        // The alarm badge background must come from the palette, not
+        // the old hard-coded red. Dracula's alarm is #ff5555, Nord's
+        // alarm is #bf616a.
+        let drac = render_svg(IconState::Attention, palette_for_theme("dracula"));
+        assert!(drac.contains("#ff5555"), "dracula alarm missing: {drac}");
+        let nord = render_svg(IconState::Attention, palette_for_theme("nord"));
+        assert!(nord.contains("#bf616a"), "nord alarm missing: {nord}");
+    }
 }
