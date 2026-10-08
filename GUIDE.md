@@ -468,13 +468,21 @@ terhub tray
 ```
 
 Runs a StatusNotifierItem in the system tray until killed (ctrl-c
-removes the icon). Three icon states:
+removes the icon). Six icon variants — one mark, three color
+treatments, two live overlays:
 
 | Icon | Meaning |
 |---|---|
-| `terhub` | daemon up, nothing needs you, no hub open |
-| `terhub-attention` | something needs you (wins over `terhub-live`) |
-| `terhub-live` | a hub is already open — click focuses it |
+| `terhub` | daemon up, no idle, no hub open, nothing needs you |
+| `terhub-idle` | long-running — agents finished, daemon up, no hub |
+| `terhub-attention` | something needs you (Waiting/Error/Limited/Stuck > 0) |
+| `terhub-disconnected` | daemon unreachable — gray with strikethrough |
+| `terhub-live` | a hub is already open, agents busy |
+| `terhub-live-idle` | a hub is already open and every agent has finished |
+
+The eye learns three signals: red ⇒ needs you, teal ⇒ agents done,
+gray + strike ⇒ daemon down. A green corner dot layered on a calm or
+idle base says "a hub is already running — clicking focuses it".
 
 The hover tooltip carries the counts:
 
