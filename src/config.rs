@@ -226,6 +226,10 @@ impl KeyBinding {
     /// Display form for help text, footers and the config template.
     /// No modifiers -> plain key name ("n", "enter", "f5", "g");
     /// with modifiers -> "ctrl+s", "shift+g", "ctrl+shift+enter".
+    /// Unbound actions return the raw config value when it is non-empty
+    /// (a failed parse still shows what the user asked for, matching how
+    /// the pre-modifier help lines read), and the empty string when the
+    /// action is intentionally unbound (filter_clear default).
     pub fn label(&self) -> String {
         let key = match &self.spec {
             KeySpec::None => return String::new(),
