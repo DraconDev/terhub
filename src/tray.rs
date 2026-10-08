@@ -17,10 +17,14 @@ const SNAP_TIMEOUT: Duration = Duration::from_secs(2);
 const SNI_PATH: &str = "/StatusNotifierItem";
 
 /// Icon themes only resolve names they have files for, so the SVGs are
-/// written into the user's icon dir on first run.
-/// Icon themes only resolve names they have files for, so the SVGs are
 /// written into the user's icon dir on first run. The set is the same
 /// across runs; the actual contents are themed at write time.
+///
+/// Six *files*, one *mark*: every state renders the same upside-down
+/// triangle and differs only in fill color (plus opacity where "dim"
+/// is the point). The StatusNotifierItem spec has no badge field, so
+/// KDE picks the variant by name; the shape itself must stay constant
+/// or the panel flickers between unrelated-looking glyphs.
 const ICON_STATES: &[(IconState, &str); 6] = &[
     (IconState::Calm, "terhub.svg"),
     (IconState::Attention, "terhub-attention.svg"),
@@ -59,28 +63,26 @@ impl TrayView {
     }
 }
 
-/// Five color accents the T-mark pulls from the active theme. Each
-/// plays a specific role in the icon: tile and stem are the everyday
-/// surface, focus and header add visual interest, attached and a
-/// reserved alarm handle the "needs you" case so a theme's existing
-/// red/yellow does the alarm work without us overriding it.
+/// The colors the triangle pulls from the active theme. One mark serves
+/// every state, so the palette only has to answer three questions:
+/// what a neutral triangle looks like here, what an alarm looks like
+/// here, and what "running" looks like (green everywhere, because that
+/// is a universal signal rather than a theme expression).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrayPalette {
-    /// Rounded-square tile behind the T.
+    /// Rounded-square tile behind the triangle. Keeps the icon legible
+n    /// on both light and dark panels, and carries the theme's surface.
     tile: &'static str,
-    /// T crossbar gradient start (left edge) and end (right edge).
-    crossbar_a: &'static str,
-    crossbar_b: &'static str,
-    /// T vertical stem left half.
-    stem_a: &'static str,
-    /// T vertical stem right half (focus color, low opacity in idle).
-    stem_b: &'static str,
-    /// Live corner dot. Stays green across themes — "running" is a
-    /// universal signal, not a theme expression.
-    live_dot: &'static str,
-    /// Attention badge background (alarm) and foreground (the plus).
-    alarm_bg: &'static str,
-    alarm_fg: &'static str,
+    /// The everyday triangle: calm, and hub-open-but-busy.
+    mark: &'static str,
+    /// The "needs you" triangle. Themes contribute their own red/yellow
+n    /// so the alarm reads natively on the panel.
+    alarm: &'static str,
+    /// The live triangle: a hub is open and agents are working.
+    live: &'static str,
+    /// Disconnected: deliberately theme-neutral grey, because "the
+    /// daemon is gone" should look the same whichever theme is loaded.
+    muted: &'static str,
 }
 
 /// Look up a theme's tray palette. Unknown themes fall back to dracula;
