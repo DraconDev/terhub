@@ -1582,11 +1582,7 @@ impl App {
     /// the bare-key path uses, exactly as if the user had pressed the
     /// bound key without modifiers. Returns `true` when the binding
     /// fired (the caller swallows the key event).
-    fn dispatch_binding(
-        &mut self,
-        binding: &crate::config::KeyBinding,
-        tmux: &Tmux,
-    ) -> bool {
+    fn dispatch_binding(&mut self, binding: &crate::config::KeyBinding, tmux: &Tmux) -> bool {
         // Custom commands carry their own KeyBinding and are matched by
         // exact value (same modifier set + same key).
         let cmd = self
@@ -1622,7 +1618,9 @@ impl App {
                 } else {
                     match self.side_session() {
                         Some(s) => self.mode = Mode::ConfirmKill(s.name.clone()),
-                        None => self.set_status("pick a session row (All doesn't count)".to_string()),
+                        None => {
+                            self.set_status("pick a session row (All doesn't count)".to_string())
+                        }
                     }
                 }
                 true
@@ -1773,10 +1771,30 @@ impl App {
     /// custom command, already handled in [`dispatch_binding`]).
     fn binding_action(&self, binding: &crate::config::KeyBinding) -> String {
         for action in [
-            "new", "kill", "rename", "attach", "detach", "quit", "help",
-            "refresh", "attend", "preview", "theme", "density", "settings",
-            "sort", "filter", "filter_clear", "hide_shells", "spawn",
-            "restart", "pause", "hosts", "bulk", "mark", "unmark",
+            "new",
+            "kill",
+            "rename",
+            "attach",
+            "detach",
+            "quit",
+            "help",
+            "refresh",
+            "attend",
+            "preview",
+            "theme",
+            "density",
+            "settings",
+            "sort",
+            "filter",
+            "filter_clear",
+            "hide_shells",
+            "spawn",
+            "restart",
+            "pause",
+            "hosts",
+            "bulk",
+            "mark",
+            "unmark",
         ] {
             if self.config.spec(action) == *binding {
                 return action.to_string();
@@ -1793,10 +1811,30 @@ impl App {
         use crate::config::KeyBinding;
         let mut out: Vec<KeyBinding> = Vec::new();
         for action in [
-            "new", "kill", "rename", "attach", "detach", "quit", "help",
-            "refresh", "attend", "preview", "theme", "density", "settings",
-            "sort", "filter", "filter_clear", "hide_shells", "spawn",
-            "restart", "pause", "hosts", "bulk", "mark", "unmark",
+            "new",
+            "kill",
+            "rename",
+            "attach",
+            "detach",
+            "quit",
+            "help",
+            "refresh",
+            "attend",
+            "preview",
+            "theme",
+            "density",
+            "settings",
+            "sort",
+            "filter",
+            "filter_clear",
+            "hide_shells",
+            "spawn",
+            "restart",
+            "pause",
+            "hosts",
+            "bulk",
+            "mark",
+            "unmark",
         ] {
             out.push(self.config.spec(action));
         }
@@ -3593,7 +3631,9 @@ mod tests {
         // still does too (binding semantics: bare keys fire on unmodified
         // presses, modifier bindings fire on exact combos).
         let mut app = app_with(&["a"]);
-        app.config.keys.insert("settings".to_string(), "ctrl+s".to_string());
+        app.config
+            .keys
+            .insert("settings".to_string(), "ctrl+s".to_string());
         let tmux = Tmux::new().unwrap();
         // Bare s: now unbound -> swallowed (no binding wants it bare).
         assert_eq!(

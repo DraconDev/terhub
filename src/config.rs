@@ -349,7 +349,10 @@ pub fn parse_key(s: &str) -> KeyBinding {
     let (mods, rest) = split_modifiers(s);
     let rest = rest.trim();
     if rest.is_empty() {
-        return KeyBinding { mods, spec: KeySpec::None };
+        return KeyBinding {
+            mods,
+            spec: KeySpec::None,
+        };
     }
     if rest.chars().count() == 1 {
         return KeyBinding {
@@ -396,7 +399,9 @@ pub fn parse_key(s: &str) -> KeyBinding {
 /// to the whole-string key lookup and parses to None, exactly like an
 /// unknown key name always did.
 fn split_modifiers(s: &str) -> (KeyModifiers, &str) {
-    let known: &[&str] = &["ctrl", "control", "alt", "option", "shift", "super", "meta", "cmd"];
+    let known: &[&str] = &[
+        "ctrl", "control", "alt", "option", "shift", "super", "meta", "cmd",
+    ];
     if !s.contains('+') {
         // No '+' separator: a bare value, no modifiers. (Whitespace-only
         // combinations like "ctrl s" are not modifier syntax; they parse
@@ -1062,16 +1067,13 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     // collision check compares modifier sets before keys.
     let specs: Vec<(String, KeyBinding)> = actions
         .iter()
-                .filter(|a| defaults.contains_key(a.as_str()))
+        .filter(|a| defaults.contains_key(a.as_str()))
         .map(|a| (a.clone(), parse_key(&cfg.keys[a])))
         .collect();
     for (i, (a, sa)) in specs.iter().enumerate() {
         for (b, sb) in specs.iter().skip(i + 1) {
             if sa.spec != KeySpec::None && sa.conflicts(sb) {
-                problems.push(format!(
-                    "keys '{a}' and '{b}' both use '{}'",
-                    sa.label()
-                ));
+                problems.push(format!("keys '{a}' and '{b}' both use '{}'", sa.label()));
             }
         }
     }
@@ -1307,7 +1309,9 @@ pub fn default_config_text() -> String {
             // Intentionally unbound action (filter_clear): show a
             // commented example so the user can opt in without
             // re-binding a live key.
-            out.push_str(&format!("# {k} = \"\"  # unbound by default; try \"ctrl+backspace\"\n"));
+            out.push_str(&format!(
+                "# {k} = \"\"  # unbound by default; try \"ctrl+backspace\"\n"
+            ));
         } else {
             out.push_str(&format!("{k} = \"{v}\"\n"));
         }
@@ -1376,35 +1380,68 @@ mod tests {
     fn parse_common_keys() {
         use crossterm::event::KeyModifiers;
         let bare = KeyModifiers::NONE;
-        assert_eq!(parse_key("n"), KeyBinding { mods: bare, spec: KeySpec::Char('n') });
-        assert_eq!(parse_key("?"), KeyBinding { mods: bare, spec: KeySpec::Char('?') });
+        assert_eq!(
+            parse_key("n"),
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Char('n')
+            }
+        );
+        assert_eq!(
+            parse_key("?"),
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Char('?')
+            }
+        );
         assert_eq!(
             parse_key("question_mark"),
-            KeyBinding { mods: bare, spec: KeySpec::Char('?') }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Char('?')
+            }
         );
         assert_eq!(
             parse_key("enter"),
-            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::Enter) }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Code(KeyCode::Enter)
+            }
         );
         assert_eq!(
             parse_key("ESC"),
-            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::Esc) }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Code(KeyCode::Esc)
+            }
         );
         assert_eq!(
             parse_key("f5"),
-            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(5)) }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Code(KeyCode::F(5))
+            }
         );
         assert_eq!(
             parse_key("f12"),
-            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(12)) }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Code(KeyCode::F(12))
+            }
         );
         assert_eq!(
             parse_key(""),
-            KeyBinding { mods: bare, spec: KeySpec::None }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::None
+            }
         );
         assert_eq!(
             parse_key("nope-not-a-key"),
-            KeyBinding { mods: bare, spec: KeySpec::None }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::None
+            }
         );
     }
 
@@ -1457,12 +1494,18 @@ mod tests {
         // reported, default restored (see load_config_report tests).
         assert_eq!(
             parse_key("foo+s"),
-            KeyBinding { mods: KeyModifiers::NONE, spec: KeySpec::None }
+            KeyBinding {
+                mods: KeyModifiers::NONE,
+                spec: KeySpec::None
+            }
         );
         // Multiple keys in a combo are not a binding.
         assert_eq!(
             parse_key("ctrl+s+t"),
-            KeyBinding { mods: KeyModifiers::NONE, spec: KeySpec::None }
+            KeyBinding {
+                mods: KeyModifiers::NONE,
+                spec: KeySpec::None
+            }
         );
     }
 
@@ -1514,19 +1557,40 @@ mod tests {
     #[test]
     fn fkey_range_rejects_absurd() {
         let bare = crossterm::event::KeyModifiers::NONE;
-        assert_eq!(parse_key("f0"), KeyBinding { mods: bare, spec: KeySpec::None });
-        assert_eq!(parse_key("f99"), KeyBinding { mods: bare, spec: KeySpec::None });
+        assert_eq!(
+            parse_key("f0"),
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::None
+            }
+        );
+        assert_eq!(
+            parse_key("f99"),
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::None
+            }
+        );
         assert_eq!(
             parse_key("f25"),
-            KeyBinding { mods: bare, spec: KeySpec::None }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::None
+            }
         );
         assert_eq!(
             parse_key("f1"),
-            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(1)) }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Code(KeyCode::F(1))
+            }
         );
         assert_eq!(
             parse_key("f24"),
-            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(24)) }
+            KeyBinding {
+                mods: bare,
+                spec: KeySpec::Code(KeyCode::F(24))
+            }
         );
     }
 
