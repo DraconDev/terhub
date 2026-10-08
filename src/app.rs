@@ -1589,13 +1589,14 @@ impl App {
     ) -> bool {
         // Custom commands carry their own KeyBinding and are matched by
         // exact value (same modifier set + same key).
-        if let Some(cmd) = self
+        let cmd = self
             .config
             .commands
             .iter()
             .find(|c| c.spec == *binding)
-        {
-            self.run_custom(cmd);
+            .cloned();
+        if let Some(cmd) = cmd {
+            self.run_custom(&cmd);
             return true;
         }
         match self.binding_action(binding).as_str() {
