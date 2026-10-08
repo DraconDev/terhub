@@ -1297,7 +1297,14 @@ pub fn default_config_text() -> String {
         "[ui]\ntheme = \"dark\"\ndensity = \"comfortable\"\nhighlight_attached = true\n\n[keys]\n",
     );
     for (k, v) in keys {
-        out.push_str(&format!("{k} = \"{v}\"\n"));
+        if v.is_empty() {
+            // Intentionally unbound action (filter_clear): show a
+            // commented example so the user can opt in without
+            // re-binding a live key.
+            out.push_str(&format!("# {k} = \"\"  # unbound by default; try \"ctrl+backspace\"\n"));
+        } else {
+            out.push_str(&format!("{k} = \"{v}\"\n"));
+        }
     }
     out.push_str("\n[notifications]\nenabled = true\n");
     out.push_str(&format!(
