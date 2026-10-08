@@ -2267,43 +2267,43 @@ impl App {
             return self.on_pane_key(code, tmux);
         }
         let cfg = &self.config;
-        if key_matches(&cfg.spec("quit"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("quit"), &code, mods) {
             return Some(AppEvent::Quit);
         }
-        if key_matches(&cfg.spec("attach"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("attach"), &code, mods) {
             if let Some(s) = self.side_session() {
                 return Some(AppEvent::Attach(s.name.clone()));
             }
             self.set_status("pick a session row (All doesn't count)".to_string());
             return None;
         }
-        if key_matches(&cfg.spec("attend"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("attend"), &code, mods) {
             return self.do_attend();
         }
-        if key_matches(&cfg.spec("new"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("new"), &code, mods) {
             self.do_new_session();
             return None;
         }
-        if key_matches(&cfg.spec("spawn"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("spawn"), &code, mods) {
             self.do_spawn();
             return None;
         }
-        if key_matches(&cfg.spec("rename"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("rename"), &code, mods) {
             self.do_rename_session();
             return None;
         }
-        if key_matches(&cfg.spec("kill"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("kill"), &code, mods) {
             match self.side_session() {
                 Some(s) => self.mode = Mode::ConfirmKill(s.name.clone()),
                 None => self.set_status("pick a session row (All doesn't count)".to_string()),
             }
             return None;
         }
-        if key_matches(&cfg.spec("detach"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("detach"), &code, mods) {
             self.do_detach(tmux);
             return None;
         }
-        if key_matches(&cfg.spec("refresh"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("refresh"), &code, mods) {
             self.refresh(tmux);
             self.fetch_native();
             return None;
