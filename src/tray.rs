@@ -743,10 +743,9 @@ pub fn run() -> anyhow::Result<()> {
     // decides which palette of accent colors the icon pulls from. The
     // TUI's load_config() owns the theme, so we go through it rather
     // than parsing the TOML ourselves.
-    let theme = crate::config::load_config(None).theme;
     install_icons(&theme)?;
     refresh_icon_cache();
-
+    let mut last_theme = theme.clone();
     let conn = zbus::blocking::Connection::session()?;
     let unique = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
@@ -767,7 +766,19 @@ pub fn run() -> anyhow::Result<()> {
     watcher.call_method("RegisterStatusNotifierItem", &(unique.as_str(),))?;
     println!("terhub tray registered — ctrl-c to remove");
 
+    let mut last_theme = theme.clone();
     loop {
+        // A live update: the user might change theme in the TUI's
+        // settings popup, so re-check it on every poll. (A full re-render
+        // is cheap and the diff in `install_icons` only writes when the
+        // SVG actually changed.)
+        let active = crate::config::load_config(None).theme;
+        if active != last_theme {
+            if let Err(e) = install_icons(&active) {
+                eprintln!("terhub: re-themed icon install failed: {e}");
+            }
+            last_theme = active;
+        }
         let mut next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
             Ok(snap) => TrayView::from_agents(&snap.agents),
             Err(_) => TrayView::disconnected(),
