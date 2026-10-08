@@ -424,7 +424,10 @@ mod tests {
             ts.contains(r#"report("idle", "response finished")"#),
             "pi agent_end must report idle:\n{ts}"
         );
-        assert!(!ts.contains(r#"report("waiting", "response finished")"#), "{ts}");
+        assert!(
+            !ts.contains(r#"report("waiting", "response finished")"#),
+            "{ts}"
+        );
     }
 
     #[test]
