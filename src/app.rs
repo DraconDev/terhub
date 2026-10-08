@@ -97,25 +97,7 @@ fn short_native_error(e: &str) -> String {
     }
 }
 
-/// Backends that probe fine but are not installed (no binary): report a
-/// neutral "not installed" note, not a scary error line.
-fn native_report_notes(reports: Vec<crate::native::BackendReport>) -> Vec<String> {
-    let mut notes = Vec::new();
-    for rep in reports {
-        match rep.error {
-            Some(e) => {
-                // "not installed"/"no socket" style notes are informational;
-                // everything else is a real failure.
-                let short = short_native_error(&e);
-                notes.push(format!("{}: {}", rep.backend, short));
-            }
-            None => {
-                notes.push(format!("{}: {} tab(s)", rep.backend, rep.tabs.len()));
-            }
-        }
-    }
-    notes
-}
+
 
 /// CPU percent between two tick samples (None = re-baseline: first
 /// sample, zero elapsed, or ticks fell because the process restarted).
