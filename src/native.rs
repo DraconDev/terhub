@@ -690,6 +690,23 @@ pub struct BackendReport {
 /// independently — a dead WezTerm server never hides Konsole tabs, and
 /// one wedged helper costs one timeout, not the sum. Reports come back
 /// in [`BACKENDS`] order regardless of finish order.
+/// True when a probe error means "this backend has no instances on this
+/// machine" (absent, not broken): the TUI tones these down to the dim
+/// hint color instead of the warning color. A missing binary, a wedged
+/// CLI, a timed-out command, or malformed output are real failures and
+/// keep the warning treatment. The checks run on the *first line* of
+/// the anyhow report (the bail message), which is where these phrases
+/// live.
+fn is_absent_backend_error(backend: &str, msg: &str) -> bool {
+    let first = msg.lines().next().unwrap_or(msg).to_lowercase();
+    match backend {
+        "konsole" => first.contains("no konsole on the session bus"),
+        "kitty" => first.contains("not inside kitty"),
+        "wezterm" => first.contains("no wezterm server"),
+        _ => false,
+    }
+}
+
 pub fn list_all() -> Vec<BackendReport> {
     std::thread::scope(|s| {
         let probes = [
