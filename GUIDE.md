@@ -292,7 +292,9 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
 2. **Process tree** — the pane's descendants are matched against the agent
    catalog (claude, codex, gemini, pi, muse, aider, crush, opencode, …),
    seeing
-   through wrappers like shells and `systemd-inhibit`. Session harnesses
+   through wrappers like shells and `systemd-inhibit`. Aliased frontends
+   resolve to their engine (`agy` → gemini, `claude-code` → claude).
+   Session harnesses
    (muxa, tmux) are transparent: detection looks *through* them for the
    real agent. This decides
    *who* the agent is; a live agent with an unreadable screen reads as
