@@ -180,9 +180,187 @@ pub enum KeySpec {
     None,
 }
 
+impl KeySpec {
+    /// True when the spec is a plain single-key binding (the pre-modifier
+    /// form): it fires on any modifier combination. Modifier-qualified
+    /// specs match only when no other modifiers are held.
+    pub fn bare(&self) -> bool {
+        match self {
+            KeySpec::Char(c) => {
+                // Space is typed, not a single-letter action binding: treat
+                // it as bare so shift-qualified typing still fires it.
+                *c == ' ' || c.is_ascii_alphabetic() || c.is_ascii_punctuation()
+            }
+            KeySpec::Code(k) => matches!(
+                k,
+                KeyCode::Enter
+                    | KeyCode::Esc
+                    | KeyCode::Tab
+                    | KeyCode::Backspace
+                    | KeyCode::Delete
+                    | KeyCode::Insert
+                    | KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Home
+                    | KeyCode::End
+                    | KeyCode::PageUp
+                    | KeyCode::PageDown
+                    | KeyCode::F(_) | KeyCode::BackTab
+            ),
+            KeySpec::None => false,
+        }
+    }
+}
+
+impl Clone for KeySpec {}
+impl PartialEq for KeySpec {}
+impl Eq for KeySpec {}
+
+/// One parsed keybinding: a modifier set plus a [`KeySpec`] (None = no
+/// binding). Modifier-less bindings from the pre-modifier config era
+/// ("n", "enter", "f5") fire regardless of which modifiers are held —
+/// that is how bare keys stayed reachable while ctrl/alt bindings came
+/// into existence. Modifier-qualified bindings ("ctrl+s") fire only with
+/// exactly those modifiers, so ctrl+s never shadows a plain s.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyBinding {
+    pub mods: KeyModifiers,
+    pub spec: KeySpec,
+}
+
+impl KeyBinding {
+    /// Display form used in help text and the config template: the plain
+    /// name when no modifiers are involved, otherwise the canonical
+    /// "ctrl+x" style spelling.
+    pub fn label(&self) -> String {
+        match &self.spec {
+            KeySpec::None => String::new(),
+            KeySpec::Char(c) => {
+                if c.is_ascii_uppercase() {
+                    format!("shift+{c}")
+                } else {
+                    c.to_string()
+                }
+            }
+            KeySpec::Code(k) => {
+                use KeyCode::Char;
+                let name = match k {
+                    Char(c) => c.to_string(),
+                    KeyCode::Enter => "enter".to_string(),
+                    KeyCode::Esc => "esc".to_string(),
+                    KeyCode::Tab => "tab".to_string(),
+                    KeyCode::BackTab => "backtab".to_string(),
+                    KeyCode::Backspace => "backspace".to_string(),
+                    KeyCode::Delete => "delete".to_string(),
+                    KeyCode::Insert => "insert".to_string(),
+                    KeyCode::Up => "up".to_string(),
+                    KeyCode::Down => "down".to_string(),
+                    KeyCode::Left => "left".to_string(),
+                    KeyCode::Right => "right".to_string(),
+                    KeyCode::Home => "home".to_string(),
+                    KeyCode::End => "end".to_string(),
+                    KeyCode::PageUp => "pageup".to_string(),
+                    KeyCode::PageDown => "pagedown".to_string(),
+                    KeyCode::F(n) => format!("f{n}"),
+                    other => format!("{:?}", other),
+                };
+                name
+            }
+        }
+    }
+
+    /// Modifier-aware match. Bare specs (letters, bare names) fire on any
+    /// modifier combo unless they are letters, in which case extra
+    /// modifiers are only allowed when the key itself demands them (e.g.
+    /// shift for an uppercase letter) — typing a letter with alt/ctrl held
+    /// would otherwise trigger bindings the user did not ask for. Modifier
+    /// specs require an exact modifier match, so "ctrl+s" never fires on a
+    /// bare s and a bare s never fires on ctrl+s.
+    pub fn matches(&self, code: KeyCode, mods: KeyModifiers) -> bool {
+        match &self.spec {
+            KeySpec::None => false,
+            KeySpec::Char(c) => {
+                if c.is_ascii_uppercase() {
+                    // "G" is a binding that wants shift: the shift must be
+                    // held, and ctrl/alt/super must not be.
+                    let want = KeyModifiers::SHIFT;
+                    mods & !want == KeyModifiers::NONE
+                        && (mods & want) == want
+                        && mods.intersects(&KeyCode::Char(*c).to_mods())
+                        && mods.contains(KeyModifiers::SHIFT)
+                        && code.to_string().contains(&format!("Char({c})"))
+                        && c.to_ascii_lowercase() == code_char(*c)
+                } else {
+                    let base = mods & !(KeyModifiers::SHIFT);
+                    // Bare letter/char: SHIFT only allowed when the spec is
+                    // uppercase (handled above); any other modifiers must be
+                    // part of the spec. Bare specs have mods == NONE, so a
+                    // bare letter fires with no modifiers — ctrl+s does not
+                    // trigger a bare s.
+                    base == self.mods
+                        && (mods & KeyModifiers::SHIFT).is_empty() == (self.mods & KeyModifiers::SHIFT).is_empty()
+                        && (code_char(*c) == Some(c.to_ascii_lowercase())
+                            || code_char(*c) == Some(*c))
+                }
+            }
+            KeySpec::Code(k) => {
+                (mods & KeyModifiers::SHIFT).is_empty() || self.mods.contains(KeyModifiers::SHIFT) == mods.contains(KeyModifiers::SHIFT)
+                    && mods == self.mods
+                    && code == *k
+            }
+        }
+    }
+
+    /// Collision check for config validation: two bindings collide when
+    /// they can both fire on the same physical key. Modifier specs are
+    /// exclusive (ctrl+s vs s, ctrl+s vs ctrl+x), so only same-modifier
+    /// or bare-vs-bare collisions are real.
+    pub fn conflicts(&self, other: &KeyBinding) -> bool {
+        if self.spec == KeySpec::None || other.spec == KeySpec::None {
+            return false;
+        }
+        if self.mods == other.mods {
+            return same_key(&self.spec, &other.spec);
+        }
+        // Bare specs fire on plain presses; a modifier spec cannot fire
+        // when the bare key is pressed without modifiers, and vice versa.
+        // The one overlap: a bare letter "G" is shift-qualified, so it
+        // shares the physical key with an explicit "shift+g" spec.
+        let bare_shift = |b: &KeyBinding| matches!(b.spec, KeySpec::Char(c) if c.is_ascii_uppercase());
+        if bare_shift(self) || bare_shift(other) {
+            let a = if bare_shift(self) { self } else { other };
+            let b = if bare_shift(self) { other } else { self };
+            if (b.mods & !KeyModifiers::SHIFT) == KeyModifiers::NONE
+                && b.mods.contains(KeyModifiers::SHIFT)
+                && same_key(&a.spec, &b.spec)
+            {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn same_key(a: &KeySpec, b: &KeySpec) -> bool {
+    match (a, b) {
+        (KeySpec::Char(x), KeySpec::Char(y)) => x.eq_ignore_ascii_case(y),
+        (KeySpec::Code(x), KeySpec::Code(y)) => x == y,
+        _ => false,
+    }
+}
+
+fn code_char(spec: char) -> Option<char> {
+    Some(spec)
+}
+
 /// Parse a config key name: single chars ("n", "?"), names ("enter", "esc",
 /// "space", "tab", "up"...), function keys ("f5"), or the legacy
-/// "question_mark" alias.
+/// "question_mark" alias. Modifier prefixes are accepted: "ctrl+s",
+/// "alt+x", "super+m", "shift+g" (and combinations, "ctrl+shift+enter").
+/// Bare values keep their exact-match semantics; modifier values bind to
+/// that modifier combo only, and never shadow the bare key.
 pub fn parse_key(s: &str) -> KeySpec {
     let s = s.trim();
     if s.is_empty() {
