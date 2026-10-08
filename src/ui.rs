@@ -237,14 +237,14 @@ pub fn render(frame: &mut Frame, app: &mut App) -> ClickAreas {
         None if app.sessions.is_empty() => (
             format!(
                 "no sessions — press {} to create one",
-                app.config.key("new")
+                app.config.key_label("new")
             ),
             pal.dim,
         ),
         None => (
             format!(
                 "left-click = jump · right-click = preview · ctrl+click session = attach · tab = switch list · ←/→ sessions · ↑/↓ move · click header = sort · {} = settings",
-                app.config.key("settings")
+                app.config.key_label("settings")
             ),
             pal.dim,
         ),
@@ -1014,7 +1014,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
     }
     title.push_str(&format!(
         " — left-click/{} jump · right-click/esc close ",
-        app.config.key("attach")
+        app.config.key_label("attach")
     ));
     let block = Block::bordered()
         .title(Line::from(title).style(pal.title))
