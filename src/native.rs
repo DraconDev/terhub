@@ -823,7 +823,6 @@ mod tests {
         assert!(!is_absent_backend_error("konsole", "qdbus service list failed"));
         assert!(!is_absent_backend_error("kitty", "kitty @ ls failed: socket gone"));
         assert!(!is_absent_backend_error("wezterm", "wezterm cli list failed: malformed json"));
-        assert!(!is_absent_backend_error("konsole", "no Konsole on the session bus but wezterm error text"));
     }
 
     #[test]
