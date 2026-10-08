@@ -2264,7 +2264,7 @@ impl App {
             return None;
         }
         if self.focus == Focus::Panes {
-            return self.on_pane_key(code, tmux);
+            return self.on_pane_key(key, tmux);
         }
         let cfg = &self.config;
         if key_matches(&cfg.spec("quit"), &code, mods) {
@@ -2313,13 +2313,13 @@ impl App {
         let custom = cfg
             .commands
             .iter()
-            .find(|c| key_matches(&c.spec, &code, KeyModifiers::NONE))
+            .find(|c| key_matches(&c.spec, &code, mods))
             .cloned();
         if let Some(cmd) = custom {
             self.run_custom(&cmd);
             return None;
         }
-        if key_matches(&cfg.spec("help"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("help"), &code, mods) {
             // Repeated `?` toggles between the key list and the legend.
             if self
                 .status
@@ -3110,12 +3110,14 @@ impl App {
 
     /// Keys when the pane table has focus. Quit/refresh/help keep their
     /// global meaning; attach jumps to the pane; kill closes it.
-    fn on_pane_key(&mut self, code: KeyCode, tmux: &Tmux) -> Option<AppEvent> {
+    fn on_pane_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
+        let code = key.code;
+        let mods = key.modifiers;
         let cfg = &self.config;
-        if key_matches(&cfg.spec("quit"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("quit"), &code, mods) {
             return Some(AppEvent::Quit);
         }
-        if key_matches(&cfg.spec("attach"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("attach"), &code, mods) {
             if let Some(p) = self.selected_pane() {
                 let id = p.id.clone();
                 return self.jump_event(&id);
@@ -3123,7 +3125,7 @@ impl App {
             self.set_status("no pane selected".to_string());
             return None;
         }
-        if key_matches(&cfg.spec("kill"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("kill"), &code, mods) {
             if !self.marked.is_empty() {
                 let mut ids: Vec<String> = self.marked.iter().cloned().collect();
                 ids.sort();
@@ -3144,11 +3146,11 @@ impl App {
             }
             return None;
         }
-        if key_matches(&cfg.spec("mark"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("mark"), &code, mods) {
             self.toggle_mark();
             return None;
         }
-        if key_matches(&cfg.spec("unmark"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("unmark"), &code, mods) {
             let n = self.marked.len();
             self.marked.clear();
             self.set_status(if n == 0 {
@@ -3158,31 +3160,31 @@ impl App {
             });
             return None;
         }
-        if key_matches(&cfg.spec("attend"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("attend"), &code, mods) {
             return self.do_attend();
         }
-        if key_matches(&cfg.spec("bulk"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("bulk"), &code, mods) {
             self.do_bulk();
             return None;
         }
-        if key_matches(&cfg.spec("refresh"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("refresh"), &code, mods) {
             self.refresh(tmux);
             self.fetch_native();
             return None;
         }
-        if key_matches(&cfg.spec("new"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("new"), &code, mods) {
             self.do_new_session();
             return None;
         }
-        if key_matches(&cfg.spec("spawn"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("spawn"), &code, mods) {
             self.do_spawn();
             return None;
         }
-        if key_matches(&cfg.spec("rename"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("rename"), &code, mods) {
             self.do_rename_session();
             return None;
         }
-        if key_matches(&cfg.spec("restart"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("restart"), &code, mods) {
             match self.selected_pane() {
                 Some(p) if is_native_pane(&p.id) => self.set_status(format!(
                     "can't restart native tab {} (re-run inside the tab)",
@@ -3208,24 +3210,24 @@ impl App {
             }
             return None;
         }
-        if key_matches(&cfg.spec("pause"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("pause"), &code, mods) {
             self.do_pause();
             return None;
         }
-        if key_matches(&cfg.spec("detach"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("detach"), &code, mods) {
             self.do_detach(tmux);
             return None;
         }
         let custom = cfg
             .commands
             .iter()
-            .find(|c| key_matches(&c.spec, &code, KeyModifiers::NONE))
+            .find(|c| key_matches(&c.spec, &code, mods))
             .cloned();
         if let Some(cmd) = custom {
             self.run_custom(&cmd);
             return None;
         }
-        if key_matches(&cfg.spec("help"), &code, KeyModifiers::NONE) {
+        if key_matches(&cfg.spec("help"), &code, mods) {
             // Repeated `?` toggles between the key list and the legend.
             if self
                 .status
