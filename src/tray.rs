@@ -18,23 +18,264 @@ const SNI_PATH: &str = "/StatusNotifierItem";
 
 /// Icon themes only resolve names they have files for, so the SVGs are
 /// written into the user's icon dir on first run.
-const ICONS: [(&str, &str); 6] = [
-    ("terhub.svg", include_str!("../assets/terhub.svg")),
-    (
-        "terhub-attention.svg",
-        include_str!("../assets/terhub-attention.svg"),
-    ),
-    ("terhub-idle.svg", include_str!("../assets/terhub-idle.svg")),
-    (
-        "terhub-disconnected.svg",
-        include_str!("../assets/terhub-disconnected.svg"),
-    ),
-    ("terhub-live.svg", include_str!("../assets/terhub-live.svg")),
-    (
-        "terhub-live-idle.svg",
-        include_str!("../assets/terhub-live-idle.svg"),
-    ),
+/// Icon themes only resolve names they have files for, so the SVGs are
+/// written into the user's icon dir on first run. The set is the same
+/// across runs; the actual contents are themed at write time.
+const ICON_STATES: &[(IconState, &str); 6] = &[
+    (IconState::Calm, "terhub.svg"),
+    (IconState::Attention, "terhub-attention.svg"),
+    (IconState::Idle, "terhub-idle.svg"),
+    (IconState::Disconnected, "terhub-disconnected.svg"),
+    (IconState::Live, "terhub-live.svg"),
+    (IconState::LiveIdle, "terhub-live-idle.svg"),
 ];
+
+/// One state the icon can be in. Distinct from [`TrayView`] so the
+/// renderer stays pure and is testable with a 5-element palette.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IconState {
+    Calm,
+    Idle,
+    Attention,
+    Live,
+    LiveIdle,
+    Disconnected,
+}
+
+impl TrayView {
+    pub fn icon_state(&self) -> IconState {
+        if !self.connected {
+            return IconState::Disconnected;
+        }
+        if self.needs_attention() {
+            return IconState::Attention;
+        }
+        match (self.hub_open, self.idle) {
+            (true, 0) => IconState::Live,
+            (true, _) => IconState::LiveIdle,
+            (false, 0) => IconState::Calm,
+            (false, _) => IconState::Idle,
+        }
+    }
+}
+
+/// Five color accents the T-mark pulls from the active theme. Each
+/// plays a specific role in the icon: tile and stem are the everyday
+/// surface, focus and header add visual interest, attached and a
+/// reserved alarm handle the "needs you" case so a theme's existing
+/// red/yellow does the alarm work without us overriding it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TrayPalette {
+    /// Rounded-square tile behind the T.
+    tile: &'static str,
+    /// T crossbar gradient start (left edge) and end (right edge).
+    crossbar_a: &'static str,
+    crossbar_b: &'static str,
+    /// T vertical stem left half.
+    stem_a: &'static str,
+    /// T vertical stem right half (focus color, low opacity in idle).
+    stem_b: &'static str,
+    /// Live corner dot. Stays green across themes — "running" is a
+    /// universal signal, not a theme expression.
+    live_dot: &'static str,
+    /// Attention badge background (alarm) and foreground (the plus).
+    alarm_bg: &'static str,
+    alarm_fg: &'static str,
+}
+
+/// Look up a theme's tray palette. Unknown themes fall back to dracula;
+/// the TUI's palette() has the same fallback, so the icon and the panel
+/// stay in lockstep.
+fn palette_for_theme(theme: &str) -> TrayPalette {
+    match theme {
+        "gruvbox" => TrayPalette {
+            tile: "#3c3836",
+            crossbar_a: "#fabd2f",
+            crossbar_b: "#b8bb26",
+            stem_a: "#fabd2f",
+            stem_b: "#fe8019",
+            live_dot: "#b8bb26",
+            alarm_bg: "#fb4934",
+            alarm_fg: "#282828",
+        },
+        "dracula" => TrayPalette {
+            tile: "#282a36",
+            crossbar_a: "#8be9fd",
+            crossbar_b: "#f1fa8c",
+            stem_a: "#8be9fd",
+            stem_b: "#ff79c6",
+            live_dot: "#50fa7b",
+            alarm_bg: "#ff5555",
+            alarm_fg: "#f8f8f2",
+        },
+        "nord" => TrayPalette {
+            tile: "#3b4252",
+            crossbar_a: "#88c0d0",
+            crossbar_b: "#ebcb8b",
+            stem_a: "#88c0d0",
+            stem_b: "#b48ead",
+            live_dot: "#a3be8c",
+            alarm_bg: "#bf616a",
+            alarm_fg: "#eceff4",
+        },
+        "solarized" => TrayPalette {
+            tile: "#002b36",
+            crossbar_a: "#268bd2",
+            crossbar_b: "#b58900",
+            stem_a: "#268bd2",
+            stem_b: "#6c71c4",
+            live_dot: "#859900",
+            alarm_bg: "#dc322f",
+            alarm_fg: "#fdf6e3",
+        },
+        "tokyonight" => TrayPalette {
+            tile: "#1f2335",
+            crossbar_a: "#7dcfff",
+            crossbar_b: "#e0af68",
+            stem_a: "#7dcfff",
+            stem_b: "#bb9af7",
+            live_dot: "#9ece6a",
+            alarm_bg: "#f7768e",
+            alarm_fg: "#1f2335",
+        },
+        "catppuccin" => TrayPalette {
+            tile: "#1e2030",
+            crossbar_a: "#89b4fa",
+            crossbar_b: "#f9e2af",
+            stem_a: "#89b4fa",
+            stem_b: "#cba6f7",
+            live_dot: "#a6e3a1",
+            alarm_bg: "#f38ba8",
+            alarm_fg: "#11111b",
+        },
+        "onedark" => TrayPalette {
+            tile: "#282c34",
+            crossbar_a: "#56b6c2",
+            crossbar_b: "#e5c07b",
+            stem_a: "#56b6c2",
+            stem_b: "#c678dd",
+            live_dot: "#98c379",
+            alarm_bg: "#e06c75",
+            alarm_fg: "#282c34",
+        },
+        "monokai" => TrayPalette {
+            tile: "#272822",
+            crossbar_a: "#a6e22e",
+            crossbar_b: "#e6db74",
+            stem_a: "#a6e22e",
+            stem_b: "#f92672",
+            live_dot: "#a6e22e",
+            alarm_bg: "#f92672",
+            alarm_fg: "#f8f8f2",
+        },
+        "light" => TrayPalette {
+            tile: "#eee8d5",
+            crossbar_a: "#268bd2",
+            crossbar_b: "#b58900",
+            stem_a: "#268bd2",
+            stem_b: "#6c71c4",
+            live_dot: "#859900",
+            alarm_bg: "#dc322f",
+            alarm_fg: "#fdf6e3",
+        },
+        // Default fallback matches dracula.
+        _ => TrayPalette {
+            tile: "#282a36",
+            crossbar_a: "#8be9fd",
+            crossbar_b: "#f1fa8c",
+            stem_a: "#8be9fd",
+            stem_b: "#ff79c6",
+            live_dot: "#50fa7b",
+            alarm_bg: "#ff5555",
+            alarm_fg: "#f8f8f2",
+        },
+    }
+}
+
+/// State × palette → SVG. The T-mark carries three colors
+/// (crossbar gradient + stem two-tone) so the icon changes with the
+/// theme, while the corner accent (none / red / green / strikethrough)
+/// carries the alert signal. The same brand mark, themed.
+fn render_svg(state: IconState, p: TrayPalette) -> String {
+    let body = match state {
+        IconState::Calm => format!(
+            "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
+             <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
+             <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\"/>",
+            stem_a = p.stem_a, stem_b = p.stem_b,
+        ),
+        IconState::Idle => format!(
+            "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\" opacity=\"0.85\"/>\
+             <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
+             <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.55\"/>",
+            stem_a = p.stem_a, stem_b = p.stem_b,
+        ),
+        IconState::Attention => format!(
+            "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
+             <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
+             <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\"/>\
+             <circle cx=\"17.4\" cy=\"4.6\" r=\"3.0\" fill=\"{abg}\"/>\
+             <path d=\"M16.3 4.6 L18.5 4.6 M17.4 3.5 L17.4 5.7\" stroke=\"{afg}\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>",
+            stem_a = p.stem_a, stem_b = p.stem_b, abg = p.alarm_bg, afg = p.alarm_fg,
+        ),
+        IconState::Live => format!(
+            "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
+             <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
+             <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\"/>\
+             <circle cx=\"17.6\" cy=\"4.6\" r=\"2.6\" fill=\"{tile}\" opacity=\"0.95\"/>\
+             <circle cx=\"17.6\" cy=\"4.6\" r=\"1.6\" fill=\"{dot}\"/>",
+            stem_a = p.stem_a, stem_b = p.stem_b, tile = p.tile, dot = p.live_dot,
+        ),
+        IconState::LiveIdle => format!(
+            "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\" opacity=\"0.85\"/>\
+             <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
+             <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.55\"/>\
+             <circle cx=\"17.6\" cy=\"4.6\" r=\"2.6\" fill=\"{tile}\" opacity=\"0.95\"/>\
+             <circle cx=\"17.6\" cy=\"4.6\" r=\"1.6\" fill=\"{dot}\"/>",
+            stem_a = p.stem_a, stem_b = p.stem_b, tile = p.tile, dot = p.live_dot,
+        ),
+        IconState::Disconnected => format!(
+            "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"{stem_b}\" opacity=\"0.4\"/>\
+             <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.5\"/>\
+             <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.4\"/>\
+             <line x1=\"2\" y1=\"20\" x2=\"20\" y2=\"2\" stroke=\"{tile}\" stroke-width=\"2.4\" stroke-linecap=\"round\"/>\
+             <line x1=\"2\" y1=\"20\" x2=\"20\" y2=\"2\" stroke=\"{stem_b}\" stroke-width=\"1.3\" stroke-linecap=\"round\"/>",
+            stem_b = p.stem_b, tile = p.tile,
+        ),
+    };
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"22\" height=\"22\" viewBox=\"0 0 22 22\">\
+         <defs>\
+           <linearGradient id=\"cb\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\
+             <stop offset=\"0%\" stop-color=\"{a}\"/>\
+             <stop offset=\"100%\" stop-color=\"{b}\"/>\
+           </linearGradient>\
+         </defs>\
+         <rect x=\"1\" y=\"1\" width=\"20\" height=\"20\" rx=\"5\" fill=\"{tile}\"/>\
+         {body}\
+         </svg>",
+        a = p.crossbar_a, b = p.crossbar_b, tile = p.tile, body = body,
+    )
+}
+
+/// Install the tray SVGs into the user's icon theme, themed to the
+/// active `theme` config. Same shape on disk across runs; each file is
+/// rewritten only when its rendered content changes.
+pub fn install_icons(theme: &str) -> std::io::Result<PathBuf> {
+    let dir = data_home().join("icons/hicolor/scalable/apps");
+    std::fs::create_dir_all(&dir)?;
+    let palette = palette_for_theme(theme);
+    for (state, name) in ICON_STATES {
+        let path = dir.join(name);
+        let svg = render_svg(*state, palette);
+        // Only write when changed: Plasma watches these dirs, and a
+        // needless rewrite on every launch would churn its cache.
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(svg.as_str()) {
+            std::fs::write(&path, svg)?;
+        }
+    }
+    Ok(dir)
+}
 
 /// What the tray shows, derived from one daemon snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,21 +379,6 @@ impl Default for TrayView {
             hub_open: false,
         }
     }
-}
-
-/// Install the tray SVGs into the user's icon theme.
-pub fn install_icons() -> std::io::Result<PathBuf> {
-    let dir = data_home().join("icons/hicolor/scalable/apps");
-    std::fs::create_dir_all(&dir)?;
-    for (name, svg) in ICONS {
-        let path = dir.join(name);
-        // Only write when changed: Plasma watches these dirs, and a
-        // needless rewrite on every launch would churn its cache.
-        if std::fs::read_to_string(&path).ok().as_deref() != Some(svg) {
-            std::fs::write(&path, svg)?;
-        }
-    }
-    Ok(dir)
 }
 
 fn data_home() -> PathBuf {
