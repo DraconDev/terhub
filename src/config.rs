@@ -54,6 +54,11 @@ fn default_keys() -> HashMap<String, String> {
         ("settings", "s"),
         ("sort", "o"),
         ("filter", "f"),
+        // Optional hard-clear for the filter query. Unbound by default
+        // (empty string); Esc in the filter prompt always restores the
+        // pre-edit query, so this only matters when a user wants a
+        // dedicated "wipe the filter" key. Bind e.g. to "ctrl+backspace".
+        ("filter_clear", ""),
         ("mark", "space"),
         ("unmark", "u"),
         ("hide_shells", "h"),
