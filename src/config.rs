@@ -998,9 +998,11 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         }
         cfg.keys.insert(k, v);
     }
-    // Builtin values are validated like custom ones: a typo/empty/f99
-    // would otherwise parse to KeySpec::None and silently deaden the
-    // action. Bad values revert to their default (poll_secs precedent).
+    // Builtin values are validated like custom ones: a typo/f99 would
+    // otherwise parse to KeySpec::None and silently deaden the action.
+    // Bad values revert to their default (poll_secs precedent). An empty
+    // value is legal when the default is empty: it means "intentionally
+    // unbound" (e.g. filter_clear, which has no default binding).
     // Sorted actions keep problem order deterministic.
     let defaults = default_keys();
     let mut actions: Vec<String> = cfg.keys.keys().cloned().collect();
@@ -1009,6 +1011,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         let value = cfg.keys[action].clone();
         if parse_key(&value).spec == KeySpec::None
             && let Some(def) = defaults.get(action)
+            && !def.is_empty()
         {
             problems.push(format!(
                 "key '{action}' has bad value '{value}' (using default '{def}')"
