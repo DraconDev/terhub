@@ -692,6 +692,25 @@ mod tests {
     }
 
     #[test]
+    fn agy_binary_detects_as_gemini() {
+        // Live: six panes run `agy --dangerously-skip-permissions`, a
+        // Gemini-frontend CLI (every screen footers "Gemini 3.8 Flash").
+        // `agy` is not a shell word, so it must resolve through the
+        // process tree even though no `gemini` binary exists.
+        let dir = fake_proc(
+            "agy",
+            &[("900", "1", "agy", "agy --dangerously-skip-permissions", 0, 0, 9000)],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(
+            snap.detect_agent(900).map(|h| h.agent),
+            Some("gemini".to_string())
+        );
+        assert_eq!(canonical_agent("agy"), "gemini");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn minimax_code_detects_as_agent() {
         let dir = fake_proc(
             "minimax",
