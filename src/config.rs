@@ -1,6 +1,6 @@
 //! Config: theme + keybindings as TOML. Not vim, customizable.
 use anyhow::{Context, Result};
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -177,9 +177,9 @@ impl AppConfig {
 /// Modifier-aware key spec: the key itself plus the modifiers that must be
 /// held for it to fire.
 pub enum KeySpec {
-    /// A character key ("n", "?", "g"...); `code_char` holds the char.
+    /// A character key ("n", "?", "g"...); the char is the key.
     Char(char),
-    /// A named/special key (enter, esc, f5...); `code` holds it.
+    /// A named/special key (enter, esc, f5...); holds the code.
     Code(KeyCode),
     /// No binding for this action.
     None,
@@ -192,6 +192,117 @@ impl KeySpec {
     /// still works under a stray ctrl/shift, exactly as before.
     pub fn mods(&self) -> KeyModifiers {
         KeyModifiers::NONE
+    }
+}
+
+/// One parsed keybinding: a modifier set plus a key spec (None = unbound).
+/// Plain config values ("n", "enter", "f5") parse to a spec with
+/// `KeyModifiers::NONE` — which keeps the historic "fires under any
+/// modifiers" behaviour so bare-key binding stays reachable. Modifier
+/// values ("ctrl+s", "alt+x", "shift+g") carry their modifiers and fire
+/// only on that exact combo, so they never shadow the bare key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyBinding {
+    pub mods: KeyModifiers,
+    pub spec: KeySpec,
+}
+
+impl KeyBinding {
+    /// Display form for help text, footers and the config template.
+    /// No modifiers -> plain key name ("n", "enter", "f5", "g");
+    /// with modifiers -> "ctrl+s", "shift+g", "ctrl+shift+enter".
+    pub fn label(&self) -> String {
+        let key = match &self.spec {
+            KeySpec::None => return String::new(),
+            KeySpec::Char(c) => c.to_string(),
+            KeySpec::Code(k) => match k {
+                KeyCode::Char(c) => c.to_string(),
+                KeyCode::Enter => "enter".into(),
+                KeyCode::Esc => "esc".into(),
+                KeyCode::Tab => "tab".into(),
+                KeyCode::BackTab => "backtab".into(),
+                KeyCode::Backspace => "backspace".into(),
+                KeyCode::Delete => "delete".into(),
+                KeyCode::Insert => "insert".into(),
+                KeyCode::Up => "up".into(),
+                KeyCode::Down => "down".into(),
+                KeyCode::Left => "left".into(),
+                KeyCode::Right => "right".into(),
+                KeyCode::Home => "home".into(),
+                KeyCode::End => "end".into(),
+                KeyCode::PageUp => "pageup".into(),
+                KeyCode::PageDown => "pagedown".into(),
+                KeyCode::F(n) => format!("f{n}"),
+                other => format!("{other:?}"),
+            },
+        };
+        if self.mods == KeyModifiers::NONE {
+            return key;
+        }
+        let mut parts: Vec<String> = Vec::new();
+        if self.mods.intersects(KeyModifiers::CONTROL) {
+            parts.push("ctrl".into());
+        }
+        if self.mods.intersects(KeyModifiers::ALT) {
+            parts.push("alt".into());
+        }
+        if self.mods.intersects(KeyModifiers::SHIFT) {
+            parts.push("shift".into());
+        }
+        if self.mods.intersects(KeyModifiers::SUPER) {
+            parts.push("super".into());
+        }
+        if parts.is_empty() {
+            key
+        } else {
+            parts.push(key);
+            parts.join("+")
+        }
+    }
+
+    /// Fire test for a physical key event. `mods = NONE` (every current
+    /// bare binding) preserves today's semantics: modifiers held are
+    /// irrelevant. Modifier-qualified bindings require an exact modifier
+    /// match: "ctrl+s" fires on ctrl+s only, never on bare s or
+    /// ctrl+shift+s.
+    pub fn matches(&self, code: &KeyCode, mods: KeyModifiers) -> bool {
+        if self.mods != KeyModifiers::NONE && mods != self.mods {
+            return false;
+        }
+        match (&self.spec, code) {
+            (KeySpec::None, _) => false,
+            (KeySpec::Char(a), KeyCode::Char(b)) => {
+                if a.is_ascii_alphabetic() && b.is_ascii_alphabetic() {
+                    a.eq_ignore_ascii_case(b)
+                } else {
+                    a == b
+                }
+            }
+            (KeySpec::Code(a), b) => a == b,
+            _ => false,
+        }
+    }
+
+    /// Collision test for config validation: two bindings collide when a
+    /// single physical press can fire both. Different modifier sets can
+    /// never fire on the same press, so only identical-modifier pairs
+    /// (including the NONE era of bare keys) need to be compared — exactly
+    /// the collision semantics bare keys always had.
+    pub fn conflicts(&self, other: &KeyBinding) -> bool {
+        if self.mods != other.mods || self.spec == KeySpec::None {
+            return false;
+        }
+        match (&self.spec, &other.spec) {
+            (KeySpec::Char(x), KeySpec::Char(y)) => {
+                if x.is_ascii_alphabetic() && y.is_ascii_alphabetic() {
+                    x.eq_ignore_ascii_case(y)
+                } else {
+                    x == y
+                }
+            }
+            (KeySpec::Code(x), KeySpec::Code(y)) => x == y,
+            _ => false,
+        }
     }
 }
 
