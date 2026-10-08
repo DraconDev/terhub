@@ -1355,7 +1355,10 @@ mod tests {
         // wall lists "Claude Opus, Claude Sonnet, GPT-OSS" as a group).
         let m = compiled();
         let gemini = m.iter().find(|x| x.agent == "gemini").unwrap();
-        assert!(gemini.matches_command("agy"), "gemini manifest must claim agy");
+        assert!(
+            gemini.matches_command("agy"),
+            "gemini manifest must claim agy"
+        );
         // Waiting prompt with the gemini footer, no other agent named.
         let screen = ">\n? for shortcuts  Gemini 3.8 Flash · high";
         assert_eq!(
@@ -1365,13 +1368,20 @@ mod tests {
         // Quota wall naming Claude models: state Limited, agent gemini.
         let screen = "Quota exhausted\nCLAUDE AND GPT MODELS\nModels within this group: Claude Opus, Claude Sonnet, GPT-OSS\nWeekly Limit Remaining\nQuota is consumed\n? for shortcuts  Gemini 3.8 Flash · high";
         let got = classify_screen(&m, "agy", screen);
-        assert_eq!(got.as_ref().and_then(|h| h.agent.clone()), Some("gemini".to_string()), "quota wall misattributed: {got:?}");
+        assert_eq!(
+            got.as_ref().and_then(|h| h.agent.clone()),
+            Some("gemini".to_string()),
+            "quota wall misattributed: {got:?}"
+        );
         assert_eq!(got.map(|h| h.state), Some(AgentState::Limited));
         // Bare quota lines with no agent word at all still claim gemini
         // through the command pin (previously agent=None -> dropped).
         let screen = "Individual quota reached. Please upgrade your subscription. Resets in 49m23s.\n>\n? for shortcuts  Gemini 3.8 Flash · high";
         let got = classify_screen(&m, "agy", screen);
-        assert!(got.is_some(), "quota screen with gemini footer must classify");
+        assert!(
+            got.is_some(),
+            "quota screen with gemini footer must classify"
+        );
     }
 
     #[test]

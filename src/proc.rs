@@ -55,7 +55,11 @@ const PATH_NEEDLES: &[(&str, &str)] = &[("/.pi/agent", "pi"), ("/bin/pi", "pi")]
 /// (its screens footer "Gemini X Flash"); it resolves to gemini so
 /// process detection names the agent even though no `gemini` binary
 /// exists in the tree.
-const NAME_NEEDLES: &[(&str, &str)] = &[("pi-agent", "pi"), ("claude-code", "claude"), ("agy", "gemini")];
+const NAME_NEEDLES: &[(&str, &str)] = &[
+    ("pi-agent", "pi"),
+    ("claude-code", "claude"),
+    ("agy", "gemini"),
+];
 
 /// Lowercased basename for agent matching.
 fn proc_base(s: &str) -> String {
@@ -702,7 +706,15 @@ mod tests {
         // process tree even though no `gemini` binary exists.
         let dir = fake_proc(
             "agy",
-            &[("900", "1", "agy", "agy --dangerously-skip-permissions", 0, 0, 9000)],
+            &[(
+                "900",
+                "1",
+                "agy",
+                "agy --dangerously-skip-permissions",
+                0,
+                0,
+                9000,
+            )],
         );
         let snap = Snapshot::capture_from(&dir);
         assert_eq!(
