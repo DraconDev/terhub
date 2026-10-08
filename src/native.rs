@@ -678,6 +678,12 @@ pub struct BackendReport {
     pub backend: &'static str,
     pub tabs: Vec<NativeTab>,
     pub error: Option<String>,
+    /// The probe failed but the cause is "nothing to report" (no Konsole
+    /// service on the bus, no kitty socket, no WezTerm server): the
+    /// backend is simply absent on this machine. Informational — display
+    /// tones it down (dim, never the warning color). Real failures
+    /// (missing binary, wedged CLI, malformed output) keep this false.
+    pub informational: bool,
 }
 
 /// Enumerate every backend. Backends probe concurrently and fail
