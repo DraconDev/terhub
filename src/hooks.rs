@@ -403,6 +403,31 @@ mod tests {
     }
 
     #[test]
+    fn turn_end_reports_idle_not_waiting() {
+        // "response finished" means the turn is over. Reporting it as
+        // waiting made every completed agent demand attention.
+        let dir = scratch("turnend");
+        let claude = dir.join("settings.json");
+        claude_install(&claude).unwrap();
+        let text = std::fs::read_to_string(&claude).unwrap();
+        assert!(
+            text.contains("--summary 'response finished' --state idle"),
+            "claude Stop must report idle:\n{text}"
+        );
+        // Only a real notification asks for your attention.
+        assert!(text.contains("--state waiting"), "{text}");
+
+        let pi = dir.join("terhub.ts");
+        pi_install(&pi).unwrap();
+        let ts = std::fs::read_to_string(&pi).unwrap();
+        assert!(
+            ts.contains(r#"report("idle", "response finished")"#),
+            "pi agent_end must report idle:\n{ts}"
+        );
+        assert!(!ts.contains(r#"report("waiting", "response finished")"#), "{ts}");
+    }
+
+    #[test]
     fn claude_install_wires_user_prompt_submit() {
         let dir = scratch("promptsubmit");
         let path = dir.join("settings.json");
