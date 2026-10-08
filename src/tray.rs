@@ -767,7 +767,6 @@ pub fn run() -> anyhow::Result<()> {
     watcher.call_method("RegisterStatusNotifierItem", &(unique.as_str(),))?;
     println!("terhub tray registered — ctrl-c to remove");
 
-    let mut last_theme = theme.clone();
     loop {
         // A live update: the user might change theme in the TUI's
         // settings popup, so re-check it on every poll. (A full re-render
