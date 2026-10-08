@@ -97,8 +97,6 @@ fn short_native_error(e: &str) -> String {
     }
 }
 
-
-
 /// CPU percent between two tick samples (None = re-baseline: first
 /// sample, zero elapsed, or ticks fell because the process restarted).
 /// Over 100% is real — agent subtrees span cores.

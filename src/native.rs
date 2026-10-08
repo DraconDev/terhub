@@ -705,12 +705,14 @@ fn is_absent_backend_error(backend: &str, msg: &str) -> bool {
         // The wezterm error embeds the CLI's own stderr, and that is
         // where "weztterm ... 13:40:13.529  ERROR" lines land: no server
         // / not-logged-in / connection-refused all mean "none here".
-        "wezterm" => first.contains("no wezterm server")
-            || first.contains("no server")
-            || first.contains("not logged in")
-            || first.contains("connection refused")
-            || first.contains("no connection")
-            || first.contains("no such process"),
+        "wezterm" => {
+            first.contains("no wezterm server")
+                || first.contains("no server")
+                || first.contains("not logged in")
+                || first.contains("connection refused")
+                || first.contains("no connection")
+                || first.contains("no such process")
+        }
         _ => false,
     }
 }
@@ -729,9 +731,17 @@ pub fn list_all() -> Vec<BackendReport> {
                     Ok(Ok(tabs)) => (tabs, None, false),
                     Ok(Err(e)) => {
                         let msg = format!("{e:#}");
-                        (Vec::new(), Some(msg.clone()), is_absent_backend_error(backend, &msg))
+                        (
+                            Vec::new(),
+                            Some(msg.clone()),
+                            is_absent_backend_error(backend, &msg),
+                        )
                     }
-                    Err(_) => (Vec::new(), Some("backend probe panicked".to_string()), false),
+                    Err(_) => (
+                        Vec::new(),
+                        Some("backend probe panicked".to_string()),
+                        false,
+                    ),
                 };
                 BackendReport {
                     backend,
@@ -815,14 +825,35 @@ mod tests {
     #[test]
     fn absent_backend_errors_are_informational() {
         // No instances: tone down, not warn.
-        assert!(is_absent_backend_error("konsole", "no Konsole on the session bus"));
-        assert!(is_absent_backend_error("kitty", "kitty @ ls skipped: not inside kitty (set TERHUB_KITTY_TO ...)"));
-        assert!(is_absent_backend_error("wezterm", "wezterm cli list failed: No such process (wezt server not running)"));
-        assert!(is_absent_backend_error("wezterm", "wezterm cli list failed: Connection refused"));
+        assert!(is_absent_backend_error(
+            "konsole",
+            "no Konsole on the session bus"
+        ));
+        assert!(is_absent_backend_error(
+            "kitty",
+            "kitty @ ls skipped: not inside kitty (set TERHUB_KITTY_TO ...)"
+        ));
+        assert!(is_absent_backend_error(
+            "wezterm",
+            "wezterm cli list failed: No such process (wezt server not running)"
+        ));
+        assert!(is_absent_backend_error(
+            "wezterm",
+            "wezterm cli list failed: Connection refused"
+        ));
         // Real failures stay loud.
-        assert!(!is_absent_backend_error("konsole", "qdbus service list failed"));
-        assert!(!is_absent_backend_error("kitty", "kitty @ ls failed: socket gone"));
-        assert!(!is_absent_backend_error("wezterm", "wezterm cli list failed: malformed json"));
+        assert!(!is_absent_backend_error(
+            "konsole",
+            "qdbus service list failed"
+        ));
+        assert!(!is_absent_backend_error(
+            "kitty",
+            "kitty @ ls failed: socket gone"
+        ));
+        assert!(!is_absent_backend_error(
+            "wezterm",
+            "wezterm cli list failed: malformed json"
+        ));
     }
 
     #[test]
