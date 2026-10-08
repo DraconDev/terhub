@@ -1577,18 +1577,18 @@ impl App {
     }
 
     /// Handle one key press. Returns an event when the TUI should exit.
-    /// Dispatch a modifier-qualified binding. Standard actions map to the
-    /// same handlers `on_normal_key` / `on_pane_key` already use; custom
-    /// commands run against the selected row. Returns `true` when the
-    /// binding fired (the caller swallows the key event).
+    /// Dispatch a modifier-qualified binding. Custom commands run
+    /// against the selected row; standard actions call the same handler
+    /// the bare-key path uses, exactly as if the user had pressed the
+    /// bound key without modifiers. Returns `true` when the binding
+    /// fired (the caller swallows the key event).
     fn dispatch_binding(
         &mut self,
         binding: &crate::config::KeyBinding,
         tmux: &Tmux,
     ) -> bool {
-        use crate::config::{KeyBinding, KeySpec};
-        // Custom commands first (they carry their own KeyBinding in
-        // `config.commands` and are matched against the same list).
+        // Custom commands carry their own KeyBinding and are matched by
+        // exact value (same modifier set + same key).
         if let Some(cmd) = self
             .config
             .commands
@@ -1598,16 +1598,13 @@ impl App {
             self.run_custom(cmd);
             return true;
         }
-        // Standard actions: re-run the bare-key dispatch path with the
-        // binding's key (modifiers cleared so the bare-key match holds),
-        // exactly as if the user had pressed that key without modifiers.
-        let action = self.binding_action(binding);
-        match action.as_str() {
-            Some("new") => {
+        match self.binding_action(binding).as_str() {
+            "" => false, // no standard action claimed this binding
+            "new" => {
                 self.do_new_session();
                 true
             }
-            Some("kill") => {
+            "kill" => {
                 if self.focus == Focus::Panes {
                     match self.selected_pane() {
                         Some(p) if is_native_pane(&p.id) => self.set_status(format!(
@@ -1629,19 +1626,12 @@ impl App {
                 }
                 true
             }
-            Some("rename") => {
+            "rename" => {
                 self.do_rename_session();
                 true
             }
-            Some("attach") => {
-                if self.show_preview {
-                    if let Some(p) = self.selected_pane() {
-                        let id = p.id.clone();
-                        self.jump_event(&id);
-                    } else {
-                        self.set_status("no pane selected".to_string());
-                    }
-                } else if self.focus == Focus::Panes {
+            "attach" => {
+                if self.focus == Focus::Panes || self.show_preview {
                     if let Some(p) = self.selected_pane() {
                         let id = p.id.clone();
                         self.jump_event(&id);
@@ -1655,56 +1645,55 @@ impl App {
                 }
                 true
             }
-            Some("detach") => {
+            "detach" => {
                 self.do_detach(tmux);
                 true
             }
-            Some("quit") => {
-                // Quit is only reachable through the swallow path in
-                // modifier mode; plain q handles it in on_normal_key.
-                // Returning false lets the caller fall through so the
-                // event is not acted on twice.
+            "quit" => {
+                // Only reachable through a modifier binding; the bare q
+                // path handles plain quit. Returning false lets the
+                // caller swallow the event without a second AppEvent.
                 false
             }
-            Some("help") => {
+            "help" => {
                 self.set_status(LEGEND.to_string());
                 true
             }
-            Some("refresh") => {
+            "refresh" => {
                 self.refresh(tmux);
                 self.fetch_native();
                 true
             }
-            Some("attend") => {
+            "attend" => {
                 self.do_attend();
                 true
             }
-            Some("preview") => {
+            "preview" => {
                 self.toggle_preview(tmux);
                 true
             }
-            Some("theme") => {
+            "theme" => {
                 self.cycle_theme();
                 true
             }
-            Some("density") => {
+            "density" => {
                 self.cycle_density();
                 true
             }
-            Some("settings") => {
+            "settings" => {
                 self.open_settings();
                 true
             }
-            Some("sort") => {
+            "sort" => {
                 self.resort_next();
                 self.follow_preview(tmux);
                 true
             }
-            Some("filter") => {
+            "filter" => {
                 self.open_filter();
                 true
             }
-            Some("filter_clear") => {
+            "filter_clear" => {
                 if self.filter.is_empty() {
                     self.set_status("filter already clear".to_string());
                 } else {
@@ -1714,15 +1703,15 @@ impl App {
                 }
                 true
             }
-            Some("hide_shells") => {
+            "hide_shells" => {
                 self.toggle_hide_quiet_shells();
                 true
             }
-            Some("spawn") => {
+            "spawn" => {
                 self.do_spawn();
                 true
             }
-            Some("restart") => {
+            "restart" => {
                 match self.selected_pane() {
                     Some(p) if is_native_pane(&p.id) => self.set_status(format!(
                         "can't restart native tab {} (re-run inside the tab)",
@@ -1748,23 +1737,23 @@ impl App {
                 }
                 true
             }
-            Some("pause") => {
+            "pause" => {
                 self.do_pause();
                 true
             }
-            Some("hosts") => {
+            "hosts" => {
                 self.open_hosts();
                 true
             }
-            Some("bulk") => {
+            "bulk" => {
                 self.do_bulk();
                 true
             }
-            Some("mark") => {
+            "mark" => {
                 self.toggle_mark();
                 true
             }
-            Some("unmark") => {
+            "unmark" => {
                 let n = self.marked.len();
                 self.marked.clear();
                 self.set_status(if n == 0 {
@@ -1774,20 +1763,13 @@ impl App {
                 });
                 true
             }
-            Some("stop") => {
-                // stop = quit, handled the same as quit but without
-                // returning an AppEvent (the swallow path in on_key
-                // already decided the key was consumed).
-                self.do_nav(tmux, AppEvent::Quit);
-                true
-            }
             _ => false,
         }
     }
 
-    /// Map a [`KeyBinding`] back to the standard action name it belongs
-    /// to (used when the binding came from `all_bindings` and was not a
-    /// custom command).
+    /// Map a [`KeyBinding`] back to the standard action name it belongs to
+    /// (empty string when no standard action claims it — i.e. it was a
+    /// custom command, already handled in [`dispatch_binding`]).
     fn binding_action(&self, binding: &crate::config::KeyBinding) -> String {
         for action in [
             "new", "kill", "rename", "attach", "detach", "quit", "help",
