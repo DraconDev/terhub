@@ -2125,6 +2125,7 @@ impl App {
 
     fn on_normal_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
         let code = key.code;
+        let mods = key.modifiers;
         // Tab switches lists; Esc closes the preview, steps out of the table,
         // else quits. Navigation is fixed (arrow keys + mouse); the rest is
         // configurable.
@@ -2213,27 +2214,27 @@ impl App {
             _ => {}
         }
         // Style + preview keys work from either focus.
-        if key_matches(&self.config.spec("theme"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("theme"), &code, mods) {
             self.cycle_theme();
             return None;
         }
-        if key_matches(&self.config.spec("density"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("density"), &code, mods) {
             self.cycle_density();
             return None;
         }
-        if key_matches(&self.config.spec("preview"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("preview"), &code, mods) {
             self.toggle_preview(tmux);
             return None;
         }
-        if key_matches(&self.config.spec("settings"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("settings"), &code, mods) {
             self.open_settings();
             return None;
         }
-        if key_matches(&self.config.spec("hosts"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("hosts"), &code, mods) {
             self.open_hosts();
             return None;
         }
-        if key_matches(&self.config.spec("sort"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("sort"), &code, mods) {
             self.resort_next();
             self.follow_preview(tmux);
             self.set_status(format!(
@@ -2243,18 +2244,18 @@ impl App {
             ));
             return None;
         }
-        if key_matches(&self.config.spec("filter"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("filter"), &code, mods) {
             self.open_filter();
             return None;
         }
-        if key_matches(&self.config.spec("hide_shells"), &code, KeyModifiers::NONE) {
+        if key_matches(&self.config.spec("hide_shells"), &code, mods) {
             self.toggle_hide_quiet_shells();
             return None;
         }
         // Fullscreen preview owns the screen: Enter jumps to the previewed
         // pane from either focus (like left-click), instead of attaching to
         // a session bar the preview covers up.
-        if self.show_preview && key_matches(&self.config.spec("attach"), &code, KeyModifiers::NONE) {
+        if self.show_preview && key_matches(&self.config.spec("attach"), &code, mods) {
             if let Some(p) = self.selected_pane() {
                 let id = p.id.clone();
                 return self.jump_event(&id);
