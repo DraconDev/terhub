@@ -193,17 +193,77 @@ fn process_alive(pid: u32) -> bool {
     Path::new(&format!("/proc/{pid}")).exists()
 }
 
+/// Pull `TMUX_PANE` out of a NUL-separated `/proc/<pid>/environ` blob.
+fn tmux_pane_from_environ(blob: &[u8]) -> Option<String> {
+    blob.split(|b| *b == 0)
+        .filter_map(|kv| kv.split_once(|b| *b == b'='))
+        .find(|(k, _)| *k == b"TMUX_PANE")
+        .map(|(_, v)| String::from_utf8_lossy(v).into_owned())
+        .filter(|s| !s.is_empty())
+}
+
+/// True when this process is a bare `terhub` TUI — argv is exactly
+/// ["terhub"], so the tray (`terhub tray`) and any subcommand are out.
+fn is_tui_cmdline(blob: &[u8]) -> bool {
+    let mut parts = blob.split(|b| *b == 0).filter(|p| !p.is_empty());
+    matches!(parts.next(), Some(a) if a == b"terhub") && parts.next().is_none()
+}
+
+/// Find a running TUI by scanning /proc. This is the fallback for a hub
+/// started before it learned to advertise itself: without it, a stale
+/// TUI is invisible and every click spawns a duplicate.
+fn scan_for_tui() -> Option<HubSession> {
+    let me = std::process::id();
+    for entry in std::fs::read_dir("/proc").ok()? {
+        let Ok(entry) = entry else { continue };
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let Ok(pid) = name.parse::<u32>() else { continue };
+        if pid == me {
+            continue;
+        }
+        let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            continue;
+        };
+        if !is_tui_cmdline(&cmdline) {
+            continue;
+        }
+        let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+        let tty = std::fs::read_link(format!("/proc/{pid}/fd/0"))
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+            .filter(|s| s.starts_with("/dev/"));
+        return Some(HubSession {
+            pid,
+            pane: tmux_pane_from_environ(&environ),
+            tty,
+        });
+    }
+    None
+}
+
 /// Read the advertised hub, ignoring one whose process is gone. A TUI
 /// that was killed rather than quit leaves the file behind, and a stale
 /// pid must not make the tray think a hub is open forever.
+///
+/// Falls back to a /proc scan so a hub predating the advertisement — or
+/// one whose file was removed — is still found.
 pub fn read_hub_session() -> Option<HubSession> {
-    let raw = std::fs::read_to_string(hub_session_path()).ok()?;
-    let s: HubSession = serde_json::from_str(&raw).ok()?;
-    if !process_alive(s.pid) {
+    if let Ok(raw) = std::fs::read_to_string(hub_session_path()) {
+        if let Ok(s) = serde_json::from_str::<HubSession>(&raw) {
+            if process_alive(s.pid) {
+                return Some(s);
+            }
+            // Only clear it if the dead pid is still the one recorded.
+            if !scan_for_tui().is_some_and(|t| t.pid == s.pid) {
+                let _ = std::fs::remove_file(hub_session_path());
+            }
+            return scan_for_tui();
+        }
         let _ = std::fs::remove_file(hub_session_path());
-        return None;
     }
-    Some(s)
+    scan_for_tui()
 }
 
 /// Removes the advertisement when the TUI exits.
