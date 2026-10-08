@@ -1828,13 +1828,11 @@ impl App {
             }
             return None;
         }
-        // A press carrying ctrl/alt/super is swallowed unless some
-        // binding (a standard action or a [[command]]) explicitly wants
-        // exactly those modifiers: modifier-qualified bindings like
-        // "ctrl+s" fire here, everything else is dropped (typing
-        // safety, as before). Plain unmodified presses skip this guard.
-        // Normal mode only: prompt/confirm handlers own their modifier
-        // policy (they ignore modifiers on typed text by design).
+        // Modifier-qualified bindings ("ctrl+s"-style): a press carrying
+        // ctrl/alt/super fires the binding that asks for exactly those
+        // modifiers (Normal mode only — prompt handlers own their
+        // modifier policy). Anything unbound is swallowed, exactly as
+        // bare-modifier presses always were (typing safety).
         if key
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
@@ -1844,10 +1842,10 @@ impl App {
                 if binding.spec == crate::config::KeySpec::None {
                     continue;
                 }
-                if crate::config::key_matches(&binding, &key.code, key.modifiers) {
-                    if self.dispatch_binding(&binding, tmux) {
-                        return None;
-                    }
+                if crate::config::key_matches(&binding, &key.code, key.modifiers)
+                    && self.dispatch_binding(&binding, tmux)
+                {
+                    return None;
                 }
             }
             return None;
