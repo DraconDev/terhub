@@ -809,7 +809,7 @@ impl App {
         let (compiled, _) = compile_all_lossy(&manifests);
         let mut rows = Vec::new();
         let mut agents = Vec::new();
-        let mut notes = Vec::new();
+        let mut notes: Vec<String> = Vec::new();
         for rep in crate::native::list_all() {
             match &rep.error {
                 Some(e) => notes.push(format!("{}: {}", rep.backend, short_native_error(e))),
@@ -898,7 +898,14 @@ impl App {
         let live: Vec<String> = self.native_rows.iter().map(|r| r.id.clone()).collect();
         self.native_quiet.retain(|id, _| live.contains(id));
         self.assign_native_handles();
-        self.set_status(format!("native: {}", notes.join("; ")));
+        // The footer is a *hint surface*: re-assert the native note only
+        // when it actually changes, so an unchanged "konsole: 2 tab(s)" /
+        // error line doesn't pin the footer (and its warning color) for
+        // the whole session. The 5s TTL still fades it on genuine change.
+        let note = format!("native: {}", notes.join("; "));
+        if self.status.as_deref() != Some(note.as_str()) {
+            self.set_status(note);
+        }
         self.merge_caches();
     }
 
