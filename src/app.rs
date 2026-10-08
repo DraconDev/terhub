@@ -1601,11 +1601,8 @@ impl App {
         // Standard actions: re-run the bare-key dispatch path with the
         // binding's key (modifiers cleared so the bare-key match holds),
         // exactly as if the user had pressed that key without modifiers.
-        let action = match &binding.spec {
-            KeySpec::None => return false,
-            _ => self.binding_action(binding),
-        };
-        match action.as_deref() {
+        let action = self.binding_action(binding);
+        match action.as_str() {
             Some("new") => {
                 self.do_new_session();
                 true
@@ -1792,15 +1789,13 @@ impl App {
     /// to (used when the binding came from `all_bindings` and was not a
     /// custom command).
     fn binding_action(&self, binding: &crate::config::KeyBinding) -> String {
-        use crate::config::KeyBinding;
         for action in [
             "new", "kill", "rename", "attach", "detach", "quit", "help",
             "refresh", "attend", "preview", "theme", "density", "settings",
             "sort", "filter", "filter_clear", "hide_shells", "spawn",
             "restart", "pause", "hosts", "bulk", "mark", "unmark",
         ] {
-            let spec = self.config.spec(action);
-            if spec == *binding {
+            if self.config.spec(action) == *binding {
                 return action.to_string();
             }
         }
