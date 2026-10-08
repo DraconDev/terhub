@@ -322,7 +322,7 @@ export default function (pi: any): void {
     report("working", "turn started");
   });
   pi.on("agent_end", async () => {
-    report("waiting", "response finished");
+    report("idle", "response finished");
   });
   pi.on("session_shutdown", async () => {
     report("idle", "session ended");
