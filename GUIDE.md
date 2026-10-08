@@ -297,7 +297,15 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
    burning CPU, so stuck detection never trips either). The screen moving
    again flips them straight back to `working`; `0` disables it. Stuck is
    still CPU-based, so it outranks the quiet flip and an `idle` row can
-   still escalate to `stuck`. Fresh hooks are never second-guessed this way.
+   still escalate to `stuck`. A `waiting` row works the same way but on a
+   longer clock: `waiting_idle_secs` (default 30 minutes). Agents whose
+   CLI ends every turn with a bare `>` (gemini) classify as `waiting`
+   forever once the work is done, so without this they sit in "need you"
+   long after you walked away. The longer threshold is deliberate —
+   stepping away for a few minutes must not silence a real question —
+   and the summary is kept, since that is what you came back to read.
+   Both `0` disable their flip. Fresh hooks are never second-guessed this
+   way.
 3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse
    match the pane's command and recent screen text. The freshest matching
    line decides, so current output overrides stale scrollback; `waiting`/
