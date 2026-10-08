@@ -68,11 +68,12 @@ impl TrayView {
 /// what a neutral triangle looks like here, what an alarm looks like
 /// here, and what "running" looks like (green everywhere, because that
 /// is a universal signal rather than a theme expression).
+///
+/// There is deliberately no background tile: a tile that reads well at
+/// 88px shrinks the mark to an unreadable dot at the 16px trays
+/// actually use. The mark carries the whole 24px grid instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrayPalette {
-    /// Rounded-square tile behind the triangle. Keeps the icon legible
-    /// on both light and dark panels, and carries the theme's surface.
-    tile: &'static str,
     /// The everyday triangle: calm, and hub-open-but-busy.
     mark: &'static str,
     /// The "needs you" triangle. Themes contribute their own red/yellow
@@ -91,63 +92,54 @@ struct TrayPalette {
 fn palette_for_theme(theme: &str) -> TrayPalette {
     match theme {
         "gruvbox" => TrayPalette {
-            tile: "#3c3836",
             mark: "#fabd2f",
             alarm: "#fb4934",
             live: "#b8bb26",
             muted: "#7c6f64",
         },
         "dracula" => TrayPalette {
-            tile: "#282a36",
             mark: "#8be9fd",
             alarm: "#ff5555",
             live: "#50fa7b",
             muted: "#6272a4",
         },
         "nord" => TrayPalette {
-            tile: "#3b4252",
             mark: "#88c0d0",
             alarm: "#bf616a",
             live: "#a3be8c",
             muted: "#4c566a",
         },
         "solarized" => TrayPalette {
-            tile: "#002b36",
             mark: "#268bd2",
             alarm: "#dc322f",
             live: "#859900",
             muted: "#586e75",
         },
         "tokyonight" => TrayPalette {
-            tile: "#1f2335",
             mark: "#7dcfff",
             alarm: "#f7768e",
             live: "#9ece6a",
             muted: "#414868",
         },
         "catppuccin" => TrayPalette {
-            tile: "#1e2030",
             mark: "#89b4fa",
             alarm: "#f38ba8",
             live: "#a6e3a1",
             muted: "#585b70",
         },
         "onedark" => TrayPalette {
-            tile: "#282c34",
             mark: "#56b6c2",
             alarm: "#e06c75",
             live: "#98c379",
             muted: "#5c6370",
         },
         "monokai" => TrayPalette {
-            tile: "#272822",
             mark: "#66d9ef",
             alarm: "#f92672",
             live: "#a6e22e",
             muted: "#75715e",
         },
         "light" => TrayPalette {
-            tile: "#eee8d5",
             mark: "#268bd2",
             alarm: "#dc322f",
             live: "#859900",
@@ -156,7 +148,6 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
         // `dark` and anything unknown fall here, matching dracula, the
         // same fallback the TUI's palette() uses.
         _ => TrayPalette {
-            tile: "#282a36",
             mark: "#8be9fd",
             alarm: "#ff5555",
             live: "#50fa7b",
@@ -171,9 +162,9 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
 /// so a single glyph is the legible choice rather than six near-miss
 /// variants of the same idea.
 ///
-/// Sized on a 24px grid over a 5px-radius tile; the stroke only rounds
+/// Sized on a 24px grid with no background plate: the stroke only rounds
 /// the corners, it does not change the silhouette.
-const TRIANGLE: &str = "M6 8 L18 8 L12 18.4 Z";
+const TRIANGLE: &str = "M4.6 6.4 L19.4 6.4 L12 19.4 Z";
 
 /// State → (fill, opacity). The four facts the tray has to communicate
 /// are "nothing to do", "something needs you", "a hub is running", and
@@ -198,10 +189,8 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
     let (fill, opacity) = state_paint(state, p);
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\">\
-         <rect x=\"2\" y=\"2\" width=\"20\" height=\"20\" rx=\"5\" fill=\"{tile}\"/>\
-         <path d=\"{TRIANGLE}\" fill=\"{fill}\" opacity=\"{opacity}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
+                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" opacity=\"{opacity}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
          </svg>",
-        tile = p.tile,
         fill = fill,
         opacity = opacity,
     )
@@ -980,7 +969,7 @@ mod tests {
         // what makes an SVG silently invalid in the panel.
         for theme in crate::config::THEMES {
             let p = palette_for_theme(theme);
-            for field in [p.tile, p.mark, p.alarm, p.live, p.muted] {
+            for field in [p.mark, p.alarm, p.live, p.muted] {
                 assert!(
                     field.starts_with('#') && field.len() == 7,
                     "theme {theme} field {field:?} is not a 7-char hex"
@@ -1071,7 +1060,7 @@ mod tests {
             // guarantees the only thing that varies is the palette.
             let strip_colors = |s: &str, p: TrayPalette| {
                 let mut s = s.to_string();
-                for c in [p.tile, p.mark, p.alarm, p.live, p.muted] {
+                for c in [p.mark, p.alarm, p.live, p.muted] {
                     s = s.replace(c, "X");
                 }
                 s
