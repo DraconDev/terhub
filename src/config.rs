@@ -1003,15 +1003,17 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         }
     }
     // Builtin-vs-builtin collisions after rebinding: first-match dispatch
-    // would silently shadow one of the pair.
-    let specs: Vec<(String, KeySpec)> = actions
+    // would silently shadow one of the pair. Modifier-qualified bindings
+    // never collide with a bare key (different physical presses), so the
+    // collision check compares modifier sets before keys.
+    let specs: Vec<(String, KeyBinding)> = actions
         .iter()
         .filter(|a| defaults.contains_key(a.as_str()))
         .map(|a| (a.clone(), parse_key(&cfg.keys[a])))
         .collect();
     for (i, (a, sa)) in specs.iter().enumerate() {
         for (b, sb) in specs.iter().skip(i + 1) {
-            if *sa != KeySpec::None && spec_conflicts(sa, sb) {
+            if sa.spec != KeySpec::None && sa.conflicts(sb) {
                 problems.push(format!("keys '{a}' and '{b}' both use '{}'", cfg.keys[a]));
             }
         }
