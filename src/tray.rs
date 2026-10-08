@@ -18,13 +18,28 @@ const SNI_PATH: &str = "/StatusNotifierItem";
 
 /// Icon themes only resolve names they have files for, so the SVGs are
 /// written into the user's icon dir on first run.
-const ICONS: [(&str, &str); 3] = [
+const ICONS: [(&str, &str); 6] = [
     ("terhub.svg", include_str!("../assets/terhub.svg")),
     (
         "terhub-attention.svg",
         include_str!("../assets/terhub-attention.svg"),
     ),
-    ("terhub-live.svg", include_str!("../assets/terhub-live.svg")),
+    (
+        "terhub-idle.svg",
+        include_str!("../assets/terhub-idle.svg"),
+    ),
+    (
+        "terhub-disconnected.svg",
+        include_str!("../assets/terhub-disconnected.svg"),
+    ),
+    (
+        "terhub-live.svg",
+        include_str!("../assets/terhub-live.svg"),
+    ),
+    (
+        "terhub-live-idle.svg",
+        include_str!("../assets/terhub-live-idle.svg"),
+    ),
 ];
 
 /// What the tray shows, derived from one daemon snapshot.
