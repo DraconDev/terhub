@@ -1385,7 +1385,7 @@ mod tests {
             parse_key("Ctrl+S"),
             KeyBinding {
                 mods: KeyModifiers::CONTROL,
-                spec: KeySpec::Char('s'),
+                spec: KeySpec::Char('S'),
             }
         );
         assert_eq!(
