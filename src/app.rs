@@ -1577,6 +1577,236 @@ impl App {
     }
 
     /// Handle one key press. Returns an event when the TUI should exit.
+    /// Dispatch a modifier-qualified binding. Standard actions map to the
+    /// same handlers `on_normal_key` / `on_pane_key` already use; custom
+    /// commands run against the selected row. Returns `true` when the
+    /// binding fired (the caller swallows the key event).
+    fn dispatch_binding(
+        &mut self,
+        binding: &crate::config::KeyBinding,
+        tmux: &Tmux,
+    ) -> bool {
+        use crate::config::{KeyBinding, KeySpec};
+        // Custom commands first (they carry their own KeyBinding in
+        // `config.commands` and are matched against the same list).
+        if let Some(cmd) = self
+            .config
+            .commands
+            .iter()
+            .find(|c| c.spec == *binding)
+        {
+            self.run_custom(cmd);
+            return true;
+        }
+        // Standard actions: re-run the bare-key dispatch path with the
+        // binding's key (modifiers cleared so the bare-key match holds),
+        // exactly as if the user had pressed that key without modifiers.
+        let action = match &binding.spec {
+            KeySpec::None => return false,
+            _ => self.binding_action(binding),
+        };
+        match action.as_deref() {
+            Some("new") => {
+                self.do_new_session();
+                true
+            }
+            Some("kill") => {
+                if self.focus == Focus::Panes {
+                    match self.selected_pane() {
+                        Some(p) if is_native_pane(&p.id) => self.set_status(format!(
+                            "can't close native tab {} from here (close it in the terminal)",
+                            p.id
+                        )),
+                        Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
+                            "can't kill remote row {} (jump in to manage it)",
+                            p.id
+                        )),
+                        Some(p) => self.mode = Mode::ConfirmKillPane(p.id.clone()),
+                        None => self.set_status("no pane selected".to_string()),
+                    }
+                } else {
+                    match self.side_session() {
+                        Some(s) => self.mode = Mode::ConfirmKill(s.name.clone()),
+                        None => self.set_status("pick a session row (All doesn't count)".to_string()),
+                    }
+                }
+                true
+            }
+            Some("rename") => {
+                self.do_rename_session();
+                true
+            }
+            Some("attach") => {
+                if self.show_preview {
+                    if let Some(p) = self.selected_pane() {
+                        let id = p.id.clone();
+                        self.jump_event(&id);
+                    } else {
+                        self.set_status("no pane selected".to_string());
+                    }
+                } else if self.focus == Focus::Panes {
+                    if let Some(p) = self.selected_pane() {
+                        let id = p.id.clone();
+                        self.jump_event(&id);
+                    } else {
+                        self.set_status("no pane selected".to_string());
+                    }
+                } else if let Some(s) = self.side_session() {
+                    self.do_nav(tmux, AppEvent::Attach(s.name.clone()));
+                } else {
+                    self.set_status("pick a session row (All doesn't count)".to_string());
+                }
+                true
+            }
+            Some("detach") => {
+                self.do_detach(tmux);
+                true
+            }
+            Some("quit") => {
+                // Quit is only reachable through the swallow path in
+                // modifier mode; plain q handles it in on_normal_key.
+                // Returning false lets the caller fall through so the
+                // event is not acted on twice.
+                false
+            }
+            Some("help") => {
+                self.set_status(LEGEND.to_string());
+                true
+            }
+            Some("refresh") => {
+                self.refresh(tmux);
+                self.fetch_native();
+                true
+            }
+            Some("attend") => {
+                self.do_attend();
+                true
+            }
+            Some("preview") => {
+                self.toggle_preview(tmux);
+                true
+            }
+            Some("theme") => {
+                self.cycle_theme();
+                true
+            }
+            Some("density") => {
+                self.cycle_density();
+                true
+            }
+            Some("settings") => {
+                self.open_settings();
+                true
+            }
+            Some("sort") => {
+                self.resort_next();
+                self.follow_preview(tmux);
+                true
+            }
+            Some("filter") => {
+                self.open_filter();
+                true
+            }
+            Some("filter_clear") => {
+                if self.filter.is_empty() {
+                    self.set_status("filter already clear".to_string());
+                } else {
+                    self.filter.clear();
+                    self.refresh_filtered();
+                    self.set_status("filter cleared".to_string());
+                }
+                true
+            }
+            Some("hide_shells") => {
+                self.toggle_hide_quiet_shells();
+                true
+            }
+            Some("spawn") => {
+                self.do_spawn();
+                true
+            }
+            Some("restart") => {
+                match self.selected_pane() {
+                    Some(p) if is_native_pane(&p.id) => self.set_status(format!(
+                        "can't restart native tab {} (re-run inside the tab)",
+                        p.id
+                    )),
+                    Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
+                        "can't restart remote row {} (jump in to manage it)",
+                        p.id
+                    )),
+                    Some(p) if self.own_pane.as_deref() == Some(p.id.as_str()) => {
+                        self.set_status("won't restart own pane (q then reopen)".to_string())
+                    }
+                    Some(p) if p.command.trim().is_empty() => {
+                        self.set_status(format!("nothing to re-run in {}", p.id))
+                    }
+                    Some(p) => {
+                        self.mode = Mode::ConfirmRestartPane {
+                            id: p.id.clone(),
+                            command: p.command.clone(),
+                        }
+                    }
+                    None => self.set_status("no pane selected".to_string()),
+                }
+                true
+            }
+            Some("pause") => {
+                self.do_pause();
+                true
+            }
+            Some("hosts") => {
+                self.open_hosts();
+                true
+            }
+            Some("bulk") => {
+                self.do_bulk();
+                true
+            }
+            Some("mark") => {
+                self.toggle_mark();
+                true
+            }
+            Some("unmark") => {
+                let n = self.marked.len();
+                self.marked.clear();
+                self.set_status(if n == 0 {
+                    "nothing marked".to_string()
+                } else {
+                    format!("cleared {n} mark(s)")
+                });
+                true
+            }
+            Some("stop") => {
+                // stop = quit, handled the same as quit but without
+                // returning an AppEvent (the swallow path in on_key
+                // already decided the key was consumed).
+                self.do_nav(tmux, AppEvent::Quit);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Map a [`KeyBinding`] back to the standard action name it belongs
+    /// to (used when the binding came from `all_bindings` and was not a
+    /// custom command).
+    fn binding_action(&self, binding: &crate::config::KeyBinding) -> String {
+        use crate::config::KeyBinding;
+        for action in [
+            "new", "kill", "rename", "attach", "detach", "quit", "help",
+            "refresh", "attend", "preview", "theme", "density", "settings",
+            "sort", "filter", "filter_clear", "hide_shells", "spawn",
+            "restart", "pause", "hosts", "bulk", "mark", "unmark",
+        ] {
+            let spec = self.config.spec(action);
+            if spec == *binding {
+                return action.to_string();
+            }
+        }
+        String::new()
+    }
+
     /// All keyable actions and their current bindings, in dispatch order
     /// (standard actions first, then `[[command]]`s): modifier-qualified
     /// presses are matched against this list before the modifier-drop
@@ -1587,8 +1817,8 @@ impl App {
         for action in [
             "new", "kill", "rename", "attach", "detach", "quit", "help",
             "refresh", "attend", "preview", "theme", "density", "settings",
-            "sort", "filter", "hide_shells", "spawn", "restart", "pause",
-            "hosts", "bulk",
+            "sort", "filter", "filter_clear", "hide_shells", "spawn",
+            "restart", "pause", "hosts", "bulk", "mark", "unmark",
         ] {
             out.push(self.config.spec(action));
         }
