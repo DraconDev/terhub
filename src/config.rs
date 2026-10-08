@@ -265,13 +265,22 @@ impl KeyBinding {
         }
     }
 
-    /// Fire test for a physical key event. `mods = NONE` (every current
-    /// bare binding) preserves today's semantics: modifiers held are
-    /// irrelevant. Modifier-qualified bindings require an exact modifier
-    /// match: "ctrl+s" fires on ctrl+s only, never on bare s or
-    /// ctrl+shift+s.
+    /// Fire test for a physical key event. Bare bindings (the whole
+    /// pre-modifier era, e.g. `s`) fire only on an unmodified press:
+    /// a ctrl+s press has no bare binding to match, so it reaches the
+    /// swallow guard in [`crate::app::App::on_key`] unless some binding
+    /// explicitly asks for ctrl+s. Modifier-qualified bindings require
+    /// an exact modifier match: "ctrl+s" fires only on ctrl+s, never on
+    /// bare s or ctrl+shift+s.
     pub fn matches(&self, code: &KeyCode, mods: KeyModifiers) -> bool {
         if self.mods != KeyModifiers::NONE && mods != self.mods {
+            return false;
+        }
+        // A bare binding never wants modifier keys: the press's modifier
+        // set must be empty (the dispatch guard guarantees this is the
+        // only path bare bindings are reached through anyway, but the
+        // check keeps this method total and unit-testable).
+        if self.mods == KeyModifiers::NONE && mods != KeyModifiers::NONE {
             return false;
         }
         match (&self.spec, code) {
