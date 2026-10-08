@@ -1,6 +1,6 @@
 //! Config: theme + keybindings as TOML. Not vim, customizable.
 use anyhow::{Context, Result};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 use std::collections::HashMap;
