@@ -1976,6 +1976,21 @@ impl App {
             }
             _ => {}
         }
+        // A modifier-qualified filter_clear binding (e.g. ctrl+backspace)
+        // hard-wipes the query in place, distinct from Esc which restores
+        // the pre-edit query.
+        let clear_spec = self.config.spec("filter_clear");
+        if clear_spec.spec != crate::config::KeySpec::None
+            && clear_spec.mods != crossterm::event::KeyModifiers::NONE
+            && crate::config::key_matches(&clear_spec, &key.code, key.modifiers)
+        {
+            self.input.clear();
+            self.cursor = 0;
+            self.filter.clear();
+            self.refresh_filtered();
+            self.follow_preview(tmux);
+            self.set_status("filter cleared".to_string());
+        }
         None
     }
 
