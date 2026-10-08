@@ -1577,6 +1577,27 @@ impl App {
     }
 
     /// Handle one key press. Returns an event when the TUI should exit.
+    /// All keyable actions and their current bindings, in dispatch order
+    /// (standard actions first, then `[[command]]`s): modifier-qualified
+    /// presses are matched against this list before the modifier-drop
+    /// guard swallows them.
+    fn all_bindings(&self) -> Vec<crate::config::KeyBinding> {
+        use crate::config::KeyBinding;
+        let mut out: Vec<KeyBinding> = Vec::new();
+        for action in [
+            "new", "kill", "rename", "attach", "detach", "quit", "help",
+            "refresh", "attend", "preview", "theme", "density", "settings",
+            "sort", "filter", "hide_shells", "spawn", "restart", "pause",
+            "hosts", "bulk",
+        ] {
+            out.push(self.config.spec(action));
+        }
+        for c in &self.config.commands {
+            out.push(c.spec.clone());
+        }
+        out
+    }
+
     pub fn on_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
         if key.modifiers.intersects(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('c' | 'C'))
@@ -1600,28 +1621,27 @@ impl App {
             }
             return None;
         }
-        // A press carrying ctrl/alt/super is swallowed unless some binding
-        // (a standard action or a [[command]]) explicitly wants exactly
-        // those modifiers: modifier-qualified bindings like "ctrl+s"
-        // fire here, everything else is dropped (typing safety, as before).
-        // Plain unmodified presses skip this guard entirely.
-        if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+        // A press carrying ctrl/alt/super is swallowed unless some
+        // binding (a standard action or a [[command]]) explicitly wants
+        // exactly those modifiers: modifier-qualified bindings like
+        // "ctrl+s" fire here, everything else is dropped (typing
+        // safety, as before). Plain unmodified presses skip this guard.
+        // Normal mode only: prompt/confirm handlers own their modifier
+        // policy (they ignore modifiers on typed text by design).
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+            && self.mode == Mode::Normal
         {
-            if self.mode == Mode::Normal
-                && let Some(action) = self
-                    .config
-                    .action_bindings()
-                    .iter()
-                    .find(|b| b.matches(&key.code, key.modifiers))
-                    .map(|b| b.clone())
-            {
-                // A binding wants exactly this combo. Re-dispatch it
-                // through the normal key path (with the modifier flag
-                // cleared so bare-key matches still hold) — the action
-                // itself is the binding's action name, which the bare-key
-                // dispatch table resolves to the same handler.
-                self.apply_action(&action.label());
-                return None;
+            for binding in self.all_bindings() {
+                if binding.spec == crate::config::KeySpec::None {
+                    continue;
+                }
+                if crate::config::key_matches(&binding, &key.code, key.modifiers) {
+                    if self.dispatch_binding(&binding, tmux) {
+                        return None;
+                    }
+                }
             }
             return None;
         }
