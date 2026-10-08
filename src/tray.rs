@@ -980,6 +980,7 @@ mod tests {
 
     #[test]
     fn every_state_is_told_apart_by_colour_not_shape() {
+
         // The whole point of the redesign: one mark, distinguished by
         // colour. Every adjacent pair of states must differ, or two
         // states collapse into the same icon in the panel.
