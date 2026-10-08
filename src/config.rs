@@ -574,7 +574,7 @@ struct CommandFile {
 pub struct CustomCommand {
     pub name: String,
     pub key: String,
-    pub spec: KeySpec,
+    pub spec: KeyBinding,
     pub run: String,
 }
 
