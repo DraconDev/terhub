@@ -746,7 +746,7 @@ fn preview_title_uses_attach_binding() {
     app.preview = "hello from pane".to_string();
     let text = render_lines(&mut app, 160, 20).join("\n");
     assert!(
-        text.contains("left-click/ctrl-o jump"),
+        text.contains("left-click/ctrl+o jump"),
         "title ignores binding:\n{text}"
     );
 }
