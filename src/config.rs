@@ -148,6 +148,16 @@ impl AppConfig {
         self.keys.get(action).map(String::as_str).unwrap_or("")
     }
 
+    /// Human-readable label for a binding: the raw value when it has no
+    /// modifiers ("n", "f5", "enter"), the canonical "ctrl+s" spelling
+    /// when it does. Use this for help text, the footer, and the config
+    /// template — the raw value ("ctrl+s") reads the same way but this
+    /// goes through the display formatter so it stays one source of
+    /// truth.
+    pub fn key_label(&self, action: &str) -> String {
+        self.spec(action).label()
+    }
+
     pub fn spec(&self, action: &str) -> KeyBinding {
         parse_key(self.key(action))
     }

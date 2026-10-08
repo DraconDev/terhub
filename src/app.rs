@@ -2346,17 +2346,17 @@ impl App {
             } else {
                 self.set_status(format!(
                     "sessions: {}=new {}=spawn {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hosts {}=hide alt+1..8=tabs {}=quit",
-                    cfg.key("new"),
-                    cfg.key("spawn"),
-                    cfg.key("rename"),
-                    cfg.key("kill"),
-                    cfg.key("attach"),
-                    cfg.key("preview"),
-                    cfg.key("theme"),
-                    cfg.key("settings"),
-                    cfg.key("hosts"),
-                    cfg.key("hide_shells"),
-                    cfg.key("quit"),
+                    cfg.key_label("new"),
+                    cfg.key_label("spawn"),
+                    cfg.key_label("rename"),
+                    cfg.key_label("kill"),
+                    cfg.key_label("attach"),
+                    cfg.key_label("preview"),
+                    cfg.key_label("theme"),
+                    cfg.key_label("settings"),
+                    cfg.key_label("hosts"),
+                    cfg.key_label("hide_shells"),
+                    cfg.key_label("quit"),
                 ));
             }
             return None;
@@ -2630,7 +2630,7 @@ impl App {
         self.hide_quiet_shells = !self.hide_quiet_shells;
         self.refresh_filtered();
         if self.hide_quiet_shells {
-            let key = self.config.key("hide_shells").to_string();
+            let key = self.config.key_label("hide_shells");
             self.set_status(format!(
                 "hiding {} quiet shell(s) ({key} to show)",
                 self.hidden_quiet
@@ -3255,22 +3255,22 @@ impl App {
             }
             let mut help = format!(
                 "panes: {}=jump {}=kill {}=spawn {}=restart {}=pause {}=preview {}=attend {}=bulk {}=mark {}=unmark {}=filter {}=hide {}=sort {}=settings {}=hosts tab=back {}=quit",
-                cfg.key("attach"),
-                cfg.key("kill"),
-                cfg.key("spawn"),
-                cfg.key("restart"),
-                cfg.key("pause"),
-                cfg.key("preview"),
-                cfg.key("attend"),
-                cfg.key("bulk"),
-                cfg.key("mark"),
-                cfg.key("unmark"),
-                cfg.key("filter"),
-                cfg.key("hide_shells"),
-                cfg.key("sort"),
-                cfg.key("settings"),
-                cfg.key("hosts"),
-                cfg.key("quit"),
+                cfg.key_label("attach"),
+                cfg.key_label("kill"),
+                cfg.key_label("spawn"),
+                cfg.key_label("restart"),
+                cfg.key_label("pause"),
+                cfg.key_label("preview"),
+                cfg.key_label("attend"),
+                cfg.key_label("bulk"),
+                cfg.key_label("mark"),
+                cfg.key_label("unmark"),
+                cfg.key_label("filter"),
+                cfg.key_label("hide_shells"),
+                cfg.key_label("sort"),
+                cfg.key_label("settings"),
+                cfg.key_label("hosts"),
+                cfg.key_label("quit"),
             );
             if !cfg.commands.is_empty() {
                 help.push_str(" custom:");
