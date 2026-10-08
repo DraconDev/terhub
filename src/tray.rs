@@ -1060,9 +1060,27 @@ mod tests {
             let a = render_svg(state, drac);
             let b = render_svg(state, nord);
             assert_ne!(a, b, "themes produced identical SVG for {state:?}");
-            // Strip colors and check the geometry is the same.
-            let a_struct = a.replace(&drac.crossbar_a, "X").replace(&drac.stem_a, "X");
-            let b_struct = b.replace(&nord.crossbar_a, "X").replace(&nord.stem_a, "X");
+            // Strip every theme color from both: the remaining body is
+            // the geometric shape, and must match across themes. This
+            // guarantees the only thing that varies is the palette.
+            let strip_colors = |s: &str, p: TrayPalette| {
+                let mut s = s.to_string();
+                for c in [
+                    p.tile,
+                    p.crossbar_a,
+                    p.crossbar_b,
+                    p.stem_a,
+                    p.stem_b,
+                    p.live_dot,
+                    p.alarm_bg,
+                    p.alarm_fg,
+                ] {
+                    s = s.replace(c, "X");
+                }
+                s
+            };
+            let a_struct = strip_colors(&a, drac);
+            let b_struct = strip_colors(&b, nord);
             assert_eq!(a_struct, b_struct, "geometry differs for {state:?}");
         }
     }
