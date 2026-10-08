@@ -578,7 +578,7 @@ mod tests {
     fn idle_alone_never_flags_attention() {
         let v = TrayView::from_agents(&[rec(AgentState::Idle)]);
         assert!(!v.needs_attention(), "finished work is not urgent");
-        assert_eq!(v.icon_name(), "terhub");
+        assert_eq!(v.icon_name(), "terhub-idle");
         assert_eq!(v.title(), "terhub — 1 idle");
     }
 
@@ -727,7 +727,7 @@ mod tests {
         let v = TrayView::disconnected();
         assert_eq!(v.title(), "terhub — daemon down");
         assert!(!v.needs_attention());
-        assert_eq!(v.icon_name(), "terhub");
+        assert_eq!(v.icon_name(), "terhub-disconnected");
         assert!(
             v.description().contains("daemon start"),
             "{}",
