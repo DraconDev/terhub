@@ -975,25 +975,65 @@ mod tests {
 
     #[test]
     fn every_known_theme_has_a_palette() {
-        // No theme should fall through to the default by accident.
+        // No theme should fall through to the default by accident, and
+        // every colour must be a literal 7-char hex — a bad literal is
+        // what makes an SVG silently invalid in the panel.
         for theme in crate::config::THEMES {
             let p = palette_for_theme(theme);
-            // Hex of length 7, starts with '#', no whitespace.
-            for field in [
-                p.tile,
-                p.crossbar_a,
-                p.crossbar_b,
-                p.stem_a,
-                p.stem_b,
-                p.live_dot,
-                p.alarm_bg,
-                p.alarm_fg,
-            ] {
+            for field in [p.tile, p.mark, p.alarm, p.live, p.muted] {
                 assert!(
                     field.starts_with('#') && field.len() == 7,
                     "theme {theme} field {field:?} is not a 7-char hex"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn every_state_is_told_apart_by_colour_not_shape() {
+        // The whole point of the redesign: one mark, distinguished by
+        // colour. Every adjacent pair of states must differ, or two
+        // states collapse into the same icon in the panel.
+        let p = palette_for_theme("dracula");
+        let states = [
+            IconState::Calm,
+            IconState::Idle,
+            IconState::Attention,
+            IconState::Live,
+            IconState::LiveIdle,
+            IconState::Disconnected,
+        ];
+        for (i, a) in states.iter().enumerate() {
+            for b in states.iter().skip(i + 1) {
+                assert_ne!(
+                    render_svg(*a, p),
+                    render_svg(*b, p),
+                    "{a:?} and {b:?} render identically — two states share one icon"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_state_renders_the_same_shape() {
+        // The triangle path must be present exactly once per state, so
+        // the geometry is identical and only colour/opacity vary.
+        for state in [
+            IconState::Calm,
+            IconState::Idle,
+            IconState::Attention,
+            IconState::Live,
+            IconState::LiveIdle,
+            IconState::Disconnected,
+        ] {
+            let svg = render_svg(state, palette_for_theme("dracula"));
+            assert_eq!(
+                svg.matches(TRIANGLE).count(),
+                1,
+                "{state:?} triangle count wrong: {svg}"
+            );
+            assert!(!svg.contains("linearGradient"), "{state:?} kept a gradient");
+            assert!(svg.contains("viewBox=\"0 0 24 24\""), "{state:?} grid drifted");
         }
     }
 
@@ -1004,15 +1044,15 @@ mod tests {
             let p = palette_for_theme(bad);
             let svg = render_svg(IconState::Calm, p);
             assert!(svg.contains("<svg"), "{bad} produced no <svg>: {svg}");
-            assert!(svg.contains("url(#cb)"), "{bad} missing crossbar gradient");
+            assert!(svg.contains(TRIANGLE), "{bad} missing the triangle");
         }
     }
 
     #[test]
     fn render_svg_themes_differ_but_state_stable() {
         // The same state rendered for two themes must differ (color
-        // injection works) and the structural shape must match (state
-        // branch picked correctly).
+        // injection works) and the geometric shape must match (the
+        // triangle is a constant path, so nothing drifts per theme).
         let drac = palette_for_theme("dracula");
         let nord = palette_for_theme("nord");
         for state in [
@@ -1027,20 +1067,11 @@ mod tests {
             let b = render_svg(state, nord);
             assert_ne!(a, b, "themes produced identical SVG for {state:?}");
             // Strip every theme color from both: the remaining body is
-            // the geometric shape, and must match across themes. This
+            // the geometry, and must match across themes. This
             // guarantees the only thing that varies is the palette.
             let strip_colors = |s: &str, p: TrayPalette| {
                 let mut s = s.to_string();
-                for c in [
-                    p.tile,
-                    p.crossbar_a,
-                    p.crossbar_b,
-                    p.stem_a,
-                    p.stem_b,
-                    p.live_dot,
-                    p.alarm_bg,
-                    p.alarm_fg,
-                ] {
+                for c in [p.tile, p.mark, p.alarm, p.live, p.muted] {
                     s = s.replace(c, "X");
                 }
                 s
