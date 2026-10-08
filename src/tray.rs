@@ -33,7 +33,7 @@ const ICON_STATES: &[(IconState, &str); 6] = &[
 /// One state the icon can be in. Distinct from [`TrayView`] so the
 /// renderer stays pure and is testable with a 5-element palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum IconState {
+pub enum IconState {
     Calm,
     Idle,
     Attention,
@@ -724,7 +724,12 @@ impl Tray {
 /// Register the tray icon and keep it fed from the daemon. Runs until
 /// the process is killed; dropping the connection removes the icon.
 pub fn run() -> anyhow::Result<()> {
-    install_icons()?;
+    // The active theme is what the user is reading the panel in: it
+    // decides which palette of accent colors the icon pulls from. The
+    // TUI's load_config() owns the theme, so we go through it rather
+    // than parsing the TOML ourselves.
+    let theme = crate::config::load_config(None).theme;
+    install_icons(&theme)?;
     refresh_icon_cache();
 
     let conn = zbus::blocking::Connection::session()?;
