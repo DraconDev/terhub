@@ -1600,11 +1600,51 @@ impl App {
             }
             return None;
         }
+        // Modifier-qualified bindings ("ctrl+s"-style) are honoured before
+        // the legacy "drop every ctrl/alt/super press" guard: a press
+        // with modifiers first tries to fire a binding that explicitly
+        // asks for exactly those modifiers; when none is bound for that
+        // combo, the press is swallowed as before (typing safety).
+        // Plain, unmodified presses fall through untouched.
+        if !key.modifiers.intersects(KeyModifiers::NONE) {
+            // Plain press: no modifier-qualified binding can fire on a
+            // bare key, and bare bindings match with any modifiers held
+            // (their KeyBinding.mods is NONE), so this path also covers
+            // "stray ctrl while the binding is bare" exactly as today.
+        }
         if key
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
         {
-            return None;
+            // The press carries modifiers: give it one chance to fire a
+            // modifier-qualified binding, then swallow it.
+            if self.mode == Mode::Normal
+                && let Some(hit) = self
+                    .config
+                    .commands
+                    .iter()
+                    .find(|c| c.spec.matches(&key.code, key.modifiers))
+            {
+                self.run_custom(hit);
+                return None;
+            }
+            // Modifier bindings on standard actions are dispatched in
+            // on_normal_key via spec().matches(); if any of them fires,
+            // on_normal_key returns having acted. We only reach the
+            // swallow when no binding wants this combo. The check here
+            // mirrors the dispatch loop so a bound combo is never
+            // silently eaten.
+            if self.mode == Mode::Normal
+                && self
+                    .config
+                    .action_bindings()
+                    .iter()
+                    .any(|b| b.matches(&key.code, key.modifiers))
+            {
+                // Fall through to normal dispatch (do NOT swallow).
+            } else {
+                return None;
+            }
         }
         match self.mode.clone() {
             Mode::PromptNew | Mode::PromptRename(_) => self.on_prompt_key(key, tmux),
