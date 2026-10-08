@@ -650,6 +650,14 @@ leaves them alone — tab enumeration is subprocess-heavy) and show under
 `All` only, with the backend as the session (`konsole:1535082:6`). Jump
 switches the terminal's tab and stays open; on Konsole the jump also
 raises the window through a one-shot KWin script (tab-select alone is
+
+Footer treatment of native probes: a backend that is simply *absent*
+(no Konsole on the bus, not inside kitty, no WezTerm server) is an
+informational note, not a warning — it never pins the footer and never
+uses the alert color. Only real probe failures (missing binary, wedged
+CLI, malformed output) surface as a sticky status line, and even those
+re-assert only when the text actually changes, so an unchanged error
+doesn't repaint the footer every 3s tick.
 invisible while Konsole sits behind other windows) — if the raise
 fails the error says the tab was still switched. Preview, pause, and
 custom commands work; kill/restart/mark/rename refuse (Konsole exposes
