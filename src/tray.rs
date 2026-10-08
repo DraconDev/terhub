@@ -776,6 +776,12 @@ pub fn run() -> anyhow::Result<()> {
         if active != last_theme {
             if let Err(e) = install_icons(&active) {
                 eprintln!("terhub: re-themed icon install failed: {e}");
+            } else {
+                // The cache hold at startup is what makes the FIRST
+                // install visible; skip it here and Plasma keeps rastering
+                // the previous palette's PNG forever (icons on disk change,
+                // panel does not).
+                refresh_icon_cache();
             }
             last_theme = active;
         }
