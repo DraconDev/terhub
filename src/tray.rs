@@ -202,13 +202,15 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
              <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
              <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\"/>",
-            stem_a = p.stem_a, stem_b = p.stem_b,
+            stem_a = p.stem_a,
+            stem_b = p.stem_b,
         ),
         IconState::Idle => format!(
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\" opacity=\"0.85\"/>\
              <rect x=\"9.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_a}\"/>\
              <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.55\"/>",
-            stem_a = p.stem_a, stem_b = p.stem_b,
+            stem_a = p.stem_a,
+            stem_b = p.stem_b,
         ),
         IconState::Attention => format!(
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
@@ -216,7 +218,10 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
              <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\"/>\
              <circle cx=\"17.4\" cy=\"4.6\" r=\"3.0\" fill=\"{abg}\"/>\
              <path d=\"M16.3 4.6 L18.5 4.6 M17.4 3.5 L17.4 5.7\" stroke=\"{afg}\" stroke-width=\"1.2\" stroke-linecap=\"round\"/>",
-            stem_a = p.stem_a, stem_b = p.stem_b, abg = p.alarm_bg, afg = p.alarm_fg,
+            stem_a = p.stem_a,
+            stem_b = p.stem_b,
+            abg = p.alarm_bg,
+            afg = p.alarm_fg,
         ),
         IconState::Live => format!(
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\"/>\
@@ -224,7 +229,10 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
              <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\"/>\
              <circle cx=\"17.6\" cy=\"4.6\" r=\"2.6\" fill=\"{tile}\" opacity=\"0.95\"/>\
              <circle cx=\"17.6\" cy=\"4.6\" r=\"1.6\" fill=\"{dot}\"/>",
-            stem_a = p.stem_a, stem_b = p.stem_b, tile = p.tile, dot = p.live_dot,
+            stem_a = p.stem_a,
+            stem_b = p.stem_b,
+            tile = p.tile,
+            dot = p.live_dot,
         ),
         IconState::LiveIdle => format!(
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"url(#cb)\" opacity=\"0.85\"/>\
@@ -232,7 +240,10 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
              <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.55\"/>\
              <circle cx=\"17.6\" cy=\"4.6\" r=\"2.6\" fill=\"{tile}\" opacity=\"0.95\"/>\
              <circle cx=\"17.6\" cy=\"4.6\" r=\"1.6\" fill=\"{dot}\"/>",
-            stem_a = p.stem_a, stem_b = p.stem_b, tile = p.tile, dot = p.live_dot,
+            stem_a = p.stem_a,
+            stem_b = p.stem_b,
+            tile = p.tile,
+            dot = p.live_dot,
         ),
         IconState::Disconnected => format!(
             "<rect x=\"4.4\" y=\"5.4\" width=\"13.2\" height=\"2.4\" rx=\"0.5\" fill=\"{stem_b}\" opacity=\"0.4\"/>\
@@ -240,7 +251,8 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
              <rect x=\"11.0\" y=\"5.4\" width=\"2.0\" height=\"11\" fill=\"{stem_b}\" opacity=\"0.4\"/>\
              <line x1=\"2\" y1=\"20\" x2=\"20\" y2=\"2\" stroke=\"{tile}\" stroke-width=\"2.4\" stroke-linecap=\"round\"/>\
              <line x1=\"2\" y1=\"20\" x2=\"20\" y2=\"2\" stroke=\"{stem_b}\" stroke-width=\"1.3\" stroke-linecap=\"round\"/>",
-            stem_b = p.stem_b, tile = p.tile,
+            stem_b = p.stem_b,
+            tile = p.tile,
         ),
     };
     format!(
@@ -254,7 +266,10 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
          <rect x=\"1\" y=\"1\" width=\"20\" height=\"20\" rx=\"5\" fill=\"{tile}\"/>\
          {body}\
          </svg>",
-        a = p.crossbar_a, b = p.crossbar_b, tile = p.tile, body = body,
+        a = p.crossbar_a,
+        b = p.crossbar_b,
+        tile = p.tile,
+        body = body,
     )
 }
 
