@@ -233,7 +233,13 @@ impl KeyBinding {
     /// action is intentionally unbound (filter_clear default).
     pub fn label(&self) -> String {
         let key = match &self.spec {
-            KeySpec::None => return String::new(),
+            KeySpec::None => {
+                // Intentionally unbound action: the empty label is
+                // rendered as "—" by key_label at display call sites,
+                // but label() itself stays empty so a bare binding
+                // check (label empty AND spec None) still works.
+                String::new()
+            }
             KeySpec::Char(c) => c.to_string(),
             KeySpec::Code(k) => match k {
                 KeyCode::Char(c) => c.to_string(),

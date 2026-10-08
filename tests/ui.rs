@@ -741,7 +741,7 @@ fn preview_title_uses_attach_binding() {
     let mut app = app_with_panes();
     app.config
         .keys
-        .insert("attach".to_string(), "ctrl-o".to_string());
+        .insert("attach".to_string(), "ctrl+o".to_string());
     app.show_preview = true;
     app.preview = "hello from pane".to_string();
     let text = render_lines(&mut app, 160, 20).join("\n");
