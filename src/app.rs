@@ -1600,51 +1600,30 @@ impl App {
             }
             return None;
         }
-        // Modifier-qualified bindings ("ctrl+s"-style) are honoured before
-        // the legacy "drop every ctrl/alt/super press" guard: a press
-        // with modifiers first tries to fire a binding that explicitly
-        // asks for exactly those modifiers; when none is bound for that
-        // combo, the press is swallowed as before (typing safety).
-        // Plain, unmodified presses fall through untouched.
-        if !key.modifiers.intersects(KeyModifiers::NONE) {
-            // Plain press: no modifier-qualified binding can fire on a
-            // bare key, and bare bindings match with any modifiers held
-            // (their KeyBinding.mods is NONE), so this path also covers
-            // "stray ctrl while the binding is bare" exactly as today.
-        }
-        if key
-            .modifiers
-            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+        // A press carrying ctrl/alt/super is swallowed unless some binding
+        // (a standard action or a [[command]]) explicitly wants exactly
+        // those modifiers: modifier-qualified bindings like "ctrl+s"
+        // fire here, everything else is dropped (typing safety, as before).
+        // Plain unmodified presses skip this guard entirely.
+        if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
         {
-            // The press carries modifiers: give it one chance to fire a
-            // modifier-qualified binding, then swallow it.
             if self.mode == Mode::Normal
-                && let Some(hit) = self
-                    .config
-                    .commands
-                    .iter()
-                    .find(|c| c.spec.matches(&key.code, key.modifiers))
-            {
-                self.run_custom(hit);
-                return None;
-            }
-            // Modifier bindings on standard actions are dispatched in
-            // on_normal_key via spec().matches(); if any of them fires,
-            // on_normal_key returns having acted. We only reach the
-            // swallow when no binding wants this combo. The check here
-            // mirrors the dispatch loop so a bound combo is never
-            // silently eaten.
-            if self.mode == Mode::Normal
-                && self
+                && let Some(action) = self
                     .config
                     .action_bindings()
                     .iter()
-                    .any(|b| b.matches(&key.code, key.modifiers))
+                    .find(|b| b.matches(&key.code, key.modifiers))
+                    .map(|b| b.clone())
             {
-                // Fall through to normal dispatch (do NOT swallow).
-            } else {
+                // A binding wants exactly this combo. Re-dispatch it
+                // through the normal key path (with the modifier flag
+                // cleared so bare-key matches still hold) — the action
+                // itself is the binding's action name, which the bare-key
+                // dispatch table resolves to the same handler.
+                self.apply_action(&action.label());
                 return None;
             }
+            return None;
         }
         match self.mode.clone() {
             Mode::PromptNew | Mode::PromptRename(_) => self.on_prompt_key(key, tmux),
