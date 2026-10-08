@@ -196,9 +196,8 @@ fn process_alive(pid: u32) -> bool {
 /// Pull `TMUX_PANE` out of a NUL-separated `/proc/<pid>/environ` blob.
 fn tmux_pane_from_environ(blob: &[u8]) -> Option<String> {
     blob.split(|b| *b == 0)
-        .filter_map(|kv| kv.split_once(|b| *b == b'='))
-        .find(|(k, _)| *k == b"TMUX_PANE")
-        .map(|(_, v)| String::from_utf8_lossy(v).into_owned())
+        .find(|kv| kv.starts_with(b"TMUX_PANE="))
+        .map(|kv| String::from_utf8_lossy(&kv["TMUX_PANE=".len()..]).into_owned())
         .filter(|s| !s.is_empty())
 }
 
@@ -219,7 +218,9 @@ fn scan_for_tui() -> Option<HubSession> {
         let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
-        let Ok(pid) = name.parse::<u32>() else { continue };
+        let Ok(pid) = name.parse::<u32>() else {
+            continue;
+        };
         if pid == me {
             continue;
         }
@@ -243,6 +244,14 @@ fn scan_for_tui() -> Option<HubSession> {
     None
 }
 
+/// The advertisement file alone: no /proc fallback, so this is pure and
+/// testable without depending on what else is running on the machine.
+fn read_session_file() -> Option<HubSession> {
+    let raw = std::fs::read_to_string(hub_session_path()).ok()?;
+    let s: HubSession = serde_json::from_str(&raw).ok()?;
+    process_alive(s.pid).then_some(s)
+}
+
 /// Read the advertised hub, ignoring one whose process is gone. A TUI
 /// that was killed rather than quit leaves the file behind, and a stale
 /// pid must not make the tray think a hub is open forever.
@@ -250,19 +259,11 @@ fn scan_for_tui() -> Option<HubSession> {
 /// Falls back to a /proc scan so a hub predating the advertisement — or
 /// one whose file was removed — is still found.
 pub fn read_hub_session() -> Option<HubSession> {
-    if let Ok(raw) = std::fs::read_to_string(hub_session_path()) {
-        if let Ok(s) = serde_json::from_str::<HubSession>(&raw) {
-            if process_alive(s.pid) {
-                return Some(s);
-            }
-            // Only clear it if the dead pid is still the one recorded.
-            if !scan_for_tui().is_some_and(|t| t.pid == s.pid) {
-                let _ = std::fs::remove_file(hub_session_path());
-            }
-            return scan_for_tui();
-        }
-        let _ = std::fs::remove_file(hub_session_path());
+    if let Some(s) = read_session_file() {
+        return Some(s);
     }
+    // Missing, unparseable, or dead: clear it so it cannot mislead.
+    let _ = std::fs::remove_file(hub_session_path());
     scan_for_tui()
 }
 
@@ -628,7 +629,7 @@ mod tests {
             tty: Some("/dev/pts/7".into()),
         };
         std::fs::write(hub_session_path(), serde_json::to_string(&session).unwrap()).unwrap();
-        assert_eq!(read_hub_session(), Some(session));
+        assert_eq!(read_session_file(), Some(session));
 
         // A hub that was killed leaves the file behind: it must not read
         // as open forever.
@@ -642,11 +643,31 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(read_hub_session(), None);
-        assert!(!hub_session_path().exists(), "stale file should be cleared");
+        // The pure file reader must not hand back a dead pid. (The
+        // public entry point would fall through to the /proc scan, which
+        // depends on what else this machine is running.)
+        assert_eq!(read_session_file(), None);
 
         unsafe { std::env::remove_var("TERHUB_RUNTIME_DIR") };
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cmdline_filter_excludes_subcommands() {
+        // The tray itself must never be mistaken for a TUI.
+        assert!(is_tui_cmdline(b"terhub\0"));
+        assert!(!is_tui_cmdline(b"terhub\0tray\0"));
+        assert!(!is_tui_cmdline(b"/usr/bin/terhubd\0"));
+        assert!(!is_tui_cmdline(b""));
+    }
+
+    #[test]
+    fn tmux_pane_is_read_out_of_environ() {
+        let env = b"SHELL=/bin/zsh\0TMUX_PANE=%603\0TERM=xterm\0";
+        assert_eq!(tmux_pane_from_environ(env).as_deref(), Some("%603"));
+        // Absent, or empty, is not a pane.
+        assert_eq!(tmux_pane_from_environ(b"SHELL=/bin/zsh\0"), None);
+        assert_eq!(tmux_pane_from_environ(b"TMUX_PANE=\0"), None);
     }
 
     #[test]
