@@ -699,22 +699,21 @@ pub fn list_all() -> Vec<BackendReport> {
         ];
         probes
             .into_iter()
-            .map(|(backend, handle)| match handle.join() {
-                Ok(Ok(tabs)) => BackendReport {
+            .map(|(backend, handle)| {
+                let (tabs, error, informational) = match handle.join() {
+                    Ok(Ok(tabs)) => (tabs, None, false),
+                    Ok(Err(e)) => {
+                        let msg = format!("{e:#}");
+                        (Vec::new(), Some(msg.clone()), is_absent_backend_error(backend, &msg))
+                    }
+                    Err(_) => (Vec::new(), Some("backend probe panicked".to_string()), false),
+                };
+                BackendReport {
                     backend,
                     tabs,
-                    error: None,
-                },
-                Ok(Err(e)) => BackendReport {
-                    backend,
-                    tabs: Vec::new(),
-                    error: Some(format!("{e:#}")),
-                },
-                Err(_) => BackendReport {
-                    backend,
-                    tabs: Vec::new(),
-                    error: Some("backend probe panicked".to_string()),
-                },
+                    error,
+                    informational,
+                }
             })
             .collect()
     })
