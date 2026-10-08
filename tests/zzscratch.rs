@@ -7,6 +7,7 @@ fn claude_status_only_checks_matcher_zero() {
     // dedicated terhub matcher further down the array.
     let dir = std::env::temp_dir().join(format!("terhub-scratch-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("settings.json");
     std::fs::write(
         &path,
