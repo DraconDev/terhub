@@ -702,7 +702,14 @@ fn is_absent_backend_error(backend: &str, msg: &str) -> bool {
     match backend {
         "konsole" => first.contains("no konsole on the session bus"),
         "kitty" => first.contains("not inside kitty"),
-        "wezterm" => first.contains("no wezterm server"),
+        // The wezterm error embeds the CLI's own stderr, and that is
+        // where "weztterm ... 13:40:13.529  ERROR" lines land: no server
+        // / not-logged-in / connection-refused all mean "none here".
+        "wezterm" => first.contains("no wezterm server")
+            || first.contains("no server")
+            || first.contains("not logged in")
+            || first.contains("connection refused")
+            || first.contains("no connection"),
         _ => false,
     }
 }
