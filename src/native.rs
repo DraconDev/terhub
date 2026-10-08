@@ -712,6 +712,8 @@ fn is_absent_backend_error(backend: &str, msg: &str) -> bool {
                 || first.contains("connection refused")
                 || first.contains("no connection")
                 || first.contains("no such process")
+                || first.contains("failed to connect")
+                || first.contains("no socket")
         }
         _ => false,
     }
@@ -836,6 +838,11 @@ mod tests {
         assert!(is_absent_backend_error(
             "wezterm",
             "wezterm cli list failed: No such process (wezt server not running)"
+        ));
+        // Live-shape: the CLI's own "failed to connect to Socket(...)" line.
+        assert!(is_absent_backend_error(
+            "wezterm",
+            "wezterm cli list --format json failed: ERROR wezterm > failed to connect to Socket(\"/run/user/1000/wezterm/gui-sock-1\")"
         ));
         assert!(is_absent_backend_error(
             "wezterm",
