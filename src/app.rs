@@ -97,6 +97,26 @@ fn short_native_error(e: &str) -> String {
     }
 }
 
+/// Backends that probe fine but are not installed (no binary): report a
+/// neutral "not installed" note, not a scary error line.
+fn native_report_notes(reports: Vec<crate::native::BackendReport>) -> Vec<String> {
+    let mut notes = Vec::new();
+    for rep in reports {
+        match rep.error {
+            Some(e) => {
+                // "not installed"/"no socket" style notes are informational;
+                // everything else is a real failure.
+                let short = short_native_error(&e);
+                notes.push(format!("{}: {}", rep.backend, short));
+            }
+            None => {
+                notes.push(format!("{}: {} tab(s)", rep.backend, rep.tabs.len()));
+            }
+        }
+    }
+    notes
+}
+
 /// CPU percent between two tick samples (None = re-baseline: first
 /// sample, zero elapsed, or ticks fell because the process restarted).
 /// Over 100% is real — agent subtrees span cores.
@@ -809,11 +829,12 @@ impl App {
         let mut agents = Vec::new();
         let mut notes = Vec::new();
         for rep in crate::native::list_all() {
-            if let Some(e) = rep.error {
-                notes.push(format!("{}: {}", rep.backend, short_native_error(&e)));
-                continue;
+            match &rep.error {
+                Some(e) => notes.push(format!("{}: {}", rep.backend, short_native_error(e))),
+                None => {
+                    notes.push(format!("{}: {} tab(s)", rep.backend, rep.tabs.len()));
+                }
             }
-            notes.push(format!("{}: {} tab(s)", rep.backend, rep.tabs.len()));
             for tab in rep.tabs {
                 let fg_comm = crate::native::proc_comm(tab.fg_pid)
                     .or_else(|| crate::native::proc_comm(tab.pid))
