@@ -743,9 +743,10 @@ pub fn run() -> anyhow::Result<()> {
     // decides which palette of accent colors the icon pulls from. The
     // TUI's load_config() owns the theme, so we go through it rather
     // than parsing the TOML ourselves.
+    let theme = crate::config::load_config(None).theme;
     install_icons(&theme)?;
     refresh_icon_cache();
-    let mut last_theme = theme.clone();
+    let mut last_theme = theme;
     let conn = zbus::blocking::Connection::session()?;
     let unique = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
