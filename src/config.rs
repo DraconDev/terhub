@@ -309,15 +309,20 @@ impl KeyBinding {
 /// Parse a config key name: single chars ("n", "?"), names ("enter", "esc",
 /// "space", "tab", "up"...), function keys ("f5"), or the legacy
 /// "question_mark" alias.
-pub fn parse_key(s: &str) -> KeySpec {
+pub fn parse_key(s: &str) -> KeyBinding {
     let s = s.trim();
-    if s.is_empty() {
-        return KeySpec::None;
+    let (mods, rest) = split_modifiers(s);
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return KeyBinding { mods, spec: KeySpec::None };
     }
-    if s.chars().count() == 1 {
-        return KeySpec::Char(s.chars().next().unwrap_or('\0'));
+    if rest.chars().count() == 1 {
+        return KeyBinding {
+            mods,
+            spec: KeySpec::Char(rest.chars().next().unwrap_or('\0')),
+        };
     }
-    match s.to_lowercase().as_str() {
+    let spec = match rest.to_lowercase().as_str() {
         "enter" | "return" => KeySpec::Code(KeyCode::Enter),
         "esc" | "escape" => KeySpec::Code(KeyCode::Esc),
         "tab" => KeySpec::Code(KeyCode::Tab),
@@ -343,37 +348,72 @@ pub fn parse_key(s: &str) -> KeySpec {
             .map(KeySpec::Code)
             .unwrap_or(KeySpec::None),
         _ => KeySpec::None,
+    };
+    KeyBinding { mods, spec }
+}
+
+/// Split a config key value into (modifiers, key). Accepted prefixes are
+/// `ctrl`, `alt`, `shift`, `super` (and the spellings `control`,
+/// `option`, `meta`, `cmd`), comma- or whitespace-separated, e.g.
+/// "ctrl+s", "ctrl shift enter", "alt+f5". A value with no recognised
+/// prefix keeps today's semantics: KeyModifiers::NONE = fires with any
+/// modifiers. Unknown prefixes are not modifiers: "foo+n" falls through
+/// to the whole-string key lookup and parses to None, exactly like an
+/// unknown key name always did.
+fn split_modifiers(s: &str) -> (KeyModifiers, &str) {
+    let known: &[&str] = &["ctrl", "control", "alt", "option", "shift", "super", "meta", "cmd"];
+    if !s.contains('+') {
+        // No '+' separator: a bare value, no modifiers. (Whitespace-only
+        // combinations like "ctrl s" are not modifier syntax; they parse
+        // to a bad key, as always.)
+        return (KeyModifiers::NONE, s);
+    }
+    let mut mods = KeyModifiers::NONE;
+    let mut rest: Option<&str> = None;
+    for part in s.split('+') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let l = part.to_lowercase();
+        if known.contains(&l.as_str()) {
+            match l.as_str() {
+                "ctrl" | "control" => mods |= KeyModifiers::CONTROL,
+                "alt" | "option" => mods |= KeyModifiers::ALT,
+                "shift" => mods |= KeyModifiers::SHIFT,
+                "super" | "meta" | "cmd" => mods |= KeyModifiers::SUPER,
+                _ => unreachable!(),
+            }
+        } else {
+            // The key part: must be last, and there may be only one of
+            // them. Multiple keys ("ctrl+s+t") are not a binding — report
+            // the whole string back so the caller's normal "unknown key"
+            // path handles it with its usual diagnostics.
+            if rest.is_some() {
+                return (KeyModifiers::NONE, s);
+            }
+            rest = Some(part);
+        }
+    }
+    match rest {
+        Some(r) => (mods, r),
+        None => (KeyModifiers::NONE, s),
     }
 }
 
+/// Legacy fire test: a [`KeySpec`] (as produced before modifier support
+/// — every current default) matches with any modifiers held.
+#[must_use]
 pub fn key_matches(spec: &KeySpec, code: KeyCode) -> bool {
-    match (spec, code) {
-        (KeySpec::Char(a), KeyCode::Char(b)) => {
-            if a.is_ascii_alphabetic() && b.is_ascii_alphabetic() {
-                a.eq_ignore_ascii_case(&b)
-            } else {
-                a == &b
-            }
-        }
-        (KeySpec::Code(a), b) => a == &b,
-        _ => false,
-    }
+    KeyBinding { mods: KeyModifiers::NONE, spec: spec.clone() }.matches(&code, KeyModifiers::NONE)
 }
 
 /// Collision check mirroring [`key_matches`]: alphabetic chars collide
 /// case-insensitively (a custom `G` steals builtin `g` at runtime), so an
 /// exact `KeySpec` equality here would bless bindings that can never fire.
 fn spec_conflicts(a: &KeySpec, b: &KeySpec) -> bool {
-    match (a, b) {
-        (KeySpec::Char(x), KeySpec::Char(y)) => {
-            if x.is_ascii_alphabetic() && y.is_ascii_alphabetic() {
-                x.eq_ignore_ascii_case(y)
-            } else {
-                x == y
-            }
-        }
-        _ => a == b,
-    }
+    KeyBinding { mods: KeyModifiers::NONE, spec: a.clone() }
+        .conflicts(&KeyBinding { mods: KeyModifiers::NONE, spec: b.clone() })
 }
 
 /// One token of a style spec: a modifier, a foreground color, an explicit
