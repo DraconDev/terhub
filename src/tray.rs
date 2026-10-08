@@ -92,20 +92,29 @@ impl TrayView {
         d
     }
 
-    /// Drives both the icon variant and the SNI status flag.
+    /// Drives the SNI `status` flag: "NeedsAttention" makes Plasma flag
+    /// the panel entry; everything else reads as plain active.
+    /// Disconnected is not "needs you" — the user is not waiting on
+    /// anything, the daemon is.
     pub fn needs_attention(&self) -> bool {
         self.connected && self.needy > 0
     }
 
-    /// Attention wins over "a hub is already open": needing you is the
-    /// more urgent fact, and the live badge rides along on the tooltip.
+    /// Drives the icon variant. Attention always wins over the live
+    /// badge; the live-idle pair is for the long-running case (a hub
+    /// open and every tracked agent has finished).
     pub fn icon_name(&self) -> &'static str {
+        if !self.connected {
+            return "terhub-disconnected";
+        }
         if self.needs_attention() {
-            "terhub-attention"
-        } else if self.hub_open {
-            "terhub-live"
-        } else {
-            "terhub"
+            return "terhub-attention";
+        }
+        match (self.hub_open, self.idle) {
+            (true, 0) => "terhub-live",
+            (true, _) => "terhub-live-idle",
+            (false, 0) => "terhub",
+            (false, _) => "terhub-idle",
         }
     }
 }
@@ -602,6 +611,49 @@ mod tests {
             "{}",
             live.description()
         );
+    }
+
+    #[test]
+    fn idle_no_hub_gets_idle_icon() {
+        // The long-running "everything finished" case, the most common
+        // sit-on-the-panel icon in a typical day.
+        let v = TrayView::from_agents(&[rec(AgentState::Idle), rec(AgentState::Working)]);
+        assert_eq!(v.idle, 1);
+        assert_eq!(v.icon_name(), "terhub-idle");
+        assert!(!v.needs_attention());
+    }
+
+    #[test]
+    fn idle_with_hub_open_gets_live_idle() {
+        // A hub is open and every tracked agent has finished: live base
+        // with the idle color so the eye learns the two live variants.
+        let v = TrayView::from_agents(&[rec(AgentState::Idle)]);
+        let mut live = v;
+        live.hub_open = true;
+        assert_eq!(live.icon_name(), "terhub-live-idle");
+    }
+
+    #[test]
+    fn working_with_hub_open_stays_live() {
+        // 0 idle + hub open is the only case that uses the non-idle live
+        // variant. Idle=N here means no agent has finished yet.
+        let v = TrayView::from_agents(&[rec(AgentState::Working)]);
+        let mut live = v;
+        live.hub_open = true;
+        assert_eq!(live.icon_name(), "terhub-live");
+    }
+
+    #[test]
+    fn disconnected_has_its_own_icon() {
+        let v = TrayView::disconnected();
+        assert_eq!(v.icon_name(), "terhub-disconnected");
+        assert!(!v.needs_attention());
+        // A hub being open while the daemon is down still reads as
+        // disconnected: the live badge would be a lie (we can't reach
+        // the hub's pane).
+        let mut v = v;
+        v.hub_open = true;
+        assert_eq!(v.icon_name(), "terhub-disconnected");
     }
 
     #[test]
