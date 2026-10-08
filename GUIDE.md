@@ -126,11 +126,13 @@ status bar, no modes except small popups:
   record yet) sink to the bottom.
 - **Filter.** `f` narrows rows by case-insensitive substring across every
   text column (session, window, command, dir, agent, state, summary).
-  Typing filters live, `Enter` keeps the query, `Esc` clears it; the
-  active query shows in the title bar. It composes with the session
-  filter. `h` hides unclaimed panes quiet over 10 minutes (one key,
-  reversible, hidden count in the title) — the fast way to drop idle
-  shells from a dashboard view.
+  Typing filters live, `Enter` keeps the query, `Esc` restores the
+  pre-edit query; the active query shows in the title bar. It composes
+  with the session filter. Bind `filter_clear` (e.g. `ctrl+backspace`)
+  for a hard wipe of the query inside the prompt — `Esc` alone always
+  restores, never clears. `h` hides unclaimed panes quiet over 10
+  minutes (one key, reversible, hidden count in the title) — the fast
+  way to drop idle shells from a dashboard view.
   Prompts eat all clicks; the settings popup rows are clickable.
 - **Refresh.** `F5` re-reads tmux and re-fetches native terminal tabs
   (Konsole/kitty/WezTerm show as `konsole:…` rows under `All` only; see
@@ -205,6 +207,9 @@ density = "v"
 settings = "s"
 sort = "o"
 filter = "f"
+# Optional hard-clear for the filter query. Unbound by default; bind
+# e.g. filter_clear = "ctrl+backspace" to wipe the query mid-prompt.
+# Esc in the filter prompt always restores the pre-edit query.
 mark = "space"
 unmark = "u"
 hide_shells = "h"
@@ -252,8 +257,12 @@ Message templates are reusable prompt snippets: `[[template]]` with
 Templates feed the bulk prompt (`Tab` cycles them into the text) and
 `send --template NAME` for scripts.
 
-Key names: single characters, `enter`, `esc`, `tab`, `f5`, … Unknown keys
-fall back to defaults. Notifications gate the desktop popups on agent state
+Key names: single characters, `enter`, `esc`, `tab`, `f5`, …, and
+modifier prefixes `ctrl+`, `alt+`, `shift+`, `super+` (also spelled
+`control`/`option`/`meta`/`cmd`) — e.g. `ctrl+s`, `alt+f5`,
+`ctrl+shift+enter`. Modifier-qualified bindings fire only on that exact
+combo and never shadow the bare key; unmodified presses of a bare
+binding keep their old behaviour. Unknown keys fall back to defaults. Notifications gate the desktop popups on agent state
 changes. A style spec is optional modifiers plus a color (`"bold yellow"`,
 `"red"`, `"#ff8800"`; modifiers `bold dim italic underlined reverse crossed
 blink`, colors `black red green yellow blue magenta cyan white gray` with
