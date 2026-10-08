@@ -143,7 +143,7 @@ impl AppConfig {
         self.keys.get(action).map(String::as_str).unwrap_or("")
     }
 
-    pub fn spec(&self, action: &str) -> KeySpec {
+    pub fn spec(&self, action: &str) -> KeyBinding {
         parse_key(self.key(action))
     }
 
@@ -993,7 +993,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     actions.sort();
     for action in &actions {
         let value = cfg.keys[action].clone();
-        if parse_key(&value) == KeySpec::None
+        if parse_key(&value).spec == KeySpec::None
             && let Some(def) = defaults.get(action)
         {
             problems.push(format!(
@@ -1110,18 +1110,18 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
             continue;
         }
         let spec = parse_key(&c.key);
-        if spec == KeySpec::None {
+        if spec.spec == KeySpec::None {
             problems.push(format!("{tag} has bad key '{}'", c.key));
             continue;
         }
-        if let Some((action, _)) = builtin.iter().find(|(_, s)| spec_conflicts(s, &spec)) {
+        if let Some((action, _)) = builtin.iter().find(|(_, s)| spec.conflicts(s)) {
             problems.push(format!(
                 "{tag} key '{}' collides with built-in '{action}'",
                 c.key
             ));
             continue;
         }
-        if taken.iter().any(|t| spec_conflicts(t, &spec)) {
+        if taken.iter().any(|t| spec.conflicts(t)) {
             problems.push(format!("{tag} key '{}' is already used", c.key));
             continue;
         }
