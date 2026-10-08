@@ -1327,32 +1327,168 @@ mod tests {
 
     #[test]
     fn parse_common_keys() {
-        assert_eq!(parse_key("n"), KeySpec::Char('n'));
-        assert_eq!(parse_key("?"), KeySpec::Char('?'));
-        assert_eq!(parse_key("question_mark"), KeySpec::Char('?'));
-        assert_eq!(parse_key("enter"), KeySpec::Code(KeyCode::Enter));
-        assert_eq!(parse_key("ESC"), KeySpec::Code(KeyCode::Esc));
-        assert_eq!(parse_key("f5"), KeySpec::Code(KeyCode::F(5)));
-        assert_eq!(parse_key("f12"), KeySpec::Code(KeyCode::F(12)));
-        assert_eq!(parse_key(""), KeySpec::None);
-        assert_eq!(parse_key("nope-not-a-key"), KeySpec::None);
+        use crossterm::event::KeyModifiers;
+        let bare = KeyModifiers::NONE;
+        assert_eq!(parse_key("n"), KeyBinding { mods: bare, spec: KeySpec::Char('n') });
+        assert_eq!(parse_key("?"), KeyBinding { mods: bare, spec: KeySpec::Char('?') });
+        assert_eq!(
+            parse_key("question_mark"),
+            KeyBinding { mods: bare, spec: KeySpec::Char('?') }
+        );
+        assert_eq!(
+            parse_key("enter"),
+            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::Enter) }
+        );
+        assert_eq!(
+            parse_key("ESC"),
+            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::Esc) }
+        );
+        assert_eq!(
+            parse_key("f5"),
+            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(5)) }
+        );
+        assert_eq!(
+            parse_key("f12"),
+            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(12)) }
+        );
+        assert_eq!(
+            parse_key(""),
+            KeyBinding { mods: bare, spec: KeySpec::None }
+        );
+        assert_eq!(
+            parse_key("nope-not-a-key"),
+            KeyBinding { mods: bare, spec: KeySpec::None }
+        );
+    }
+
+    #[test]
+    fn parse_modifiers_keys() {
+        use crossterm::event::KeyModifiers;
+        assert_eq!(
+            parse_key("ctrl+s"),
+            KeyBinding {
+                mods: KeyModifiers::CONTROL,
+                spec: KeySpec::Char('s'),
+            }
+        );
+        assert_eq!(
+            parse_key("Ctrl+S"),
+            KeyBinding {
+                mods: KeyModifiers::CONTROL,
+                spec: KeySpec::Char('s'),
+            }
+        );
+        assert_eq!(
+            parse_key("alt+x"),
+            KeyBinding {
+                mods: KeyModifiers::ALT,
+                spec: KeySpec::Char('x'),
+            }
+        );
+        assert_eq!(
+            parse_key("shift+g"),
+            KeyBinding {
+                mods: KeyModifiers::SHIFT,
+                spec: KeySpec::Char('g'),
+            }
+        );
+        assert_eq!(
+            parse_key("ctrl+shift+enter"),
+            KeyBinding {
+                mods: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                spec: KeySpec::Code(KeyCode::Enter),
+            }
+        );
+        assert_eq!(
+            parse_key("super+f5"),
+            KeyBinding {
+                mods: KeyModifiers::SUPER,
+                spec: KeySpec::Code(KeyCode::F(5)),
+            }
+        );
+        // Unknown modifiers fall through to the unknown-key path: bad value
+        // reported, default restored (see load_config_report tests).
+        assert_eq!(
+            parse_key("foo+s"),
+            KeyBinding { mods: KeyModifiers::NONE, spec: KeySpec::None }
+        );
+        // Multiple keys in a combo are not a binding.
+        assert_eq!(
+            parse_key("ctrl+s+t"),
+            KeyBinding { mods: KeyModifiers::NONE, spec: KeySpec::None }
+        );
+    }
+
+    #[test]
+    fn modifier_key_match_and_conflict() {
+        use crossterm::event::KeyModifiers;
+        let ctrl_s = parse_key("ctrl+s");
+        assert_eq!(ctrl_s.mods, KeyModifiers::CONTROL);
+        // ctrl+s fires on ctrl+s only.
+        assert!(ctrl_s.matches(&KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert!(!ctrl_s.matches(&KeyCode::Char('s'), KeyModifiers::NONE));
+        assert!(!ctrl_s.matches(
+            &KeyCode::Char('s'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT
+        ));
+        // A bare s does not fire when ctrl is held: a bare binding's
+        // KeyBinding.mods is NONE, and the press's modifiers are
+        // non-NONE — exact-match fails, so the press reaches no binding
+        // and is swallowed by the on_key guard (typing safety).
+        let bare_s = parse_key("s");
+        assert!(bare_s.matches(&KeyCode::Char('s'), KeyModifiers::NONE));
+        assert!(!bare_s.matches(&KeyCode::Char('s'), KeyModifiers::CONTROL));
+        // Collision: ctrl+s vs ctrl+s collide; ctrl+s vs s do not.
+        assert!(ctrl_s.conflicts(&ctrl_s.clone()));
+        assert!(!ctrl_s.conflicts(&bare_s));
+        assert!(bare_s.conflicts(&parse_key("S")));
+    }
+
+    #[test]
+    fn key_binding_label() {
+        use crossterm::event::KeyModifiers;
+        assert_eq!(parse_key("n").label(), "n");
+        assert_eq!(parse_key("enter").label(), "enter");
+        assert_eq!(parse_key("f5").label(), "f5");
+        assert_eq!(parse_key("ctrl+s").label(), "ctrl+s");
+        assert_eq!(parse_key("ctrl+shift+enter").label(), "ctrl+shift+enter");
+        assert_eq!(parse_key("super+alt+x").label(), "super+alt+x");
+        assert_eq!(
+            parse_key("").label(),
+            KeyBinding {
+                mods: KeyModifiers::NONE,
+                spec: KeySpec::None
+            }
+            .label()
+        );
     }
 
     #[test]
     fn fkey_range_rejects_absurd() {
-        assert_eq!(parse_key("f0"), KeySpec::None);
-        assert_eq!(parse_key("f99"), KeySpec::None);
-        assert_eq!(parse_key("f25"), KeySpec::None);
-        assert_eq!(parse_key("f1"), KeySpec::Code(KeyCode::F(1)));
-        assert_eq!(parse_key("f24"), KeySpec::Code(KeyCode::F(24)));
+        let bare = crossterm::event::KeyModifiers::NONE;
+        assert_eq!(parse_key("f0"), KeyBinding { mods: bare, spec: KeySpec::None });
+        assert_eq!(parse_key("f99"), KeyBinding { mods: bare, spec: KeySpec::None });
+        assert_eq!(
+            parse_key("f25"),
+            KeyBinding { mods: bare, spec: KeySpec::None }
+        );
+        assert_eq!(
+            parse_key("f1"),
+            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(1)) }
+        );
+        assert_eq!(
+            parse_key("f24"),
+            KeyBinding { mods: bare, spec: KeySpec::Code(KeyCode::F(24)) }
+        );
     }
 
     #[test]
     fn letter_match_is_case_insensitive() {
-        assert!(key_matches(&KeySpec::Char('n'), KeyCode::Char('N')));
-        assert!(key_matches(&KeySpec::Char('q'), KeyCode::Char('q')));
-        assert!(!key_matches(&KeySpec::Char('n'), KeyCode::Char('x')));
-        assert!(!key_matches(&KeySpec::None, KeyCode::Char('n')));
+        use crossterm::event::KeyModifiers;
+        assert!(parse_key("n").matches(&KeyCode::Char('N'), KeyModifiers::NONE));
+        assert!(parse_key("q").matches(&KeyCode::Char('q'), KeyModifiers::NONE));
+        assert!(!parse_key("n").matches(&KeyCode::Char('x'), KeyModifiers::NONE));
+        assert!(!parse_key("").matches(&KeyCode::Char('n'), KeyModifiers::NONE));
     }
 
     #[test]
