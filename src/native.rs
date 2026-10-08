@@ -812,6 +812,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn absent_backend_errors_are_informational() {
+        // No instances: tone down, not warn.
+        assert!(is_absent_backend_error("konsole", "no Konsole on the session bus"));
+        assert!(is_absent_backend_error("kitty", "kitty @ ls skipped: not inside kitty (set TERHUB_KITTY_TO ...)"));
+        assert!(is_absent_backend_error("wezterm", "wezterm cli list failed: No such process (wezt server not running)"));
+        assert!(is_absent_backend_error("wezterm", "wezterm cli list failed: Connection refused"));
+        // Real failures stay loud.
+        assert!(!is_absent_backend_error("konsole", "qdbus service list failed"));
+        assert!(!is_absent_backend_error("kitty", "kitty @ ls failed: socket gone"));
+        assert!(!is_absent_backend_error("wezterm", "wezterm cli list failed: malformed json"));
+        assert!(!is_absent_backend_error("konsole", "no Konsole on the session bus but wezterm error text"));
+    }
+
+    #[test]
     fn kitty_probe_allowed_matrix() {
         // Outside kitty with no socket: skip (the spawn would wait 10s
         // on /dev/tty for a reply only kitty sends).
