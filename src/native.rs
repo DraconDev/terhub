@@ -709,7 +709,8 @@ fn is_absent_backend_error(backend: &str, msg: &str) -> bool {
             || first.contains("no server")
             || first.contains("not logged in")
             || first.contains("connection refused")
-            || first.contains("no connection"),
+            || first.contains("no connection")
+            || first.contains("no such process"),
         _ => false,
     }
 }
