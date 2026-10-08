@@ -73,7 +73,10 @@ const CLAUDE_HOOKS: &[HookDef] = &[
     },
     HookDef {
         event: "Stop",
-        state: "waiting",
+        // Stop means the turn *finished*, not that it is blocked. Mapping
+        // it to waiting made every completed Claude agent demand
+        // attention; idle is the honest state.
+        state: "idle",
         summary: Some("response finished"),
         prompt_stdin: false,
     },
