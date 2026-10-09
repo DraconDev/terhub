@@ -262,7 +262,9 @@ impl Permit {
             state = self.inner.available.wait(state).unwrap();
         }
         *state -= 1;
-        PermitGuard { permit: self }
+        let permit = std::sync::Arc::clone(&self);
+        drop(state);
+        PermitGuard { permit }
     }
 }
 struct PermitGuard {
