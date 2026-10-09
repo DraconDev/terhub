@@ -124,20 +124,26 @@ status bar, no modes except small popups:
   it, click again to flip direction; `o` cycles columns from the
   keyboard. The `▲`/`▼` mark shows the active sort. Unknowns (no daemon
   record yet) sink to the bottom.
-- **Filter.** `f` opens the filter, but you rarely need it: just start
-  typing and any unbound printable key opens the prompt with that char
-  already entered (`/` always forces it, e.g. for queries starting with
-  a bound key). It narrows rows by case-insensitive substring across
-  every text column (session, window, command, dir, agent, state,
-  summary); prefix with `!` to exclude instead (`!zsh` hides every row
-  mentioning zsh). Typing filters live, `Enter` keeps the query **and
-  saves it** to `[ui] filter` so it survives restarts, `Esc` restores the
-  pre-edit query; the active query shows in the title bar. It composes
-  with the session filter. Bind `filter_clear` (e.g. `ctrl+backspace`)
-  for a hard wipe of the query inside the prompt — `Esc` alone always
-  restores, never clears. `h` hides unclaimed panes quiet over 10
-  minutes (one key, reversible, hidden count in the title) — the fast
-  way to drop idle shells from a dashboard view.
+- **Filter (temporary search) vs standing filter.** Two different things
+  with two different labels. *Search*: `f` opens the prompt, but you
+  rarely need it — just start typing and any unbound printable key
+  opens the prompt with that char already entered (`/` always forces
+  it, e.g. for queries starting with a bound key). It narrows rows by
+  case-insensitive substring across every text column (session, window,
+  command, dir, agent, state, summary); prefix with `!` to exclude
+  instead (`!zsh` hides every row mentioning zsh). Typing filters live,
+  `Enter` keeps the query **for this session only — it is never saved**,
+  `Esc` clears it; the active query shows as `search:` in the title bar.
+  *Standing filter*: the always-on exclusion from `[ui] filter`, shown
+  as `filter:` in the title. Edit it deliberately in settings
+  (`s` → Filters → standing filter, `Enter` saves to the config file,
+  `Esc` cancels). `Esc` in the table clears the search, never the
+  standing filter. It composes with the session filter. Bind
+  `filter_clear` (e.g. `ctrl+backspace`) for a hard wipe of the search
+  query inside the prompt — `Esc` alone always restores, never clears.
+  `h` hides unclaimed panes quiet over 10 minutes (one key, reversible,
+  hidden count in the title) — the fast way to drop idle shells from a
+  dashboard view.
   Prompts eat all clicks; the settings popup rows are clickable.
 - **Refresh.** `F5` re-reads tmux and re-fetches native terminal tabs
   (Konsole/kitty/WezTerm show as `konsole:…` rows under `All` only; see
