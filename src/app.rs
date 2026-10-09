@@ -2877,8 +2877,9 @@ impl App {
             self.set_status(format!("{label} cleared"));
         } else {
             self.set_status(format!("{label}: {q}"));
-        }
-    }
+    /// Live re-filter while typing; restarts at the top row. Edits
+    /// whichever query the prompt opened for (search or standing).
+    fn apply_live_filter(&mut self) {
         if self.editing_standing {
             self.exclude.clone_from(&self.input);
         } else {
