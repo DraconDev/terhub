@@ -2055,10 +2055,15 @@ impl App {
         {
             self.input.clear();
             self.cursor = 0;
-            self.filter.clear();
+            if self.editing_standing {
+                self.exclude.clear();
+                self.set_status("standing filter cleared (Enter to save)".to_string());
+            } else {
+                self.filter.clear();
+                self.set_status("search cleared".to_string());
+            }
             self.refresh_filtered();
             self.follow_preview(tmux);
-            self.set_status("filter cleared".to_string());
             return None;
         }
         match key.code {
