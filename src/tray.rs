@@ -1140,20 +1140,25 @@ mod tests {
     }
 
     #[test]
-    fn badge_picks_needy_then_idle_then_nothing() {
-        // The badge tracks the headline: waiters win (they pair with
-        // the red attention icon), otherwise the idle count the user
-        // asked to see at a glance, nothing when quiet or down.
-        assert_eq!(badge_for_view(0, 0, true), None);
-        assert_eq!(badge_for_view(0, 0, false), None);
-        assert_eq!(badge_for_view(0, 15, false), None);
-        assert_eq!(badge_for_view(0, 15, true), Some("15".to_string()));
-        assert_eq!(badge_for_view(1, 15, true), Some("1".to_string()));
-        assert_eq!(badge_for_view(3, 0, true), Some("3".to_string()));
-        assert_eq!(badge_text(0), None);
-        assert_eq!(badge_text(99), Some("99".to_string()));
-        assert_eq!(badge_text(100), Some("99+".to_string()));
-        assert_eq!(badge_text(1234), Some("99+".to_string()));
+    fn icons_carry_no_badge_text() {
+        // Deliberate product decision: the panel shows the state colour
+        // only — no counts baked into the art. Counts live in the
+        // title and tooltip (one hover away), never in the pixmap.
+        // This guards the removal: if text ever returns to the SVG,
+        // this fails and forces the conversation again.
+        let p = palette_for_theme("dracula");
+        for state in [
+            IconState::Calm,
+            IconState::Idle,
+            IconState::Attention,
+            IconState::Live,
+            IconState::LiveIdle,
+            IconState::Disconnected,
+        ] {
+            let svg = render_svg(state, p);
+            assert!(!svg.contains("<text"), "{state:?} carries text:\n{svg}");
+            assert!(svg.contains(TRIANGLE), "{state:?} lost its triangle");
+        }
     }
 
     #[test]
