@@ -5406,8 +5406,10 @@ mod tests {
     #[test]
     fn filter_seeds_from_config_at_startup() {
         // A persisted `!zsh` applies on the first refresh, no typing.
-        let mut cfg = AppConfig::default();
-        cfg.filter = "!bash".to_string();
+        let cfg = AppConfig {
+            filter: "!bash".to_string(),
+            ..AppConfig::default()
+        };
         let mut app = App::new(cfg);
         app.panes = app_with_panes().panes;
         app.refresh_filtered();

@@ -124,9 +124,14 @@ status bar, no modes except small popups:
   it, click again to flip direction; `o` cycles columns from the
   keyboard. The `▲`/`▼` mark shows the active sort. Unknowns (no daemon
   record yet) sink to the bottom.
-- **Filter.** `f` narrows rows by case-insensitive substring across every
-  text column (session, window, command, dir, agent, state, summary).
-  Typing filters live, `Enter` keeps the query, `Esc` restores the
+- **Filter.** `f` opens the filter, but you rarely need it: just start
+  typing and any unbound printable key opens the prompt with that char
+  already entered (`/` always forces it, e.g. for queries starting with
+  a bound key). It narrows rows by case-insensitive substring across
+  every text column (session, window, command, dir, agent, state,
+  summary); prefix with `!` to exclude instead (`!zsh` hides every row
+  mentioning zsh). Typing filters live, `Enter` keeps the query **and
+  saves it** to `[ui] filter` so it survives restarts, `Esc` restores the
   pre-edit query; the active query shows in the title bar. It composes
   with the session filter. Bind `filter_clear` (e.g. `ctrl+backspace`)
   for a hard wipe of the query inside the prompt — `Esc` alone always
