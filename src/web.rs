@@ -5,7 +5,7 @@
 //! and the prompt (send) / abort (interrupt) actions.
 use axum::{
     Json, Router,
-    extract::Query,
+    extract::{DefaultBodyLimit, Query},
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -24,6 +24,10 @@ pub fn router() -> Router {
         .route("/api/send", post(api_send))
         .route("/api/interrupt", post(api_interrupt))
         .layer(axum::middleware::from_fn(origin_guard))
+        // Cap the request body: the API takes tiny JSON for /api/send
+        // and /api/interrupt; a generous 64KB is plenty and keeps a
+        // hostile or buggy client from holding a buffer.
+        .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
 /// Loopback origins only: the dashboard is same-origin served, so a
@@ -305,9 +309,13 @@ async fn api_interrupt(Json(body): Json<InterruptBody>) -> impl IntoResponse {
 }
 
 fn fail(e: anyhow::Error) -> axum::response::Response {
+    // Don't echo the anyhow chain (which carries tmux stderr, paths,
+    // and other local environment detail) to any loopback client.
+    // Log the full error server-side and return an opaque message.
+    eprintln!("terhub serve: internal error: {e:#}");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(serde_json::json!({"error": format!("{e:?}")})),
+        Json(serde_json::json!({"error": "internal error"})),
     )
         .into_response()
 }
