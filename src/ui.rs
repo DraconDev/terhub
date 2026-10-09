@@ -26,7 +26,166 @@ pub struct Palette {
 pub fn palette(theme: &str) -> Palette {
     let rgb = Color::Rgb;
     match theme {
-        "light" => Palette {
+        "rose-pine" => Palette {
+            border: Style::default().fg(rgb(0x6E, 0x6A, 0x86)),
+            title: Style::default()
+                .fg(rgb(0x9C, 0xCF, 0xD8))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xF6, 0xC1, 0x77))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0x1F, 0x1D, 0x2E))
+                .bg(rgb(0x9C, 0xCF, 0xD8)),
+            attached: Style::default().fg(rgb(0x31, 0x74, 0x8F)),
+            status: Style::default().fg(rgb(0xE0, 0xDE, 0xF4)),
+            dim: Style::default().fg(rgb(0x90, 0x8C, 0xAA)),
+            focus: Style::default().fg(rgb(0xEB, 0xBC, 0xBA)),
+        },
+        "everforest" => Palette {
+            border: Style::default().fg(rgb(0x5D, 0x65, 0x5D)),
+            title: Style::default()
+                .fg(rgb(0xA7, 0xC0, 0x80))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xDB, 0xBC, 0x7F))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0x2D, 0x35, 0x3B))
+                .bg(rgb(0xA7, 0xC0, 0x80)),
+            attached: Style::default().fg(rgb(0x7F, 0xBB, 0xB3)),
+            status: Style::default().fg(rgb(0xD3, 0xC6, 0xAA)),
+            dim: Style::default().fg(rgb(0x85, 0x92, 0x89)),
+            focus: Style::default().fg(rgb(0xD6, 0x99, 0xB6)),
+        },
+        "kanagawa" => Palette {
+            border: Style::default().fg(rgb(0x54, 0x54, 0x46)),
+            title: Style::default()
+                .fg(rgb(0x7F, 0xB4, 0xCA))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xC8, 0xB3, 0x6C))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xD6, 0xD1, 0xC7))
+                .bg(rgb(0x22, 0x33, 0x3D)),
+            attached: Style::default().fg(rgb(0x87, 0xA9, 0x87)),
+            status: Style::default().fg(rgb(0xC5, 0xC9, 0xC5)),
+            dim: Style::default().fg(rgb(0x62, 0x5E, 0x5A)),
+            focus: Style::default().fg(rgb(0x95, 0x73, 0xA7)),
+        },
+        "ayu" => Palette {
+            border: Style::default().fg(rgb(0x33, 0x44, 0x59)),
+            title: Style::default()
+                .fg(rgb(0x59, 0xC2, 0xFF))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xFF, 0xB4, 0x54))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0x0F, 0x14, 0x19))
+                .bg(rgb(0x95, 0xE6, 0xCB)),
+            attached: Style::default().fg(rgb(0xAA, 0xD9, 0x4C)),
+            status: Style::default().fg(rgb(0xB3, 0xB1, 0xAD)),
+            dim: Style::default().fg(rgb(0x3E, 0x4B, 0x59)),
+            focus: Style::default().fg(rgb(0xD2, 0xA6, 0xFF)),
+        },
+        "nightfly" => Palette {
+            border: Style::default().fg(rgb(0x1D, 0x3B, 0x53)),
+            title: Style::default()
+                .fg(rgb(0x7A, 0xA6, 0xDA))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xFF, 0xCC, 0x00))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0x01, 0x16, 0x27))
+                .bg(rgb(0x5F, 0xB4, 0xD4)),
+            attached: Style::default().fg(rgb(0xA1, 0xCD, 0x76)),
+            status: Style::default().fg(rgb(0xB2, 0xB2, 0xB2)),
+            dim: Style::default().fg(rgb(0x5C, 0x66, 0x70)),
+            focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+        },
+        "palenight" => Palette {
+            border: Style::default().fg(rgb(0x3A, 0x3F, 0x5B)),
+            title: Style::default()
+                .fg(rgb(0x82, 0xAA, 0xFF))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xFF, 0xCB, 0x6B))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0x29, 0x2D, 0x3E))
+                .bg(rgb(0x86, 0xE1, 0xFC)),
+            attached: Style::default().fg(rgb(0xC3, 0xE8, 0x8D)),
+            status: Style::default().fg(rgb(0xBF, 0xCA, 0xE0)),
+            dim: Style::default().fg(rgb(0x67, 0x6E, 0x95)),
+            focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+        },
+        "github" => Palette {
+            border: Style::default().fg(rgb(0x30, 0x35, 0x3D)),
+            title: Style::default()
+                .fg(rgb(0x58, 0xA6, 0xFF))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xD2, 0x99, 0x22))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0x0D, 0x11, 0x17))
+                .bg(rgb(0x3F, 0xB9, 0x50)),
+            attached: Style::default().fg(rgb(0x3F, 0xB9, 0x50)),
+            status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
+            dim: Style::default().fg(rgb(0x8B, 0x94, 0x9E)),
+            focus: Style::default().fg(rgb(0xBC, 0x8C, 0xFF)),
+        },
+        "github-light" => Palette {
+            border: Style::default().fg(rgb(0xE1, 0xE4, 0xE8)),
+            title: Style::default()
+                .fg(rgb(0x03, 0x66, 0xD6))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xDB, 0xAB, 0x09))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xFF, 0xFF, 0xFF))
+                .bg(rgb(0x03, 0x66, 0xD6)),
+            attached: Style::default().fg(rgb(0x28, 0xA7, 0x45)),
+            status: Style::default().fg(rgb(0x24, 0x29, 0x2E)),
+            dim: Style::default().fg(rgb(0x6A, 0x73, 0x7D)),
+            focus: Style::default().fg(rgb(0x6F, 0x42, 0xC1)),
+        },
+        "onehalf" => Palette {
+            border: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
+            title: Style::default()
+                .fg(rgb(0x61, 0xAF, 0xEF))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xE5, 0xC0, 0x7B))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xDC, 0xDE, 0xE0))
+                .bg(rgb(0x3E, 0x44, 0x52)),
+            attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
+            status: Style::default().fg(rgb(0xDC, 0xDE, 0xE0)),
+            dim: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
+            focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+        },
+        "onehalf-light" => Palette {
+            border: Style::default().fg(rgb(0xE0, 0xE0, 0xE0)),
+            title: Style::default()
+                .fg(rgb(0x40, 0x78, 0xF2))
+                .add_modifier(Modifier::BOLD),
+            header: Style::default()
+                .fg(rgb(0xF4, 0xB7, 0x3E))
+                .add_modifier(Modifier::BOLD),
+            selected: Style::default()
+                .fg(rgb(0xFF, 0xFF, 0xFF))
+                .bg(rgb(0x40, 0x78, 0xF2)),
+            attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
+            status: Style::default().fg(rgb(0x38, 0x3A, 0x42)),
+            dim: Style::default().fg(rgb(0xA3, 0xA3, 0xA3)),
+            focus: Style::default().fg(rgb(0xA6, 0x26, 0xA4)),
+        },
             border: Style::default().fg(Color::Blue),
             title: Style::default()
                 .fg(Color::Blue)
