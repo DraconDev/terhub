@@ -134,17 +134,18 @@ status bar, no modes except small popups:
   instead (`!zsh` hides every row mentioning zsh). Typing filters live,
   `Enter` keeps the query **for this session only — it is never saved**,
   `Esc` clears it; the active query shows as `search:` in the title bar.
-  *Standing filter*: the always-on exclusion from `[ui] filter`, shown
-  as `filter:` in the title. Edit it deliberately in settings
-  (`s` → Filters → standing filter, `Enter` saves to the config file,
-  `Esc` cancels). `Esc` in the table clears the search, never the
+  *Standing filter*: the always-on **exclusion** from `[ui] filter`, shown
+  as `filter:` in the title. Whatever you type in its editor is saved
+  as an exclusion (`zsh` becomes `!zsh`) — the standing filter only
+  ever hides. Edit it in settings (`s` → Filters → standing filter,
+  `Enter` saves to the config file, `Esc` cancels). `Esc` in the table clears the search, never the
   standing filter. It composes with the session filter. Bind
   `filter_clear` (e.g. `ctrl+backspace`) for a hard wipe of the search
   query inside the prompt — `Esc` alone always restores, never clears.
   `h` hides unclaimed panes quiet over 10 minutes (one key, reversible,
   hidden count in the title) — the fast way to drop idle shells from a
   dashboard view.
-  Prompts eat all clicks; the settings popup rows are clickable.
+  Prompts eat all clicks; the settings page rows and its sidebar are clickable.
 - **Refresh.** `F5` re-reads tmux and re-fetches native terminal tabs
   (Konsole/kitty/WezTerm show as `konsole:…` rows under `All` only; see
   [Native terminal tabs](#native-terminal-tabs)).
