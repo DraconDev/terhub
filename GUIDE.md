@@ -429,12 +429,13 @@ the event.
 
 `terhub hooks install [claude|pi|all]` wires agents up for you: claude
 gets `SessionStart`/`UserPromptSubmit`/`Notification`/`Stop` entries
-merged into `~/.claude/settings.json` (idempotent, user hooks kept,
-first write backed up to `settings.json.terhub-bak`; re-run install to
-gain newly added events), pi gets a lifecycle reporter at
-`~/.pi/agent/extensions/terhub.ts` (a stale ours-file is rewritten in
-place so hook upgrades land; foreign files are backed up, never
-clobbered). The prompt hooks are `UserPromptSubmit` (claude) and
+merged into `~/.claude/settings.json` (idempotent across all matchers,
+user hooks kept, first write backed up to `settings.json.terhub-bak`;
+re-run install to gain newly added events), pi gets a lifecycle
+reporter at `~/.pi/agent/extensions/terhub.ts` (a stale ours-file is
+rewritten in place so hook upgrades land; a foreign file at that path
+is moved aside to `terhub.ts.terhub-bak` so we never overwrite it).
+The prompt hooks are `UserPromptSubmit` (claude) and
 `before_agent_start` (pi, carrying the raw prompt text). `hooks status`
 shows what is wired, `hooks uninstall` removes only terhub's entries.
 Restart running agents so they pick the hooks up. `--summary-stdin`

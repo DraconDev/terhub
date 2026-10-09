@@ -149,6 +149,30 @@ fn ensure_backup(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// True when `doc` already carries a terhub hook for `event` under any
+/// matcher (not just the first). The earlier `pointer("/hooks/.../0/...")`
+/// check missed matchers at index 1+, which made `claude_status` lie
+/// and `claude_install` non-idempotent (a second run added a duplicate
+/// that fired the event twice).
+fn has_marker(doc: &serde_json::Value, event: &str) -> bool {
+    doc.pointer(&format!("/hooks/{event}", event = event))
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| {
+            arr.iter().any(|matcher| {
+                matcher
+                    .get("hooks")
+                    .and_then(|h| h.as_array())
+                    .is_some_and(|hooks| {
+                        hooks.iter().any(|h| {
+                            h.get("command")
+                                .and_then(|c| c.as_str())
+                                .is_some_and(|c| c.contains(MARKER))
+                        })
+                    })
+            })
+        })
+}
+
 /// Install our hooks into a Claude `settings.json` (created when missing).
 /// Returns per-event whether it was added (false = already present).
 pub fn claude_install(path: &Path) -> Result<Vec<(&'static str, bool)>> {
@@ -168,16 +192,7 @@ pub fn claude_install(path: &Path) -> Result<Vec<(&'static str, bool)>> {
     let mut report = Vec::new();
     let mut changed = false;
     for def in CLAUDE_HOOKS {
-        let present = doc
-            .pointer(&format!("/hooks/{}/0/hooks", def.event))
-            .and_then(|v| v.as_array())
-            .is_some_and(|arr| {
-                arr.iter().any(|h| {
-                    h.get("command")
-                        .and_then(|c| c.as_str())
-                        .is_some_and(|c| c.contains(MARKER))
-                })
-            });
+        let present = has_marker(&doc, def.event);
         report.push((def.event, !present));
         if present {
             continue;
@@ -277,17 +292,7 @@ pub fn claude_status(path: &Path) -> Vec<&'static str> {
     };
     CLAUDE_HOOKS
         .iter()
-        .filter(|def| {
-            doc.pointer(&format!("/hooks/{}/0/hooks", def.event))
-                .and_then(|v| v.as_array())
-                .is_some_and(|arr| {
-                    arr.iter().any(|h| {
-                        h.get("command")
-                            .and_then(|c| c.as_str())
-                            .is_some_and(|c| c.contains(MARKER))
-                    })
-                })
-        })
+        .filter(|def| has_marker(&doc, def.event))
         .map(|def| def.event)
         .collect()
 }
@@ -507,6 +512,42 @@ mod tests {
         assert!(text2.contains("\"other\": 1"), "{text2}");
         assert_eq!(text2.matches(MARKER).count(), 4);
         assert!(path2.with_extension("json.terhub-bak").exists());
+    }
+
+    #[test]
+    fn claude_install_and_status_see_hooks_in_any_matcher() {
+        // A user with a first matcher that holds unrelated hooks and a
+        // second matcher that holds ours must still count as
+        // "already installed": the old `pointer("/hooks/<event>/0/...")`
+        // check only looked at matcher 0, so the second run added a
+        // duplicate and the event fired twice.
+        let dir = scratch("matcher-any");
+        let path = dir.join("settings.json");
+        // Build a settings file where matcher 0 has a non-terhub hook
+        // and matcher 1 has ours, for all four events.
+        let mut doc = serde_json::json!({"hooks": {}});
+        for def in CLAUDE_HOOKS {
+            doc["hooks"][def.event] = serde_json::json!([
+                {"hooks": [{"type": "command", "command": "echo user"}]},
+                {"hooks": [{"type": "command", "command": hook_command("claude", def)}]},
+            ]);
+        }
+        std::fs::write(&path, serde_json::to_string_pretty(&doc).unwrap()).unwrap();
+        // status sees all four events (not 0).
+        let status = claude_status(&path);
+        assert_eq!(status.len(), CLAUDE_HOOKS.len(), "status: {status:?}");
+        // A second install is a no-op: nothing added, nothing changed.
+        let before = std::fs::read_to_string(&path).unwrap();
+        let report = claude_install(&path).unwrap();
+        assert!(report.iter().all(|(_, added)| !*added), "{report:?}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        // Each event still has exactly one terhub hook (no duplicate).
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            after.matches(MARKER).count(),
+            CLAUDE_HOOKS.len(),
+            "second install duplicated: {after}"
+        );
     }
 
     #[test]
