@@ -1021,10 +1021,11 @@ pub fn run() -> anyhow::Result<()> {
     let theme = crate::config::load_config(None).theme;
     let names: std::sync::Arc<std::sync::Mutex<HashMap<IconState, String>>> =
         std::sync::Arc::new(std::sync::Mutex::new(
-            install_icons(&theme).map_err(anyhow::Error::from)?,
+            install_icons(&theme, None).map_err(anyhow::Error::from)?,
         ));
     refresh_icon_cache();
     let mut last_theme = theme;
+    let mut last_badge: Option<String> = None;
     let conn = zbus::blocking::Connection::session()?;
     let unique = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
@@ -1036,6 +1037,11 @@ pub fn run() -> anyhow::Result<()> {
     // Export before registering: the watcher introspects the name as
     // soon as Register returns, and finds nothing if we register first.
     conn.object_server().at(SNI_PATH, tray)?;
+    let emitter = conn
+        .object_server()
+        .interface::<_, Tray>(SNI_PATH)
+        .map(|i| i.signal_emitter().clone())
+        .map_err(anyhow::Error::from)?;
 
     let watcher = zbus::blocking::Proxy::new(
         &conn,
@@ -1046,6 +1052,13 @@ pub fn run() -> anyhow::Result<()> {
     watcher.call_method("RegisterStatusNotifierItem", &(unique.as_str(),))?;
     println!("terhub tray registered — ctrl-c to remove");
 
+    // Last exposed strings: the host only re-reads on our signals,
+    // so emit NewIcon/NewAttentionIcon/NewTitle/NewToolTip exactly
+    // when the corresponding value actually changes.
+    let mut last_icon = String::new();
+    let mut last_attention = String::new();
+    let mut last_title = String::new();
+    let mut last_tooltip = (String::new(), String::new(), String::new());
     loop {
         // A live update: the user might change theme in the TUI's
         // settings popup, so re-check it on every poll. (A full re-render
@@ -1053,20 +1066,11 @@ pub fn run() -> anyhow::Result<()> {
         // SVG actually changed.)
         let active = crate::config::load_config(None).theme;
         if active != last_theme {
-            match install_icons(&active) {
-                Ok(new_names) => {
-                    if let Ok(mut n) = names.lock() {
-                        *n = new_names;
-                    }
-                }
-                Err(e) => eprintln!("terhub: re-themed icon install failed: {e}"),
-            }
-            // The cache hold at startup is what makes the FIRST
-            // install visible; skip it here and Plasma keeps rastering
-            // the previous palette's PNG forever (icons on disk change,
-            // panel does not).
+            last_theme = active.clone();
+            // Theme change forces a reinstall below via the badge
+            // comparison (names are theme-derived); just refresh the
+            // on-disk theme cache here.
             refresh_icon_cache();
-            last_theme = active;
         }
         let mut next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
             Ok(snap) => TrayView::from_agents(&snap.agents),
@@ -1074,7 +1078,24 @@ pub fn run() -> anyhow::Result<()> {
         };
         next.hub_open = read_hub_session().is_some();
         if let Ok(mut v) = view.lock() {
-            *v = next;
+            *v = next.clone();
+        }
+        // Re-render when the theme or the badge changed; the
+        // write-if-changed guard inside keeps disk quiet otherwise.
+        let badge = badge_for_view(next.needy, next.idle, next.connected);
+        if active != last_theme || badge != last_badge {
+            // (last_theme was already updated above; this arm runs on
+            // the badge change with the theme already current.)
+            match install_icons(&active, badge.as_deref()) {
+                Ok(new_names) => {
+                    if let Ok(mut n) = names.lock() {
+                        *n = new_names;
+                    }
+                }
+                Err(e) => eprintln!("terhub: icon install failed: {e}"),
+            }
+            last_badge = badge;
+            last_theme = active.clone();
         }
         // Self-heal: a host restart (or a restarted watcher) forgets every
         // item, so re-register on our own cadence instead of waiting for
