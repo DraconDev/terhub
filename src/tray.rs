@@ -873,6 +873,26 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn versioned_name_is_stable_and_changes_with_content() {
+        // The whole reason this name exists: Plasmashell's QIcon cache
+        // keys on the name, so a redesigned icon must be a *new* name
+        // (same content → same name; new content → new name). The
+        // hash is a 32-bit FNV, 8 hex digits.
+        let a = versioned_name("terhub-live", "<svg/>");
+        let b = versioned_name("terhub-live", "<svg/>");
+        assert_eq!(a, b);
+        assert!(a.starts_with("terhub-live-"));
+        assert_eq!(a.len(), "terhub-live-".len() + 8);
+        // Any byte changed → a new name. Plasmashell will then load
+        // from disk instead of returning the stale pixmap.
+        let c = versioned_name("terhub-live", "<svg />");
+        assert_ne!(a, c);
+        // Different base, same content → different name.
+        let d = versioned_name("terhub", "<svg/>");
+        assert_ne!(a, d);
+    }
+
     fn rec(state: AgentState) -> AgentRecord {
         AgentRecord {
             pane: "%1".to_string(),
