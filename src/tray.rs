@@ -1210,6 +1210,12 @@ mod tests {
         let badged = render_svg(IconState::Live, p, Some("15"));
         assert!(badged.contains(">15<"), "count missing:\n{badged}");
         assert!(badged.contains(TRIANGLE), "triangle lost");
+        // White glyph over a black halo: readable on every fill at
+        // panel sizes, without relying on paint-order support.
+        assert!(
+            badged.contains("fill=\"#ffffff\"") && badged.contains("stroke=\"#000000\""),
+            "badge has no white-on-black-halo:\n{badged}"
+        );
         let a = versioned_name("terhub-live", &plain);
         let b = versioned_name("terhub-live", &badged);
         assert_ne!(a, b, "badge did not rename the icon");
