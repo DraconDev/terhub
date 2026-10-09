@@ -334,13 +334,16 @@ fn idle_secs(rec: Option<&AgentRecord>, activity: u64) -> u64 {
     }
 }
 
-/// Quiet threshold for the `h` toggle: unclaimed panes idle this long hide.
-const QUIET_SHELL_SECS: u64 = 600;
+/// Quiet threshold for the `h` toggle and the unclaimed-quiet "idle"
+/// label: unclaimed panes idle this long are considered dormant. The
+/// `h` toggle hides them; the table otherwise renders their state as
+/// `idle` so the user can see dormancy without the daemon.
+pub(crate) const QUIET_SHELL_SECS: u64 = 600;
 
 /// True for rows the `h` toggle hides: unclaimed panes quiet past
 /// [`QUIET_SHELL_SECS`]. Unknown activity (0) stays visible — the toggle
 /// hides judged-quiet rows, never unknowns.
-fn is_quiet_shell(rec: Option<&AgentRecord>, activity: u64, now: u64) -> bool {
+pub(crate) fn is_quiet_shell(rec: Option<&AgentRecord>, activity: u64, now: u64) -> bool {
     rec.is_none() && activity > 0 && now.saturating_sub(activity) >= QUIET_SHELL_SECS
 }
 
