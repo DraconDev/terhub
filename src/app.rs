@@ -2598,6 +2598,7 @@ impl App {
                 self.set_status(format!("removed host {name}"));
                 self.fleet_hosts.retain(|h| h.name != name);
                 self.clamp_hosts();
+                self.clamp_hosts_scroll();
             }
             Ok(false) => self.set_status(format!("host {name} already gone")),
             Err(e) => self.set_status(format!("remove failed: {e:#}")),
@@ -3065,8 +3066,9 @@ impl App {
         self.refresh(tmux);
     }
 
-    /// Space: toggle the row's mark and step down, file-manager style, so
-    /// a run of rows marks with repeated presses.
+    /// Space: toggle the row's mark and step the cursor so the next
+    /// press lands on the next row to mark (or the just-unmarked row's
+    /// predecessor, so the row itself doesn't scroll off).
     fn toggle_mark(&mut self) {
         let id = match self.selected_pane() {
             Some(p) => p.id.clone(),
@@ -3088,11 +3090,12 @@ impl App {
         }
         if self.marked.remove(&id) {
             self.set_status(format!("unmarked {id}"));
+            self.move_pane_up();
         } else {
             self.marked.insert(id.clone());
             self.set_status(format!("marked {id}"));
+            self.move_pane_down();
         }
-        self.move_pane_down();
     }
 
     /// Session actions with no pane meaning (`new`/`rename`/`detach`), shared
