@@ -1594,7 +1594,7 @@ mod tests {
     fn unclaimed_quiet_pane_is_idle() {
         use crate::app::QUIET_SHELL_SECS;
         let now = 10_000_u64;
-        // Activity right at the threshold: qualifies.
+        // Activity right at the threshold: qualifies (>=).
         assert!(is_quiet_shell(
             None,
             now - QUIET_SHELL_SECS,
@@ -1614,9 +1614,8 @@ mod tests {
         ));
         // Unknown activity (0): never qualifies — unknowns stay `—`.
         assert!(!is_quiet_shell(None, 0, now));
-        // Claimed pane (Some agent record) is not governed by this gate;
-        // its state comes from the agent, not the activity clock.
-        let rec = AgentRecord::test("p", "pi");
-        assert!(!is_quiet_shell(Some(&rec), now - 9_999, now));
+        // Activity from before unix epoch / weird clocks: saturates to 0
+        // and stays non-quiet, so a glitchy pane doesn't read as idle.
+        assert!(!is_quiet_shell(None, u64::MAX, now));
     }
 }
