@@ -175,14 +175,40 @@ fn find_tmux() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// Environment variable selecting a private tmux socket for this client.
+/// Unset (the default) means the operator's live server, exactly as
+/// before. Set it for tests and agent fixtures so nothing we run can
+/// touch the human's real sessions: a bare name is `tmux -L <name>`
+/// (socket under `$TMUX_TMPDIR`), a value containing `/` is
+/// `tmux -S <path>`. Killing such a private server is safe; killing
+/// the default one destroys live sessions (see incident
+/// 2026-10-09).
+pub const SOCKET_ENV: &str = "TERHUB_TMUX_SOCKET";
+
+/// tmux flags targeting the private socket `socket` selects.
+fn socket_args(socket: &str) -> Vec<String> {
+    if socket.contains('/') {
+        vec!["-S".to_string(), socket.to_string()]
+    } else {
+        vec!["-L".to_string(), socket.to_string()]
+    }
+}
+
 pub struct Tmux {
     bin: PathBuf,
+    socket: Option<String>,
 }
 
 impl Tmux {
     pub fn new() -> Result<Self> {
         find_tmux()
-            .map(|bin| Tmux { bin })
+            .map(|bin| {
+                let socket = env::var(SOCKET_ENV)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                Tmux::with_socket(bin, socket)
+            })
             .context("tmux not found on PATH")
     }
 
@@ -190,14 +216,27 @@ impl Tmux {
         find_tmux().is_some()
     }
 
+    /// Construct an explicit client. `socket` follows [`SOCKET_ENV`]:
+    /// `None` or empty means the ambient default server.
+    pub fn with_socket(bin: PathBuf, socket: Option<String>) -> Self {
+        let socket = socket
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        Tmux { bin, socket }
+    }
+
     /// Test handle with an explicit binary (a bogus path fails every call,
     /// which is how outage paths get exercised deterministically).
     pub fn test(bin: PathBuf) -> Self {
-        Tmux { bin }
+        Tmux::with_socket(bin, None)
     }
 
     fn run(&self, args: &[&str]) -> Result<String> {
-        let out = Command::new(&self.bin)
+        let mut cmd = Command::new(&self.bin);
+        if let Some(s) = &self.socket {
+            cmd.args(socket_args(s));
+        }
+        let out = cmd
             .args(args)
             .output()
             .context("failed to run tmux")?;
@@ -337,14 +376,22 @@ impl Tmux {
         self.run(&["rename-session", "-t", old, new]).map(|_| ())
     }
 
-    /// Attach arguments (without argv[0]), honoring inside-vs-outside tmux.
-    pub fn attach_args(name: &str) -> Vec<String> {
+    /// Attach arguments (without argv[0]), honoring inside-vs-outside tmux
+    /// and this client's private socket (when one is selected).
+    pub fn attach_args(&self, name: &str) -> Vec<String> {
         let verb = if env::var("TMUX").is_ok() {
             "switch-client"
         } else {
             "attach-session"
         };
-        vec![verb.to_string(), "-t".to_string(), name.to_string()]
+        let mut args = Vec::new();
+        if let Some(s) = &self.socket {
+            args.extend(socket_args(s));
+        }
+        args.push(verb.to_string());
+        args.push("-t".to_string());
+        args.push(name.to_string());
+        args
     }
 
     /// Attach replaces this process with a tmux client, which needs a real
@@ -364,7 +411,7 @@ impl Tmux {
     pub fn attach_here(&self, name: &str) -> Result<()> {
         use std::os::unix::process::CommandExt;
         Self::need_tty()?;
-        let args = Self::attach_args(name);
+        let args = self.attach_args(name);
         Err(Command::new(&self.bin).args(&args).exec().into())
     }
 
