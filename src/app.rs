@@ -2679,15 +2679,6 @@ impl App {
                 meaning: r.meaning,
             });
         }
-        // The badge glyph is always white; only its meaning changes
-        // with the icon behind it. This row teaches the rule once so
-        // a red `2` never reads as ambiguous again.
-        rows.push(SettingRow::Legend {
-            triangle: "▼",
-            color: "#ffffff",
-            name: "number",
-            meaning: "waiting agents when red, else idle agents (hover the icon for both counts)",
-        });
         rows
     }
 

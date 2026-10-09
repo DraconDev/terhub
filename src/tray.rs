@@ -1162,37 +1162,6 @@ mod tests {
     }
 
     #[test]
-    fn badge_renders_into_svg_and_renames_it() {
-        // A new count is new content is a new versioned name: the host
-        // can never serve a stale pixmap for a changed number.
-        let p = palette_for_theme("dracula");
-        let plain = render_svg(IconState::Live, p, None);
-        assert!(!plain.contains("<text"), "badge leaked into unbadged icon");
-        let badged = render_svg(IconState::Live, p, Some("15"));
-        assert!(badged.contains(">15<"), "count missing:\n{badged}");
-        assert!(badged.contains(TRIANGLE), "triangle lost");
-        // White glyph over a black halo: readable on every fill at
-        // panel sizes, without relying on paint-order support.
-        assert!(
-            badged.contains("fill=\"#ffffff\"") && badged.contains("stroke=\"#000000\""),
-            "badge has no white-on-black-halo:\n{badged}"
-        );
-        // Single digits get the biggest cut; pairs step down one.
-        let single = render_svg(IconState::Live, p, Some("5"));
-        assert!(single.contains("font-size=\"16\""), "single digit not maximised:\n{single}");
-        assert!(badged.contains("font-size=\"13\""), "pair not sized:\n{badged}");
-        let a = versioned_name("terhub-live", &plain);
-        let b = versioned_name("terhub-live", &badged);
-        assert_ne!(a, b, "badge did not rename the icon");
-        // Same count twice: stable name, no rewrite churn.
-        let b2 = versioned_name(
-            "terhub-live",
-            &render_svg(IconState::Live, p, Some("15")),
-        );
-        assert_eq!(b, b2);
-    }
-
-    #[test]
     fn versioned_name_is_stable_and_changes_with_content() {
         // The whole reason this name exists: Plasmashell's QIcon cache
         // keys on the name, so a redesigned icon must be a *new* name
@@ -1483,8 +1452,8 @@ mod tests {
         for (i, a) in states.iter().enumerate() {
             for b in states.iter().skip(i + 1) {
                 assert_ne!(
-                    render_svg(*a, p, None),
-                    render_svg(*b, p, None),
+                    render_svg(*a, p),
+                    render_svg(*b, p),
                     "{a:?} and {b:?} render identically — two states share one icon"
                 );
             }
@@ -1519,7 +1488,7 @@ mod tests {
         // Empty, garbage, weird: should still produce a valid SVG.
         for bad in ["", "not-a-theme", "DRACULA'", " "] {
             let p = palette_for_theme(bad);
-            let svg = render_svg(IconState::Calm, p, None);
+            let svg = render_svg(IconState::Calm, p);
             assert!(svg.contains("<svg"), "{bad} produced no <svg>: {svg}");
             assert!(svg.contains(TRIANGLE), "{bad} missing the triangle");
         }
@@ -1540,8 +1509,8 @@ mod tests {
             IconState::LiveIdle,
             IconState::Disconnected,
         ] {
-            let a = render_svg(state, drac, None);
-            let b = render_svg(state, nord, None);
+            let a = render_svg(state, drac);
+            let b = render_svg(state, nord);
             assert_ne!(a, b, "themes produced identical SVG for {state:?}");
             // Strip every theme color from both: the remaining body is
             // the geometry, and must match across themes. This
