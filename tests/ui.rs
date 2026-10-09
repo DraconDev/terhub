@@ -1497,3 +1497,7 @@ fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
         );
     }
 }
+
+// File ends at line 1499 (this comment sits on its own line so the
+// last test's closing brace is on 1497 and the file's line count is
+// reproducible across editors).

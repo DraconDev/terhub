@@ -630,7 +630,7 @@ back to the name).
 host's agents (or the ssh error) in config order. `fleet send` only works
 on `control`-mode hosts; `observe`-mode hosts refuse. `host doctor` checks
 the remote for ssh reachability, `terhub` on PATH, tmux, and a running
-daemon. Hosts live in `~/.config/terhub/hosts.toml` (names can't contain
+daemon. Hosts live in `~/.config/terhub/fleet.toml` (names can't contain
 `:` — remote rows are `host:%N`).
 
 In the TUI, `m` opens the fleet hosts popup: `a` adds
@@ -732,7 +732,8 @@ are tmux-backed.
 | `automation list\|test <name>` | Rules: validate / dry-run |
 | `mcp` | MCP stdio server |
 | `serve --port P` | Loopback web dashboard |
-| `host add\|list\|doctor\|remove` | Fleet host registry |
+| `host add\|list\|doctor\|remove\|label <name> [L]` | Fleet host registry (`label` sets/clears the display label) |
+| `register` / `unregister` | Pin / drop a manual agent record (lives in the daemon's registry) |
 | `fleet status [--json]` | Agents across hosts |
 | `fleet send <host> <pane> <text>` | Drive a control-mode host |
 | `fleet attach <host> [session]` | SSH into a host's tmux |
@@ -747,7 +748,7 @@ are tmux-backed.
 |---|---|
 | `~/.config/terhub/config.toml` | Keys, theme, notifications |
 | `~/.config/terhub/automation.toml` | Automation rules |
-| `~/.config/terhub/hosts.toml` | Fleet hosts |
+| `~/.config/terhub/fleet.toml` | Fleet hosts |
 | `~/.config/terhub/manifests/*.toml` | Extra agent screen-patterns |
 | `~/.local/share/terhub/activity.jsonl` | Activity ledger (90-day prune) |
 | `$XDG_RUNTIME_DIR/terhub/` | Socket, pid, registry cache |
