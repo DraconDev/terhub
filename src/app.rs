@@ -5699,6 +5699,9 @@ mod tests {
     fn sort_key_change_persists_view() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let _scratch = ScratchConfig::new();
+        // Serialize: the persist below resolves through config_path(),
+        // which a concurrent TERHUB_CONFIG setter would hijack.
+        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.on_key(press(KeyCode::Char('o')), &tmux);
@@ -5712,6 +5715,7 @@ mod tests {
     #[test]
     fn hide_shells_toggle_persists_view() {
         let _scratch = ScratchConfig::new();
+        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         // `h` is bound by default; the toggle flips and persists.
