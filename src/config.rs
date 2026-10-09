@@ -23,6 +23,16 @@ pub const THEMES: &[&str] = &[
     "catppuccin",
     "onedark",
     "monokai",
+    "rose-pine",
+    "everforest",
+    "kanagawa",
+    "ayu",
+    "nightfly",
+    "palenight",
+    "github",
+    "github-light",
+    "onehalf",
+    "onehalf-light",
 ];
 
 pub fn is_known_theme(name: &str) -> bool {
@@ -925,7 +935,7 @@ fn persist_ui_settings_to(
         if line == "# terhub config: keys are single-key bindings, theme is dark or light." {
             out.push("# terhub config: keys are single-key bindings.".to_string());
             out.push(
-                "# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai. density: comfortable, compact."
+                "# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai, rose-pine, everforest, kanagawa, ayu, nightfly, palenight, github, github-light, onehalf, onehalf-light. density: comfortable, compact."
                     .to_string(),
             );
             continue;
@@ -1466,7 +1476,7 @@ pub fn ensure_config() -> Result<PathBuf> {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create config dir {}", parent.display()))?;
         }
-        let text = "# terhub config: keys are single-key bindings.\n# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai. density: comfortable, compact.\n"
+        let text = "# terhub config: keys are single-key bindings.\n# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai, rose-pine, everforest, kanagawa, ayu, nightfly, palenight, github, github-light, onehalf, onehalf-light. density: comfortable, compact.\n"
             .to_string()
             + &default_config_text();
         atomic_write(&path, &text)
