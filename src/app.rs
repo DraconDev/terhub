@@ -2670,6 +2670,83 @@ impl App {
             active: !self.exclude.is_empty(),
             kind: SettingKind::EditStandingFilter,
         });
+        // What the two queries actually hide, so the exclusion is
+        // inspectable instead of a leap of faith. Partitioned with no
+        // double-counting: rows failing the standing test list under
+        // it; rows passing that but failing the search list under the
+        // search. Read-only rows (never selectable, never actionable).
+        let q_ex = self.exclude.to_lowercase();
+        let q_find = self.filter.to_lowercase();
+        let mut hidden_by_exclude: Vec<&Pane> = Vec::new();
+        let mut hidden_by_search: Vec<&str> = Vec::new();
+        // (ids only; the rows below resolve them)
+        for p in &self.panes {
+            let rec = self.agents.get(&p.id);
+            if !self.exclude.is_empty() && !pane_matches(p, rec, &q_ex) {
+                hidden_by_exclude.push(p);
+            } else if !self.filter.is_empty() && !pane_matches(p, rec, &q_find) {
+                hidden_by_search.push(p.id.as_str());
+            }
+        }
+        // Deterministic order: the table's own pane order.
+        let mut by_id: std::collections::HashMap<&str, &Pane> = std::collections::HashMap::new();
+        for p in &self.panes {
+            by_id.insert(p.id.as_str(), p);
+        }
+        const HIDDEN_GREY: &str = "#8b949e";
+        let mut hidden_row = |p: &Pane| SettingRow::Legend {
+            triangle: "–",
+            color: HIDDEN_GREY,
+            name: Box::leak(p.id.clone().into_boxed_str()),
+            meaning: Box::leak(
+                format!("{} · {} · {}", p.session, p.window_name, p.command).into_boxed_str(),
+            ),
+        };
+        if self.exclude.is_empty() && self.filter.is_empty() {
+            rows.push(SettingRow::Legend {
+                triangle: "–",
+                color: HIDDEN_GREY,
+                name: "nothing hidden",
+                meaning: "every pane is shown",
+            });
+        } else {
+            if !self.exclude.is_empty() {
+                rows.push(SettingRow::Legend {
+                    triangle: "–",
+                    color: HIDDEN_GREY,
+                    name: Box::leak(
+                        format!(
+                            "{} hidden",
+                            hidden_by_exclude.len()
+                        )
+                        .into_boxed_str(),
+                    ),
+                    meaning: Box::leak(
+                        format!("matching standing filter '{}'", self.exclude).into_boxed_str(),
+                    ),
+                });
+                for p in &hidden_by_exclude {
+                    rows.push(hidden_row(p));
+                }
+            }
+            if !self.filter.is_empty() {
+                rows.push(SettingRow::Legend {
+                    triangle: "–",
+                    color: HIDDEN_GREY,
+                    name: Box::leak(
+                        format!("{} hidden", hidden_by_search.len()).into_boxed_str(),
+                    ),
+                    meaning: Box::leak(
+                        format!("matching search '{}'", self.filter).into_boxed_str(),
+                    ),
+                });
+                for id in &hidden_by_search {
+                    if let Some(p) = by_id.get(id) {
+                        rows.push(hidden_row(p));
+                    }
+                }
+            }
+        }
         rows.push(SettingRow::Header("Tray icons"));
         for r in crate::tray::icon_legend(self.config.palette()) {
             rows.push(SettingRow::Legend {
