@@ -128,11 +128,11 @@ fn fleet_and_zellij_against_fakes() {
     // Batch 3: remote capture builds ONE shell command string and
     // single-quotes the pane id, so a `;`/`$()`/backtick in the pane
     // id (e.g. from a compromised remote `status --json`) cannot
-    // execute remotely. ssh is given a single argv element.
+    // execute remotely. The fake ssh echoes each of its argv on its
+    // own line; the remote command is the trailing element.
     let out = f::remote_capture("fake-target", "%3", 60).unwrap();
     let argv: Vec<&str> = out.lines().collect();
-    assert_eq!(argv.len(), 1, "ssh got one command string: {argv:?}");
-    let cmd = argv[0];
+    let cmd = argv.last().expect("remote command");
     for want in ["tmux", "capture-pane", "-p", "-e", "-t", "%3", "-S", "-60"] {
         assert!(cmd.contains(want), "missing {want}: {cmd}");
     }
@@ -142,17 +142,15 @@ fn fleet_and_zellij_against_fakes() {
     // single quotes and cannot reach the remote shell.
     let evil = "%3; touch /tmp/pwned";
     let out = f::remote_capture("fake-target", evil, 10).unwrap();
-    let argv: Vec<&str> = out.lines().collect();
-    assert_eq!(argv.len(), 1, "ssh got one command string: {argv:?}");
+    let cmd = out.lines().last().expect("remote command");
     assert!(
-        argv[0].contains("'%3; touch /tmp/pwned'"),
-        "evil pane must be single-quoted whole: {}",
-        argv[0]
+        cmd.contains("'%3; touch /tmp/pwned'"),
+        "evil pane must be single-quoted whole: {cmd}"
     );
-    // The fake ssh just echoes its argv joined; verify the FAKE_SSH
-    // saw exactly one command element (no extra ;, &&, etc. that
-    // would have been split had we not quoted).
-    assert!(!argv[0].contains(" touch /tmp/pwned'"), "{argv:?}");
+    // The FAKE_SSH joined argv with spaces; the only shell metachars
+    // it saw are inside the single-quoted string, which the remote
+    // shell will treat as a single token.
+    assert!(!cmd.contains(" touch /tmp/pwned'"), "{cmd}");
 
     // Batch 3 (continued): attach_remote_argv also single-quotes the
     // session name.
