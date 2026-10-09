@@ -263,7 +263,13 @@ impl Tmux {
             Ok(o) => o,
             Err(e) => {
                 let m = e.to_string().to_lowercase();
-                if m.contains("no server running") || m.contains("no sessions") {
+                // No server yet (fresh private socket: "error connecting to
+                // <socket> (No such file or directory)") means zero sessions,
+                // not a failure — same as tmux's own "no server running".
+                if m.contains("no server running")
+                    || m.contains("no sessions")
+                    || m.contains("error connecting to")
+                {
                     return Ok(vec![]);
                 }
                 return Err(e);
@@ -601,6 +607,30 @@ mod tests {
         assert_eq!(isolated.run(&["list-sessions"]).unwrap().trim(), "-L terhub-test-7 list-sessions");
         let default = Tmux::test(bin);
         assert_eq!(default.run(&["list-sessions"]).unwrap().trim(), "list-sessions");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fresh_private_socket_means_zero_sessions_not_error() {
+        // The private-server bootstrap case: tmux answers
+        // "error connecting to <socket> (No such file or directory)" when
+        // no server has started on that socket yet. That is "no sessions",
+        // so list_sessions must not surface it as a failure.
+        let dir = std::env::temp_dir().join(format!("terhub-tmux-noserver-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tmux");
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho 'error connecting to /run/user/1000/tmux-1000/terhub-test (No such file or directory)' >&2\nexit 1\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let t = Tmux::with_socket(bin, Some("terhub-test".to_string()));
+        assert!(t.list_sessions().unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
