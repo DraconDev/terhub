@@ -88,10 +88,31 @@ pub fn save_hosts(hosts: &[Host]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let text = toml::to_string_pretty(&FleetFile {
-        host: hosts.to_vec(),
-    })?;
-    std::fs::write(&path, text)?;
+    // Preserve any non-`host` top-level keys a user added to
+    // fleet.toml by re-using the existing file as a Value template
+    // and only updating the `host` entry. Comments inside the host
+    // array are still lost (the `toml` crate is not lossless on
+    // round-trip; preserving them needs `toml_edit`); the contract
+    // we keep is "don't destroy top-level data the user put here".
+    let mut root: toml::Value = match std::fs::read_to_string(&path) {
+        Ok(t) => toml::from_str(&t).unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            toml::Value::Table(toml::map::Map::new())
+        }
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    let arr: toml::Value = toml::Value::Array(
+        hosts
+            .iter()
+            .cloned()
+            .map(toml::Value::try_from)
+            .collect::<Result<_, _>>()?,
+    );
+    root.as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("fleet.toml root is not a table"))?
+        .insert("host".to_string(), arr);
+    let text = toml::to_string_pretty(&root)?;
+    crate::config::atomic_write(&path, &text)?;
     Ok(())
 }
 
