@@ -967,6 +967,15 @@ fn cmd_daemon(action: &DaemonAction) -> i32 {
             let _ = std::fs::remove_file(daemon::socket_path()); // stale socket
             let log_file = std::fs::File::create(daemon::log_path());
             let mut cmd = std::process::Command::new(daemon_bin());
+            // Own process group: `terhub daemon start` runs from an
+            // interactive shell, and a child sharing the caller's group
+            // dies with that terminal's SIGHUP — leaving the tray and
+            // every TUI showing "daemon down" minutes later. New group,
+            // detached from the launcher's lifetime.
+            {
+                use std::os::unix::process::CommandExt;
+                cmd.process_group(0);
+            }
             cmd.stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null());
             match log_file {

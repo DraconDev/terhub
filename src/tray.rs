@@ -771,6 +771,28 @@ mod tests {
     use super::*;
     use crate::agent::Source;
 
+    #[test]
+    fn item_is_listed_matches_bare_and_path_forms() {
+        let unique = "org.kde.StatusNotifierItem-123-1";
+        // Missing entirely is the orphaned-icon case: re-register.
+        assert!(!item_is_listed(&[], unique));
+        assert!(!item_is_listed(&["org.kde.StatusNotifierItem-124-1".to_string()], unique));
+        // A name that merely starts with ours is not us.
+        assert!(!item_is_listed(&[format!("{unique}-suffix")], unique));
+        // Both real forms: the bare name we register with, and the
+        // service/path form Plasma 6's watcher stores.
+        assert!(item_is_listed(&[unique.to_string()], unique));
+        assert!(item_is_listed(&[format!("{unique}/StatusNotifierItem")], unique));
+        // Mixed lists: found next to unrelated items.
+        assert!(item_is_listed(
+            &[
+                "org.kde.StatusNotifierItem-9-1".to_string(),
+                format!("{unique}/StatusNotifierItem"),
+            ],
+            unique,
+        ));
+    }
+
     fn rec(state: AgentState) -> AgentRecord {
         AgentRecord {
             pane: "%1".to_string(),
