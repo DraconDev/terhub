@@ -1001,7 +1001,7 @@ fn persist_ui_settings_to(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, out.join("\n") + "\n")?;
+    atomic_write(path, &(out.join("\n") + "\n"))?;
     Ok(())
 }
 
@@ -1009,7 +1009,7 @@ fn persist_ui_settings_to(
 /// the same directory, fsync, rename. A crash mid-write leaves the
 /// original file intact (and the tmp is orphaned in the same dir; a
 /// future init/cleanup can prune it).
-fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
     let parent = path.parent().ok_or_else(|| std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
@@ -1417,7 +1417,7 @@ pub fn ensure_config() -> Result<PathBuf> {
         let text = "# terhub config: keys are single-key bindings.\n# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai. density: comfortable, compact.\n"
             .to_string()
             + &default_config_text();
-        std::fs::write(&path, text)
+        atomic_write(&path, &text)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
     Ok(path)
