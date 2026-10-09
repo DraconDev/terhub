@@ -203,6 +203,65 @@ fn state_paint(state: IconState, p: TrayPalette) -> (&'static str, &'static str)
     }
 }
 
+/// One row in the TUI's "Tray icons" legend: the state name, the fill
+/// colour it renders in for the current theme, and a one-line meaning
+/// so the user can map the panel's triangle to what it's saying.
+pub struct IconLegendRow {
+    pub state: IconState,
+    pub name: &'static str,
+    pub hex: &'static str,
+    pub meaning: &'static str,
+}
+
+/// Build the legend for the active theme. The same palette the icon
+/// is rendered with, so the colour shown in the settings popup is
+/// exactly the colour the user sees in their panel.
+pub fn icon_legend(theme: &str) -> Vec<IconLegendRow> {
+    let p = palette_for_theme(theme);
+    let colour = |s: IconState| -> &'static str {
+        let (c, _) = state_paint(s, p);
+        c
+    };
+    vec![
+        IconLegendRow {
+            state: IconState::Live,
+            name: "live",
+            hex: colour(IconState::Live),
+            meaning: "hub is open and agents are working",
+        },
+        IconLegendRow {
+            state: IconState::LiveIdle,
+            name: "live (idle)",
+            hex: colour(IconState::LiveIdle),
+            meaning: "hub is open, every agent has finished",
+        },
+        IconLegendRow {
+            state: IconState::Attention,
+            name: "attention",
+            hex: colour(IconState::Attention),
+            meaning: "an agent is waiting on your input",
+        },
+        IconLegendRow {
+            state: IconState::Calm,
+            name: "calm",
+            hex: colour(IconState::Calm),
+            meaning: "no hub is open, no agents registered",
+        },
+        IconLegendRow {
+            state: IconState::Idle,
+            name: "idle",
+            hex: colour(IconState::Idle),
+            meaning: "no hub is open, but agents are registered",
+        },
+        IconLegendRow {
+            state: IconState::Disconnected,
+            name: "disconnected",
+            hex: colour(IconState::Disconnected),
+            meaning: "the daemon is not running (start it: terhub daemon start)",
+        },
+    ]
+}
+
 /// Palette × state → SVG. The triangle is a constant path; colour and
 /// opacity are the only variables, so the rendered geometry is provably
 /// identical across themes and states (see
