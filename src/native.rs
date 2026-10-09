@@ -77,10 +77,13 @@ pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Outpu
         buf
     });
     let deadline = Instant::now() + Duration::from_secs(secs);
+    let pid = child.id();
+    eprintln!("[run_with_timeout] start what={what} pid={pid:?} secs={secs}");
     let status = loop {
         match child.try_wait()? {
             Some(s) => break s,
             None if Instant::now() >= deadline => {
+                eprintln!("[run_with_timeout] DEADLINE what={what}");
                 let _ = child.kill();
                 let _ = child.wait();
                 // Join the readers so a timed-out call doesn't leak a
