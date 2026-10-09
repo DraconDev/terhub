@@ -154,11 +154,15 @@ status bar, no modes except small popups:
   snippets into the text; `Enter` sends with submit (these are prompts,
   not drafts). Remotes and your own pane are never targets; failures are
   counted in the footer.
-- **Styles.** `t` cycles the ten built-in themes and `v` flips table
+- **Styles.** `t` cycles the twenty built-in themes and `v` flips table
   density (comfortable shows the summary column, compact drops it and
-  tightens columns) — both session-only try-outs. `s` opens the settings
-  popup (style picker, density, notification, mru-tabs and highlight
-  toggles) which applies and saves to the config file.
+  tightens columns) — both session-only try-outs. `s` opens the full
+  settings page: a sidebar (Theme, Density, Toggles, Filters, Tray
+  icons) with the section's rows beside it. `↑`/`↓` move (across
+  sections), `←`/`→` jump between sections, `Enter` applies, `Esc`
+  closes; clicking a sidebar entry jumps straight there. Theme and
+  density apply live; the toggles and the standing filter save to the
+  config file.
 - **Popups.** `n`/`r`/`w` open a text prompt with a real cursor
   (`←`/`→`, `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc`
   cancels); the spawn prompt also cycles agent profiles on `Tab`.
