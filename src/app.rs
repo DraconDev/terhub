@@ -2073,10 +2073,12 @@ impl App {
             KeyCode::Esc => {
                 if self.editing_standing {
                     self.exclude.clone_from(&self.filter_before_edit);
+                    self.editing_standing = false;
                 } else {
                     self.filter.clone_from(&self.filter_before_edit);
                 }
                 self.cancel_modal();
+                if self.filter_before_edit.is_empty() {} // (kept for symmetry; no-op)
                 self.refresh_filtered();
                 self.follow_preview(tmux);
                 self.report_kept_query();
@@ -2086,6 +2088,9 @@ impl App {
                 if self.editing_standing {
                     self.exclude = q;
                     self.persist_filter();
+                    self.editing_standing = false;
+                    self.cancel_modal();
+                    self.mode = Mode::Settings;
                     self.set_status(if self.exclude.is_empty() {
                         "standing filter cleared".to_string()
                     } else {
@@ -2093,11 +2098,11 @@ impl App {
                     });
                 } else {
                     self.filter = q;
+                    self.cancel_modal();
                     if !self.filter.is_empty() {
                         self.set_status(format!("search kept for this session: {}", self.filter));
                     }
                 }
-                self.cancel_modal();
                 self.refresh_filtered();
                 self.pane_selected = 0;
                 self.pane_scroll = 0;
