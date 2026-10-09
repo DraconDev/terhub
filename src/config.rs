@@ -937,46 +937,46 @@ pub fn load_config(path: Option<PathBuf>) -> AppConfig {
     load_config_report(path).0
 }
 
+/// The `[ui]`/`[notifications]` values one surgical config write
+/// carries. Bundled so the persist functions don't grow a parameter
+/// per remembered view setting.
+pub struct UiPersist<'a> {
+    pub theme: &'a str,
+    pub density: &'a str,
+    pub notifications: bool,
+    pub highlight: bool,
+    pub mru_tabs: bool,
+    pub filter: &'a str,
+    pub sort: &'a str,
+    pub sort_desc: bool,
+    pub hide_shells: bool,
+}
+
+impl AppConfig {
+    /// Snapshot the persistable view settings for one surgical write.
+    pub fn ui_persist(&self) -> UiPersist<'_> {
+        UiPersist {
+            theme: &self.theme,
+            density: &self.density,
+            notifications: self.notifications_enabled,
+            highlight: self.highlight_attached,
+            mru_tabs: self.mru_tabs,
+            filter: &self.filter,
+            sort: &self.sort,
+            sort_desc: self.sort_desc,
+            hide_shells: self.hide_shells,
+        }
+    }
+}
+
 /// Persist UI settings back to the config file with surgical line edits:
 /// only the known `[ui]`/`[notifications]` keys are touched, everything
 /// else (comments, key bindings, manifests) is preserved byte-for-byte.
-pub fn persist_ui_settings(
-    theme: &str,
-    density: &str,
-    notifications: bool,
-    highlight: bool,
-    mru_tabs: bool,
-    filter: &str,
-    sort: &str,
-    sort_desc: bool,
-    hide_shells: bool,
-) -> anyhow::Result<()> {
-    persist_ui_settings_to(
-        &config_path(),
-        theme,
-        density,
-        notifications,
-        highlight,
-        mru_tabs,
-        filter,
-        sort,
-        sort_desc,
-        hide_shells,
-    )
+pub fn persist_ui_settings(v: &UiPersist) -> anyhow::Result<()> {
+    persist_ui_settings_to(&config_path(), v)
 }
 
-fn persist_ui_settings_to(
-    path: &PathBuf,
-    theme: &str,
-    density: &str,
-    notifications: bool,
-    highlight: bool,
-    mru_tabs: bool,
-    filter: &str,
-    sort: &str,
-    sort_desc: bool,
-    hide_shells: bool,
-) -> anyhow::Result<()> {
+fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     let text = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
     let mut out: Vec<String> = Vec::new();
     let mut section = String::new();
@@ -1014,36 +1014,36 @@ fn persist_ui_settings_to(
             continue;
         }
         if section == "[ui]" && is_key_line(line, "theme") {
-            out.push(format!("theme = \"{theme}\"{}", trailing_comment(line)));
+            out.push(format!("theme = \"{}\"{}", v.theme, trailing_comment(line)));
             seen[0] = true;
         } else if section == "[ui]" && is_key_line(line, "density") {
-            out.push(format!("density = \"{density}\"{}", trailing_comment(line)));
+            out.push(format!("density = \"{}\"{}", v.density, trailing_comment(line)));
             seen[1] = true;
         } else if section == "[ui]" && is_key_line(line, "highlight_attached") {
-            out.push(format!("highlight_attached = {highlight}{}", trailing_comment(line)));
+            out.push(format!("highlight_attached = {}{}", v.highlight, trailing_comment(line)));
             seen[2] = true;
         } else if section == "[ui]" && is_key_line(line, "mru_tabs") {
-            out.push(format!("mru_tabs = {mru_tabs}{}", trailing_comment(line)));
+            out.push(format!("mru_tabs = {}{}", v.mru_tabs, trailing_comment(line)));
             seen[4] = true;
         } else if section == "[ui]" && is_key_line(line, "filter") {
             // Quotes escape the one char TOML needs escaped; a filter is
             // plain search text, never a path, so backslash/quote are the
             // only risks.
-            let esc = filter.replace('\\', "\\\\").replace('"', "\\\"");
+            let esc = v.filter.replace('\\', "\\\\").replace('"', "\\\"");
             out.push(format!("filter = \"{esc}\"{}", trailing_comment(line)));
             seen[5] = true;
         } else if section == "[ui]" && is_key_line(line, "sort") {
-            let esc = sort.replace('\\', "\\\\").replace('"', "\\\"");
+            let esc = v.sort.replace('\\', "\\\\").replace('"', "\\\"");
             out.push(format!("sort = \"{esc}\"{}", trailing_comment(line)));
             seen[6] = true;
         } else if section == "[ui]" && is_key_line(line, "sort_desc") {
-            out.push(format!("sort_desc = {sort_desc}{}", trailing_comment(line)));
+            out.push(format!("sort_desc = {}{}", v.sort_desc, trailing_comment(line)));
             seen[7] = true;
         } else if section == "[ui]" && is_key_line(line, "hide_shells") {
-            out.push(format!("hide_shells = {hide_shells}{}", trailing_comment(line)));
+            out.push(format!("hide_shells = {}{}", v.hide_shells, trailing_comment(line)));
             seen[8] = true;
         } else if section == "[notifications]" && is_key_line(line, "enabled") {
-            out.push(format!("enabled = {notifications}{}", trailing_comment(line)));
+            out.push(format!("enabled = {}{}", v.notifications, trailing_comment(line)));
             seen[3] = true;
         } else {
             out.push(line.to_string());
