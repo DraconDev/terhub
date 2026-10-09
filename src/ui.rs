@@ -1752,6 +1752,38 @@ mod tests {
     }
 
     #[test]
+    fn dark_palette_roles_are_semantically_distinct() {
+        // The default dark style regressed into terminal ANSI names
+        // with title==border, header==focus and attached==working.
+        // Every chrome role now owns a distinct hue so states read
+        // by meaning, not by squinting.
+        let p = palette("dark");
+        let roles = [
+            ("border", p.border.fg),
+            ("title", p.title.fg),
+            ("header", p.header.fg),
+            ("selected-bg", p.selected.bg),
+            ("attached", p.attached.fg),
+            ("status", p.status.fg),
+            ("dim", p.dim.fg),
+            ("focus", p.focus.fg),
+        ];
+        for (i, (an, a)) in roles.iter().enumerate() {
+            for (bn, b) in roles.iter().skip(i + 1) {
+                assert_ne!(
+                    a, b,
+                    "dark roles {an} and {bn} share a colour — samey again"
+                );
+            }
+        }
+        // Pin the canonical hexes so a drive-by edit can't silently
+        // re-muddy them.
+        assert_eq!(p.title.fg, Some(Color::Rgb(0x79, 0xC0, 0xFF)));
+        assert_eq!(p.focus.fg, Some(Color::Rgb(0xD2, 0xA8, 0xFF)));
+        assert_eq!(p.dim.fg, Some(Color::Rgb(0x8B, 0x94, 0x9E)));
+    }
+
+    #[test]
     fn window_label_hides_lone_suffix() {
         assert_eq!(window_label("chat", 1, 1), "chat");
         assert_eq!(window_label("chat", 1, 2), "chat:[1]");
