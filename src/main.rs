@@ -2232,12 +2232,21 @@ fn run_tui() -> Result<Option<TuiExit>> {
                     match mouse.kind {
                         MouseEventKind::ScrollUp => app.on_wheel(true),
                         MouseEventKind::ScrollDown => app.on_wheel(false),
-                        MouseEventKind::Down(MouseButton::Left)
-                            if in_area(mouse.column, mouse.row, areas.settings) =>
-                        {
-                            let row = app.settings_scroll
-                                + (mouse.row - areas.settings.y) as usize;
-                            app.settings_apply_at_row(row);
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            // Sidebar first: jump sections. Content rows
+                            // apply as before (row = scroll + y offset).
+                            if let Some(sec) = areas
+                                .settings_side
+                                .iter()
+                                .position(|r| in_area(mouse.column, mouse.row, *r))
+                            {
+                                app.goto_settings_section(sec);
+                            } else if in_area(mouse.column, mouse.row, areas.settings)
+                            {
+                                let row = app.settings_scroll
+                                    + (mouse.row - areas.settings.y) as usize;
+                                app.settings_apply_at_row(row);
+                            }
                         }
                         _ => {}
                     }
