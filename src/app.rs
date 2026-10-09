@@ -2764,17 +2764,17 @@ impl App {
         let rows = self.settings_rows();
         let mut theme = self.config.theme.clone();
         let mut comfortable = !self.config.compact();
-        if let Some(&row) = items.get(self.settings_selected) {
-            if let Some(SettingRow::Item { kind, .. }) = rows.get(row) {
-                match kind {
-                    SettingKind::Theme(i) => {
-                        theme = THEMES.get(*i).unwrap_or(&theme.as_str()).to_string();
-                    }
-                    SettingKind::Density(i) => {
-                        comfortable = DENSITIES.get(*i).map(|d| *d == "comfortable").unwrap_or(comfortable);
-                    }
-                    _ => {}
+        if let Some(&row) = items.get(self.settings_selected)
+            && let Some(SettingRow::Item { kind, .. }) = rows.get(row)
+        {
+            match kind {
+                SettingKind::Theme(i) => {
+                    theme = THEMES.get(*i).unwrap_or(&theme.as_str()).to_string();
                 }
+                SettingKind::Density(i) => {
+                    comfortable = DENSITIES.get(*i).map(|d| *d == "comfortable").unwrap_or(comfortable);
+                }
+                _ => {}
             }
         }
         (theme, comfortable)
