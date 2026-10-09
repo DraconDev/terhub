@@ -789,6 +789,8 @@ fn default_sort() -> String {
 fn default_sort_desc() -> bool {
     true
 }
+
+fn default_theme() -> String {
     DEFAULT_THEME.to_string()
 }
 
