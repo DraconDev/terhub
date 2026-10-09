@@ -768,6 +768,12 @@ are tmux-backed.
 (empty values are ignored). The registry cache is rebuilt from tmux on every
 daemon start; only the ledger is long-term memory.
 
+The TUI remembers its view in `[ui]`: `theme`, `density`, toggles,
+`filter` (standing exclusion), `sort` + `sort_desc` (column and
+direction), and `hide_shells`. Every change writes back surgically —
+change the sort with `o` or a header click, hide shells with `h`, quit,
+relaunch, and the table looks exactly as you left it.
+
 `TERHUB_TMUX_SOCKET` selects a private tmux socket: a bare name is
 `tmux -L <name>` (socket under `$TMUX_TMPDIR`), a value with a `/` is
 `tmux -S <path>`. Unset means your live server, exactly as before. Use it
