@@ -516,18 +516,20 @@ mod tests {
 
     #[test]
     fn attach_verb_depends_on_tmux_env() {
+        // No-socket handle: index 0 stays the verb itself.
+        let t = Tmux::test("/nonexistent-tmux".into());
         // Save/restore to avoid leaking env changes into other tests.
         let saved = env::var("TMUX").ok();
         // SAFETY: test-only env mutation; no other threads touch TMUX here.
         unsafe {
             env::remove_var("TMUX");
         }
-        assert_eq!(Tmux::attach_args("x")[0], "attach-session");
+        assert_eq!(t.attach_args("x")[0], "attach-session");
         // SAFETY: same as above.
         unsafe {
             env::set_var("TMUX", "/tmp/fake,1,0");
         }
-        assert_eq!(Tmux::attach_args("x")[0], "switch-client");
+        assert_eq!(t.attach_args("x")[0], "switch-client");
         // SAFETY: same as above.
         unsafe {
             match saved {
@@ -535,6 +537,57 @@ mod tests {
                 None => env::remove_var("TMUX"),
             }
         }
+    }
+
+    #[test]
+    fn socket_args_uses_dash_l_for_names() {
+        // A bare socket name targets `tmux -L <name>` (socket under
+        // $TMUX_TMPDIR). This is the switch that keeps agent tests on a
+        // private server instead of the operator's live one.
+        assert_eq!(socket_args("terhub-test-42"), vec!["-L", "terhub-test-42"]);
+    }
+
+    #[test]
+    fn socket_args_uses_dash_s_for_paths() {
+        // A value containing '/' is an explicit socket path.
+        assert_eq!(socket_args("/tmp/terhub-test.sock"), vec!["-S", "/tmp/terhub-test.sock"]);
+    }
+
+    #[test]
+    fn empty_socket_means_default_server() {
+        let t = Tmux::with_socket("/nonexistent-tmux".into(), Some("   ".to_string()));
+        assert!(t.socket.is_none());
+    }
+
+    #[test]
+    fn attach_args_prepend_socket_flag() {
+        // Attach must reach the same private server as every other call,
+        // so the socket flag leads the argument vector. The verb index
+        // varies with $TMUX, so assert the prefix and the tail only.
+        let t = Tmux::with_socket("/nonexistent-tmux".into(), Some("sock1".to_string()));
+        let args = t.attach_args("dev");
+        assert_eq!(&args[..2], ["-L", "sock1"]);
+        assert_eq!(&args[args.len() - 2..], ["-t", "dev"]);
+    }
+
+    #[test]
+    fn run_prepends_socket_flag_to_every_command() {
+        // End-to-end: a stub tmux echoes its argv, so we can see the
+        // socket flag leading every invocation (default server gets none).
+        let dir = std::env::temp_dir().join(format!("terhub-tmux-run-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tmux");
+        std::fs::write(&bin, "#!/bin/sh\necho \"$@\"\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let isolated = Tmux::with_socket(bin.clone(), Some("terhub-test-7".to_string()));
+        assert_eq!(isolated.run(&["list-sessions"]).unwrap().trim(), "-L terhub-test-7 list-sessions");
+        let default = Tmux::test(bin);
+        assert_eq!(default.run(&["list-sessions"]).unwrap().trim(), "list-sessions");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
