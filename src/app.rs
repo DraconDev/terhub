@@ -454,16 +454,25 @@ pub fn expand_command(
 }
 
 /// Case-insensitive substring match across every text column. `q` must
-/// already be lowercased.
+/// already be lowercased. A leading `!` negates: `!zsh` keeps every row
+/// whose columns do NOT contain `zsh` (a lone `!` matches everything).
 fn pane_matches(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
+    let (neg, q) = match q.strip_prefix('!') {
+        Some(rest) => (true, rest),
+        None => (false, q),
+    };
+    if neg && q.is_empty() {
+        return true;
+    }
     let hit = |s: &str| s.to_lowercase().contains(q);
-    hit(&p.id)
+    let m = hit(&p.id)
         || hit(&p.session)
         || hit(&p.window_name)
         || p.index.to_string().contains(q)
         || hit(&p.command)
         || hit(&p.path)
-        || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary))
+        || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary));
+    if neg { !m } else { m }
 }
 
 /// Table legend, shown when `?` is pressed twice: the marks and column
@@ -569,6 +578,7 @@ pub struct App {
 
 impl App {
     pub fn new(config: AppConfig) -> Self {
+        let filter = config.filter.clone();
         App {
             config,
             sessions: Vec::new(),
@@ -596,7 +606,7 @@ impl App {
             settings_scroll: 0,
             sort_key: SortKey::Idle,
             sort_asc: false,
-            filter: String::new(),
+            filter,
             filter_before_edit: String::new(),
             hide_quiet_shells: false,
             hidden_quiet: 0,
@@ -2731,6 +2741,28 @@ impl App {
         self.filter_before_edit.clone_from(&self.filter);
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
+    }
+
+    /// Printable keystroke with no Ctrl/Alt held: feeds type-to-filter.
+    /// Shift is fine (uppercase queries); Ctrl/Alt chords do something
+    /// else (or nothing) and must never start a filter.
+    fn is_typeable(code: &KeyCode, mods: &KeyModifiers) -> bool {
+        matches!(code, KeyCode::Char(c) if !c.is_control())
+            && !mods.intersects(
+                KeyModifiers::CONTROL
+                    | KeyModifiers::ALT
+                    | KeyModifiers::META
+                    | KeyModifiers::SUPER
+                    | KeyModifiers::HYPER,
+            )
+    }
+
+    /// Open the filter with `c` already typed: type-to-filter entry for
+    /// keystrokes that matched no binding.
+    fn open_filter_seeded(&mut self, c: char) {
+        self.open_filter();
+        self.insert_at_cursor(c);
+        self.apply_live_filter();
     }
 
     /// `h` key: flip the quiet-shell filter, reporting the hidden count.
