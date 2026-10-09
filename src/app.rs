@@ -5419,9 +5419,11 @@ mod tests {
     #[test]
     fn enter_in_filter_persists_query_to_config() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        // SAFETY: test-only env mutation; the lib suite has no other
-        // reader of TERHUB_CONFIG (integration suites are separate
-        // processes), and the previous value is restored below.
+        // Serialize with every other env-mutating lib test (hosts modal
+        // resolves its fleet file through TERHUB_CONFIG too); the lock
+        // is held for the whole mutation window.
+        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
         let saved = std::env::var("TERHUB_CONFIG").ok();
         let dir = std::env::temp_dir().join(format!("terhub-filter-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
