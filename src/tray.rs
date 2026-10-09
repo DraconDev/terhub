@@ -252,7 +252,7 @@ pub fn install_icons(theme: &str) -> std::io::Result<HashMap<IconState, String>>
             let Some(f) = p.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if f.starts_with("terhub-") && !keep.contains(f) {
+            if f.starts_with("terhub") && f.ends_with(".svg") && !keep.contains(f) {
                 let _ = std::fs::remove_file(&p);
             }
         }
