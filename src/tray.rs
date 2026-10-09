@@ -944,7 +944,10 @@ impl Tray {
     /// (icon, title, description) — the hover card. The icon field
     /// carries the versioned name (the unversioned base files are
     /// pruned on install, so the base name would resolve to nothing).
-    #[zbus(property)]
+    /// The explicit name matters: the SNI spec calls this `ToolTip`
+    /// (capital T-T) and zbus would otherwise derive `Tooltip`, which
+    /// no host reads — leaving the hover card empty.
+    #[zbus(property, name = "ToolTip")]
     fn tooltip(&self) -> (String, String, String) {
         let v = self.read();
         let names = self.read_names();
