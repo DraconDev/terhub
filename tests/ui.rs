@@ -1404,7 +1404,10 @@ fn remote_rows_render_in_table() {
     app.refresh_filtered();
     let lines = render_lines(&mut app, 160, 24);
     let text = lines.join("\n");
-    assert!(text.contains("dev:%1"), "remote id missing:\n{text}");
+    // The Pane column shows the backend-local id; the host identity
+    // rides the Session column ("dev ▸ web" below) so the namespace is
+    // never clipped away in a 6-wide column.
+    assert!(text.contains("%1"), "remote id missing:\n{text}");
     assert!(
         text.contains("dev \u{25b8} web"),
         "remote session missing:\n{text}"
