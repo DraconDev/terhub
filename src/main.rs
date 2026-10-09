@@ -1262,17 +1262,22 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
     0
 }
 
-/// Print a one-line notice when the ledger carries quarantined (torn)
-/// lines. Called by stats/report so the user sees ledger health
-/// without running a dedicated `history check` subcommand.
+/// Print a notice when the ledger carries quarantined (torn) lines,
+/// plus the first quarantine's reason (parse error + raw head) so the
+/// user can act on it without a dedicated `history check` subcommand.
 fn warn_corrupt(path: &std::path::Path) {
     use terhub::history as h;
-    let n = h::corrupt_count(path);
-    if n > 0 {
-        eprintln!(
-            "warning: {n} quarantined ledger line(s) at {} (use `terhub history check` to inspect)",
-            path.display()
-        );
+    let entries = h::read_entries(path);
+    let n = entries.iter().filter(|e| e.kind == "__corrupt__").count();
+    if n == 0 {
+        return;
+    }
+    eprintln!(
+        "warning: {n} quarantined ledger line(s) at {} (prune keeps them tagged __corrupt__ so they survive; inspect the first with):",
+        path.display()
+    );
+    if let Some(q) = entries.iter().find(|e| e.kind == "__corrupt__") {
+        eprintln!("  first quarantine: {}", q.summary);
     }
 }
 

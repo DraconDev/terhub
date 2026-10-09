@@ -437,6 +437,12 @@ async fn poll_loop(
     // the clamp makes direct construction safe too.
     let mut tick = tokio::time::interval(Duration::from_secs(tunables.poll_secs.max(1)));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Prune runs hourly (independent of the poll tick) so a daemon
+    // that's been up for weeks doesn't grow the ledger without bound.
+    // The prune call is bounded and atomic, so it's safe to run on
+    // the poll loop's task.
+    let mut prune_tick = tokio::time::interval(Duration::from_secs(3600));
+    prune_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut prev_sessions: Option<std::collections::HashSet<String>> = None;
     let mut prev_foreground: Option<Option<String>> = None;
     let automation_busy = Arc::new(AtomicBool::new(false));
@@ -446,6 +452,12 @@ async fn poll_loop(
         }
         tokio::select! {
             _ = tick.tick() => {},
+            _ = prune_tick.tick() => {
+                let _ = tokio::task::spawn_blocking(|| {
+                    history::prune(&history::ledger_path(), now_unix(), 90);
+                }).await;
+                continue;
+            },
             _ = shutdown_wait(&shutdown) => break,
         }
         let poll_start = now_unix();
