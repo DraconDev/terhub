@@ -682,13 +682,14 @@ fn settings_selection_stays_visible() {
     // Fake tmux: the settings path never touches it.
     let tmux = Tmux::test("/nonexistent-tmux-binary".into());
     let down = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
-    for _ in 0..30 { // overshoot on purpose: 25 selectable items, land clamped at the last toggle
+    for _ in 0..30 { // overshoot on purpose: 26 selectable items, land clamped at the standing row
         app.on_key(down, &tmux);
     }
-    // Short terminal: 13 rows in an 8-row popup forces scrolling.
+    // Short terminal: driving to the bottom lands on the standing
+    // row (Filters section) — it must be visible, not the toggles.
     let text = render_lines(&mut app, 160, 12).join("\n");
     assert!(
-        text.contains("highlight attached"),
+        text.contains("standing filter"),
         "last item scrolled out of view:\n{text}"
     );
     assert!(text.contains("›"), "selection marker missing:\n{text}");
