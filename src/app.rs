@@ -2780,6 +2780,7 @@ impl App {
         (theme, comfortable)
     }
 
+    /// Jump to a section (Left/Right, sidebar clicks): show it, select
     /// its first item when it has one, snap scroll to its first content
     /// row. Item-less sections (the tray-icon legend) keep the stored
     /// selection and just show.
