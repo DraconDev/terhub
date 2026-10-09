@@ -439,6 +439,28 @@ pub fn window_label(window_name: &str, index: u32, panes_in_window: usize) -> St
     }
 }
 
+/// Display id for the Pane column. The full ids stay namespaced
+/// (`konsole:<pid>:<sess>`, `host:%N`) so actions address the right row,
+/// but the namespace is already named by the Session column: showing the
+/// raw id would need an 18-wide column, and clipping it collapses every
+/// Konsole tab onto the same `konsol`. The backend-local id is unique
+/// within its session, which is what this column needs. tmux ids (`%N`)
+/// never contain `:` and pass through unchanged.
+pub fn pane_cell_id(id: &str) -> String {
+    if id.starts_with('%') {
+        return id.to_string();
+    }
+    if let Some((_, local)) = crate::native::split_native_id(id) {
+        return local.to_string();
+    }
+    // Fleet rows: `host:%N`. The host is in the Session column
+    // (`label ▸ session`); keep the pane part.
+    match id.rsplit_once(':') {
+        Some((_, pane)) if pane.starts_with('%') => pane.to_string(),
+        _ => id.to_string(),
+    }
+}
+
 /// `!` needs you; `+` is space-marked for bulk ops; `*` is the focused
 /// pane, shown only where a window holds several panes and focus is
 /// actually ambiguous. Attention always wins over the mark.
@@ -852,7 +874,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             };
             let mut cells = vec![
                 Cell::from(mark).style(mark_style),
-                Cell::from(p.id.clone()).style(id_style),
+                Cell::from(pane_cell_id(&p.id)).style(id_style),
             ];
             if show_session {
                 cells.push(Cell::from(truncate(&p.session, 18)));
@@ -889,7 +911,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         .collect();
     let mut headers = vec![String::new(), "Pane".to_string()];
     let mut keys: Vec<Option<SortKey>> = vec![None, Some(SortKey::Pane)];
-    let mut widths = vec![Constraint::Length(1), Constraint::Length(6)];
+    let mut widths = vec![Constraint::Length(1), Constraint::Length(12)];
     if show_session {
         headers.push("Session".to_string());
         keys.push(Some(SortKey::Session));
