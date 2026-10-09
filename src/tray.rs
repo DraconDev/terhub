@@ -1191,7 +1191,7 @@ mod tests {
     }
 
     #[test]
-    fn badge_renders_into_svg_and renames_it() {
+    fn badge_renders_into_svg_and_renames_it() {
         // A new count is new content is a new versioned name: the host
         // can never serve a stale pixmap for a changed number.
         let p = palette_for_theme("dracula");
