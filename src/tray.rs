@@ -221,20 +221,43 @@ fn render_svg(state: IconState, p: TrayPalette) -> String {
 /// Install the tray SVGs into the user's icon theme, themed to the
 /// active `theme` config. Same shape on disk across runs; each file is
 /// rewritten only when its rendered content changes.
-pub fn install_icons(theme: &str) -> std::io::Result<PathBuf> {
+/// Write the 6 themed SVGs under versioned names, drop any stale
+/// `terhub-*.svg` left over from a prior art generation, and return
+/// the state→icon-name map the SNI `IconName` property uses.
+pub fn install_icons(theme: &str) -> std::io::Result<HashMap<IconState, String>> {
     let dir = data_home().join("icons/hicolor/scalable/apps");
     std::fs::create_dir_all(&dir)?;
     let palette = palette_for_theme(theme);
-    for (state, name) in ICON_STATES {
-        let path = dir.join(name);
+    let mut names: HashMap<IconState, String> = HashMap::with_capacity(ICON_STATES.len());
+    let mut keep: HashSet<String> = HashSet::with_capacity(ICON_STATES.len());
+    for (state, base) in ICON_STATES {
         let svg = render_svg(*state, palette);
-        // Only write when changed: Plasma watches these dirs, and a
-        // needless rewrite on every launch would churn its cache.
+        let name = versioned_name(base, &svg);
+        let path = dir.join(format!("{name}.svg"));
         if std::fs::read_to_string(&path).ok().as_deref() != Some(svg.as_str()) {
             std::fs::write(&path, svg)?;
         }
+        keep.insert(format!("{name}.svg"));
+        names.insert(*state, name);
     }
-    Ok(dir)
+    // Prune any terhub-*.svg from a previous install whose name isn't
+    // in the current set, so the icons dir doesn't accumulate the
+    // full history of every redesign.
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("svg") {
+                continue;
+            }
+            let Some(f) = p.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if f.starts_with("terhub-") && !keep.contains(f) {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+    Ok(names)
 }
 
 /// What the tray shows, derived from one daemon snapshot.
