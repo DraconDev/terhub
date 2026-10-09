@@ -2114,7 +2114,21 @@ mod tests {
             "# terhub config: keys are single-key bindings, theme is dark or light.\n# my fancy config\n[ui]\ntheme = \"dark\"\n# density = \"compact\"\n\n[keys]\nnew = \"c\"\n",
         )
         .unwrap();
-        persist_ui_settings_to(&path, "nord", "compact", false, false, false, "!zsh", "State", true, true).unwrap();
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: "nord",
+                density: "compact",
+                notifications: false,
+                highlight: false,
+                mru_tabs: false,
+                filter: "!zsh",
+                sort: "State",
+                sort_desc: true,
+                hide_shells: true,
+            },
+        )
+        .unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my fancy config"), "{text}");
         assert!(

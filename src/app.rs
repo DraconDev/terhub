@@ -2857,17 +2857,7 @@ impl App {
         self.config.sort = self.sort_key.as_str().to_string();
         self.config.sort_desc = !self.sort_asc;
         self.config.hide_shells = self.hide_quiet_shells;
-        if let Err(e) = crate::config::persist_ui_settings(
-            &self.config.theme,
-            &self.config.density,
-            self.config.notifications_enabled,
-            self.config.highlight_attached,
-            self.config.mru_tabs,
-            &self.config.filter,
-            &self.config.sort,
-            self.config.sort_desc,
-            self.config.hide_shells,
-        ) {
+        if let Err(e) = crate::config::persist_ui_settings(&self.config.ui_persist()) {
             self.set_status(format!("view kept for this session only (not saved: {e})"));
         }
     }
