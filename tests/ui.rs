@@ -682,7 +682,7 @@ fn settings_selection_stays_visible() {
     // Fake tmux: the settings path never touches it.
     let tmux = Tmux::test("/nonexistent-tmux-binary".into());
     let down = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
-    for _ in 0..20 {
+    for _ in 0..30 { // overshoot on purpose: 25 selectable items, land clamped at the last toggle
         app.on_key(down, &tmux);
     }
     // Short terminal: 13 rows in an 8-row popup forces scrolling.
@@ -695,7 +695,7 @@ fn settings_selection_stays_visible() {
     // Back up: the selection marker must stay on a visible row (scroll
     // tracks in the renderer, like the table's ensure_visible).
     let up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
-    for _ in 0..20 {
+    for _ in 0..30 { // overshoot on purpose: clamped at the first theme
         app.on_key(up, &tmux);
     }
     let text = render_lines(&mut app, 160, 12).join("\n");
@@ -998,7 +998,7 @@ fn settings_popup_lists_styles() {
 fn settings_popup_scrolls_when_short() {
     let mut app = app_with_panes();
     app.open_settings();
-    app.settings_selected = 14; // last toggle (10 themes + 2 density + 3 toggles)
+    app.settings_selected = 24; // last toggle (20 themes + 2 density + 3 toggles)
     let lines = render_lines(&mut app, 120, 12);
     let text = lines.join("\n");
     assert!(app.settings_scroll > 0, "scroll never moved");
