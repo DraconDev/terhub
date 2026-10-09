@@ -1464,8 +1464,8 @@ mod tests {
         for (i, a) in states.iter().enumerate() {
             for b in states.iter().skip(i + 1) {
                 assert_ne!(
-                    render_svg(*a, p),
-                    render_svg(*b, p),
+                    render_svg(*a, p, None),
+                    render_svg(*b, p, None),
                     "{a:?} and {b:?} render identically — two states share one icon"
                 );
             }
@@ -1484,7 +1484,7 @@ mod tests {
             IconState::LiveIdle,
             IconState::Disconnected,
         ] {
-            let svg = render_svg(state, palette_for_theme("dracula"));
+            let svg = render_svg(state, palette_for_theme("dracula"), None);
             assert_eq!(
                 svg.matches(TRIANGLE).count(),
                 1,
@@ -1500,7 +1500,7 @@ mod tests {
         // Empty, garbage, weird: should still produce a valid SVG.
         for bad in ["", "not-a-theme", "DRACULA'", " "] {
             let p = palette_for_theme(bad);
-            let svg = render_svg(IconState::Calm, p);
+            let svg = render_svg(IconState::Calm, p, None);
             assert!(svg.contains("<svg"), "{bad} produced no <svg>: {svg}");
             assert!(svg.contains(TRIANGLE), "{bad} missing the triangle");
         }
@@ -1521,8 +1521,8 @@ mod tests {
             IconState::LiveIdle,
             IconState::Disconnected,
         ] {
-            let a = render_svg(state, drac);
-            let b = render_svg(state, nord);
+            let a = render_svg(state, drac, None);
+            let b = render_svg(state, nord, None);
             assert_ne!(a, b, "themes produced identical SVG for {state:?}");
             // Strip every theme color from both: the remaining body is
             // the geometry, and must match across themes. This
@@ -1545,9 +1545,9 @@ mod tests {
         // The alarm badge background must come from the palette, not
         // the old hard-coded red. Dracula's alarm is #ff5555, Nord's
         // alarm is #bf616a.
-        let drac = render_svg(IconState::Attention, palette_for_theme("dracula"));
+        let drac = render_svg(IconState::Attention, palette_for_theme("dracula"), None);
         assert!(drac.contains("#ff5555"), "dracula alarm missing: {drac}");
-        let nord = render_svg(IconState::Attention, palette_for_theme("nord"));
+        let nord = render_svg(IconState::Attention, palette_for_theme("nord"), None);
         assert!(nord.contains("#bf616a"), "nord alarm missing: {nord}");
     }
 }
