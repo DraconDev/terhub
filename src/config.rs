@@ -2024,7 +2024,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my fancy config"), "{text}");
         assert!(
-            text.contains("# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai."),
+            text.contains("# theme: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai, rose-pine, everforest, kanagawa, ayu, nightfly, palenight, github, github-light, onehalf, onehalf-light."),
             "{text}"
         );
         assert!(!text.contains("theme is dark or light"), "{text}");

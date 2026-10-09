@@ -4885,7 +4885,7 @@ mod tests {
         let tmux = Tmux::new().unwrap();
         assert_eq!(app.on_key(press(KeyCode::Char('t')), &tmux), None);
         assert_eq!(app.config.theme, "light");
-        app.config.theme = "monokai".to_string();
+        app.config.theme = "onehalf-light".to_string();
         app.on_key(press(KeyCode::Char('t')), &tmux);
         assert_eq!(app.config.theme, "dark");
         assert!(app.status.as_ref().unwrap().contains("theme: dark"));
