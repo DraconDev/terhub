@@ -495,6 +495,19 @@ pub fn expand_command(
     out
 }
 
+/// Normalize a standing-filter query to exclusion form: trim, drop any
+/// leading `!`s the user typed, then re-add exactly one — unless empty.
+/// The standing filter always excludes (`zsh` means `!zsh`); the
+/// temporary search keeps whatever was typed, `!` or not.
+fn normalize_exclude(q: &str) -> String {
+    let rest = q.trim().trim_start_matches('!').trim();
+    if rest.is_empty() {
+        String::new()
+    } else {
+        format!("!{rest}")
+    }
+}
+
 /// Case-insensitive substring match across every text column. `q` must
 /// already be lowercased. A leading `!` negates: `!zsh` keeps every row
 /// whose columns do NOT contain `zsh` (a lone `!` matches everything).
@@ -562,6 +575,11 @@ pub struct App {
     /// Settings popup: selected item row and first visible row.
     pub settings_selected: usize,
     pub settings_scroll: usize,
+    /// Displayed settings section (sidebar cursor). Follows the
+    /// selection on Up/Down; set directly by Left/Right and sidebar
+    /// clicks. Sections with no selectable items (the tray-icon
+    /// legend) are landable but keep the stored selection.
+    pub settings_section: usize,
     /// Table sort: column plus direction (default: recency, newest first).
     pub sort_key: SortKey,
     pub sort_asc: bool,
@@ -661,6 +679,7 @@ impl App {
             cursor: 0,
             settings_selected: 0,
             settings_scroll: 0,
+            settings_section: 0,
             sort_key,
             sort_asc,
             filter: String::new(),
