@@ -149,8 +149,11 @@ fn fleet_and_zellij_against_fakes() {
     );
     // The FAKE_SSH joined argv with spaces; the only shell metachars
     // it saw are inside the single-quoted string, which the remote
-    // shell will treat as a single token.
-    assert!(!cmd.contains(" touch /tmp/pwned'"), "{cmd}");
+    // shell will treat as a single token (the whole `%3; touch ...`
+    // is one pane-id literal). Verify the evil payload sits inside
+    // the single-quoted pane token, not bare in the command.
+    let q = cmd.find("'%3; touch /tmp/pwned'");
+    assert!(q.is_some(), "evil payload must be inside quotes: {cmd}");
 
     // Batch 3 (continued): attach_remote_argv also single-quotes the
     // session name.
