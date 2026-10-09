@@ -5453,6 +5453,7 @@ mod tests {
 
     #[test]
     fn sort_key_refollows_preview_to_new_top() {
+        let _scratch = ScratchConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.show_preview = true;
@@ -5836,6 +5837,7 @@ mod tests {
 
     #[test]
     fn sort_key_o_cycles_with_status() {
+        let _scratch = ScratchConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.select_pane(1);

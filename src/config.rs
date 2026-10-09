@@ -2133,6 +2133,26 @@ mod tests {
         assert_eq!(cfg.theme, "nord");
         assert!(cfg.compact());
         assert!(!cfg.notifications_enabled);
+        assert_eq!(cfg.filter, "!zsh");
+        assert_eq!(cfg.sort, "State");
+        assert!(cfg.sort_desc);
+        assert!(cfg.hide_shells);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn unknown_sort_warns_and_falls_back() {
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("badsort.toml");
+        std::fs::write(&path, "[ui]\nsort = \"frobnicate\"\n").unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        assert_eq!(cfg.sort, "Idle");
+        assert!(cfg.sort_desc);
+        assert!(
+            problems.iter().any(|p| p.contains("'frobnicate'")),
+            "{problems:?}"
+        );
         std::fs::remove_file(path).ok();
     }
 
