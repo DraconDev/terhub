@@ -1161,7 +1161,9 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
                     Span::raw("  "),
                     Span::styled(
                         format!("{triangle} "),
-                        crate::config::parse_style_spec(color).fg.unwrap_or(pal.fg),
+                        crate::config::parse_style_spec(color)
+                            .fg
+                            .unwrap_or(ratatui::style::Color::Reset),
                     ),
                     Span::styled(
                         format!("{name} "),
