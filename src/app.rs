@@ -51,11 +51,13 @@ pub enum SettingRow {
     /// Read-only legend row: the coloured tray-icon glyph, its name,
     /// and what that state means. Not actionable; shown for reference
     /// so the user can map the panel triangle to a real status.
+    /// Owned strings: filter-page rows are built per render from live
+    /// pane data, so borrowed statics would leak or dangle.
     Legend {
-        triangle: &'static str,
-        color: &'static str,
-        name: &'static str,
-        meaning: &'static str,
+        triangle: String,
+        color: String,
+        name: String,
+        meaning: String,
     },
 }
 
@@ -2678,51 +2680,38 @@ impl App {
         let q_ex = self.exclude.to_lowercase();
         let q_find = self.filter.to_lowercase();
         let mut hidden_by_exclude: Vec<&Pane> = Vec::new();
-        let mut hidden_by_search: Vec<&str> = Vec::new();
-        // (ids only; the rows below resolve them)
+        let mut hidden_by_search: Vec<&Pane> = Vec::new();
         for p in &self.panes {
             let rec = self.agents.get(&p.id);
             if !self.exclude.is_empty() && !pane_matches(p, rec, &q_ex) {
                 hidden_by_exclude.push(p);
             } else if !self.filter.is_empty() && !pane_matches(p, rec, &q_find) {
-                hidden_by_search.push(p.id.as_str());
+                hidden_by_search.push(p);
             }
         }
-        // Deterministic order: the table's own pane order.
-        let mut by_id: std::collections::HashMap<&str, &Pane> = std::collections::HashMap::new();
-        for p in &self.panes {
-            by_id.insert(p.id.as_str(), p);
-        }
         const HIDDEN_GREY: &str = "#8b949e";
-        let mut hidden_row = |p: &Pane| SettingRow::Legend {
-            triangle: "–",
-            color: HIDDEN_GREY,
-            name: Box::leak(p.id.clone().into_boxed_str()),
-            meaning: Box::leak(
-                format!("{} · {} · {}", p.session, p.window_name, p.command).into_boxed_str(),
-            ),
+        let hidden_row = |p: &Pane| SettingRow::Legend {
+            triangle: "–".to_string(),
+            color: HIDDEN_GREY.to_string(),
+            name: p.id.clone(),
+            meaning: format!("{} · {} · {}", p.session, p.window_name, p.command),
         };
         if self.exclude.is_empty() && self.filter.is_empty() {
             rows.push(SettingRow::Legend {
-                triangle: "–",
-                color: HIDDEN_GREY,
-                name: "nothing hidden",
-                meaning: "every pane is shown",
+                triangle: "–".to_string(),
+                color: HIDDEN_GREY.to_string(),
+                name: "nothing hidden".to_string(),
+                meaning: "every pane is shown".to_string(),
             });
         } else {
             if !self.exclude.is_empty() {
                 rows.push(SettingRow::Legend {
-                    triangle: "–",
-                    color: HIDDEN_GREY,
-                    name: Box::leak(
-                        format!(
-                            "{} hidden",
-                            hidden_by_exclude.len()
-                        )
-                        .into_boxed_str(),
-                    ),
-                    meaning: Box::leak(
-                        format!("matching standing filter '{}'", self.exclude).into_boxed_str(),
+                    triangle: "–".to_string(),
+                    color: HIDDEN_GREY.to_string(),
+                    name: format!("{} hidden", hidden_by_exclude.len()),
+                    meaning: format!(
+                        "matching standing filter '{}'",
+                        self.exclude
                     ),
                 });
                 for p in &hidden_by_exclude {
@@ -2731,29 +2720,26 @@ impl App {
             }
             if !self.filter.is_empty() {
                 rows.push(SettingRow::Legend {
-                    triangle: "–",
-                    color: HIDDEN_GREY,
-                    name: Box::leak(
-                        format!("{} hidden", hidden_by_search.len()).into_boxed_str(),
-                    ),
-                    meaning: Box::leak(
-                        format!("matching search '{}'", self.filter).into_boxed_str(),
+                    triangle: "–".to_string(),
+                    color: HIDDEN_GREY.to_string(),
+                    name: format!("{} hidden", hidden_by_search.len()),
+                    meaning: format!(
+                        "matching search '{}'",
+                        self.filter
                     ),
                 });
-                for id in &hidden_by_search {
-                    if let Some(p) = by_id.get(id) {
-                        rows.push(hidden_row(p));
-                    }
+                for p in &hidden_by_search {
+                    rows.push(hidden_row(p));
                 }
             }
         }
         rows.push(SettingRow::Header("Tray icons"));
         for r in crate::tray::icon_legend(self.config.palette()) {
             rows.push(SettingRow::Legend {
-                triangle: "▼",
-                color: r.hex,
-                name: r.name,
-                meaning: r.meaning,
+                triangle: "▼".to_string(),
+                color: r.hex.to_string(),
+                name: r.name.to_string(),
+                meaning: r.meaning.to_string(),
             });
         }
         rows
