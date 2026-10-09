@@ -415,12 +415,12 @@ fn render_svg(state: IconState, p: TrayPalette, badge: Option<&str>) -> String {
         // `paint-order`, which QtSvg only partially honours. The glyph
         // is sized to dominate the face — a single digit gets the
         // biggest cut, two digits slightly less, `99+` steps down.
-        // A little overflow past the triangle edges is fine: the halo
-        // separates the glyph from both the fill and the panel behind.
+        // Overflow past the triangle edges is fine: the halo separates
+        // the glyph from both the fill and the panel behind.
         let (size, stroke) = match n.chars().count() {
-            1 => (14, 3.0),
-            2 => (12, 3.0),
-            _ => (8, 2.0),
+            1 => (16, 3.5),
+            2 => (13, 3.0),
+            _ => (9, 2.5),
         };
         let attrs = format!(
             "x=\"12\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"bold\" font-size=\"{size}\""
@@ -1224,8 +1224,8 @@ mod tests {
         );
         // Single digits get the biggest cut; pairs step down one.
         let single = render_svg(IconState::Live, p, Some("5"));
-        assert!(single.contains("font-size=\"14\""), "single digit not maximised:\n{single}");
-        assert!(badged.contains("font-size=\"12\""), "pair not sized:\n{badged}");
+        assert!(single.contains("font-size=\"16\""), "single digit not maximised:\n{single}");
+        assert!(badged.contains("font-size=\"13\""), "pair not sized:\n{badged}");
         let a = versioned_name("terhub-live", &plain);
         let b = versioned_name("terhub-live", &badged);
         assert_ne!(a, b, "badge did not rename the icon");
