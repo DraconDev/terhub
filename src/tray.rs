@@ -319,9 +319,11 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
 /// so a single glyph is the legible choice rather than six near-miss
 /// variants of the same idea.
 ///
-/// Sized on a 24px grid with no background plate: the stroke only rounds
-/// the corners, it does not change the silhouette.
-const TRIANGLE: &str = "M4.6 6.4 L19.4 6.4 L12 19.4 Z";
+/// Sized on a 24px grid with no background plate, filling ~80% of the
+/// box: the panel renders SNI icons at a fixed size, so the only way
+/// to read bigger is to spend the whole viewBox. The stroke only
+/// rounds the corners, it does not change the silhouette.
+const TRIANGLE: &str = "M2.5 4.5 L21.5 4.5 L12 21 Z";
 
 /// State → fill colour. Each of the six states maps to its own slot in
 /// the palette so a glance separates them: live isn't a dimmer live-idle,
@@ -407,11 +409,19 @@ fn render_svg(state: IconState, p: TrayPalette, badge: Option<&str>) -> String {
     let fill = state_paint(state, p);
     let mut badge_text = String::new();
     if let Some(n) = badge {
-        // Two codepoints at 9px sit inside the face; a third (`99+`)
-        // needs a step down to stay legible.
-        let size = if n.chars().count() > 2 { 7 } else { 9 };
+        // White on the fill with a black halo behind it: readable on
+        // every state colour at panel sizes. Drawn as two identical
+        // texts (stroke-only, then fill) instead of relying on
+        // `paint-order`, which QtSvg only partially honours. Two
+        // codepoints at 11px sit inside the face; a third (`99+`)
+        // steps down to stay legible.
+        let size = if n.chars().count() > 2 { 8 } else { 11 };
+        let attrs = format!(
+            "x=\"12\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"bold\" font-size=\"{size}\""
+        );
         badge_text = format!(
-            "<text x=\"12\" y=\"16.5\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"bold\" font-size=\"{size}\" fill=\"#1a1b26\">{n}</text>"
+            "<text {attrs} fill=\"none\" stroke=\"#000000\" stroke-width=\"2.5\">{n}</text>\
+             <text {attrs} fill=\"#ffffff\">{n}</text>"
         );
     }
     format!(
