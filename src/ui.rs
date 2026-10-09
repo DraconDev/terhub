@@ -186,6 +186,7 @@ pub fn palette(theme: &str) -> Palette {
             dim: Style::default().fg(rgb(0xA3, 0xA3, 0xA3)),
             focus: Style::default().fg(rgb(0xA6, 0x26, 0xA4)),
         },
+        "light" => Palette {
             border: Style::default().fg(Color::Blue),
             title: Style::default()
                 .fg(Color::Blue)
