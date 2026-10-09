@@ -1251,6 +1251,49 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
     }
 }
 
+/// Sample mini-table for the Theme/Density sections: fixed rows in the
+/// previewed theme + density, so styles can be judged on an empty
+/// setup. Mirrors the main table's text styling (title, header, a
+/// selected row, an attached agent, a dim idle row) without touching
+/// live data. The summary cell follows the previewed density, so
+/// comfortable vs compact reads in the sample too.
+fn settings_preview_lines(theme: &str, comfortable: bool) -> Vec<Line> {
+    let pal = palette(theme);
+    let mut lines = vec![
+        Line::from(Span::styled(
+            format!(" terhub — 3 pane(s) · {theme} "),
+            pal.title,
+        )),
+        Line::from(Span::styled(" Pane  Agent   State    Idle", pal.header)),
+        Line::from(Span::styled(
+            if comfortable {
+                "%1    pi      working  3m    turn started"
+            } else {
+                "%1    pi      working  3m"
+            },
+            pal.selected,
+        )),
+        Line::from(vec![
+            Span::raw("%2    "),
+            Span::styled("claude  ", pal.attached),
+            Span::raw("waiting  12m"),
+            Span::styled(
+                if comfortable {
+                    "  approve deploy?"
+                } else {
+                    ""
+                },
+                pal.dim,
+            ),
+        ]),
+        Line::from(Span::styled(
+            "%3    —       idle     2h",
+            pal.dim,
+        )),
+    ];
+    lines
+}
+
 fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) -> (Rect, Vec<Rect>) {
     use crate::app::SettingRow;
     let rows = app.settings_rows();
