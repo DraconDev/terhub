@@ -329,18 +329,28 @@ pub fn palette(theme: &str) -> Palette {
             focus: Style::default().fg(rgb(0xF9, 0x26, 0x72)),
         },
         _ => Palette {
-            border: Style::default().fg(Color::Cyan),
+            // The default dark style: explicit RGBs with one job each
+            // (a previous revision reused terminal ANSI names, leaving
+            // title==border, header==focus and attached==working).
+            // Border recedes; title is identity blue; header is
+            // structural amber; selection is an unmissable blue block;
+            // attached green means live; status is neutral light grey;
+            // dim stays readable on black; focus purple is reserved for
+            // you-are-here so it never collides with the header.
+            border: Style::default().fg(rgb(0x6E, 0x76, 0x81)),
             title: Style::default()
-                .fg(Color::Cyan)
+                .fg(rgb(0x79, 0xC0, 0xFF))
                 .add_modifier(Modifier::BOLD),
             header: Style::default()
-                .fg(Color::Yellow)
+                .fg(rgb(0xFF, 0xA6, 0x57))
                 .add_modifier(Modifier::BOLD),
-            selected: Style::default().fg(Color::Black).bg(Color::Cyan),
-            attached: Style::default().fg(Color::Green),
-            status: Style::default().fg(Color::White),
-            dim: Style::default().fg(Color::DarkGray),
-            focus: Style::default().fg(Color::Yellow),
+            selected: Style::default()
+                .fg(rgb(0xFF, 0xFF, 0xFF))
+                .bg(rgb(0x1F, 0x6F, 0xEB)),
+            attached: Style::default().fg(rgb(0x7E, 0xE7, 0x87)),
+            status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
+            dim: Style::default().fg(rgb(0x8B, 0x94, 0x9E)),
+            focus: Style::default().fg(rgb(0xD2, 0xA8, 0xFF)),
         },
     }
 }
