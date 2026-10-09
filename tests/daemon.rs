@@ -74,6 +74,19 @@ fn daemon_hook_snapshot_expire_shutdown() {
     }
     let _daemon = TestDaemon::start();
 
+    // Bootstrap a real tmux server on this client's socket: the poll can
+    // only expire stale records when `list-panes` answers, and the test
+    // must never depend on the operator's ambient sessions. With
+    // `TERHUB_TMUX_SOCKET` unset this is a throwaway session on the
+    // default server (the backend tests already create those); set, the
+    // whole run is isolated on a private socket.
+    let boot = terhub::tmux::Tmux::new().unwrap();
+    let boot_name = format!("terhub-daemon-{}", std::process::id());
+    if boot.session_exists(&boot_name) {
+        boot.kill_session(&boot_name).unwrap();
+    }
+    boot.new_session(&boot_name, None, None).unwrap();
+
     // Hook event round-trips into the snapshot.
     let ev = HookEvent {
         pane: "%999999".to_string(),
@@ -253,6 +266,7 @@ fn daemon_hook_snapshot_expire_shutdown() {
         "stale records did not lapse"
     );
     tmux.kill_session(&name).unwrap();
+    let _ = boot.kill_session(&boot_name);
 
     let _ = std::fs::remove_dir_all(&runtime);
     let _ = std::fs::remove_dir_all(&data);
