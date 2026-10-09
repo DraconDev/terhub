@@ -432,15 +432,18 @@ pub fn badge_for_view(needy: usize, idle: usize, connected: bool) -> Option<Stri
 /// rewritten only when its rendered content changes.
 /// Write the 6 themed SVGs under versioned names, drop any stale
 /// `terhub-*.svg` left over from a prior art generation, and return
-/// the state→icon-name map the SNI `IconName` property uses.
-pub fn install_icons(theme: &str) -> std::io::Result<HashMap<IconState, String>> {
+/// the state→icon-name map the SNI `IconName` property uses. The
+/// optional badge count is drawn into every icon so the panel reads
+/// the number without a tooltip; a new count is new content, hence a
+/// new versioned name the host has never cached.
+pub fn install_icons(theme: &str, badge: Option<&str>) -> std::io::Result<HashMap<IconState, String>> {
     let dir = data_home().join("icons/hicolor/scalable/apps");
     std::fs::create_dir_all(&dir)?;
     let palette = palette_for_theme(theme);
     let mut names: HashMap<IconState, String> = HashMap::with_capacity(ICON_STATES.len());
     let mut keep: HashSet<String> = HashSet::with_capacity(ICON_STATES.len());
     for (state, base) in ICON_STATES {
-        let svg = render_svg(*state, palette);
+        let svg = render_svg(*state, palette, badge);
         let name = versioned_name(base, &svg);
         let path = dir.join(format!("{name}.svg"));
         if std::fs::read_to_string(&path).ok().as_deref() != Some(svg.as_str()) {
@@ -933,6 +936,31 @@ impl Tray {
     fn item_is_menu(&self) -> bool {
         false
     }
+
+    /// The host only re-reads the icon when told: without this, the
+    /// panel keeps the pixmap it loaded at registration no matter how
+    /// often `IconName` changes underneath (field-observed: a state
+    /// flip with no signal left a stale green icon showing for a grey
+    /// disconnected state). Emitted whenever the exposed icon name
+    /// actually changes.
+    #[zbus(signal)]
+    async fn new_icon(signal_emitter: &zbus::object_server::SignalEmitter<'_>) -> zbus::Result<()>;
+
+    /// Same contract for the attention glyph.
+    #[zbus(signal)]
+    async fn new_attention_icon(
+        signal_emitter: &zbus::object_server::SignalEmitter<'_>,
+    ) -> zbus::Result<()>;
+
+    /// Same contract for the title line.
+    #[zbus(signal)]
+    async fn new_title(signal_emitter: &zbus::object_server::SignalEmitter<'_>) -> zbus::Result<()>;
+
+    /// Same contract for the hover card.
+    #[zbus(signal)]
+    async fn new_tool_tip(
+        signal_emitter: &zbus::object_server::SignalEmitter<'_>,
+    ) -> zbus::Result<()>;
 
     /// Primary click: go back to the hub that is already open, or open
     /// one. Never both — a second TUI would fight the first for the pane.
