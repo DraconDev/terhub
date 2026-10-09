@@ -911,7 +911,18 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         .collect();
     let mut headers = vec![String::new(), "Pane".to_string()];
     let mut keys: Vec<Option<SortKey>> = vec![None, Some(SortKey::Pane)];
-    let mut widths = vec![Constraint::Length(1), Constraint::Length(12)];
+    // The Pane column grows only when namespaced ids need it: a bare
+    // `%N` fits 6, while `konsole:<pid>:<sess>` shows its local part
+    // (`1535082:6`). tmux-only servers keep the 6-wide column, so the
+    // wider rows never steal width from Summary.
+    let pane_w = app
+        .filtered
+        .iter()
+        .map(|p| pane_cell_id(&p.id).chars().count())
+        .max()
+        .unwrap_or(3)
+        .clamp(6, 12);
+    let mut widths = vec![Constraint::Length(1), Constraint::Length(pane_w as u16)];
     if show_session {
         headers.push("Session".to_string());
         keys.push(Some(SortKey::Session));
