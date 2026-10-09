@@ -5114,6 +5114,29 @@ mod tests {
         for _ in 0..app.settings_rows().len() + 1 {
             app.on_key(press(KeyCode::Down), &tmux);
         }
+        // Bottom item is the standing-filter editor now, not a toggle:
+        // Enter opens the prompt in standing mode instead of applying.
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.mode, Mode::PromptFilter);
+        assert!(app.editing_standing);
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Settings);
+        // The highlight toggle still flips by explicit index (position
+        // within the selectable items, not the row number).
+        let items = app.settings_item_rows();
+        let hi = items
+            .iter()
+            .position(|&row| {
+                matches!(
+                    app.settings_rows()[row],
+                    SettingRow::Item {
+                        kind: SettingKind::ToggleHighlight,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        app.settings_selected = hi;
         app.on_key(press(KeyCode::Enter), &tmux);
         assert!(!app.config.highlight_attached);
         app.on_key(press(KeyCode::Esc), &tmux);
