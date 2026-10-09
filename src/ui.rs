@@ -1400,7 +1400,7 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
                 ];
                 Line::from(spans)
             }
-        })
+        }})
         .collect();
     let shown = lines.len();
     frame.render_widget(Paragraph::new(lines), content);
