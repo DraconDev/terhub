@@ -92,6 +92,12 @@ pub struct AppConfig {
     /// everything. Persisted so a standing exclusion (e.g. `!zsh`)
     /// survives restarts; Enter in the filter prompt saves it.
     pub filter: String,
+    /// Table sort column name (`Idle` default; see `SortKey::from_str`).
+    pub sort: String,
+    /// Sort descending (`true` default = newest/longest first).
+    pub sort_desc: bool,
+    /// Hide quiet shells on startup (`h` toggles live).
+    pub hide_shells: bool,
     pub highlight_attached: bool,
     pub notifications_enabled: bool,
     /// Daemon tunables (restart the daemon to apply): poll cadence, stuck
@@ -137,6 +143,9 @@ impl Default for AppConfig {
             theme: DEFAULT_THEME.to_string(),
             density: DEFAULT_DENSITY.to_string(),
             filter: String::new(),
+            sort: "Idle".to_string(),
+            sort_desc: true,
+            hide_shells: false,
             highlight_attached: true,
             notifications_enabled: true,
             poll_secs: crate::daemon::POLL_SECS,
@@ -773,7 +782,13 @@ impl Default for UiSection {
     }
 }
 
-fn default_theme() -> String {
+fn default_sort() -> String {
+    "Idle".to_string()
+}
+
+fn default_sort_desc() -> bool {
+    true
+}
     DEFAULT_THEME.to_string()
 }
 
