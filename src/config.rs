@@ -88,6 +88,10 @@ pub struct AppConfig {
     pub keys: HashMap<String, String>,
     pub theme: String,
     pub density: String,
+    /// Table text filter (`!`-prefixed to exclude): empty shows
+    /// everything. Persisted so a standing exclusion (e.g. `!zsh`)
+    /// survives restarts; Enter in the filter prompt saves it.
+    pub filter: String,
     pub highlight_attached: bool,
     pub notifications_enabled: bool,
     /// Daemon tunables (restart the daemon to apply): poll cadence, stuck
@@ -132,6 +136,7 @@ impl Default for AppConfig {
             keys: default_keys(),
             theme: DEFAULT_THEME.to_string(),
             density: DEFAULT_DENSITY.to_string(),
+            filter: String::new(),
             highlight_attached: true,
             notifications_enabled: true,
             poll_secs: crate::daemon::POLL_SECS,
@@ -747,6 +752,10 @@ struct UiSection {
     highlight_attached: bool,
     #[serde(default)]
     mru_tabs: bool,
+    /// Standing table filter (`filter: ""` shows everything).
+    /// `!`-prefixed to exclude (e.g. `filter = "!zsh"` hides zsh panes).
+    #[serde(default)]
+    filter: String,
     #[serde(flatten)]
     unknown: BTreeMap<String, toml::Value>,
 }
@@ -1226,6 +1235,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.highlight_attached = file.ui.highlight_attached;
     cfg.mru_tabs = file.ui.mru_tabs;
+    cfg.filter = file.ui.filter;
     cfg.notifications_enabled = file.notifications.enabled;
     // Zero poll/stale would wedge or blind the daemon; stuck_secs = 0 is a
     // legitimate "off switch" and stays.
