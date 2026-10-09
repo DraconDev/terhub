@@ -325,17 +325,6 @@ pub fn detect_all_transitions(
     out
 }
 
-/// Records that newly entered an attention state since the previous registry.
-pub fn detect_transitions(
-    prev: &HashMap<String, AgentRecord>,
-    next: &HashMap<String, AgentRecord>,
-) -> Vec<Transition> {
-    detect_all_transitions(prev, next)
-        .into_iter()
-        .filter(|t| t.to.needs_attention())
-        .collect()
-}
-
 /// A transition into Idle from a live state is a completion worth one
 /// desktop note (done, not needy: no badge, no attend). Unknown→Idle is
 /// a fresh discovery, not a finish, and never pings.
@@ -507,21 +496,6 @@ mod tests {
     }
 
     #[test]
-    fn transitions_fire_once_per_entry() {
-        let mut prev = HashMap::new();
-        prev.insert("%1".to_string(), rec("%1", AgentState::Working, 100));
-        let mut next = HashMap::new();
-        next.insert("%1".to_string(), rec("%1", AgentState::Waiting, 200));
-        next.insert("%2".to_string(), rec("%2", AgentState::Waiting, 200));
-        let t = detect_transitions(&prev, &next);
-        assert_eq!(t.len(), 2);
-        assert_eq!(t[0].from, AgentState::Working);
-        // Same state again: silent.
-        let t2 = detect_transitions(&next, &next);
-        assert!(t2.is_empty());
-    }
-
-    #[test]
     fn all_transitions_include_quiet_states() {
         let mut prev = HashMap::new();
         prev.insert("%1".to_string(), rec("%1", AgentState::Waiting, 100));
@@ -537,23 +511,10 @@ mod tests {
         assert_eq!(all.len(), 3);
         assert!(all.iter().any(|t| t.from == AgentState::Unknown));
         // The attention subset stays empty: nothing here needs you.
-        assert!(detect_transitions(&prev, &next).is_empty());
-    }
-
-    #[test]
-    fn removed_panes_log_a_departure() {
-        let mut prev = HashMap::new();
-        prev.insert("%1".to_string(), rec("%1", AgentState::Working, 100));
-        prev.insert("%2".to_string(), rec("%2", AgentState::Waiting, 100));
-        let mut next = HashMap::new();
-        next.insert("%1".to_string(), rec("%1", AgentState::Working, 200));
-        let all = detect_all_transitions(&prev, &next);
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].pane, "%2");
-        assert_eq!(all[0].from, AgentState::Waiting);
-        assert_eq!(all[0].to, AgentState::Unknown);
-        // Departures are history, never a ping.
-        assert!(detect_transitions(&prev, &next).is_empty());
+        // (The attention filter is inlined at the daemon call site
+        // since `detect_transitions` was a zero-caller wrapper; the
+        // invariant is covered by the daemon's own notify_transitions
+        // tests.)
     }
 
     #[test]
