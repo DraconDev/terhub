@@ -28,14 +28,33 @@ const SNI_PATH: &str = "/StatusNotifierItem";
 /// is the point). The StatusNotifierItem spec has no badge field, so
 /// KDE picks the variant by name; the shape itself must stay constant
 /// or the panel flickers between unrelated-looking glyphs.
+///
+/// File names carry a short content hash so a redesigned icon is a
+/// *new* name Plasmashell has never resolved: its in-memory QIcon cache
+/// keys on the icon name, and a same-name file edited underneath is
+/// served as the stale pixmap it loaded on first sight. The on-disk
+/// theme cache is invalidated by `refresh_icon_cache`; the
+/// in-memory pixmap is not, so names must change.
 const ICON_STATES: &[(IconState, &str); 6] = &[
-    (IconState::Calm, "terhub.svg"),
-    (IconState::Attention, "terhub-attention.svg"),
-    (IconState::Idle, "terhub-idle.svg"),
-    (IconState::Disconnected, "terhub-disconnected.svg"),
-    (IconState::Live, "terhub-live.svg"),
-    (IconState::LiveIdle, "terhub-live-idle.svg"),
+    (IconState::Calm, "terhub"),
+    (IconState::Attention, "terhub-attention"),
+    (IconState::Idle, "terhub-idle"),
+    (IconState::Disconnected, "terhub-disconnected"),
+    (IconState::Live, "terhub-live"),
+    (IconState::LiveIdle, "terhub-live-idle"),
 ];
+
+/// Build the on-disk + SNI name for an icon, suffixed with the first 32
+/// bits of an FNV-1a hash of its content. Stable across runs (no
+/// `RandomState`), tiny, and identical iff the SVG is identical.
+pub fn versioned_name(base: &str, svg: &str) -> String {
+    let mut hash: u32 = 0x811c9dc5;
+    for b in svg.as_bytes() {
+        hash ^= *b as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    format!("{}-{:08x}", base, hash)
+}
 
 /// One state the icon can be in. Distinct from [`TrayView`] so the
 /// renderer stays pure and is testable with a 5-element palette.
