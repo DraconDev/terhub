@@ -1027,7 +1027,13 @@ impl App {
         self.merge_caches();
         self.follow_preview(tmux);
         if self.filtered.is_empty() {
-            self.focus = Focus::Sessions;
+            // Only bounce to Sessions when the user wasn't deliberately
+            // on Panes — a deliberate Panes focus survives a filter
+            // that empties, so toggle_focus can still return the user
+            // to a now-non-empty table without the refresh stealing it.
+            if self.focus != Focus::Panes {
+                self.focus = Focus::Sessions;
+            }
         }
     }
 
