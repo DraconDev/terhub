@@ -757,6 +757,14 @@ are tmux-backed.
 (empty values are ignored). The registry cache is rebuilt from tmux on every
 daemon start; only the ledger is long-term memory.
 
+`TERHUB_TMUX_SOCKET` selects a private tmux socket: a bare name is
+`tmux -L <name>` (socket under `$TMUX_TMPDIR`), a value with a `/` is
+`tmux -S <path>`. Unset means your live server, exactly as before. Use it
+for tests and agent fixtures — `TERHUB_TMUX_SOCKET=terhub-test cargo test`
+runs the whole suite on an isolated server (start one if you like; a
+missing socket reads as zero sessions). Never `tmux kill-server` the
+default one to "isolate" a test: it destroys live sessions.
+
 ## Troubleshooting
 
 - **"daemon not running"**: `terhub daemon start`. Only one daemon per
@@ -772,6 +780,10 @@ daemon start; only the ledger is long-term memory.
   Remember delay + cooldown + cap all apply.
 - **"cannot attach: no terminal"**: `attach`/`focus`/`attend` outside tmux
   need a real terminal — they refuse instead of moving your sessions.
+- **Test killed my tmux session**: an old test setup ran
+  `tmux kill-server` with no socket flag. Fixed: the `Tmux` client honours
+  `TERHUB_TMUX_SOCKET` (see above), so tests run on a private socket and
+  never see the live server.
 - **`serve` unreachable**: it only binds loopback by design; open it on the
   same machine (or SSH-forward the port).
 - **Times look off by hours**: ledger day boundaries are UTC; local display
