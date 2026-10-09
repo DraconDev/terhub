@@ -673,6 +673,34 @@ impl Tray {
     }
 }
 
+/// True when the watcher already lists `unique`, in either form: a bare
+/// service name, or the `service/path` form Plasma 6's watcher stores.
+pub fn item_is_listed(entries: &[String], unique: &str) -> bool {
+    entries.iter().any(|entry| {
+        entry == unique || entry.strip_prefix(unique).is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+/// Plasma's watcher purges its item list when the host session goes away
+/// (a Plasmashell crash or restart — field-observed 2026-10-08 18:16,
+/// when a tray registered at 18:13 went permanently invisible). The
+/// item's bus name survives, so every property read still answers and
+/// nothing errors — the icon is simply forgotten. Re-register whenever
+/// the watcher no longer lists us. Idempotent: a tick that finds us
+/// listed does nothing, so this costs one property read per poll.
+fn ensure_registered(watcher: &zbus::blocking::Proxy<'_>, unique: &str) {
+    let listed = watcher
+        .get_property::<Vec<String>>("RegisteredStatusNotifierItems")
+        .unwrap_or_default();
+    if item_is_listed(&listed, unique) {
+        return;
+    }
+    match watcher.call_method("RegisterStatusNotifierItem", &(unique,)) {
+        Ok(_) => println!("terhub tray: re-registered after watcher reset"),
+        Err(e) => eprintln!("terhub tray: re-register failed: {e}"),
+    }
+}
+
 /// Register the tray icon and keep it fed from the daemon. Runs until
 /// the process is killed; dropping the connection removes the icon.
 pub fn run() -> anyhow::Result<()> {
@@ -730,6 +758,10 @@ pub fn run() -> anyhow::Result<()> {
         if let Ok(mut v) = view.lock() {
             *v = next;
         }
+        // Self-heal: a host restart (or a restarted watcher) forgets every
+        // item, so re-register on our own cadence instead of waiting for
+        // the user to notice the icon is gone and restart us by hand.
+        ensure_registered(&watcher, &unique);
         std::thread::sleep(POLL);
     }
 }
