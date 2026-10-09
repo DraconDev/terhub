@@ -5421,7 +5421,7 @@ mod tests {
         // reader of TERHUB_CONFIG (integration suites are separate
         // processes), and the previous value is restored below.
         let saved = std::env::var("TERHUB_CONFIG").ok();
-        let dir = test_dir();
+        let dir = std::env::temp_dir().join(format!("terhub-filter-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("filter-persist.toml");
         std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
