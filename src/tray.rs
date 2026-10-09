@@ -1000,11 +1000,10 @@ pub fn run() -> anyhow::Result<()> {
     let theme = crate::config::load_config(None).theme;
     let names: std::sync::Arc<std::sync::Mutex<HashMap<IconState, String>>> =
         std::sync::Arc::new(std::sync::Mutex::new(
-            install_icons(&theme, None).map_err(anyhow::Error::from)?,
+            install_icons(&theme).map_err(anyhow::Error::from)?,
         ));
     refresh_icon_cache();
     let mut last_theme = theme;
-    let mut last_badge: Option<String> = None;
     let conn = zbus::blocking::Connection::session()?;
     let unique = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
@@ -1050,13 +1049,12 @@ pub fn run() -> anyhow::Result<()> {
         if let Ok(mut v) = view.lock() {
             *v = next.clone();
         }
-        // Re-render when the theme or the badge changed; the
-        // write-if-changed guard inside keeps disk quiet otherwise.
-        // New content is a new versioned name, so the host — told via
-        // the signals below — always loads fresh.
-        let badge = badge_for_view(next.needy, next.idle, next.connected);
-        if active != last_theme || badge != last_badge {
-            match install_icons(&active, badge.as_deref()) {
+        // Re-render when the theme changed; the write-if-changed
+        // guard inside keeps disk quiet otherwise. New content is a
+        // new versioned name, so the host — told via the signals
+        // below — always loads fresh.
+        if active != last_theme {
+            match install_icons(&active) {
                 Ok(new_names) => {
                     if let Ok(mut n) = names.lock() {
                         *n = new_names;
@@ -1064,13 +1062,10 @@ pub fn run() -> anyhow::Result<()> {
                 }
                 Err(e) => eprintln!("terhub: icon install failed: {e}"),
             }
-            if active != last_theme {
-                // On-disk theme cache only; the versioned names above
-                // already force fresh loads for the new palette.
-                refresh_icon_cache();
-            }
+            // On-disk theme cache only; the versioned names above
+            // already force fresh loads for the new palette.
+            refresh_icon_cache();
             last_theme = active.clone();
-            last_badge = badge;
         }
         // Tell the host exactly what changed. Reading a property
         // without its signal leaves the previous pixmap/text showing
