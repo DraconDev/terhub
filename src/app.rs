@@ -5752,6 +5752,48 @@ mod tests {
     }
 
     #[test]
+    fn normalize_exclude_forces_exclusion_form() {
+        // The standing filter only ever hides: bare text gains `!`,
+        // existing `!`s collapse to one, empties stay empty.
+        assert_eq!(normalize_exclude("zsh"), "!zsh");
+        assert_eq!(normalize_exclude("!zsh"), "!zsh");
+        assert_eq!(normalize_exclude("!!zsh"), "!zsh");
+        assert_eq!(normalize_exclude("  zsh  "), "!zsh");
+        assert_eq!(normalize_exclude(""), "");
+        assert_eq!(normalize_exclude("!"), "");
+        assert_eq!(normalize_exclude("  "), "");
+    }
+
+    #[test]
+    fn section_jumps_wrap_and_land_on_first_items() {
+        let mut app = app_with(&["a"]);
+        app.open_settings();
+        let names: Vec<&str> = app.settings_sections().iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, vec!["Theme", "Density", "Toggles", "Filters", "Tray icons"]);
+        // Right from Theme lands Density's first item (comfortable).
+        app.goto_settings_section(1);
+        assert_eq!(app.settings_section, 1);
+        // Wrap-around both directions.
+        app.goto_settings_section(4); // Tray icons: legend only, selection kept
+        assert_eq!(app.settings_section, 4);
+        app.move_settings_section(1);
+        assert_eq!(app.settings_section, 0);
+        app.move_settings_section(-1);
+        assert_eq!(app.settings_section, 4);
+        // Landing on Filters selects the standing row.
+        app.goto_settings_section(3);
+        let items = app.settings_item_rows();
+        let row = items[app.settings_selected];
+        assert!(matches!(
+            app.settings_rows()[row],
+            SettingRow::Item {
+                kind: SettingKind::EditStandingFilter,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn standing_editor_enter_persists_and_reloads() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -5769,7 +5811,9 @@ mod tests {
         // The settings row opens the same prompt in standing mode.
         app.open_standing_editor();
         assert!(app.editing_standing);
-        for c in "!zsh".chars() {
+        // Bare text: the standing filter only ever excludes, so this
+        // saves as `!zsh` without the user typing the prefix.
+        for c in "zsh".chars() {
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
         }
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
