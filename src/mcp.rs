@@ -16,6 +16,20 @@ pub fn run() -> Result<()> {
     loop {
         match read_frame(&mut reader)? {
             None => return Ok(()), // EOF
+            Some(Value::Array(batch)) => {
+                // JSON-RPC batch: handle each request and reply with a
+                // JSON array (omitted entirely if every request was a
+                // notification, per the spec).
+                let mut responses = Vec::with_capacity(batch.len());
+                for req in batch {
+                    if let Some(resp) = handle(&req) {
+                        responses.push(resp);
+                    }
+                }
+                if !responses.is_empty() {
+                    write_frame(&Value::Array(responses))?;
+                }
+            }
             Some(req) => {
                 if let Some(resp) = handle(&req) {
                     write_frame(&resp)?;
@@ -181,14 +195,29 @@ fn handle(req: &Value) -> Option<Value> {
     let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = req.get("params").cloned().unwrap_or(Value::Null);
     let (key, val) = match method {
-        "initialize" => (
-            "result",
-            json!({
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "terhub", "version": env!("CARGO_PKG_VERSION")},
-            }),
-        ),
+        "initialize" => {
+            // Echo the client's requested protocolVersion when it's
+            // one we support; fall back to the latest known version
+            // otherwise (clients use this for capability negotiation).
+            let client_pv = params
+                .get("protocolVersion")
+                .and_then(|v| v.as_str())
+                .unwrap_or("2024-11-05");
+            let supported = ["2024-11-05", "2024-10-07"];
+            let pv = if supported.contains(&client_pv) {
+                client_pv
+            } else {
+                "2024-11-05"
+            };
+            (
+                "result",
+                json!({
+                    "protocolVersion": pv,
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "terhub", "version": env!("CARGO_PKG_VERSION")},
+                }),
+            )
+        }
         "ping" => ("result", json!({})),
         "tools/list" => ("result", json!({"tools": tools()})),
         "tools/call" => ("result", call_tool(&params)),
