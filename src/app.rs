@@ -1769,12 +1769,11 @@ impl App {
             }
             "filter_clear" => {
                 if self.filter.is_empty() {
-                    self.set_status("filter already clear".to_string());
+                    self.set_status("search already clear".to_string());
                 } else {
                     self.filter.clear();
                     self.refresh_filtered();
-                    self.persist_filter();
-                    self.set_status("filter cleared".to_string());
+                    self.set_status("search cleared".to_string());
                 }
                 true
             }
@@ -2064,27 +2063,37 @@ impl App {
         }
         match key.code {
             KeyCode::Esc => {
-                self.filter.clone_from(&self.filter_before_edit);
+                if self.editing_standing {
+                    self.exclude.clone_from(&self.filter_before_edit);
+                } else {
+                    self.filter.clone_from(&self.filter_before_edit);
+                }
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.follow_preview(tmux);
-                if self.filter.is_empty() {
-                    self.set_status("filter cleared".to_string());
-                } else {
-                    self.set_status(format!("filter: {}", self.filter));
-                }
+                self.report_kept_query();
             }
             KeyCode::Enter => {
-                self.filter = self.input.trim().to_string();
+                let q = self.input.trim().to_string();
+                if self.editing_standing {
+                    self.exclude = q;
+                    self.persist_filter();
+                    self.set_status(if self.exclude.is_empty() {
+                        "standing filter cleared".to_string()
+                    } else {
+                        format!("standing filter saved: {}", self.exclude)
+                    });
+                } else {
+                    self.filter = q;
+                    if !self.filter.is_empty() {
+                        self.set_status(format!("search kept for this session: {}", self.filter));
+                    }
+                }
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.pane_selected = 0;
                 self.pane_scroll = 0;
                 self.follow_preview(tmux);
-                self.persist_filter();
-                if !self.filter.is_empty() {
-                    self.set_status(format!("filter: {}", self.filter));
-                }
             }
             KeyCode::Backspace => {
                 self.delete_before_cursor();
@@ -2336,7 +2345,7 @@ impl App {
                 if !self.filter.is_empty() {
                     self.filter.clear();
                     self.refresh_filtered();
-                    self.set_status("filter cleared".to_string());
+                    self.set_status("search cleared".to_string());
                     return None;
                 }
                 if self.focus == Focus::Panes {
@@ -2765,11 +2774,11 @@ impl App {
         None
     }
 
-    /// Save the kept query to `[ui] filter` so a standing exclusion
-    /// (e.g. `!zsh`) survives restarts. Silent on success (the status
-    /// line already names the query); loud only when the write failed.
+    /// Save the standing exclusion to `[ui] filter` so it survives
+    /// restarts. Silent on success (the status line already names the
+    /// query); loud only when the write failed.
     fn persist_filter(&mut self) {
-        self.config.filter.clone_from(&self.filter);
+        self.config.filter.clone_from(&self.exclude);
         if let Err(e) = crate::config::persist_ui_settings(
             &self.config.theme,
             &self.config.density,
@@ -2778,7 +2787,7 @@ impl App {
             self.config.mru_tabs,
             &self.config.filter,
         ) {
-            self.set_status(format!("filter kept for this session only (not saved: {e})"));
+            self.set_status(format!("standing filter kept for this session only (not saved: {e})"));
         }
     }
 
@@ -2838,9 +2847,20 @@ impl App {
         }
     }
 
-    /// Live re-filter while typing; restarts at the top row. Edits
-    /// whichever query the prompt opened for (find or standing).
-    fn apply_live_filter(&mut self) {
+    /// Status line for the kept query after the prompt closes without
+    /// saving: names whichever query (search or standing draft) survived.
+    fn report_kept_query(&mut self) {
+        let (label, q) = if self.editing_standing {
+            ("standing filter", self.exclude.clone())
+        } else {
+            ("search", self.filter.clone())
+        };
+        if q.is_empty() {
+            self.set_status(format!("{label} cleared"));
+        } else {
+            self.set_status(format!("{label}: {q}"));
+        }
+    }
         if self.editing_standing {
             self.exclude.clone_from(&self.input);
         } else {
