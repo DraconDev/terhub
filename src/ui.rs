@@ -359,8 +359,10 @@ pub struct ClickAreas {
     pub panes: Rect,
     /// Clickable session segments within `sessions`, in row order.
     pub segments: Vec<Rect>,
-    /// Settings popup rows area (empty rect when closed).
+    /// Settings content rows area (empty rect when closed).
     pub settings: Rect,
+    /// Settings sidebar rows, one per section (empty when closed).
+    pub settings_side: Vec<Rect>,
     /// Table header cells for click-to-sort (empty when covered).
     pub headers: Vec<HeaderHit>,
 }
@@ -1248,7 +1250,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
     }
 }
 
-fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) -> Rect {
+fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) -> (Rect, Vec<Rect>) {
     use crate::app::SettingRow;
     let rows = app.settings_rows();
     let sections = app.settings_sections();
@@ -1412,13 +1414,15 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
             height: 1,
         })
         .collect();
-    crate::app::store_settings_side_hits(side_hits);
-    Rect {
-        x: content.x,
-        y: content.y,
-        width: content.width,
-        height: shown as u16,
-    }
+    (
+        Rect {
+            x: content.x,
+            y: content.y,
+            width: content.width,
+            height: shown as u16,
+        },
+        side_hits,
+    )
 }
 
 fn centered(area: Rect, w: u16, h: u16) -> Rect {
