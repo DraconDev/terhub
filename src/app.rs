@@ -5487,19 +5487,22 @@ mod tests {
 
     #[test]
     fn filter_seeds_from_config_at_startup() {
-        // A persisted `!zsh` applies on the first refresh, no typing.
+        // A persisted standing exclusion applies on the first refresh,
+        // no typing; the temporary search always starts empty.
         let cfg = AppConfig {
             filter: "!bash".to_string(),
             ..AppConfig::default()
         };
         let mut app = App::new(cfg);
+        assert!(app.filter.is_empty());
+        assert_eq!(app.exclude, "!bash");
         app.panes = app_with_panes().panes;
         app.refresh_filtered();
         assert_eq!(ids(&app), vec!["%1"]);
     }
 
     #[test]
-    fn enter_in_filter_persists_query_to_config() {
+    fn enter_in_search_never_persists() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         // Serialize with every other env-mutating lib test (hosts modal
         // resolves its fleet file through TERHUB_CONFIG too); the lock
@@ -5507,9 +5510,9 @@ mod tests {
         let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
         let saved = std::env::var("TERHUB_CONFIG").ok();
-        let dir = std::env::temp_dir().join(format!("terhub-filter-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-search-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("filter-persist.toml");
+        let path = dir.join("search-nopersist.toml");
         std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
         unsafe {
             std::env::set_var("TERHUB_CONFIG", &path);
@@ -5517,14 +5520,51 @@ mod tests {
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
         app.open_filter();
+        for c in "ba".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
+        // Kept for the session, but the file is untouched: temporary
+        // searches must never become standing exclusions by accident.
+        assert_eq!(app.filter, "ba");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("filter = "), "search leaked into config:\n{text}");
+        unsafe {
+            match saved {
+                Some(v) => std::env::set_var("TERHUB_CONFIG", v),
+                None => std::env::remove_var("TERHUB_CONFIG"),
+            }
+        }
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn standing_editor_enter_persists_and_reloads() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
+        let saved = std::env::var("TERHUB_CONFIG").ok();
+        let dir = std::env::temp_dir().join(format!("terhub-standing-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("standing-persist.toml");
+        std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
+        unsafe {
+            std::env::set_var("TERHUB_CONFIG", &path);
+        }
+        let mut app = app_with(&["a"]);
+        let tmux = Tmux::new().unwrap();
+        // The settings row opens the same prompt in standing mode.
+        app.open_standing_editor();
+        assert!(app.editing_standing);
         for c in "!zsh".chars() {
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
         }
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
-        assert_eq!(app.filter, "!zsh");
+        assert_eq!(app.exclude, "!zsh");
+        assert_eq!(app.mode, Mode::Normal);
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("filter = \"!zsh\""), "{text}");
-        // And the saved query reloads through the normal loader.
+        // And the saved exclusion reloads through the normal loader.
         let (cfg, _) = crate::config::load_config_report(Some(path.clone()));
         assert_eq!(cfg.filter, "!zsh");
         unsafe {

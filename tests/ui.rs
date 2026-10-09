@@ -559,7 +559,7 @@ fn text_filter_narrows_rows_and_titles_query() {
     let text = lines.join("\n");
     assert!(text.contains("bash"), "match missing:\n{text}");
     assert!(!text.contains("nvim"), "non-match leaked:\n{text}");
-    assert!(text.contains("filter: bash"), "title hides query:\n{text}");
+    assert!(text.contains("search: bash"), "title hides query:\n{text}");
 }
 
 #[test]
