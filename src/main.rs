@@ -2203,13 +2203,21 @@ fn run_tui() -> Result<Option<TuiExit>> {
                 }
             }
             Event::Mouse(mouse) => {
-                // Settings rows are clickable; other prompts eat all clicks.
+                // Settings rows are clickable; the popup also scrolls
+                // on wheel (the Settings arm of on_wheel used to be
+                // dead because this branch `continue`d on every kind).
                 if app.mode == terhub::app::Mode::Settings {
-                    if mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                        && in_area(mouse.column, mouse.row, areas.settings)
-                    {
-                        let row = app.settings_scroll + (mouse.row - areas.settings.y) as usize;
-                        app.settings_apply_at_row(row);
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => app.on_wheel(true),
+                        MouseEventKind::ScrollDown => app.on_wheel(false),
+                        MouseEventKind::Down(MouseButton::Left)
+                            if in_area(mouse.column, mouse.row, areas.settings) =>
+                        {
+                            let row = app.settings_scroll
+                                + (mouse.row - areas.settings.y) as usize;
+                            app.settings_apply_at_row(row);
+                        }
+                        _ => {}
                     }
                     continue;
                 }
