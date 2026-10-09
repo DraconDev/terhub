@@ -2262,6 +2262,15 @@ mod tests {
         assert!(read_capped_line(&mut Cursor::new(big), 16).is_err());
         let mut ok = Cursor::new(b"{\"ok\":true}\n".to_vec());
         assert_eq!(read_capped_line(&mut ok, 16).unwrap(), "{\"ok\":true}\n");
+        // Truncated (no newline before EOF within the cap) is rejected
+        // rather than returned as a parseable partial line.
+        let mut truncated = Cursor::new(b"{\"ok\":true".to_vec());
+        assert!(read_capped_line(&mut truncated, 16).is_err());
+        // A line whose content is exactly `cap` bytes is rejected
+        // (the trailing newline would push it over the cap).
+        let mut exact = vec![b'x'; 16];
+        exact.push(b'\n');
+        assert!(read_capped_line(&mut Cursor::new(exact), 16).is_err());
     }
 
     fn hook_record(updated_at: u64) -> AgentRecord {
