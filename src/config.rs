@@ -911,9 +911,18 @@ fn persist_ui_settings_to(
             );
             continue;
         }
-        let t = line.trim();
-        if t.starts_with('[') && t.ends_with(']') {
-            section = t.to_string();
+        // A section header is `[name]` possibly followed by a `# comment`;
+        // a comment-only line that happens to start with `[` (e.g.
+        // `# [old section]`) must not be treated as a header. We locate
+        // the first `[` and the first `]` after it, then ignore the rest.
+        let t = line.trim_start();
+        let header = t.strip_prefix('#').unwrap_or(t);
+        let header = header.trim_start();
+        if let Some(rest) = header.strip_prefix('[')
+            && let Some(end) = rest.find(']')
+        {
+            let name = &rest[..end];
+            section = format!("[{name}]");
             if section == "[ui]" {
                 ui_at = Some(out.len());
             }
@@ -924,19 +933,19 @@ fn persist_ui_settings_to(
             continue;
         }
         if section == "[ui]" && is_key_line(line, "theme") {
-            out.push(format!("theme = \"{theme}\""));
+            out.push(format!("theme = \"{theme}\"{}", trailing_comment(line)));
             seen[0] = true;
         } else if section == "[ui]" && is_key_line(line, "density") {
-            out.push(format!("density = \"{density}\""));
+            out.push(format!("density = \"{density}\"{}", trailing_comment(line)));
             seen[1] = true;
         } else if section == "[ui]" && is_key_line(line, "highlight_attached") {
-            out.push(format!("highlight_attached = {highlight}"));
+            out.push(format!("highlight_attached = {highlight}{}", trailing_comment(line)));
             seen[2] = true;
         } else if section == "[ui]" && is_key_line(line, "mru_tabs") {
-            out.push(format!("mru_tabs = {mru_tabs}"));
+            out.push(format!("mru_tabs = {mru_tabs}{}", trailing_comment(line)));
             seen[4] = true;
         } else if section == "[notifications]" && is_key_line(line, "enabled") {
-            out.push(format!("enabled = {notifications}"));
+            out.push(format!("enabled = {notifications}{}", trailing_comment(line)));
             seen[3] = true;
         } else {
             out.push(line.to_string());
@@ -996,12 +1005,65 @@ fn persist_ui_settings_to(
     Ok(())
 }
 
+/// Write `text` to `path` atomically: write to a unique tmp file in
+/// the same directory, fsync, rename. A crash mid-write leaves the
+/// original file intact (and the tmp is orphaned in the same dir; a
+/// future init/cleanup can prune it).
+fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let parent = path.parent().ok_or_else(|| std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "config path has no parent directory",
+    ))?;
+    std::fs::create_dir_all(parent)?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    let fname = path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("config");
+    let tmp = parent.join(format!(".{fname}.tmp.{pid}.{nonce}"));
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()?;
+    }
+    // Ignore rename failure cleanup best-effort: on rename failure
+    // (e.g. cross-device), fall back to a non-atomic write so the
+    // caller still gets persistence.
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        std::fs::write(path, text)?;
+        return Err(e);
+    }
+    Ok(())
+}
+
 /// True when the line assigns `key` (ignores comments and lookalikes).
 fn is_key_line(line: &str, key: &str) -> bool {
     let t = line.trim_start();
     t.strip_prefix(key)
         .is_some_and(|rest| rest.trim_start().starts_with('='))
         && !t.starts_with('#')
+}
+
+/// Return the trailing `# ...` comment on `line` (including the leading
+/// whitespace + `#`), or `""` if there is none. Used to preserve user
+/// comments when rewriting a key during UI persist.
+fn trailing_comment(line: &str) -> String {
+    // A `#` is a comment only if it's at the start of the line, or
+    // preceded by whitespace (TOML). We scan for `#` and accept the
+    // first one that's whitespace-preceded.
+    let bytes = line.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'#' && (i == 0 || bytes[i - 1].is_ascii_whitespace()) {
+            return line[i..].to_string();
+        }
+    }
+    String::new()
 }
 
 /// Byte-cap a message, flooring to a char boundary. `String::truncate`
