@@ -209,16 +209,23 @@ pub fn trim_screen_lines(text: &str, lines: u32) -> String {
     out
 }
 
+/// Pick the first working `qdbus` binary, cached for the process so the
+/// 4+ calls `konsole_tabs` makes per session don't re-probe each time.
+/// (Qt5/Plasma5 systems ship `qdbus6` for the Qt6 Konsole.)
 fn qdbus_bin() -> &'static str {
-    // Qt5/Plasma5 systems ship qdbus6 for the Qt6 Konsole.
-    for bin in ["qdbus", "qdbus6"] {
-        let mut probe = Command::new(bin);
-        probe.arg("--version");
-        if run_timed(probe, &format!("{bin} --version")).is_ok_and(|o| o.status.success()) {
-            return bin;
+    static CACHE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        for bin in ["qdbus", "qdbus6"] {
+            let mut probe = Command::new(bin);
+            probe.arg("--version");
+            if run_timed(probe, &format!("{bin} --version"))
+                .is_ok_and(|o| o.status.success())
+            {
+                return bin;
+            }
         }
-    }
-    "qdbus"
+        "qdbus"
+    })
 }
 
 fn qdbus(service: &str, path: &str, method: &str, args: &[&str]) -> Result<String> {
