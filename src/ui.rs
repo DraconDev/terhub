@@ -1400,11 +1400,23 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
         })
         .collect();
     let shown = lines.len();
-    frame.render_widget(Paragraph::new(lines), inner);
+    frame.render_widget(Paragraph::new(lines), content);
+    // Sidebar hit zones (one row each) for mouse section jumps.
+    let side_hits: Vec<Rect> = sections
+        .iter()
+        .enumerate()
+        .map(|(i, _)| Rect {
+            x: side.x,
+            y: side.y + i as u16,
+            width: side.width,
+            height: 1,
+        })
+        .collect();
+    crate::app::store_settings_side_hits(side_hits);
     Rect {
-        x: inner.x,
-        y: inner.y,
-        width: inner.width,
+        x: content.x,
+        y: content.y,
+        width: content.width,
         height: shown as u16,
     }
 }
