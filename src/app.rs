@@ -1756,6 +1756,7 @@ impl App {
                 } else {
                     self.filter.clear();
                     self.refresh_filtered();
+                    self.persist_filter();
                     self.set_status("filter cleared".to_string());
                 }
                 true
@@ -2063,6 +2064,7 @@ impl App {
                 self.pane_selected = 0;
                 self.pane_scroll = 0;
                 self.follow_preview(tmux);
+                self.persist_filter();
                 if !self.filter.is_empty() {
                     self.set_status(format!("filter: {}", self.filter));
                 }
@@ -2746,6 +2748,23 @@ impl App {
         None
     }
 
+    /// Save the kept query to `[ui] filter` so a standing exclusion
+    /// (e.g. `!zsh`) survives restarts. Silent on success (the status
+    /// line already names the query); loud only when the write failed.
+    fn persist_filter(&mut self) {
+        self.config.filter.clone_from(&self.filter);
+        if let Err(e) = crate::config::persist_ui_settings(
+            &self.config.theme,
+            &self.config.density,
+            self.config.notifications_enabled,
+            self.config.highlight_attached,
+            self.config.mru_tabs,
+            &self.config.filter,
+        ) {
+            self.set_status(format!("filter kept for this session only (not saved: {e})"));
+        }
+    }
+
     /// Open the text filter, editing the current query in place.
     pub fn open_filter(&mut self) {
         self.mode = Mode::PromptFilter;
@@ -2852,6 +2871,7 @@ impl App {
             self.config.notifications_enabled,
             self.config.highlight_attached,
             self.config.mru_tabs,
+            &self.config.filter,
         ) {
             Ok(()) => self.set_status(format!("{label} (saved)")),
             Err(e) => self.set_status(format!("{label} (live only: {e})")),
@@ -3432,6 +3452,14 @@ impl App {
                 }
             }
             self.set_status(help);
+            return None;
+        }
+        // Type-to-filter (Panes focus): same rule as the Sessions
+        // branch — unbound printable keystrokes start the filter.
+        if let KeyCode::Char(c) = code
+            && Self::is_typeable(&code, &mods)
+        {
+            self.open_filter_seeded(c);
             return None;
         }
         None
