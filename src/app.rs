@@ -48,6 +48,15 @@ pub enum SettingRow {
         active: bool,
         kind: SettingKind,
     },
+    /// Read-only legend row: the coloured tray-icon glyph, its name,
+    /// and what that state means. Not actionable; shown for reference
+    /// so the user can map the panel triangle to a real status.
+    Legend {
+        triangle: &'static str,
+        color: &'static str,
+        name: &'static str,
+        meaning: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2516,6 +2525,15 @@ impl App {
             active: self.config.highlight_attached,
             kind: SettingKind::ToggleHighlight,
         });
+        rows.push(SettingRow::Header("Tray icons"));
+        for r in crate::tray::icon_legend(self.config.palette()) {
+            rows.push(SettingRow::Legend {
+                triangle: "▼",
+                color: r.hex,
+                name: r.name,
+                meaning: r.meaning,
+            });
+        }
         rows
     }
 
@@ -2742,7 +2760,7 @@ impl App {
     pub fn settings_apply_at_row(&mut self, row: usize) -> bool {
         let kind = self.settings_rows().get(row).and_then(|r| match r {
             SettingRow::Item { kind, .. } => Some(*kind),
-            SettingRow::Header(_) => None,
+            SettingRow::Header(_) | SettingRow::Legend { .. } => None,
         });
         match kind {
             Some(k) => {

@@ -1152,6 +1152,25 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
                 }
                 line
             }
+            SettingRow::Legend { triangle, color, name, meaning } => {
+                // The legend mirrors the panel: a coloured ▼ in the
+                // same fill the tray renders, then the state name in
+                // bold, then a one-line meaning. Theme-driven, so what
+                // you read here is what you see in the taskbar.
+                let mut spans = vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("{triangle} "),
+                        crate::config::parse_style_spec(color).fg.unwrap_or(pal.fg),
+                    ),
+                    Span::styled(
+                        format!("{name} "),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(format!("— {meaning}"), pal.dim),
+                ];
+                Line::from(spans)
+            }
         })
         .collect();
     let shown = lines.len();
