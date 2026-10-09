@@ -630,6 +630,12 @@ pub struct App {
 impl App {
     pub fn new(config: AppConfig) -> Self {
         let exclude = config.filter.clone();
+        // Seeded from the config file: the standing view (exclusion,
+        // sort, direction, shell hiding) is exactly what was saved.
+        // Unknown sort names were already warned + defaulted at load.
+        let sort_key = SortKey::from_str(&config.sort).unwrap_or(SortKey::Idle);
+        let sort_asc = !config.sort_desc;
+        let hide_quiet_shells = config.hide_shells;
         App {
             config,
             sessions: Vec::new(),
@@ -655,13 +661,13 @@ impl App {
             cursor: 0,
             settings_selected: 0,
             settings_scroll: 0,
-            sort_key: SortKey::Idle,
-            sort_asc: false,
+            sort_key,
+            sort_asc,
             filter: String::new(),
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
-            hide_quiet_shells: false,
+            hide_quiet_shells,
             hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
             hover: None,
@@ -1279,6 +1285,7 @@ impl App {
         self.refresh_filtered();
         self.pane_selected = 0;
         self.pane_scroll = 0;
+        self.persist_view();
     }
 
     /// Order `filtered` by the current sort. Stable, so ties keep the base
@@ -2840,11 +2847,15 @@ impl App {
         None
     }
 
-    /// Save the standing exclusion to `[ui] filter` so it survives
-    /// restarts. Silent on success (the status line already names the
-    /// query); loud only when the write failed.
-    fn persist_filter(&mut self) {
+    /// Persist the whole standing view (theme/density/toggles/filter/
+    /// sort/direction/shell-hiding) with one surgical config write.
+    /// Silent on success; the caller already announced the change.
+    /// Loud only when the write failed.
+    fn persist_view(&mut self) {
         self.config.filter.clone_from(&self.exclude);
+        self.config.sort = self.sort_key.as_str().to_string();
+        self.config.sort_desc = !self.sort_asc;
+        self.config.hide_shells = self.hide_quiet_shells;
         if let Err(e) = crate::config::persist_ui_settings(
             &self.config.theme,
             &self.config.density,
@@ -2852,9 +2863,19 @@ impl App {
             self.config.highlight_attached,
             self.config.mru_tabs,
             &self.config.filter,
+            &self.config.sort,
+            self.config.sort_desc,
+            self.config.hide_shells,
         ) {
-            self.set_status(format!("standing filter kept for this session only (not saved: {e})"));
+            self.set_status(format!("view kept for this session only (not saved: {e})"));
         }
+    }
+
+    /// Save the standing exclusion to `[ui] filter` so it survives
+    /// restarts. Silent on success (the status line already names the
+    /// query); loud only when the write failed.
+    fn persist_filter(&mut self) {
+        self.persist_view();
     }
 
     /// Open the text filter, editing the current query in place.
@@ -2899,9 +2920,11 @@ impl App {
     }
 
     /// `h` key: flip the quiet-shell filter, reporting the hidden count.
+    /// The choice persists: a dashboard that hides idle shells stays hidden.
     fn toggle_hide_quiet_shells(&mut self) {
         self.hide_quiet_shells = !self.hide_quiet_shells;
         self.refresh_filtered();
+        self.persist_view();
         if self.hide_quiet_shells {
             let key = self.config.key_label("hide_shells");
             self.set_status(format!(
@@ -3002,6 +3025,9 @@ impl App {
             self.config.highlight_attached,
             self.config.mru_tabs,
             &self.config.filter,
+            &self.config.sort,
+            self.config.sort_desc,
+            self.config.hide_shells,
         ) {
             Ok(()) => self.set_status(format!("{label} (saved)")),
             Err(e) => self.set_status(format!("{label} (live only: {e})")),
