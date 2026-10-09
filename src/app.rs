@@ -2460,6 +2460,17 @@ impl App {
             }
             return None;
         }
+        // Type-to-filter: an unbound printable keystroke opens the
+        // filter with that char already typed, so ad-hoc filtering
+        // needs no mode key first. Bound keys (and Ctrl/Alt chords)
+        // were consumed above; `/` always forces it for queries that
+        // would otherwise begin with a bound key (e.g. `!zsh`).
+        if let KeyCode::Char(c) = code
+            && Self::is_typeable(&code, &mods)
+        {
+            self.open_filter_seeded(c);
+            return None;
+        }
         None
     }
 
