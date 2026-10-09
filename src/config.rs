@@ -587,6 +587,7 @@ fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct FileConfig {
     #[serde(default)]
     ui: UiSection,
@@ -608,6 +609,7 @@ struct FileConfig {
 
 /// One `[[command]]` entry: a user shell command on the selected pane.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct CommandFile {
     #[serde(default)]
     name: String,
@@ -631,6 +633,7 @@ pub const COMMAND_VARS: &[&str] = &["pane", "session", "window", "dir", "cmd", "
 
 /// One `[[profile]]` entry: a named agent program for spawn-with-prompt.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct ProfileFile {
     #[serde(default)]
     name: String,
@@ -663,6 +666,7 @@ pub fn builtin_profiles() -> Vec<SpawnProfile> {
 /// One `[[template]]` entry: a named reusable message for bulk prompt
 /// and `send --template`.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct TemplateFile {
     #[serde(default)]
     name: String,
@@ -711,6 +715,7 @@ impl Default for NotificationsSection {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UiSection {
     #[serde(default = "default_theme")]
     theme: String,
@@ -746,6 +751,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DaemonSection {
     #[serde(default = "default_poll_secs")]
     poll_secs: u64,
@@ -792,6 +798,7 @@ fn default_waiting_idle_secs() -> u64 {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StyleSection {
     #[serde(default = "default_true")]
     color_agents: bool,
