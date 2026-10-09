@@ -5727,6 +5727,60 @@ mod tests {
         assert_eq!(app.filtered.len(), 2);
     }
 
+    fn legend_texts(rows: &[SettingRow]) -> Vec<String> {
+        rows.iter()
+            .filter_map(|r| match r {
+                SettingRow::Legend { name, meaning, .. } => {
+                    Some(format!("{name} — {meaning}"))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn filters_page_lists_what_each_query_hides() {
+        // %1 nvim, %2 bash. Standing `!bash` hides %2; search `nvim`
+        // hides %2 as well — but %2 already failed standing, so it
+        // lists once, under the exclusion (no double-counting).
+        let mut app = app_with_panes();
+        app.exclude = "!bash".to_string();
+        app.filter = "nvim".to_string();
+        let texts = legend_texts(&app.settings_rows());
+        assert!(
+            texts.iter().any(|t| t.contains("1 hidden") && t.contains("!bash")),
+            "exclusion caption missing:\n{texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("%2") && t.contains("bash")),
+            "%2 row missing:\n{texts:?}"
+        );
+        // Nothing hidden twice: %2 appears exactly once.
+        assert_eq!(
+            texts.iter().filter(|t| t.contains("%2")).count(),
+            1,
+            "double-counted:\n{texts:?}"
+        );
+        // Legend rows are display-only: never selectable/actionable.
+        let items = app.settings_item_rows();
+        let rows = app.settings_rows();
+        for (i, r) in rows.iter().enumerate() {
+            if matches!(r, SettingRow::Legend { .. }) {
+                assert!(!items.contains(&i), "legend row {i} selectable");
+            }
+        }
+    }
+
+    #[test]
+    fn filters_page_says_so_when_nothing_hidden() {
+        let app = app_with_panes();
+        let texts = legend_texts(&app.settings_rows());
+        assert!(
+            texts.iter().any(|t| t.contains("nothing hidden")),
+            "empty state missing:\n{texts:?}"
+        );
+    }
+
     #[test]
     fn typing_unbound_key_opens_filter_seeded() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
