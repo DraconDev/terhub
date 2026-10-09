@@ -1257,9 +1257,9 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
 /// selected row, an attached agent, a dim idle row) without touching
 /// live data. The summary cell follows the previewed density, so
 /// comfortable vs compact reads in the sample too.
-fn settings_preview_lines(theme: &str, comfortable: bool) -> Vec<Line> {
+fn settings_preview_lines(theme: &str, comfortable: bool) -> Vec<Line<'_>> {
     let pal = palette(theme);
-    let mut lines = vec![
+    let lines = vec![
         Line::from(Span::styled(
             format!(" terhub — 3 pane(s) · {theme} "),
             pal.title,
