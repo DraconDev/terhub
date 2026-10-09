@@ -1584,4 +1584,39 @@ mod tests {
         assert_eq!(counts.get("@1"), Some(&2));
         assert_eq!(counts.get("@2"), Some(&1));
     }
+
+    /// The state cell renders `idle` for unclaimed panes that have been
+    /// quiet past [`QUIET_SHELL_SECS`] (the same threshold the `h` toggle
+    /// uses to hide them), and `—` otherwise. This test pins the gate so
+    /// "we are not currently showing idles" — unclaimed dormancy reading
+    /// as blank — stays fixed.
+    #[test]
+    fn unclaimed_quiet_pane_is_idle() {
+        use crate::app::QUIET_SHELL_SECS;
+        let now = 10_000_u64;
+        // Activity right at the threshold: qualifies.
+        assert!(is_quiet_shell(
+            None,
+            now - QUIET_SHELL_SECS,
+            now
+        ));
+        // Comfortably past the threshold: qualifies.
+        assert!(is_quiet_shell(
+            None,
+            now - QUIET_SHELL_SECS - 1,
+            now
+        ));
+        // One second short: does not qualify (the threshold is inclusive).
+        assert!(!is_quiet_shell(
+            None,
+            now - QUIET_SHELL_SECS + 1,
+            now
+        ));
+        // Unknown activity (0): never qualifies — unknowns stay `—`.
+        assert!(!is_quiet_shell(None, 0, now));
+        // Claimed pane (Some agent record) is not governed by this gate;
+        // its state comes from the agent, not the activity clock.
+        let rec = AgentRecord::test("p", "pi");
+        assert!(!is_quiet_shell(Some(&rec), now - 9_999, now));
+    }
 }
