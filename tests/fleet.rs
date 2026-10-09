@@ -125,12 +125,45 @@ fn fleet_and_zellij_against_fakes() {
         "target must follow --: {argv:?}"
     );
 
-    // Batch 3: remote capture shells the same capture-pane argv over ssh.
+    // Batch 3: remote capture builds ONE shell command string and
+    // single-quotes the pane id, so a `;`/`$()`/backtick in the pane
+    // id (e.g. from a compromised remote `status --json`) cannot
+    // execute remotely. ssh is given a single argv element.
     let out = f::remote_capture("fake-target", "%3", 60).unwrap();
     let argv: Vec<&str> = out.lines().collect();
+    assert_eq!(argv.len(), 1, "ssh got one command string: {argv:?}");
+    let cmd = argv[0];
     for want in ["tmux", "capture-pane", "-p", "-e", "-t", "%3", "-S", "-60"] {
-        assert!(argv.contains(&want), "missing {want}: {argv:?}");
+        assert!(cmd.contains(want), "missing {want}: {cmd}");
     }
+    assert!(cmd.contains("'%3'"), "pane must be single-quoted: {cmd}");
+
+    // Same with a hostile pane id: the malicious suffix is wrapped in
+    // single quotes and cannot reach the remote shell.
+    let evil = "%3; touch /tmp/pwned";
+    let out = f::remote_capture("fake-target", evil, 10).unwrap();
+    let argv: Vec<&str> = out.lines().collect();
+    assert_eq!(argv.len(), 1, "ssh got one command string: {argv:?}");
+    assert!(
+        argv[0].contains("'%3; touch /tmp/pwned'"),
+        "evil pane must be single-quoted whole: {}",
+        argv[0]
+    );
+    // The fake ssh just echoes its argv joined; verify the FAKE_SSH
+    // saw exactly one command element (no extra ;, &&, etc. that
+    // would have been split had we not quoted).
+    assert!(!argv[0].contains(" touch /tmp/pwned'"), "{argv:?}");
+
+    // Batch 3 (continued): attach_remote_argv also single-quotes the
+    // session name.
+    let argv = f::attach_remote_argv("t", Some("s; rm"));
+    let last = argv.last().expect("remote cmd");
+    assert_eq!(argv[0], "-t");
+    assert_eq!(argv[1], "--");
+    assert_eq!(argv[2], "t");
+    assert!(last.contains("'s; rm'"), "session must be single-quoted: {last}");
+    let argv = f::attach_remote_argv("t", None);
+    assert_eq!(argv.last().unwrap(), "tmux attach-session");
 
     // Batch 3: fleet fetch turns a remote snapshot into table rows.
     write_exe(&bin.join("ssh"), FAKE_SSH);
