@@ -1313,8 +1313,8 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
     let block = Block::bordered()
         .title(Line::from(title).style(pal.title))
         .border_style(pal.focus);
-    frame.render_widget(block, area);
     let inner = block.inner(area);
+    frame.render_widget(block, area);
     // Sidebar: every section, active marked. Content starts right of it.
     let side = Rect {
         x: inner.x,
