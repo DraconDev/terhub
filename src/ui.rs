@@ -413,19 +413,20 @@ pub fn render(frame: &mut Frame, app: &mut App) -> ClickAreas {
     };
     frame.render_widget(Paragraph::new(status).style(style), chunks[2]);
 
-    let settings = if app.mode == Mode::Settings {
+    let (settings, settings_side) = if app.mode == Mode::Settings {
         render_settings(frame, app, &pal, area)
     } else {
         if app.mode != Mode::Normal {
             render_modal(frame, app, &pal, area);
         }
-        Rect::default()
+        (Rect::default(), Vec::new())
     };
     ClickAreas {
         sessions: sessions_area,
         panes: panes_area,
         segments,
         settings,
+        settings_side,
         headers: header_hits,
     }
 }
