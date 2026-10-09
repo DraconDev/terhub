@@ -2056,4 +2056,28 @@ mod tests {
         std::fs::remove_file(bad).ok();
         std::fs::remove_file(odd).ok();
     }
+
+    #[test]
+    fn unknown_section_field_is_reported_not_fatal() {
+        // A stale/misplaced key (e.g. a removed binding left under the
+        // wrong section) must degrade that one field and be named —
+        // never discard the whole file and silently fall back to
+        // defaults.
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let odd = dir.join("misplaced.toml");
+        std::fs::write(
+            &odd,
+            "[ui]\ntheme = \"dracula\"\n[keys]\nnew = \"c\"\n[style]\nfilter = \"f\"\nsettings = \"s\"\n",
+        )
+        .unwrap();
+        let (cfg, problems) = load_config_report(Some(odd.clone()));
+        // The valid sections still apply.
+        assert_eq!(cfg.palette(), "dracula");
+        assert_eq!(cfg.key("new"), "c");
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(problems.iter().any(|p| p.contains("'filter' in [style]")));
+        assert!(problems.iter().any(|p| p.contains("'settings' in [style]")));
+        std::fs::remove_file(odd).ok();
+    }
 }
