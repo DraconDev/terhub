@@ -237,12 +237,51 @@ pub struct HostStatus {
 /// core. 16 keeps latency low while bounding the burst.
 const FLEET_FANOUT: usize = 16;
 
+/// Tiny counting semaphore (std has no stable `Semaphore`). Each
+/// permit represents one in-flight ssh child; a worker thread blocks
+/// on `acquire` until the previous one finishes.
+struct Permit {
+    inner: std::sync::Arc<PermitInner>,
+}
+struct PermitInner {
+    state: std::sync::Mutex<usize>,
+    available: std::sync::Condvar,
+}
+impl Permit {
+    fn new(cap: usize) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            inner: std::sync::Arc::new(PermitInner {
+                state: std::sync::Mutex::new(cap),
+                available: std::sync::Condvar::new(),
+            }),
+        })
+    }
+    fn acquire(self: std::sync::Arc<Self>) -> PermitGuard {
+        let mut state = self.inner.state.lock().unwrap();
+        while *state == 0 {
+            state = self.inner.available.wait(state).unwrap();
+        }
+        *state -= 1;
+        PermitGuard { permit: self }
+    }
+}
+struct PermitGuard {
+    permit: std::sync::Arc<Permit>,
+}
+impl Drop for PermitGuard {
+    fn drop(&mut self) {
+        let mut state = self.permit.inner.state.lock().unwrap();
+        *state += 1;
+        self.permit.inner.available.notify_one();
+    }
+}
+
 /// Query every host concurrently, capped at [`FLEET_FANOUT`] in flight.
 /// Results come back in config order so a slow host delays the answer
 /// but not the others.
 pub fn fleet_status(hosts: &[Host]) -> Vec<HostStatus> {
     std::thread::scope(|s| {
-        let sem = std::sync::Arc::new(std::sync::Semaphore::new(FLEET_FANOUT));
+        let sem = Permit::new(FLEET_FANOUT);
         let handles: Vec<_> = hosts
             .iter()
             .map(|host| {
@@ -250,7 +289,7 @@ pub fn fleet_status(hosts: &[Host]) -> Vec<HostStatus> {
                 s.spawn(move || {
                     // Acquire a permit before opening an ssh child so
                     // the cap is real, not just a thread cap.
-                    let _permit = sem.acquire().expect("semaphore closed");
+                    let _permit = sem.acquire();
                     let result = (|| -> Result<crate::daemon::Snapshot, String> {
                         let text = ssh_run(&host.target, &["terhub", "status", "--json"], 10)
                             .map_err(|e| format!("{e:?}"))?;
