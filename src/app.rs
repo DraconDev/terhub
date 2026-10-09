@@ -66,6 +66,9 @@ pub enum SettingKind {
     ToggleNotifications,
     ToggleHighlight,
     ToggleMruTabs,
+    /// Opens the text prompt editing the standing exclusion; Enter
+    /// saves it to `[ui] filter`, Esc cancels. Not a toggle.
+    EditStandingFilter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2579,6 +2582,16 @@ impl App {
             active: self.config.highlight_attached,
             kind: SettingKind::ToggleHighlight,
         });
+        rows.push(SettingRow::Header("Filters"));
+        rows.push(SettingRow::Item {
+            label: if self.exclude.is_empty() {
+                "standing filter: (none) — Enter to edit".to_string()
+            } else {
+                format!("standing filter: {} — Enter to edit", self.exclude)
+            },
+            active: !self.exclude.is_empty(),
+            kind: SettingKind::EditStandingFilter,
+        });
         rows.push(SettingRow::Header("Tray icons"));
         for r in crate::tray::icon_legend(self.config.palette()) {
             rows.push(SettingRow::Legend {
@@ -2921,6 +2934,13 @@ impl App {
                 self.config.mru_tabs = !self.config.mru_tabs;
                 self.apply_tab_order();
                 format!("mru tabs: {}", Self::onoff(self.config.mru_tabs))
+            }
+            SettingKind::EditStandingFilter => {
+                // Editing, not applying: the prompt saves on Enter.
+                // Return early so the tail below doesn't persist
+                // unrelated settings or claim anything was saved.
+                self.open_standing_editor();
+                return;
             }
         };
         match crate::config::persist_ui_settings(

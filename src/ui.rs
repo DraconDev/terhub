@@ -915,8 +915,11 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !app.marked.is_empty() {
         title.push_str(&format!(" · {} marked", app.marked.len()));
     }
+    if !app.exclude.is_empty() {
+        title.push_str(&format!(" · filter: {}", truncate(&app.exclude, 24)));
+    }
     if !app.filter.is_empty() {
-        title.push_str(&format!(" · filter: {}", truncate(&app.filter, 24)));
+        title.push_str(&format!(" · search: {}", truncate(&app.filter, 24)));
     }
     if app.hidden_quiet > 0 {
         title.push_str(&format!(" · hiding {}", app.hidden_quiet));
