@@ -1061,17 +1061,8 @@ pub fn run() -> anyhow::Result<()> {
     let mut last_tooltip = (String::new(), String::new(), String::new());
     loop {
         // A live update: the user might change theme in the TUI's
-        // settings popup, so re-check it on every poll. (A full re-render
-        // is cheap and the diff in `install_icons` only writes when the
-        // SVG actually changed.)
+        // settings popup, so re-check it on every poll.
         let active = crate::config::load_config(None).theme;
-        if active != last_theme {
-            last_theme = active.clone();
-            // Theme change forces a reinstall below via the badge
-            // comparison (names are theme-derived); just refresh the
-            // on-disk theme cache here.
-            refresh_icon_cache();
-        }
         let mut next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
             Ok(snap) => TrayView::from_agents(&snap.agents),
             Err(_) => TrayView::disconnected(),
@@ -1082,10 +1073,10 @@ pub fn run() -> anyhow::Result<()> {
         }
         // Re-render when the theme or the badge changed; the
         // write-if-changed guard inside keeps disk quiet otherwise.
+        // New content is a new versioned name, so the host — told via
+        // the signals below — always loads fresh.
         let badge = badge_for_view(next.needy, next.idle, next.connected);
         if active != last_theme || badge != last_badge {
-            // (last_theme was already updated above; this arm runs on
-            // the badge change with the theme already current.)
             match install_icons(&active, badge.as_deref()) {
                 Ok(new_names) => {
                     if let Ok(mut n) = names.lock() {
@@ -1094,8 +1085,45 @@ pub fn run() -> anyhow::Result<()> {
                 }
                 Err(e) => eprintln!("terhub: icon install failed: {e}"),
             }
-            last_badge = badge;
+            if active != last_theme {
+                // On-disk theme cache only; the versioned names above
+                // already force fresh loads for the new palette.
+                refresh_icon_cache();
+            }
             last_theme = active.clone();
+            last_badge = badge;
+        }
+        // Tell the host exactly what changed. Reading a property
+        // without its signal leaves the previous pixmap/text showing
+        // (the failure mode that froze the old icon in place).
+        let snap = view.lock().map(|v| v.clone()).unwrap_or_default();
+        let icon = icon_name_for(&names, &snap);
+        if icon != last_icon {
+            last_icon = icon;
+            if let Err(e) = zbus::block_on(Tray::new_icon(&emitter)) {
+                eprintln!("terhub tray: NewIcon signal failed: {e}");
+            }
+        }
+        let attention = attention_name_for(&names);
+        if attention != last_attention {
+            last_attention = attention;
+            if let Err(e) = zbus::block_on(Tray::new_attention_icon(&emitter)) {
+                eprintln!("terhub tray: NewAttentionIcon signal failed: {e}");
+            }
+        }
+        let title = snap.title();
+        if title != last_title {
+            last_title = title;
+            if let Err(e) = zbus::block_on(Tray::new_title(&emitter)) {
+                eprintln!("terhub tray: NewTitle signal failed: {e}");
+            }
+        }
+        let tooltip = snap.tooltip();
+        if tooltip != last_tooltip {
+            last_tooltip = tooltip;
+            if let Err(e) = zbus::block_on(Tray::new_tool_tip(&emitter)) {
+                eprintln!("terhub tray: NewToolTip signal failed: {e}");
+            }
         }
         // Self-heal: a host restart (or a restarted watcher) forgets every
         // item, so re-register on our own cadence instead of waiting for
