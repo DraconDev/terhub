@@ -1174,6 +1174,44 @@ mod tests {
     }
 
     #[test]
+    fn badge_picks_needy_then_idle_then_nothing() {
+        // The badge tracks the headline: waiters win (they pair with
+        // the red attention icon), otherwise the idle count the user
+        // asked to see at a glance, nothing when quiet or down.
+        assert_eq!(badge_for_view(0, 0, true), None);
+        assert_eq!(badge_for_view(0, 0, false), None);
+        assert_eq!(badge_for_view(0, 15, false), None);
+        assert_eq!(badge_for_view(0, 15, true), Some("15".to_string()));
+        assert_eq!(badge_for_view(1, 15, true), Some("1".to_string()));
+        assert_eq!(badge_for_view(3, 0, true), Some("3".to_string()));
+        assert_eq!(badge_text(0), None);
+        assert_eq!(badge_text(99), Some("99".to_string()));
+        assert_eq!(badge_text(100), Some("99+".to_string()));
+        assert_eq!(badge_text(1234), Some("99+".to_string()));
+    }
+
+    #[test]
+    fn badge_renders_into_svg_and renames_it() {
+        // A new count is new content is a new versioned name: the host
+        // can never serve a stale pixmap for a changed number.
+        let p = palette_for_theme("dracula");
+        let plain = render_svg(IconState::Live, p, None);
+        assert!(!plain.contains("<text"), "badge leaked into unbadged icon");
+        let badged = render_svg(IconState::Live, p, Some("15"));
+        assert!(badged.contains(">15<"), "count missing:\n{badged}");
+        assert!(badged.contains(TRIANGLE), "triangle lost");
+        let a = versioned_name("terhub-live", &plain);
+        let b = versioned_name("terhub-live", &badged);
+        assert_ne!(a, b, "badge did not rename the icon");
+        // Same count twice: stable name, no rewrite churn.
+        let b2 = versioned_name(
+            "terhub-live",
+            &render_svg(IconState::Live, p, Some("15")),
+        );
+        assert_eq!(b, b2);
+    }
+
+    #[test]
     fn versioned_name_is_stable_and_changes_with_content() {
         // The whole reason this name exists: Plasmashell's QIcon cache
         // keys on the name, so a redesigned icon must be a *new* name
