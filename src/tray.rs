@@ -56,6 +56,26 @@ pub fn versioned_name(base: &str, svg: &str) -> String {
     format!("{}-{:08x}", base, hash)
 }
 
+/// Exposed SNI icon name for a state, from the installed map. Falls
+/// back to the unversioned base name when the map lacks it (a fresh
+/// Tray whose first install hasn't landed yet, or a unit test without
+/// one). Both the property and the run loop's change detector use
+/// this, so they can never disagree about what's showing.
+pub fn exposed_icon_name(names: &HashMap<IconState, String>, state: IconState) -> String {
+    names.get(&state).cloned().unwrap_or_else(|| {
+        ICON_STATES
+            .iter()
+            .find(|(s, _)| *s == state)
+            .map(|(_, b)| b.to_string())
+            .unwrap_or_default()
+    })
+}
+
+/// Exposed SNI attention name, same contract.
+pub fn exposed_attention_name(names: &HashMap<IconState, String>) -> String {
+    exposed_icon_name(names, IconState::Attention)
+}
+
 /// One state the icon can be in. Distinct from [`TrayView`] so the
 /// renderer stays pure and is testable with a 5-element palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -896,39 +916,27 @@ impl Tray {
 
     #[zbus(property)]
     fn icon_name(&self) -> String {
-        let state = self.read().icon_state();
-        self.read_names()
-            .get(&state)
-            .cloned()
-            .unwrap_or_else(|| {
-                ICON_STATES
-                    .iter()
-                    .find(|(s, _)| *s == state)
-                    .map(|(_, b)| b.to_string())
-                    .unwrap_or_default()
-            })
+        exposed_icon_name(&self.read_names(), self.read().icon_state())
     }
 
     /// Shown by hosts that prefer an explicit attention glyph.
     #[zbus(property)]
     fn attention_icon_name(&self) -> String {
-        self.read_names()
-            .get(&IconState::Attention)
-            .cloned()
-            .unwrap_or_else(|| {
-                ICON_STATES
-                    .iter()
-                    .find(|(s, _)| *s == IconState::Attention)
-                    .map(|(_, b)| b.to_string())
-                    .unwrap_or_default()
-            })
+        exposed_attention_name(&self.read_names())
     }
 
-    /// (icon, title, description) — the hover card.
+    /// (icon, title, description) — the hover card. The icon field
+    /// carries the versioned name (the unversioned base files are
+    /// pruned on install, so the base name would resolve to nothing).
     #[zbus(property)]
     fn tooltip(&self) -> (String, String, String) {
         let v = self.read();
-        (v.icon_name().to_string(), v.title(), v.description())
+        let names = self.read_names();
+        (
+            exposed_icon_name(&names, v.icon_state()),
+            v.title(),
+            v.description(),
+        )
     }
 
     /// False: we handle clicks rather than popping a menu.
@@ -1097,14 +1105,15 @@ pub fn run() -> anyhow::Result<()> {
         // without its signal leaves the previous pixmap/text showing
         // (the failure mode that froze the old icon in place).
         let snap = view.lock().map(|v| v.clone()).unwrap_or_default();
-        let icon = icon_name_for(&names, &snap);
+        let map = names.lock().map(|n| n.clone()).unwrap_or_default();
+        let icon = exposed_icon_name(&map, snap.icon_state());
         if icon != last_icon {
             last_icon = icon;
             if let Err(e) = zbus::block_on(Tray::new_icon(&emitter)) {
                 eprintln!("terhub tray: NewIcon signal failed: {e}");
             }
         }
-        let attention = attention_name_for(&names);
+        let attention = exposed_attention_name(&map);
         if attention != last_attention {
             last_attention = attention;
             if let Err(e) = zbus::block_on(Tray::new_attention_icon(&emitter)) {
@@ -1118,7 +1127,11 @@ pub fn run() -> anyhow::Result<()> {
                 eprintln!("terhub tray: NewTitle signal failed: {e}");
             }
         }
-        let tooltip = snap.tooltip();
+        let tooltip = (
+            exposed_icon_name(&map, snap.icon_state()),
+            snap.title(),
+            snap.description(),
+        );
         if tooltip != last_tooltip {
             last_tooltip = tooltip;
             if let Err(e) = zbus::block_on(Tray::new_tool_tip(&emitter)) {
