@@ -412,15 +412,21 @@ fn render_svg(state: IconState, p: TrayPalette, badge: Option<&str>) -> String {
         // White on the fill with a black halo behind it: readable on
         // every state colour at panel sizes. Drawn as two identical
         // texts (stroke-only, then fill) instead of relying on
-        // `paint-order`, which QtSvg only partially honours. Two
-        // codepoints at 11px sit inside the face; a third (`99+`)
-        // steps down to stay legible.
-        let size = if n.chars().count() > 2 { 8 } else { 11 };
+        // `paint-order`, which QtSvg only partially honours. The glyph
+        // is sized to dominate the face — a single digit gets the
+        // biggest cut, two digits slightly less, `99+` steps down.
+        // A little overflow past the triangle edges is fine: the halo
+        // separates the glyph from both the fill and the panel behind.
+        let (size, stroke) = match n.chars().count() {
+            1 => (14, 3.0),
+            2 => (12, 3.0),
+            _ => (8, 2.0),
+        };
         let attrs = format!(
             "x=\"12\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"bold\" font-size=\"{size}\""
         );
         badge_text = format!(
-            "<text {attrs} fill=\"none\" stroke=\"#000000\" stroke-width=\"2.5\">{n}</text>\
+            "<text {attrs} fill=\"none\" stroke=\"#000000\" stroke-width=\"{stroke}\">{n}</text>\
              <text {attrs} fill=\"#ffffff\">{n}</text>"
         );
     }
@@ -1216,6 +1222,10 @@ mod tests {
             badged.contains("fill=\"#ffffff\"") && badged.contains("stroke=\"#000000\""),
             "badge has no white-on-black-halo:\n{badged}"
         );
+        // Single digits get the biggest cut; pairs step down one.
+        let single = render_svg(IconState::Live, p, Some("5"));
+        assert!(single.contains("font-size=\"14\""), "single digit not maximised:\n{single}");
+        assert!(badged.contains("font-size=\"12\""), "pair not sized:\n{badged}");
         let a = versioned_name("terhub-live", &plain);
         let b = versioned_name("terhub-live", &badged);
         assert_ne!(a, b, "badge did not rename the icon");
