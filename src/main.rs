@@ -1249,7 +1249,10 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
         GroupByArg::Agent => h::GroupBy::Agent,
         GroupByArg::Session => h::GroupBy::Session,
     };
-    let spans = h::build_spans(&h::read_entries(&h::ledger_path()), now);
+    let path = h::ledger_path();
+    let entries = h::read_entries(&path);
+    warn_corrupt(&path);
+    let spans = h::build_spans(&entries, now);
     let rows = h::stats(&spans, since, group);
     if rows.iter().all(|r| r.total() == 0) {
         print_out("no activity in range");
@@ -1259,13 +1262,29 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
     0
 }
 
+/// Print a one-line notice when the ledger carries quarantined (torn)
+/// lines. Called by stats/report so the user sees ledger health
+/// without running a dedicated `history check` subcommand.
+fn warn_corrupt(path: &std::path::Path) {
+    use terhub::history as h;
+    let n = h::corrupt_count(path);
+    if n > 0 {
+        eprintln!(
+            "warning: {n} quarantined ledger line(s) at {} (use `terhub history check` to inspect)",
+            path.display()
+        );
+    }
+}
+
 fn cmd_report(since: &str, json: bool, markdown: bool) -> i32 {
     use terhub::history as h;
     let now = terhub::agent::now_unix();
     let Some(since) = resolve_since(since, now) else {
         return 1;
     };
-    let entries = h::read_entries(&h::ledger_path());
+    let path = h::ledger_path();
+    let entries = h::read_entries(&path);
+    warn_corrupt(&path);
     let spans = h::build_spans(&entries, now);
     let data = h::ReportData {
         by_day: h::stats(&spans, since, h::GroupBy::Day),

@@ -1001,6 +1001,52 @@ mod tests {
     }
 
     #[test]
+    fn prune_quarantines_torn_lines_and_keeps_them() {
+        // A torn line (truncated crash) must not be silently dropped:
+        // it is tagged __corrupt__, the raw head is preserved in
+        // `summary`, and a subsequent prune keeps the quarantine so the
+        // user can see and recover it.
+        let dir = std::env::temp_dir().join(format!("terhub-prune-q-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        let good = Entry::prompt(100, "%1", "pi", "keep me");
+        append_entry(&path, &good).unwrap();
+        append_raw(&path, "{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"summ"); // torn
+        // The torn line is NOT parsed by read_entries (filter_map ok),
+        // so it does not appear in queries. corrupt_count is 0 because
+        // it was never quarantined yet.
+        assert_eq!(read_entries(&path).len(), 1);
+        assert_eq!(corrupt_count(&path), 0);
+        // Prune quarantines the torn line (tag __corrupt__), keeps the
+        // good one (t=100 within 90d of now=200+90*86400), and survives
+        // a second prune.
+        let kept = prune(&path, 100 + 90 * 86400 + 1, 90);
+        assert_eq!(kept, 1, "prune kept the good entry");
+        let entries = read_entries(&path);
+        assert_eq!(entries.iter().filter(|e| e.kind != "__corrupt__").count(), 1);
+        assert_eq!(corrupt_count(&path), 1, "torn line quarantined");
+        let q = entries.iter().find(|e| e.kind == "__corrupt__").unwrap();
+        assert!(q.summary.contains("summ"), "raw head preserved: {}", q.summary);
+        // build_spans / stats skip __corrupt__.
+        let spans = build_spans(&entries, 100 + 90 * 86400 + 1);
+        assert!(spans.is_empty(), "quarantines must not become spans");
+        // A second prune keeps the quarantine (it doesn't re-drop it).
+        let _ = prune(&path, 100 + 90 * 86400 + 2, 90);
+        assert_eq!(corrupt_count(&path), 1, "quarantine survives a re-prune");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn append_raw(path: &std::path::Path, line: &str) {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        writeln!(f, "{line}").unwrap();
+    }
+
+    #[test]
     fn ledger_round_trip() {
         let dir = std::env::temp_dir().join(format!("terhub-ledger-{}", std::process::id()));
         let path = dir.join("activity.jsonl");
