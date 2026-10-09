@@ -405,62 +405,14 @@ pub fn icon_legend(theme: &str) -> Vec<IconLegendRow> {
 /// the SNI spec has no badge field, so the number has to live in the
 /// image itself. Two digits fit the face at panel sizes; anything
 /// larger renders as `99+`.
-fn render_svg(state: IconState, p: TrayPalette, badge: Option<&str>) -> String {
+fn render_svg(state: IconState, p: TrayPalette) -> String {
     let fill = state_paint(state, p);
-    let mut badge_text = String::new();
-    if let Some(n) = badge {
-        // White on the fill with a black halo behind it: readable on
-        // every state colour at panel sizes. Drawn as two identical
-        // texts (stroke-only, then fill) instead of relying on
-        // `paint-order`, which QtSvg only partially honours. The glyph
-        // is sized to dominate the face — a single digit gets the
-        // biggest cut, two digits slightly less, `99+` steps down.
-        // Overflow past the triangle edges is fine: the halo separates
-        // the glyph from both the fill and the panel behind.
-        let (size, stroke) = match n.chars().count() {
-            1 => (16, 3.5),
-            2 => (13, 3.0),
-            _ => (9, 2.5),
-        };
-        let attrs = format!(
-            "x=\"12\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"bold\" font-size=\"{size}\""
-        );
-        badge_text = format!(
-            "<text {attrs} fill=\"none\" stroke=\"#000000\" stroke-width=\"{stroke}\">{n}</text>\
-             <text {attrs} fill=\"#ffffff\">{n}</text>"
-        );
-    }
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\">\
-                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>{badge_text}\
+                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
          </svg>",
         fill = fill,
     )
-}
-
-/// Format a count for the badge: plain below 100, `99+` above (three
-/// glyphs are all a 24px face can carry).
-pub fn badge_text(count: usize) -> Option<String> {
-    if count == 0 {
-        None
-    } else if count > 99 {
-        Some("99+".to_string())
-    } else {
-        Some(count.to_string())
-    }
-}
-
-/// Which number the badge shows for a view: agents waiting on input
-/// win (they pair with the red attention icon); otherwise the idle
-/// count; nothing when the tray is quiet. Disconnected has no counts.
-pub fn badge_for_view(needy: usize, idle: usize, connected: bool) -> Option<String> {
-    if !connected {
-        return None;
-    }
-    if needy > 0 {
-        return badge_text(needy);
-    }
-    badge_text(idle)
 }
 
 /// Install the tray SVGs into the user's icon theme, themed to the
@@ -472,14 +424,14 @@ pub fn badge_for_view(needy: usize, idle: usize, connected: bool) -> Option<Stri
 /// optional badge count is drawn into every icon so the panel reads
 /// the number without a tooltip; a new count is new content, hence a
 /// new versioned name the host has never cached.
-pub fn install_icons(theme: &str, badge: Option<&str>) -> std::io::Result<HashMap<IconState, String>> {
+pub fn install_icons(theme: &str) -> std::io::Result<HashMap<IconState, String>> {
     let dir = data_home().join("icons/hicolor/scalable/apps");
     std::fs::create_dir_all(&dir)?;
     let palette = palette_for_theme(theme);
     let mut names: HashMap<IconState, String> = HashMap::with_capacity(ICON_STATES.len());
     let mut keep: HashSet<String> = HashSet::with_capacity(ICON_STATES.len());
     for (state, base) in ICON_STATES {
-        let svg = render_svg(*state, palette, badge);
+        let svg = render_svg(*state, palette);
         let name = versioned_name(base, &svg);
         let path = dir.join(format!("{name}.svg"));
         if std::fs::read_to_string(&path).ok().as_deref() != Some(svg.as_str()) {
