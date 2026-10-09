@@ -1124,33 +1124,33 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     // Unknown fields in the typed sections are reported, not fatal: the
     // rest of the file still applies. Names the field and its section so
     // the fix is one line edit.
-    for (k, _) in &file.unknown {
+    for k in file.unknown.keys() {
         problems.push(format!("ignored unknown field '{k}' (not a known section)"));
     }
-    for (k, _) in &file.ui.unknown {
+    for k in file.ui.unknown.keys() {
         problems.push(format!("ignored unknown field '{k}' in [ui]"));
     }
-    for (k, _) in &file.notifications.unknown {
+    for k in file.notifications.unknown.keys() {
         problems.push(format!("ignored unknown field '{k}' in [notifications]"));
     }
-    for (k, _) in &file.daemon.unknown {
+    for k in file.daemon.unknown.keys() {
         problems.push(format!("ignored unknown field '{k}' in [daemon]"));
     }
-    for (k, _) in &file.style.unknown {
+    for k in file.style.unknown.keys() {
         problems.push(format!("ignored unknown field '{k}' in [style]"));
     }
     for c in &file.command {
-        for (k, _) in &c.unknown {
+        for k in c.unknown.keys() {
             problems.push(format!("ignored unknown field '{k}' in [[command]]"));
         }
     }
     for p in &file.profile {
-        for (k, _) in &p.unknown {
+        for k in p.unknown.keys() {
             problems.push(format!("ignored unknown field '{k}' in [[profile]]"));
         }
     }
     for t in &file.template {
-        for (k, _) in &t.unknown {
+        for k in t.unknown.keys() {
             problems.push(format!("ignored unknown field '{k}' in [[template]]"));
         }
     }
