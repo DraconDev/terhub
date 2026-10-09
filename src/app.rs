@@ -2153,7 +2153,7 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                let q = self.input.trim().to_string();
+                let q = normalize_exclude(&self.input.trim().to_string());
                 if self.editing_standing {
                     self.exclude = q;
                     self.persist_filter();
@@ -2682,10 +2682,20 @@ impl App {
         if b { "on" } else { "off" }
     }
 
+    /// Row indices of actionable items (headers aren't selectable).
+    fn settings_item_rows(&self) -> Vec<usize> {
+        self.settings_rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| matches!(r, SettingRow::Item { .. }))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     /// Settings sections, derived from the row list: each `Header`
     /// starts a section carrying the rows beneath it. One source of
     /// truth — the sidebar and the content pane split the same rows.
-    /// Returns `(name, row indices)` per section.
+    /// Returns `(name, content row indices)` per section.
     pub fn settings_sections(&self) -> Vec<(&'static str, Vec<usize>)> {
         let mut out: Vec<(&'static str, Vec<usize>)> = Vec::new();
         for (i, r) in self.settings_rows().iter().enumerate() {
@@ -2698,61 +2708,43 @@ impl App {
         out
     }
 
-    /// Section index holding a global settings row.
+    /// Header row of a section: headers delimit contiguous spans, so it
+    /// sits immediately before the section's first content row.
+    fn settings_section_header(sections: &[(&'static str, Vec<usize>)], sec: usize) -> usize {
+        sections
+            .get(sec)
+            .and_then(|(_, rows)| rows.first())
+            .copied()
+            .unwrap_or(1)
+            .saturating_sub(1)
+    }
+
+    /// Section index holding a global settings row (headers belong to
+    /// the section they start).
     fn settings_section_of_row(&self, row: usize) -> usize {
+        let sections = self.settings_sections();
         let mut sec = 0;
-        for (i, r) in self.settings_rows().iter().enumerate() {
-            if i > row {
+        for (i, _) in sections.iter().enumerate() {
+            if Self::settings_section_header(&sections, i) <= row {
+                sec = i;
+            } else {
                 break;
             }
-            if matches!(r, SettingRow::Header(_)) {
-                sec = self.settings_sections().len().min(sec + 1);
-            }
         }
-        sec.min(self.settings_sections().len().saturating_sub(1))
+        sec
     }
 
     /// Snap the displayed section + scroll to the selected item: the
     /// sidebar follows the selection, and the content starts at the
-    /// section's first row.
+    /// section's header row.
     fn snap_settings_to_selection(&mut self) {
         let items = self.settings_item_rows();
         let row = items.get(self.settings_selected).copied().unwrap_or(0);
         let sections = self.settings_sections();
-        let mut sec = 0;
-        let mut start = 0;
-        for (i, (_, rows)) in sections.iter().enumerate() {
-            if rows.contains(&row) {
-                sec = i;
-                start = rows.first().copied().unwrap_or(0);
-                // Section content starts at its header; the scroll
-                // offset is measured in global rows.
-                let all = self.settings_rows();
-                let mut h = start;
-                while h > 0 && !matches!(all[h], SettingRow::Header(_)) {
-                    h -= 1;
-                }
-                start = h;
-                break;
-            }
-        }
-        let _ = start;
-        // Recompute cleanly: section start row = its header's row.
-        let mut acc = 0;
-        for (i, (_, rows)) in sections.iter().enumerate() {
-            if rows.contains(&row) {
-                sec = i;
-                acc = rows.first().copied().unwrap_or(0);
-                while acc > 0
-                    && !matches!(self.settings_rows()[acc], SettingRow::Header(_))
-                {
-                    acc -= 1;
-                }
-                break;
-            }
-        }
-        self.settings_section = sec;
-        self.settings_scroll = acc;
+        self.settings_section = self.settings_section_of_row(row);
+        let _ = sections;
+        self.settings_scroll =
+            Self::settings_section_header(&self.settings_sections(), self.settings_section);
     }
 
     /// Jump to the neighbouring section (Left/Right, sidebar clicks).
@@ -2764,38 +2756,26 @@ impl App {
             return;
         }
         let cur = self.settings_section.min(sections.len() - 1);
-        let next =
-            (cur as i32 + dir).rem_euclid(sections.len() as i32) as usize;
+        let next = (cur as i32 + dir).rem_euclid(sections.len() as i32) as usize;
         self.settings_section = next;
+        // First *selectable* row of the section (headers aren't).
         let items = self.settings_item_rows();
-        if let Some(&row) = sections[next].1.first() {
-            if let Some(pos) = items.iter().position(|&r| r == row) {
-                // First *selectable* row of the section, not just the
-                // first row (headers aren't selectable).
-                let first_item = sections[next]
-                    .1
-                    .iter()
-                    .filter_map(|&r| items.iter().position(|&ir| ir == r))
-                    .next();
-                if let Some(p) = first_item {
-                    self.settings_selected = p;
-                }
-                let _ = pos;
-            }
+        if let Some(p) = sections[next]
+            .1
+            .iter()
+            .filter_map(|&r| items.iter().position(|&ir| ir == r))
+            .next()
+        {
+            self.settings_selected = p;
         }
-        // Snap scroll to the section start (its header row).
-        let mut h = sections[next].1.first().copied().unwrap_or(0);
-        let all = self.settings_rows();
-        while h > 0 && !matches!(all[h], SettingRow::Header(_)) {
-            h -= 1;
-        }
-        self.settings_scroll = h;
+        self.settings_scroll = Self::settings_section_header(&sections, next);
     }
 
     pub fn open_settings(&mut self) {
         self.mode = Mode::Settings;
         self.settings_selected = 0;
         self.settings_scroll = 0;
+        self.settings_section = 0;
     }
 
     pub fn open_hosts(&mut self) {
@@ -3135,12 +3115,20 @@ impl App {
     }
 
     fn move_settings_up(&mut self) {
+        let before = self.settings_selected;
         self.settings_selected = self.settings_selected.saturating_sub(1);
+        if self.settings_selected != before {
+            self.snap_settings_to_selection();
+        }
     }
 
     fn move_settings_down(&mut self) {
+        let before = self.settings_selected;
         if self.settings_selected + 1 < self.settings_item_rows().len() {
             self.settings_selected += 1;
+        }
+        if self.settings_selected != before {
+            self.snap_settings_to_selection();
         }
     }
 
@@ -3200,6 +3188,14 @@ impl App {
             }
             KeyCode::Down => {
                 self.move_settings_down();
+                return None;
+            }
+            KeyCode::Left => {
+                self.move_settings_section(-1);
+                return None;
+            }
+            KeyCode::Right => {
+                self.move_settings_section(1);
                 return None;
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
