@@ -34,7 +34,6 @@ fn new_and_kill_roundtrip() {
 
 #[test]
 fn pane_discovery_capture_and_kill() {
-    use std::process::Command;
     let tmux = require_tmux();
     let name = format!("terhub-pane-{}", std::process::id());
     if tmux.session_exists(&name) {
@@ -89,7 +88,6 @@ fn sidebar_filter_tracks_selection() {
 
 #[test]
 fn swap_panes_flips_positions() {
-    use std::process::Command;
     let tmux = require_tmux();
     let name = format!("terhub-swap-{}", std::process::id());
     if tmux.session_exists(&name) {
