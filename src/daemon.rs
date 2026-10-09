@@ -355,15 +355,16 @@ async fn handle_conn(
             }
         }
         Request::Event { event } => {
-            // Lock only across the registry mutation + save; ledger and
-            // notify-send run unlocked (same shape as the poll write-back).
-            let (transitions, now) = {
-                let mut reg = lock_registry(&registry);
-                let now = now_unix();
-                let t = apply_hook_event(&mut reg, &event, now);
-                save_registry(&runtime.join("registry.json"), &reg);
-                (t, now)
-            };
+            // Mutation + save without holding the lock across disk IO.
+            let (transitions, now) = mutate_and_save(
+                &registry,
+                &runtime.join("registry.json"),
+                |reg| {
+                    let now = now_unix();
+                    let t = apply_hook_event(reg, &event, now);
+                    (t, now)
+                },
+            );
             emit_transitions(&transitions, now);
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
@@ -383,22 +384,19 @@ async fn handle_conn(
             pid,
             state,
         } => {
-            {
-                let mut reg = lock_registry(&registry);
+            mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
                 let now = now_unix();
-                apply_register(&mut reg, &pane, &agent, pid, state, now);
-                crate::agent::ensure_handles(&mut reg);
-                save_registry(&runtime.join("registry.json"), &reg);
-            }
+                apply_register(reg, &pane, &agent, pid, state, now);
+                crate::agent::ensure_handles(reg);
+            });
             Response::ok()
         }
         Request::Unregister { pane } => {
-            let dropped = {
-                let mut reg = lock_registry(&registry);
-                let dropped = apply_unregister(&mut reg, &pane);
-                save_registry(&runtime.join("registry.json"), &reg);
-                dropped
-            };
+            let dropped = mutate_and_save(
+                &registry,
+                &runtime.join("registry.json"),
+                |reg| apply_unregister(reg, &pane),
+            );
             if dropped {
                 Response::ok()
             } else {
@@ -462,13 +460,17 @@ async fn poll_loop(
                 // never in the pre-poll clone poll_sync saw, so merging them
                 // here (and diffing against live, not the clone) is what
                 // keeps the write-back from silently discarding them.
+                // Save runs outside the lock so a slow disk doesn't stall
+                // every concurrent snapshot/automation reader.
                 let transitions = {
                     let mut reg = lock_registry(&registry);
                     merge_mid_poll_hooks(&mut next, &reg, poll_start);
                     let t = detect_all_transitions(&reg, &next);
                     *reg = next;
                     crate::agent::ensure_handles(&mut reg);
-                    save_registry(&runtime.join("registry.json"), &reg);
+                    let snap = (*reg).clone();
+                    drop(reg);
+                    save_registry(&runtime.join("registry.json"), &snap);
                     t
                 };
                 let now = now_unix();
@@ -497,12 +499,17 @@ async fn poll_loop(
                 // polls; the in-flight guard means passes never overlap, so
                 // guardrails still can't double-fire (a tick that finds a
                 // pass running just skips — the running pass covers it).
+                //
+                // The guard resets on Drop, so a task that gets cancelled
+                // (runtime shutdown, panic) clears the flag and the next
+                // tick can run automation again instead of silently never
+                // firing for the rest of the daemon's life.
                 if !automation_busy.swap(true, Ordering::SeqCst) {
                     let reg = Arc::clone(&registry);
                     let busy = Arc::clone(&automation_busy);
                     tokio::spawn(async move {
+                        let _guard = AutomationGuard(busy);
                         run_automation(&reg).await;
-                        busy.store(false, Ordering::SeqCst);
                     });
                 }
             }
@@ -682,6 +689,16 @@ fn note_sticky(key: &'static str, msg: Option<String>) {
 /// file warns once, a clean load re-arms.
 fn note_rules_error(err: Option<&anyhow::Error>) {
     note_sticky("automation", err.map(|e| format!("automation.toml: {e:#}")));
+}
+
+/// RAII handle that clears the automation in-flight flag on drop, so a
+/// cancelled or panicking task doesn't permanently disable rule firing.
+struct AutomationGuard(Arc<AtomicBool>);
+
+impl Drop for AutomationGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Evaluate automation rules against the current registry and carry out
