@@ -15,22 +15,63 @@ Install: `cargo install --path .`, then `terhub`.
 ## Use (TUI)
 
 - One-line session bar + one huge pane table (state, source, agent, dir, age, activity, summary). Recency sort by default, click any header to sort. Waiting/error rows show the prompt or error line in Summary.
-- Left-click jumps, right-click toggles the fullscreen preview, double-click a session attaches.
-- `n` new, `r` rename, `x` kill, `d` detach, `a` attend, `p` preview, `t` theme, `v` density, `s` settings, `o` sort, `f` filter, `space` mark, `u` unmark, `q` quit, `?` help. Up/Down move, Left/Right filter, Tab switches lists.
-- Keys + theme + density in `~/.config/terhub/config.toml` (auto-created). Themes: dark, light, dracula, nord, gruvbox, solarized.
+- Left-click jumps, right-click toggles the fullscreen preview, ctrl+click a session attaches (a plain left-click only selects, so a second action on the same row is always intentional).
+- `n` new, `r` rename, `x` kill, `d` detach, `a` attend, `p` preview, `t` theme, `v` density, `s` settings, `o` sort, `f` filter, `space` mark, `u` unmark, `b` bulk (mark / kill / attend), `w` spawn with profile, `z` pause/resume, `m` hosts, `h` hide quiet shells, `F5` refresh, `q` quit, `?` help. Up/Down move, Left/Right filter, Tab switches lists.
+- Keys + theme + density in `~/.config/terhub/config.toml` (auto-created). Themes: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai.
 
 ## CLI
 
 ```
+# Session / pane
 terhub list [--plain]
 terhub new <name> [--dir DIR] [--window NAME]
 terhub attach <name>
 terhub kill <name>
-terhub panes <session>
+terhub panes <session]
 terhub capture <pane> [--lines N]
 terhub focus <pane>
 terhub kill-pane <pane>
 terhub swap-pane <a> <b>
+terhub send <pane> <text> [--no-submit]
+terhub native list|focus|capture|send-text|launch
+
+# Daemon + agent awareness
+terhub daemon start|stop|status
+terhub status [--json]
+terhub hook --agent <name> --pane %1 --state waiting --summary "..."
+terhub register --agent <name> --pane %1 [--pid N] [--state <s>]
+terhub unregister --pane %1
+terhub hooks install|status|uninstall [claude|pi|all]
+terhub init [--dry-run]
+
+# Attention
+terhub attend [--cycle] [--list]
+terhub peek [--plain]
+terhub status-line [--pane %N]
+
+# History
+terhub stats [--since today] [--group-by day|agent|session]
+terhub report [--since week] [--json] [--markdown]
+terhub activity [--since 24h] [--kind agent|session|rule|human|all] [--json]
+terhub timeline [--since today] [--session S] [--agent A]
+terhub recap [--pane %N] [--limit N] [--since 24h]
+
+# Automation + MCP
+terhub automation list
+terhub automation test <name>
+terhub mcp          # stdio JSON-RPC server (status/capture/send/wait/attend)
+
+# Web dashboard
+terhub serve --port 8080   # loopback-only; --port 0 picks an ephemeral port
+
+# Fleet + zellij
+terhub host add <name> <ssh-target> [--mode observe|control] [--label L]
+terhub host list|doctor <name>|remove <name>|label <name> [L]
+terhub fleet status [--json]
+terhub fleet send <host> <pane> <text>
+terhub zellij list|attach <name>
+
+# Config
 terhub config --show|--path|--init|--check
 ```
 
