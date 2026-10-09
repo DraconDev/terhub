@@ -2739,19 +2739,57 @@ impl App {
     }
 
     /// Snap the displayed section + scroll to the selected item: the
-    /// sidebar follows the selection, and the content starts at the
-    /// section's header row.
+    /// sidebar follows the selection, and the scroll lands on the
+    /// section's first content row (the header itself lives in the
+    /// sidebar/title, not the content pane).
     fn snap_settings_to_selection(&mut self) {
         let items = self.settings_item_rows();
         let row = items.get(self.settings_selected).copied().unwrap_or(0);
         let sections = self.settings_sections();
         self.settings_section = self.settings_section_of_row(row);
-        let _ = sections;
-        self.settings_scroll =
-            Self::settings_section_header(&self.settings_sections(), self.settings_section);
+        self.settings_scroll = sections
+            .get(self.settings_section)
+            .and_then(|(_, rows)| rows.first())
+            .copied()
+            .unwrap_or(0);
     }
 
-    /// Jump to the neighbouring section (Left/Right, sidebar clicks).
+    /// Jump to a section (Left/Right, sidebar clicks): show it, select
+    /// its first item when it has one, snap scroll to its first content
+    /// row. Item-less sections (the tray-icon legend) keep the stored
+    /// selection and just show.
+    pub fn goto_settings_section(&mut self, sec: usize) {
+        let sections = self.settings_sections();
+        if sections.is_empty() {
+            return;
+        }
+        let next = sec.min(sections.len() - 1);
+        self.settings_section = next;
+        // First *selectable* row of the section (headers aren't).
+        let items = self.settings_item_rows();
+        if let Some(p) = sections[next]
+            .1
+            .iter()
+            .filter_map(|&r| items.iter().position(|&ir| ir == r))
+            .next()
+        {
+            self.settings_selected = p;
+        }
+        if let Some(&first) = sections[next].1.first() {
+            self.settings_scroll = first;
+        }
+    }
+
+    /// Jump to the neighbouring section, wrapping around.
+    pub fn move_settings_section(&mut self, dir: i32) {
+        let n = self.settings_sections().len();
+        if n == 0 {
+            return;
+        }
+        let cur = self.settings_section.min(n - 1);
+        self.goto_settings_section((cur as i32 + dir).rem_euclid(n as i32) as usize);
+    }
+
     pub fn open_settings(&mut self) {
         self.mode = Mode::Settings;
         self.settings_selected = 0;
