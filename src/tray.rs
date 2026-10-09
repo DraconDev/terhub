@@ -1309,7 +1309,7 @@ mod tests {
         // what makes an SVG silently invalid in the panel.
         for theme in crate::config::THEMES {
             let p = palette_for_theme(theme);
-            for field in [p.mark, p.alarm, p.live, p.muted] {
+            for field in [p.mark, p.alarm, p.live, p.done, p.wait, p.muted] {
                 assert!(
                     field.starts_with('#') && field.len() == 7,
                     "theme {theme} field {field:?} is not a 7-char hex"
