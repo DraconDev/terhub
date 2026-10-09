@@ -1398,6 +1398,19 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
             },
         );
     }
+    // Live style preview beside Theme/Density: a fixed options column
+    // plus a sample box rendered in the hovered theme + density, so an
+    // empty setup can still judge styles. Other sections keep the full
+    // width; narrow terminals skip the preview entirely.
+    let want_preview = matches!(sec_name, "Theme" | "Density");
+    let (opts, prev) = if want_preview && content.width >= 72 {
+        let parts = Layout::horizontal([Constraint::Length(38), Constraint::Min(0)])
+            .split(content);
+        (parts[0], parts[1])
+    } else {
+        (content, Rect::default())
+    };
+    let show_preview = prev.width > 0;
     let lines: Vec<Line> = sec_rows
         .iter()
         .skip(offset)
@@ -1446,7 +1459,20 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
         }})
         .collect();
     let shown = lines.len();
-    frame.render_widget(Paragraph::new(lines), content);
+    frame.render_widget(Paragraph::new(lines), opts);
+    if show_preview {
+        let (pv_theme, pv_comfy) = app.settings_preview_style();
+        let density = if pv_comfy { "comfortable" } else { "compact" };
+        let pblock = Block::bordered()
+            .title(Line::from(format!("preview: {pv_theme} · {density}")).style(pal.title))
+            .border_style(pal.border);
+        let pinner = pblock.inner(prev);
+        frame.render_widget(pblock, prev);
+        frame.render_widget(
+            Paragraph::new(settings_preview_lines(&pv_theme, pv_comfy)),
+            pinner,
+        );
+    }
     // Sidebar hit zones (one row each) for mouse section jumps.
     let side_hits: Vec<Rect> = sections
         .iter()
