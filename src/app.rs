@@ -2752,29 +2752,6 @@ impl App {
     }
 
     /// Jump to the neighbouring section (Left/Right, sidebar clicks).
-    /// Selects its first item when it has one; item-less sections
-    /// (the tray-icon legend) keep the stored selection and just show.
-    pub fn move_settings_section(&mut self, dir: i32) {
-        let sections = self.settings_sections();
-        if sections.is_empty() {
-            return;
-        }
-        let cur = self.settings_section.min(sections.len() - 1);
-        let next = (cur as i32 + dir).rem_euclid(sections.len() as i32) as usize;
-        self.settings_section = next;
-        // First *selectable* row of the section (headers aren't).
-        let items = self.settings_item_rows();
-        if let Some(p) = sections[next]
-            .1
-            .iter()
-            .filter_map(|&r| items.iter().position(|&ir| ir == r))
-            .next()
-        {
-            self.settings_selected = p;
-        }
-        self.settings_scroll = Self::settings_section_header(&sections, next);
-    }
-
     pub fn open_settings(&mut self) {
         self.mode = Mode::Settings;
         self.settings_selected = 0;
