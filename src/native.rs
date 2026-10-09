@@ -13,6 +13,7 @@
 //! Konsole exposes no tab-close over DBus, so native rows never offer kill.
 
 use anyhow::{Context, Result};
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Output, Stdio};
 
 pub const BACKENDS: &[&str] = &["konsole", "kitty", "wezterm"];
@@ -22,58 +23,80 @@ pub const BACKENDS: &[&str] = &["konsole", "kitty", "wezterm"];
 /// /dev/tty for a terminal reply that never comes).
 const NATIVE_CMD_TIMEOUT_SECS: u64 = 5;
 
+/// Hard cap on each pipe we drain. A chatty or malicious helper
+/// (e.g. a runaway `kitty @ get-text --extent all`) can otherwise
+/// balloon RSS without bound; we keep the first 1MB and throw the
+/// rest away. The pipe itself is still fully drained so the child
+/// never blocks on a full pipe.
+const PIPE_CAP_BYTES: usize = 1_000_000;
+
 /// Run `cmd` to completion, killing it past the timeout. Pipes drain on
 /// reader threads so a chatty child can't deadlock the wait; stdin is
-/// null so no child ever reads the terminal. Pipe collection itself is
-/// bounded (a slain child's orphaned grandchild holding a pipe open
-/// costs one lingering reader thread, never a hang).
-fn run_timed(mut cmd: Command, what: &str) -> Result<Output> {
+/// null so no child ever reads the terminal. Output is capped at
+/// [`PIPE_CAP_BYTES`] per pipe (the rest is discarded after a full
+/// drain, so a chatty helper can't balloon memory and a misbehaving
+/// one still gets reaped).
+fn run_timed(cmd: Command, what: &str) -> Result<Output> {
+    run_with_timeout(cmd, what, NATIVE_CMD_TIMEOUT_SECS)
+}
+
+/// Same as [`run_timed`] but with a caller-supplied timeout. Public so
+/// other modules (e.g. the tray's `focus_hub` xdotool calls) can bound
+/// helpers that would otherwise hang the dispatch path.
+pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Output> {
     use std::io::Read;
     use std::time::{Duration, Instant};
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = cmd.spawn().with_context(|| format!("spawn {what}"))?;
-    let (tx, rx) = std::sync::mpsc::channel();
-    // Two reader threads (stdout/stderr are distinct types, so no loop).
-    let out_tx = tx.clone();
+    // Two reader threads (stdout/stderr are distinct types, so no
+    // loop). Each drains its pipe to EOF so the child can keep
+    // writing without blocking on a full kernel buffer, then
+    // truncates what we keep to PIPE_CAP_BYTES.
     let mut out_pipe = child.stdout.take();
-    std::thread::spawn(move || {
+    let out_handle = std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(p) = out_pipe.as_mut() {
             let _ = p.read_to_end(&mut buf);
         }
-        let _ = out_tx.send((0u8, buf));
+        if buf.len() > PIPE_CAP_BYTES {
+            buf.truncate(PIPE_CAP_BYTES);
+        }
+        buf
     });
     let err_pipe = child.stderr.take();
-    std::thread::spawn(move || {
+    let err_handle = std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(mut p) = err_pipe {
             let _ = p.read_to_end(&mut buf);
         }
-        let _ = tx.send((1u8, buf));
+        if buf.len() > PIPE_CAP_BYTES {
+            buf.truncate(PIPE_CAP_BYTES);
+        }
+        buf
     });
-    let deadline = Instant::now() + Duration::from_secs(NATIVE_CMD_TIMEOUT_SECS);
+    let deadline = Instant::now() + Duration::from_secs(secs);
     let status = loop {
         match child.try_wait()? {
             Some(s) => break s,
             None if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                anyhow::bail!("{what} timed out after {NATIVE_CMD_TIMEOUT_SECS}s");
+                // Join the readers so a timed-out call doesn't leak a
+                // thread pair per call.
+                let _ = out_handle.join();
+                let _ = err_handle.join();
+                anyhow::bail!("{what} timed out after {secs}s");
             }
             None => std::thread::sleep(Duration::from_millis(10)),
         }
     };
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    for _ in 0..2 {
-        match rx.recv_timeout(Duration::from_secs(2)) {
-            Ok((0, buf)) => stdout = buf,
-            Ok((_, buf)) => stderr = buf,
-            Err(_) => break,
-        }
-    }
+    // On the happy path the readers will have finished by now
+    // (child exited → pipes closed → read_to_end returned). Join so
+    // a panic in a reader doesn't go silent.
+    let stdout = out_handle.join().unwrap_or_default();
+    let stderr = err_handle.join().unwrap_or_default();
     Ok(Output {
         status,
         stdout,
@@ -329,11 +352,38 @@ fn kwin_focus_script(pid: u32, title: &str) -> String {
     )
 }
 
+/// Write the KWin focus script to a fresh, attacker-unpredictable
+/// path under a dedicated 0700 directory in the system temp dir,
+/// then return the path so the caller can write the script body and
+/// hand it to KWin. The file is created with `O_EXCL` (no
+/// follow-symlink) and chmod 0600 so a local attacker who
+/// pre-creates the path cannot race a symlink in, and the script
+/// is unreadable to anyone but the calling user.
+fn kwin_temp_path(pid: u32) -> std::io::Result<std::path::PathBuf> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let dir = std::env::temp_dir().join("terhub-kwin");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = dir.join(format!("focus-{pid}-{nonce}.js"));
+    // create_new -> O_CREAT|O_EXCL: fails if the path already exists
+    // (the pre-create attack).
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(path)
+}
+
 /// Raise a window by PID through KWin scripting (Wayland has no
 /// xdotool). The script file is removed afterwards; non-Plasma
 /// compositors fail fast at loadScript.
 fn kwin_activate(pid: u32, title: &str) -> Result<()> {
-    let path = std::env::temp_dir().join(format!("terhub-kwin-{pid}.js"));
+    let path = kwin_temp_path(pid)?;
     std::fs::write(&path, kwin_focus_script(pid, title))?;
     let arg = path.to_string_lossy().to_string();
     let started = qdbus(
