@@ -6,6 +6,7 @@
 //! badge — the StatusNotifierItem spec has no field for one — so the
 //! numbers live in the tooltip instead.
 
+use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
