@@ -1157,7 +1157,7 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
                 // same fill the tray renders, then the state name in
                 // bold, then a one-line meaning. Theme-driven, so what
                 // you read here is what you see in the taskbar.
-                let mut spans = vec![
+                let spans = vec![
                     Span::raw("  "),
                     Span::styled(
                         format!("{triangle} "),
