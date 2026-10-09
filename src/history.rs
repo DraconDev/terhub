@@ -1020,7 +1020,7 @@ mod tests {
         // Prune quarantines the torn line (tag __corrupt__), keeps the
         // good one (t=100 within 90d of now=200+90*86400), and survives
         // a second prune.
-        let kept = prune(&path, 100 + 90 * 86400 + 1, 90);
+        let kept = prune(&path, 100 + 90 * 86400, 90);
         assert_eq!(kept, 1, "prune kept the good entry");
         let entries = read_entries(&path);
         assert_eq!(entries.iter().filter(|e| e.kind != "__corrupt__").count(), 1);
@@ -1028,10 +1028,10 @@ mod tests {
         let q = entries.iter().find(|e| e.kind == "__corrupt__").unwrap();
         assert!(q.summary.contains("summ"), "raw head preserved: {}", q.summary);
         // build_spans / stats skip __corrupt__.
-        let spans = build_spans(&entries, 100 + 90 * 86400 + 1);
+        let spans = build_spans(&entries, 100 + 90 * 86400);
         assert!(spans.is_empty(), "quarantines must not become spans");
         // A second prune keeps the quarantine (it doesn't re-drop it).
-        let _ = prune(&path, 100 + 90 * 86400 + 2, 90);
+        let _ = prune(&path, 100 + 90 * 86400 + 86400, 90);
         assert_eq!(corrupt_count(&path), 1, "quarantine survives a re-prune");
         let _ = std::fs::remove_dir_all(&dir);
     }
