@@ -96,13 +96,21 @@ impl TrayView {
 /// actually use. The mark carries the whole 24px grid instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrayPalette {
-    /// The everyday triangle: calm, and hub-open-but-busy.
+    /// The everyday triangle: calm — no hub open, no agents registered.
     mark: &'static str,
-    /// The "needs you" triangle. Themes contribute their own red/yellow
-    /// so the alarm reads natively on the panel.
+    /// The "needs you" triangle. Themes contribute their own red/pink so
+    /// the alarm reads natively on the panel.
     alarm: &'static str,
     /// The live triangle: a hub is open and agents are working.
     live: &'static str,
+    /// Live-idle: a hub is open and every agent has finished. A distinct
+    /// hue (not a dimmer live) so a glance separates "still working" from
+    /// "all done waiting".
+    done: &'static str,
+    /// Idle: no hub open, but agents are registered (waiting to be
+    /// picked up). A distinct hue from calm so a glance separates
+    /// "nothing's here" from "something's here, you haven't opened a hub".
+    wait: &'static str,
     /// Disconnected: deliberately theme-neutral grey, because "the
     /// daemon is gone" should look the same whichever theme is loaded.
     muted: &'static str,
@@ -110,61 +118,81 @@ struct TrayPalette {
 
 /// Look up a theme's tray palette. Unknown themes fall back to dracula;
 /// the TUI's palette() has the same fallback, so the icon and the panel
-/// stay in lockstep.
+/// stay in lockstep. Each of the six states gets its own distinct hue
+/// drawn from the theme's natural accent set — not a dimmed version of
+/// another state — so the legend reads at a glance.
 fn palette_for_theme(theme: &str) -> TrayPalette {
     match theme {
         "gruvbox" => TrayPalette {
             mark: "#fabd2f",
             alarm: "#fb4934",
             live: "#b8bb26",
+            done: "#d3869b",
+            wait: "#83a598",
             muted: "#7c6f64",
         },
         "dracula" => TrayPalette {
             mark: "#8be9fd",
             alarm: "#ff5555",
             live: "#50fa7b",
+            done: "#f1fa8c",
+            wait: "#bd93f9",
             muted: "#6272a4",
         },
         "nord" => TrayPalette {
             mark: "#88c0d0",
             alarm: "#bf616a",
             live: "#a3be8c",
+            done: "#ebcb8b",
+            wait: "#b48ead",
             muted: "#4c566a",
         },
         "solarized" => TrayPalette {
             mark: "#268bd2",
             alarm: "#dc322f",
             live: "#859900",
+            done: "#b58900",
+            wait: "#6c71c4",
             muted: "#586e75",
         },
         "tokyonight" => TrayPalette {
             mark: "#7dcfff",
             alarm: "#f7768e",
             live: "#9ece6a",
+            done: "#e0af68",
+            wait: "#bb9af7",
             muted: "#414868",
         },
         "catppuccin" => TrayPalette {
             mark: "#89b4fa",
             alarm: "#f38ba8",
             live: "#a6e3a1",
+            done: "#f9e2af",
+            wait: "#cba6f7",
             muted: "#585b70",
         },
         "onedark" => TrayPalette {
             mark: "#56b6c2",
             alarm: "#e06c75",
             live: "#98c379",
+            done: "#e5c07b",
+            wait: "#c678dd",
             muted: "#5c6370",
         },
         "monokai" => TrayPalette {
             mark: "#66d9ef",
             alarm: "#f92672",
             live: "#a6e22e",
+            done: "#e6db74",
+            wait: "#ae81ff",
             muted: "#75715e",
         },
         "light" => TrayPalette {
             mark: "#268bd2",
             alarm: "#dc322f",
             live: "#859900",
+            done: "#b58900",
+            wait: "#6c71c4",
             muted: "#93a1a1",
         },
         // `dark` and anything unknown fall here, matching dracula, the
@@ -173,6 +201,8 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
             mark: "#8be9fd",
             alarm: "#ff5555",
             live: "#50fa7b",
+            done: "#f1fa8c",
+            wait: "#bd93f9",
             muted: "#6272a4",
         },
     }
@@ -188,18 +218,19 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
 /// the corners, it does not change the silhouette.
 const TRIANGLE: &str = "M4.6 6.4 L19.4 6.4 L12 19.4 Z";
 
-/// State → (fill, opacity). The four facts the tray has to communicate
-/// are "nothing to do", "something needs you", "a hub is running", and
-/// "the daemon is gone"; the two idle variants reuse their colour at
-/// reduced strength rather than inventing a second hue per theme.
-fn state_paint(state: IconState, p: TrayPalette) -> (&'static str, &'static str) {
+/// State → fill colour. Each of the six states maps to its own slot in
+/// the palette so a glance separates them: live isn't a dimmer live-idle,
+/// calm isn't a brighter idle, and the alarm colour is never reused for
+/// anything that isn't asking for your input. See
+/// `every_state_renders_a_distinct_colour`.
+fn state_paint(state: IconState, p: TrayPalette) -> &'static str {
     match state {
-        IconState::Calm => (p.mark, "1"),
-        IconState::Idle => (p.mark, "0.45"),
-        IconState::Attention => (p.alarm, "1"),
-        IconState::Live => (p.live, "1"),
-        IconState::LiveIdle => (p.live, "0.45"),
-        IconState::Disconnected => (p.muted, "1"),
+        IconState::Calm => p.mark,
+        IconState::Idle => p.wait,
+        IconState::Attention => p.alarm,
+        IconState::Live => p.live,
+        IconState::LiveIdle => p.done,
+        IconState::Disconnected => p.muted,
     }
 }
 
@@ -218,10 +249,7 @@ pub struct IconLegendRow {
 /// exactly the colour the user sees in their panel.
 pub fn icon_legend(theme: &str) -> Vec<IconLegendRow> {
     let p = palette_for_theme(theme);
-    let colour = |s: IconState| -> &'static str {
-        let (c, _) = state_paint(s, p);
-        c
-    };
+    let colour = |s: IconState| -> &'static str { state_paint(s, p) };
     vec![
         IconLegendRow {
             state: IconState::Live,
@@ -262,18 +290,17 @@ pub fn icon_legend(theme: &str) -> Vec<IconLegendRow> {
     ]
 }
 
-/// Palette × state → SVG. The triangle is a constant path; colour and
-/// opacity are the only variables, so the rendered geometry is provably
-/// identical across themes and states (see
-/// `every_state_renders_the_same_shape`).
+/// Palette × state → SVG. The triangle is a constant path; only the
+/// fill changes (one distinct colour per state, no opacity tricks), so
+/// the rendered geometry is provably identical across themes and
+/// states (see `every_state_renders_the_same_shape`).
 fn render_svg(state: IconState, p: TrayPalette) -> String {
-    let (fill, opacity) = state_paint(state, p);
+    let fill = state_paint(state, p);
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\">\
-                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" opacity=\"{opacity}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
+                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
          </svg>",
         fill = fill,
-        opacity = opacity,
     )
 }
 
@@ -1289,7 +1316,7 @@ mod tests {
             // guarantees the only thing that varies is the palette.
             let strip_colors = |s: &str, p: TrayPalette| {
                 let mut s = s.to_string();
-                for c in [p.mark, p.alarm, p.live, p.muted] {
+                for c in [p.mark, p.alarm, p.live, p.done, p.wait, p.muted] {
                     s = s.replace(c, "X");
                 }
                 s
