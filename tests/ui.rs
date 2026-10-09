@@ -1003,6 +1003,38 @@ fn settings_popup_lists_styles() {
 }
 
 #[test]
+fn settings_theme_section_shows_live_preview_when_wide() {
+    let mut app = app_with_panes();
+    app.open_settings(); // Theme section, first item
+    let lines = render_lines(&mut app, 160, 30);
+    let text = lines.join("\n");
+    // Sample rows in the hovered theme (dark = first item).
+    assert!(text.contains("preview: dark"), "missing preview:\n{text}");
+    assert!(text.contains("turn started"), "missing sample row:\n{text}");
+    // Hovering dracula re-themes the preview without applying.
+    app.settings_selected = 2;
+    let lines = render_lines(&mut app, 160, 30);
+    let text = lines.join("\n");
+    assert!(text.contains("preview: dracula"), "preview did not follow hover:\n{text}");
+    assert_eq!(app.config.theme, AppConfig::default().theme, "hover applied the theme");
+}
+
+#[test]
+fn settings_preview_hides_when_narrow_or_elsewhere() {
+    let mut app = app_with_panes();
+    app.open_settings();
+    // Narrow terminal: no room, options take the full content.
+    let lines = render_lines(&mut app, 60, 30);
+    let text = lines.join("\n");
+    assert!(!text.contains("preview:"), "preview leaked into narrow layout:\n{text}");
+    // Toggles section at full width: no preview there either.
+    app.goto_settings_section(2);
+    let lines = render_lines(&mut app, 160, 30);
+    let text = lines.join("\n");
+    assert!(!text.contains("preview:"), "preview outside Theme/Density:\n{text}");
+}
+
+#[test]
 fn settings_popup_scrolls_when_short() {
     let mut app = app_with_panes();
     app.open_settings();
