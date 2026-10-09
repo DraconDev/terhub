@@ -562,6 +562,10 @@ type Shared = Arc<Mutex<TrayView>>;
 
 struct Tray {
     view: Shared,
+    /// Icon names (no extension) per state, versioned by the content
+    /// hash so a redesigned icon is a *new* name the panel has never
+    /// resolved and can't serve a stale pixmap of.
+    names: Shared<HashMap<IconState, String>>,
 }
 
 impl Tray {
@@ -573,6 +577,13 @@ impl Tray {
                 connected: false,
                 ..TrayView::default()
             })
+    }
+
+    fn read_names(&self) -> HashMap<IconState, String> {
+        self.names
+            .lock()
+            .map(|n| n.clone())
+            .unwrap_or_default()
     }
 
     /// Primary click: open the hub in a terminal. `TERMHUB_TERMINAL`
@@ -650,13 +661,32 @@ impl Tray {
 
     #[zbus(property)]
     fn icon_name(&self) -> String {
-        self.read().icon_name().to_string()
+        let state = self.read().icon_state();
+        self.read_names()
+            .get(&state)
+            .cloned()
+            .unwrap_or_else(|| {
+                ICON_STATES
+                    .iter()
+                    .find(|(s, _)| *s == state)
+                    .map(|(_, b)| b.to_string())
+                    .unwrap_or_default()
+            })
     }
 
     /// Shown by hosts that prefer an explicit attention glyph.
     #[zbus(property)]
     fn attention_icon_name(&self) -> String {
-        "terhub-attention".to_string()
+        self.read_names()
+            .get(&IconState::Attention)
+            .cloned()
+            .unwrap_or_else(|| {
+                ICON_STATES
+                    .iter()
+                    .find(|(s, _)| *s == IconState::Attention)
+                    .map(|(_, b)| b.to_string())
+                    .unwrap_or_default()
+            })
     }
 
     /// (icon, title, description) — the hover card.
@@ -729,7 +759,9 @@ pub fn run() -> anyhow::Result<()> {
     // TUI's load_config() owns the theme, so we go through it rather
     // than parsing the TOML ourselves.
     let theme = crate::config::load_config(None).theme;
-    install_icons(&theme)?;
+    let names: Shared = Arc::new(Mutex::new(
+        install_icons(&theme).map_err(anyhow::Error::from)?,
+    ));
     refresh_icon_cache();
     let mut last_theme = theme;
     let conn = zbus::blocking::Connection::session()?;
@@ -737,6 +769,7 @@ pub fn run() -> anyhow::Result<()> {
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
     let tray = Tray {
         view: Arc::clone(&view),
+        names: Arc::clone(&names),
     };
     conn.request_name(unique.as_str())?;
     // Export before registering: the watcher introspects the name as
@@ -759,15 +792,19 @@ pub fn run() -> anyhow::Result<()> {
         // SVG actually changed.)
         let active = crate::config::load_config(None).theme;
         if active != last_theme {
-            if let Err(e) = install_icons(&active) {
-                eprintln!("terhub: re-themed icon install failed: {e}");
-            } else {
-                // The cache hold at startup is what makes the FIRST
-                // install visible; skip it here and Plasma keeps rastering
-                // the previous palette's PNG forever (icons on disk change,
-                // panel does not).
-                refresh_icon_cache();
+            match install_icons(&active) {
+                Ok(new_names) => {
+                    if let Ok(mut n) = names.lock() {
+                        *n = new_names;
+                    }
+                }
+                Err(e) => eprintln!("terhub: re-themed icon install failed: {e}"),
             }
+            // The cache hold at startup is what makes the FIRST
+            // install visible; skip it here and Plasma keeps rastering
+            // the previous palette's PNG forever (icons on disk change,
+            // panel does not).
+            refresh_icon_cache();
             last_theme = active;
         }
         let mut next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
