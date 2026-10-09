@@ -2659,9 +2659,12 @@ impl App {
         rows.push(SettingRow::Header("Filters"));
         rows.push(SettingRow::Item {
             label: if self.exclude.is_empty() {
-                "standing filter: (none) — Enter to edit".to_string()
+                "standing filter (excludes): (none) — Enter to edit".to_string()
             } else {
-                format!("standing filter: {} — Enter to edit", self.exclude)
+                format!(
+                    "standing filter (excludes): {} — Enter to edit",
+                    self.exclude
+                )
             },
             active: !self.exclude.is_empty(),
             kind: SettingKind::EditStandingFilter,
