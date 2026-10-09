@@ -275,7 +275,7 @@ impl SortKey {
     }
 
     /// Parse a config-file name (case-insensitive); `None` means unknown.
-    pub fn from_str(s: &str) -> Option<SortKey> {
+    fn parse_name(s: &str) -> Option<SortKey> {
         Some(match s.to_lowercase().as_str() {
             "pane" => SortKey::Pane,
             "session" => SortKey::Session,
@@ -5697,7 +5697,6 @@ mod tests {
 
     #[test]
     fn sort_key_change_persists_view() {
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         // ScratchConfig's guard serializes us against every other
         // env-mutating test (a concurrent TERHUB_CONFIG setter would
         // hijack config_path()); no second lock — std mutexes deadlock
