@@ -5315,6 +5315,142 @@ mod tests {
     }
 
     #[test]
+    fn bang_prefix_excludes_matches() {
+        // `!zsh` hides every row whose columns mention zsh — the
+        // standing-exclusion shape (always-on quiet-shell hiding).
+        use crate::agent::AgentState;
+        let mut app = app_with_panes(); // %1 nvim, %2 bash
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "claude", AgentState::Waiting, 60),
+        );
+        app.filter = "!bash".to_string();
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%1"]);
+        app.filter = "!claude".to_string();
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%2"]);
+        app.filter = "!zzz-no-match".to_string();
+        app.refresh_filtered();
+        assert_eq!(app.filtered.len(), 2);
+        // Case-insensitive like the positive match, and a lone `!`
+        // matches everything (never a foot-gun empty table).
+        app.filter = "!BASH".to_string();
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%1"]);
+        app.filter = "!".to_string();
+        app.refresh_filtered();
+        assert_eq!(app.filtered.len(), 2);
+    }
+
+    #[test]
+    fn typing_unbound_key_opens_filter_seeded() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = app_with(&["a"]);
+        let tmux = Tmux::new().unwrap();
+        // `/` is unbound: opens the filter with `/` already typed.
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
+            &tmux,
+        );
+        assert_eq!(app.mode, Mode::PromptFilter);
+        assert_eq!(app.input, "/");
+        // A query over no match narrows to nothing live.
+        for c in "zzz".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+        }
+        assert!(app.filtered.is_empty());
+    }
+
+    #[test]
+    fn typing_unbound_key_in_panes_focus_filters() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        let tmux = Tmux::new().unwrap();
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('.'), KeyModifiers::NONE),
+            &tmux,
+        );
+        assert_eq!(app.mode, Mode::PromptFilter);
+        assert_eq!(app.input, ".");
+    }
+
+    #[test]
+    fn bound_key_still_wins_over_typing() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        // `q` quits; it must never detour into the filter prompt.
+        let ev = app.on_key(
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
+            &tmux,
+        );
+        assert!(matches!(ev, Some(AppEvent::Quit)));
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn ctrl_chord_never_starts_filter() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = app_with(&["a"]);
+        let tmux = Tmux::new().unwrap();
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL),
+            &tmux,
+        );
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn filter_seeds_from_config_at_startup() {
+        // A persisted `!zsh` applies on the first refresh, no typing.
+        let mut cfg = AppConfig::default();
+        cfg.filter = "!bash".to_string();
+        let mut app = App::new(cfg);
+        app.panes = app_with_panes().panes;
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%1"]);
+    }
+
+    #[test]
+    fn enter_in_filter_persists_query_to_config() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        // SAFETY: test-only env mutation; the lib suite has no other
+        // reader of TERHUB_CONFIG (integration suites are separate
+        // processes), and the previous value is restored below.
+        let saved = std::env::var("TERHUB_CONFIG").ok();
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("filter-persist.toml");
+        std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
+        unsafe {
+            std::env::set_var("TERHUB_CONFIG", &path);
+        }
+        let mut app = app_with(&["a"]);
+        let tmux = Tmux::new().unwrap();
+        app.open_filter();
+        for c in "!zsh".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
+        assert_eq!(app.filter, "!zsh");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("filter = \"!zsh\""), "{text}");
+        // And the saved query reloads through the normal loader.
+        let (cfg, _) = crate::config::load_config_report(Some(path.clone()));
+        assert_eq!(cfg.filter, "!zsh");
+        unsafe {
+            match saved {
+                Some(v) => std::env::set_var("TERHUB_CONFIG", v),
+                None => std::env::remove_var("TERHUB_CONFIG"),
+            }
+        }
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
     fn filter_prompt_live_enter_esc() {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
