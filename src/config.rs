@@ -1009,7 +1009,7 @@ fn persist_ui_settings_to(
 /// the same directory, fsync, rename. A crash mid-write leaves the
 /// original file intact (and the tmp is orphaned in the same dir; a
 /// future init/cleanup can prune it).
-pub(crate) fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
     let parent = path.parent().ok_or_else(|| std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
