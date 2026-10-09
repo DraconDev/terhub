@@ -2153,9 +2153,10 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                let q = normalize_exclude(&self.input.trim().to_string());
+                let q = self.input.trim().to_string();
                 if self.editing_standing {
-                    self.exclude = q;
+                    // Standing is exclusion-only: `zsh` saves as `!zsh`.
+                    self.exclude = normalize_exclude(&q);
                     self.persist_filter();
                     self.editing_standing = false;
                     self.cancel_modal();
