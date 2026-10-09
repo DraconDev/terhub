@@ -6,7 +6,9 @@
 //! badge — the StatusNotifierItem spec has no field for one — so the
 //! numbers live in the tooltip instead.
 
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -497,31 +499,34 @@ pub fn focus_hub(s: &HubSession) -> bool {
         return true;
     }
     // Not in tmux (or the jump failed): raise the terminal window that
-    // owns the TTY.
+    // owns the TTY. Each xdotool call is bounded (2s) so a wedged
+    // xdotool cannot freeze the tray dispatch path (DBus property
+    // reads/updates would otherwise stall indefinitely).
     if let Some(tty) = &s.tty
         && !tty.is_empty()
     {
-        let ok = std::process::Command::new("xdotool")
-            .args(["search", "--tty", tty])
-            .output()
-            .map(|o| {
-                let ids: Vec<String> = String::from_utf8_lossy(&o.stdout)
+        let mut search = std::process::Command::new("xdotool");
+        search.args(["search", "--tty", tty]).stdin(Stdio::null());
+        let ids: Vec<String> =
+            match crate::native::run_with_timeout(search, "xdotool search", 2) {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
                     .lines()
                     .map(str::trim)
                     .filter(|l| !l.is_empty())
                     .map(str::to_string)
-                    .collect();
-                ids.iter().any(|id| {
-                    std::process::Command::new("xdotool")
-                        .args(["windowactivate", "--sync", id])
-                        .status()
-                        .map(|s| s.success())
-                        .unwrap_or(false)
-                })
-            })
-            .unwrap_or(false);
-        if ok {
-            return true;
+                    .collect(),
+                _ => Vec::new(),
+            };
+        for id in &ids {
+            let mut act = std::process::Command::new("xdotool");
+            act.args(["windowactivate", "--sync", id])
+                .stdin(Stdio::null());
+            if let Ok(o) =
+                crate::native::run_with_timeout(act, "xdotool windowactivate", 2)
+                && o.status.success()
+            {
+                return true;
+            }
         }
     }
     false
@@ -581,11 +586,20 @@ impl Tray {
     }
 }
 
+/// Resolve a name on `PATH` to the first executable file. Mirrors
+/// the `is_file` check that `which(1)` uses, but additionally
+/// requires at least one executable bit set so a stray non-executable
+/// file (a README named `terhub`, a build artefact) isn't picked
+/// and silently fails to spawn.
 fn which(bin: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)
         .map(|d| d.join(bin))
-        .find(|p| p.is_file())
+        .find(|p| {
+            p.metadata()
+                .map(|m| m.is_file() && (m.mode() & 0o111) != 0)
+                .unwrap_or(false)
+        })
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierItem")]

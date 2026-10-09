@@ -280,24 +280,34 @@ pub fn snapshot_rows(
 }
 
 /// Styled scrollback from a remote pane (the preview path for remote rows).
+///
+/// One remote shell command string, not an argv vector: ssh joins its
+/// post-`--` arguments with spaces and runs them via the remote
+/// shell, so the pane id (which can come from an untrusted remote
+/// `status --json` snapshot, or from the user) must be single-quoted
+/// to keep `;` / `` ` `` / `$()` from executing remotely.
 pub fn remote_capture(target: &str, pane: &str, lines: u32) -> Result<String> {
-    let start = format!("-{lines}");
-    ssh_run(
-        target,
-        &["tmux", "capture-pane", "-p", "-e", "-t", pane, "-S", &start],
-        10,
-    )
+    let cmd = format!(
+        "tmux capture-pane -p -e -t {} -S -{lines}",
+        sh_quote(pane)
+    );
+    ssh_run(target, &[&cmd], 10)
 }
 
 /// argv for an interactive remote attach: `-t` for the tty, `--` so a
 /// dash-leading target can't become an ssh flag. No BatchMode — auth
 /// may legitimately prompt. No session means the remote most-recent.
+///
+/// The remote command is built as a single shell-quoted string so
+/// the session name (which can come from `fleet list` over a
+/// compromised remote, or the CLI) cannot inject into the remote
+/// shell.
 pub fn attach_remote_argv(target: &str, session: Option<&str>) -> Vec<String> {
-    let mut argv = vec!["-t", "--", target, "tmux", "attach-session"];
-    if let Some(s) = session {
-        argv.extend(["-t", s]);
-    }
-    argv.into_iter().map(str::to_string).collect()
+    let remote = match session {
+        Some(s) => format!("tmux attach-session -t {}", sh_quote(s)),
+        None => "tmux attach-session".to_string(),
+    };
+    vec!["-t".to_string(), "--".to_string(), target.to_string(), remote]
 }
 
 /// Replace this process with `ssh -t` into the remote session (the TUI
