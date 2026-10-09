@@ -199,10 +199,7 @@ fn daemon_hook_snapshot_expire_shutdown() {
         tmux.kill_session(&name).unwrap();
     }
     tmux.new_session(&name, None, None).unwrap();
-    std::process::Command::new("tmux")
-        .args(["split-window", "-t", &name])
-        .status()
-        .unwrap();
+    tmux.split_window(&name).unwrap();
     let mut panes = tmux.list_panes(&name).unwrap();
     assert_eq!(panes.len(), 2);
     let pane_b = panes.pop().unwrap().id;

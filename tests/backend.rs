@@ -42,20 +42,8 @@ fn pane_discovery_capture_and_kill() {
     }
     tmux.new_session(&name, None, None).unwrap();
     // window 0: split into 2 panes; window 1: single pane.
-    assert!(
-        Command::new("tmux")
-            .args(["split-window", "-t", &name])
-            .status()
-            .unwrap()
-            .success()
-    );
-    assert!(
-        Command::new("tmux")
-            .args(["new-window", "-t", &name])
-            .status()
-            .unwrap()
-            .success()
-    );
+    tmux.split_window(&name).unwrap();
+    tmux.new_window(&name, "second", None, None).unwrap();
     let panes = tmux.list_panes(&name).unwrap();
     assert_eq!(panes.len(), 3, "panes: {panes:?}");
     let windows: std::collections::HashSet<&str> =
@@ -108,13 +96,7 @@ fn swap_panes_flips_positions() {
         tmux.kill_session(&name).unwrap();
     }
     tmux.new_session(&name, None, None).unwrap();
-    assert!(
-        Command::new("tmux")
-            .args(["split-window", "-t", &name])
-            .status()
-            .unwrap()
-            .success()
-    );
+    tmux.split_window(&name).unwrap();
     let before = tmux.list_panes(&name).unwrap();
     assert_eq!(before.len(), 2);
     let (id0, id1) = (before[0].id.clone(), before[1].id.clone());
