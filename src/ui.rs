@@ -1251,54 +1251,115 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
 fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) -> Rect {
     use crate::app::SettingRow;
     let rows = app.settings_rows();
-    // Selected item's row, for scroll-into-view.
+    let sections = app.settings_sections();
+    let sec = app.settings_section.min(sections.len().saturating_sub(1));
+    let (sec_name, sec_rows) = sections
+        .get(sec)
+        .map(|(n, r)| (*n, r.clone()))
+        .unwrap_or(("", Vec::new()));
+    // Selected item's global row, for scroll-into-view (only when the
+    // selection lives in the displayed section).
     let mut ordinal = 0;
     let mut sel_row = 0;
+    let mut sel_here = false;
     for (i, r) in rows.iter().enumerate() {
         if matches!(r, SettingRow::Item { .. }) {
             if ordinal == app.settings_selected {
                 sel_row = i;
+                sel_here = sec_rows.contains(&i);
             }
             ordinal += 1;
         }
     }
-    let popup = centered(
-        area,
-        48,
-        ((rows.len() + 4)
-            .min(area.height.saturating_sub(2) as usize)
-            .max(6)) as u16,
-    );
-    let visible = popup.height.saturating_sub(2) as usize;
-    if sel_row < app.settings_scroll {
-        app.settings_scroll = sel_row;
-    } else if visible > 0 && sel_row >= app.settings_scroll + visible {
-        app.settings_scroll = sel_row + 1 - visible;
+    // Content window into this section's rows: the scroll is a global
+    // row; the offset inside the section is what the pane shows.
+    let sec_start = sec_rows.first().copied().unwrap_or(0);
+    // Full-page layout: sidebar for sections, rest for content.
+    let side_w: u16 = sections
+        .iter()
+        .map(|(n, _)| n.chars().count() as u16)
+        .max()
+        .unwrap_or(8)
+        + 4;
+    let cols = Layout::horizontal([Constraint::Length(side_w), Constraint::Min(0)])
+        .split(area);
+    let visible = cols[1].height.saturating_sub(2) as usize;
+    let mut offset = app.settings_scroll.saturating_sub(sec_start);
+    if sel_here {
+        let pos = sel_row.saturating_sub(sec_start);
+        if pos < offset {
+            offset = pos;
+        } else if visible > 0 && pos >= offset + visible {
+            offset = pos + 1 - visible;
+        }
+        app.settings_scroll = sec_start + offset;
     }
-    let max = rows.len().saturating_sub(visible);
-    app.settings_scroll = app.settings_scroll.min(max);
+    let max_off = sec_rows.len().saturating_sub(visible);
+    offset = offset.min(max_off);
 
-    let mut title = String::from(" settings — enter apply · esc close ");
-    if app.settings_scroll > 0 {
+    let mut title = format!(
+        " settings — {sec_name} — enter apply · esc close · ←/→ section "
+    );
+    if offset > 0 {
         title.push('▲');
     }
-    if app.settings_scroll + visible < rows.len() {
+    if offset + visible < sec_rows.len() {
         title.push('▼');
     }
-    frame.render_widget(Clear, popup);
+    frame.render_widget(Clear, area);
     let block = Block::bordered()
         .title(Line::from(title).style(pal.title))
         .border_style(pal.focus);
-    let inner = block.inner(popup);
-    frame.render_widget(block, popup);
-
-    let lines: Vec<Line> = rows
+    frame.render_widget(block, area);
+    let inner = block.inner(area);
+    // Sidebar: every section, active marked. Content starts right of it.
+    let side = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: side_w.saturating_sub(1),
+        height: inner.height,
+    };
+    let content = Rect {
+        x: inner.x + side_w,
+        y: inner.y,
+        width: inner.width.saturating_sub(side_w),
+        height: inner.height,
+    };
+    let side_lines: Vec<Line> = sections
         .iter()
         .enumerate()
-        .skip(app.settings_scroll)
+        .map(|(i, (name, _))| {
+            if i == sec {
+                Line::from(vec![
+                    Span::styled("› ", pal.focus),
+                    Span::styled((*name).to_string(), pal.focus),
+                ])
+            } else {
+                Line::from(vec![Span::styled(format!("  {name}"), pal.dim)])
+            }
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(side_lines), side);
+    // Divider between sidebar and content.
+    for y in inner.y..inner.y + inner.height {
+        frame.render_widget(
+            Paragraph::new(Span::styled("│", pal.border)),
+            Rect {
+                x: inner.x + side_w - 1,
+                y,
+                width: 1,
+                height: 1,
+            },
+        );
+    }
+    let lines: Vec<Line> = sec_rows
+        .iter()
+        .skip(offset)
         .take(visible)
-        .map(|(i, r)| match r {
-            SettingRow::Header(name) => Line::from(Span::styled(format!(" {name}"), pal.header)),
+        .map(|&i| {
+            let r = &rows[i];
+            match r {
+                SettingRow::Header(name) => Line::from(Span::styled(format!(" {name}"), pal.header)),
             SettingRow::Item { label, active, .. } => {
                 let sel = i == sel_row;
                 let mut spans = vec![Span::styled(
