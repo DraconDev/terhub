@@ -767,6 +767,7 @@ impl Default for UiSection {
             density: default_density(),
             highlight_attached: true,
             mru_tabs: false,
+            filter: String::new(),
             unknown: BTreeMap::new(),
         }
     }
