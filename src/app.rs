@@ -275,7 +275,7 @@ impl SortKey {
     }
 
     /// Parse a config-file name (case-insensitive); `None` means unknown.
-    fn parse_name(s: &str) -> Option<SortKey> {
+    pub fn parse_name(s: &str) -> Option<SortKey> {
         Some(match s.to_lowercase().as_str() {
             "pane" => SortKey::Pane,
             "session" => SortKey::Session,
@@ -633,7 +633,7 @@ impl App {
         // Seeded from the config file: the standing view (exclusion,
         // sort, direction, shell hiding) is exactly what was saved.
         // Unknown sort names were already warned + defaulted at load.
-        let sort_key = SortKey::from_str(&config.sort).unwrap_or(SortKey::Idle);
+        let sort_key = SortKey::parse_name(&config.sort).unwrap_or(SortKey::Idle);
         let sort_asc = !config.sort_desc;
         let hide_quiet_shells = config.hide_shells;
         App {

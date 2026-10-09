@@ -92,7 +92,7 @@ pub struct AppConfig {
     /// everything. Persisted so a standing exclusion (e.g. `!zsh`)
     /// survives restarts; Enter in the filter prompt saves it.
     pub filter: String,
-    /// Table sort column name (`Idle` default; see `SortKey::from_str`).
+    /// Table sort column name (`Idle` default; see `SortKey::parse_name`).
     pub sort: String,
     /// Sort descending (`true` default = newest/longest first).
     pub sort_desc: bool,
@@ -1311,7 +1311,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     cfg.mru_tabs = file.ui.mru_tabs;
     cfg.filter = file.ui.filter;
     cfg.sort = file.ui.sort;
-    if crate::app::SortKey::from_str(&cfg.sort).is_none() {
+    if crate::app::SortKey::parse_name(&cfg.sort).is_none() {
         problems.push(format!(
             "unknown sort '{}' (known: Pane, Session, Window, Cmd, Dir, Agent, Handle, State, Src, For, Turn, Idle, Summary)",
             cfg.sort
