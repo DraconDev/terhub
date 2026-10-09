@@ -5667,7 +5667,7 @@ mod tests {
             hide_shells: true,
             ..AppConfig::default()
         };
-        let mut app = App::new(cfg);
+        let app = App::new(cfg);
         assert_eq!(app.exclude, "!bash");
         assert_eq!(app.sort_key, SortKey::State);
         assert!(app.sort_asc);
