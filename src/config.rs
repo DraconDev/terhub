@@ -2045,7 +2045,7 @@ mod tests {
             "# terhub config: keys are single-key bindings, theme is dark or light.\n# my fancy config\n[ui]\ntheme = \"dark\"\n# density = \"compact\"\n\n[keys]\nnew = \"c\"\n",
         )
         .unwrap();
-        persist_ui_settings_to(&path, "nord", "compact", false, false, false).unwrap();
+        persist_ui_settings_to(&path, "nord", "compact", false, false, false, "!zsh").unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my fancy config"), "{text}");
         assert!(
