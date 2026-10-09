@@ -1407,6 +1407,22 @@ mod tests {
     }
 
     #[test]
+    fn pane_cell_id_keeps_tmux_and_strips_namespaces() {
+        // tmux ids pass through untouched.
+        assert_eq!(pane_cell_id("%12"), "%12");
+        // Native ids drop the backend the Session column already names;
+        // a 6-wide column would otherwise clip all four Konsole tabs to
+        // the same "konsol".
+        assert_eq!(pane_cell_id("konsole:1535082:6"), "1535082:6");
+        assert_eq!(pane_cell_id("kitty:7"), "7");
+        assert_eq!(pane_cell_id("wezterm:0"), "0");
+        // Fleet rows: host is in the Session column, keep the pane.
+        assert_eq!(pane_cell_id("dev:%1"), "%1");
+        // Anything unrecognised shows as-is rather than mangled.
+        assert_eq!(pane_cell_id("odd"), "odd");
+    }
+
+    #[test]
     fn agent_text_style_groups_names_and_honors_overrides() {
         use crate::config::AppConfig;
         let cfg = AppConfig::default();
