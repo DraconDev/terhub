@@ -568,7 +568,7 @@ mod tests {
         let argv = attach_remote_argv("dev.example", None);
         assert_eq!(
             argv,
-            vec!["-t", "--", "dev.example", "tmux", "attach-session"]
+            vec!["-t", "--", "dev.example", "tmux attach-session"]
         );
     }
 
