@@ -378,15 +378,53 @@ pub fn icon_legend(theme: &str) -> Vec<IconLegendRow> {
 /// Palette × state → SVG. The triangle is a constant path; only the
 /// fill changes (one distinct colour per state, no opacity tricks), so
 /// the rendered geometry is provably identical across themes and
-/// states (see `every_state_renders_the_same_shape`).
-fn render_svg(state: IconState, p: TrayPalette) -> String {
+/// states (see `every_state_renders_the_same_shape`). An optional
+/// badge count is drawn centred in the triangle in a dark neutral —
+/// the SNI spec has no badge field, so the number has to live in the
+/// image itself. Two digits fit the face at panel sizes; anything
+/// larger renders as `99+`.
+fn render_svg(state: IconState, p: TrayPalette, badge: Option<&str>) -> String {
     let fill = state_paint(state, p);
+    let mut badge_text = String::new();
+    if let Some(n) = badge {
+        // Two codepoints at 9px sit inside the face; a third (`99+`)
+        // needs a step down to stay legible.
+        let size = if n.chars().count() > 2 { 7 } else { 9 };
+        badge_text = format!(
+            "<text x=\"12\" y=\"16.5\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"bold\" font-size=\"{size}\" fill=\"#1a1b26\">{n}</text>"
+        );
+    }
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\">\
-                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>\
+                  <path d=\"{TRIANGLE}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>{badge_text}\
          </svg>",
         fill = fill,
     )
+}
+
+/// Format a count for the badge: plain below 100, `99+` above (three
+/// glyphs are all a 24px face can carry).
+pub fn badge_text(count: usize) -> Option<String> {
+    if count == 0 {
+        None
+    } else if count > 99 {
+        Some("99+".to_string())
+    } else {
+        Some(count.to_string())
+    }
+}
+
+/// Which number the badge shows for a view: agents waiting on input
+/// win (they pair with the red attention icon); otherwise the idle
+/// count; nothing when the tray is quiet. Disconnected has no counts.
+pub fn badge_for_view(needy: usize, idle: usize, connected: bool) -> Option<String> {
+    if !connected {
+        return None;
+    }
+    if needy > 0 {
+        return badge_text(needy);
+    }
+    badge_text(idle)
 }
 
 /// Install the tray SVGs into the user's icon theme, themed to the
