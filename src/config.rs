@@ -1121,6 +1121,39 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
         }
         cfg.keys.insert(k, v);
     }
+    // Unknown fields in the typed sections are reported, not fatal: the
+    // rest of the file still applies. Names the field and its section so
+    // the fix is one line edit.
+    for (k, _) in &file.unknown {
+        problems.push(format!("ignored unknown field '{k}' (not a known section)"));
+    }
+    for (k, _) in &file.ui.unknown {
+        problems.push(format!("ignored unknown field '{k}' in [ui]"));
+    }
+    for (k, _) in &file.notifications.unknown {
+        problems.push(format!("ignored unknown field '{k}' in [notifications]"));
+    }
+    for (k, _) in &file.daemon.unknown {
+        problems.push(format!("ignored unknown field '{k}' in [daemon]"));
+    }
+    for (k, _) in &file.style.unknown {
+        problems.push(format!("ignored unknown field '{k}' in [style]"));
+    }
+    for c in &file.command {
+        for (k, _) in &c.unknown {
+            problems.push(format!("ignored unknown field '{k}' in [[command]]"));
+        }
+    }
+    for p in &file.profile {
+        for (k, _) in &p.unknown {
+            problems.push(format!("ignored unknown field '{k}' in [[profile]]"));
+        }
+    }
+    for t in &file.template {
+        for (k, _) in &t.unknown {
+            problems.push(format!("ignored unknown field '{k}' in [[template]]"));
+        }
+    }
     // Builtin values are validated like custom ones: a typo/f99 would
     // otherwise parse to KeySpec::None and silently deaden the action.
     // Bad values revert to their default (poll_secs precedent). An empty
