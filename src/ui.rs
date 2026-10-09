@@ -1,6 +1,6 @@
 //! ratatui rendering for the hub. `render` returns the screen areas occupied by
 //! the session rows and pane rows so the event loop can map mouse clicks.
-use crate::app::{App, Focus, Mode, SortKey};
+use crate::app::{is_quiet_shell, App, Focus, Mode, SortKey};
 use crate::tmux::Pane;
 use ansi_to_tui::IntoText;
 use ratatui::{
@@ -801,12 +801,16 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Some(r) if !r.handle.is_empty() => truncate(&r.handle, 14),
                 _ => "—".to_string(),
             };
-            // No daemon record: no agent, no agent-state. A shell is not
-            // "idle" the way a done agent is — it was never expected to
-            // work on its own — so plain panes stay blank here. (Activity
-            // still shows in Idle; only state is agent-only.)
+            // No daemon record: no agent, so no agent-reported state.
+            // Unclaimed panes that have been quiet past the dormancy
+            // threshold show as `idle` so the user can see dormancy
+            // without the daemon; panes with unknown or recent activity
+            // stay as the plain `—` (no agent, no judgement). The Agent
+            // and Src columns still read `—` so the row clearly has no
+            // agent — this is "dormant shell", not "finished agent".
             let (state, state_style) = match rec {
                 Some(r) => (r.state.label().to_string(), state_style(r.state, pal)),
+                None if is_quiet_shell(None, p.activity, now) => ("idle".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };
             let age = match rec {

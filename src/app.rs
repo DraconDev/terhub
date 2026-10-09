@@ -1100,16 +1100,22 @@ impl App {
             .count()
     }
 
-    /// Visible agents that finished or are sitting idle. Disjoint from
-    /// `visible_needy` (idle never needs attention), so the two counters
-    /// together answer "how much is running vs. how much is done".
+    /// Visible agents that finished, plus unclaimed panes quiet past
+    /// [`QUIET_SHELL_SECS`]. Disjoint from `visible_needy` (idle never
+    /// needs attention), so the two counters together answer "how much is
+    /// running vs. how much is done". Counting unclaimed-quiet panes too
+    /// means the `X idle` summary stays meaningful when the daemon is
+    /// down or an agent never registered — the user can still see how
+    /// much of the fleet is dormant.
     pub fn visible_idle(&self) -> usize {
+        let now = crate::agent::now_unix();
         self.filtered
             .iter()
             .filter(|p| {
-                self.agents
-                    .get(&p.id)
-                    .is_some_and(|a| a.state == crate::agent::AgentState::Idle)
+                match self.agents.get(&p.id) {
+                    Some(a) => a.state == crate::agent::AgentState::Idle,
+                    None => is_quiet_shell(None, p.activity, now),
+                }
             })
             .count()
     }
