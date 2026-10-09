@@ -1486,9 +1486,9 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
         .collect();
     (
         Rect {
-            x: content.x,
-            y: content.y,
-            width: content.width,
+            x: opts.x,
+            y: opts.y,
+            width: opts.width,
             height: shown as u16,
         },
         side_hits,
