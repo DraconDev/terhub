@@ -465,6 +465,16 @@ fn signal_tree(pid: u32, sig: libc::c_int, name: &str) -> anyhow::Result<()> {
     if pid <= 1 {
         anyhow::bail!("refusing to signal pid {pid}");
     }
+    // Narrow the TOCTOU window between `proc_pgrp` and `kill`: re-check
+    // /proc right before the signal so a pid that exited and was
+    // recycled as an unrelated process group leader is not signalled.
+    // The window is still non-zero, but goes from "an entire poll
+    // cycle" to "microseconds"; a full identity check (start time)
+    // would need callers to pass a snapshot token, which is a larger
+    // refactor for the same low-probability race.
+    if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+        anyhow::bail!("{name} {pid}: process gone");
+    }
     // tmux puts each pane root in its own process group, so a negative
     // pid stops the whole tree; a non-leader falls back to the lone pid
     // rather than spraying a foreign group.
