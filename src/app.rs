@@ -254,6 +254,45 @@ impl SortKey {
     fn default_asc(self) -> bool {
         !matches!(self, SortKey::For | SortKey::Turn | SortKey::Idle)
     }
+
+    /// Config-file name for this key (`Idle`, `Pane`, …).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SortKey::Pane => "Pane",
+            SortKey::Session => "Session",
+            SortKey::Window => "Window",
+            SortKey::Cmd => "Cmd",
+            SortKey::Dir => "Dir",
+            SortKey::Agent => "Agent",
+            SortKey::Handle => "Handle",
+            SortKey::State => "State",
+            SortKey::Src => "Src",
+            SortKey::For => "For",
+            SortKey::Turn => "Turn",
+            SortKey::Idle => "Idle",
+            SortKey::Summary => "Summary",
+        }
+    }
+
+    /// Parse a config-file name (case-insensitive); `None` means unknown.
+    pub fn from_str(s: &str) -> Option<SortKey> {
+        Some(match s.to_lowercase().as_str() {
+            "pane" => SortKey::Pane,
+            "session" => SortKey::Session,
+            "window" => SortKey::Window,
+            "cmd" => SortKey::Cmd,
+            "dir" => SortKey::Dir,
+            "agent" => SortKey::Agent,
+            "handle" => SortKey::Handle,
+            "state" => SortKey::State,
+            "src" => SortKey::Src,
+            "for" => SortKey::For,
+            "turn" => SortKey::Turn,
+            "idle" => SortKey::Idle,
+            "summary" => SortKey::Summary,
+            _ => return None,
+        })
+    }
 }
 
 /// `o` key cycle order: most useful sorts first.
