@@ -1472,7 +1472,7 @@ mod tests {
             IconState::LiveIdle,
             IconState::Disconnected,
         ] {
-            let svg = render_svg(state, palette_for_theme("dracula"), None);
+            let svg = render_svg(state, palette_for_theme("dracula"));
             assert_eq!(
                 svg.matches(TRIANGLE).count(),
                 1,
@@ -1533,9 +1533,9 @@ mod tests {
         // The alarm badge background must come from the palette, not
         // the old hard-coded red. Dracula's alarm is #ff5555, Nord's
         // alarm is #bf616a.
-        let drac = render_svg(IconState::Attention, palette_for_theme("dracula"), None);
+        let drac = render_svg(IconState::Attention, palette_for_theme("dracula"));
         assert!(drac.contains("#ff5555"), "dracula alarm missing: {drac}");
-        let nord = render_svg(IconState::Attention, palette_for_theme("nord"), None);
+        let nord = render_svg(IconState::Attention, palette_for_theme("nord"));
         assert!(nord.contains("#bf616a"), "nord alarm missing: {nord}");
     }
 }
