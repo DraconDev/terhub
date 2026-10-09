@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rule {
     pub name: String,
     #[serde(default = "default_true")]
@@ -55,6 +56,7 @@ fn default_cap() -> u32 {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct RuleFile {
     #[serde(default)]
     rule: Vec<Rule>,

@@ -149,14 +149,19 @@ fn parse_sessions(out: &str) -> Vec<Session> {
 /// Unwrap launcher wrappers (`systemd-inhibit`, `sudo`, …) to the payload
 /// program, so the Cmd column names what runs instead of what launched it.
 /// The /proc snapshot is skipped entirely when no pane reports a wrapper.
-fn label_commands(mut panes: Vec<Pane>) -> Vec<Pane> {
+fn label_commands(panes: Vec<Pane>) -> Vec<Pane> {
     if !panes
         .iter()
         .any(|p| p.pid != 0 && crate::proc::is_launcher_wrapper(&p.command))
     {
         return panes;
     }
-    let snap = crate::proc::Snapshot::capture();
+    label_commands_with(panes, &crate::proc::Snapshot::capture())
+}
+
+/// Same as [`label_commands`] but reuses a snapshot the caller already
+/// captured, so the daemon poll doesn't walk /proc twice per cycle.
+fn label_commands_with(mut panes: Vec<Pane>, snap: &crate::proc::Snapshot) -> Vec<Pane> {
     for p in &mut panes {
         p.command = snap.display_command(p.pid, &p.command);
     }
@@ -373,6 +378,18 @@ impl Tmux {
     pub fn list_all_panes(&self) -> Result<Vec<Pane>> {
         let out = self.run(&["list-panes", "-a", "-F", PANE_FORMAT])?;
         Ok(label_commands(parse_panes(&out)))
+    }
+
+    /// Like [`list_all_panes`] but reuses an existing /proc snapshot for
+    /// label resolution, so the daemon poll walks /proc once per cycle
+    /// instead of twice. The snapshot must be the same one the poll
+    /// will use to detect agents.
+    pub fn list_all_panes_with_snap(
+        &self,
+        snap: &crate::proc::Snapshot,
+    ) -> Result<Vec<Pane>> {
+        let out = self.run(&["list-panes", "-a", "-F", PANE_FORMAT])?;
+        Ok(label_commands_with(parse_panes(&out), snap))
     }
 
     /// Last `lines` of a pane's visible content (no escape sequences).

@@ -1174,12 +1174,14 @@ fn poll_sync_with(
     bool,
 ) {
     let now = now_unix();
-    let panes = match tmux.list_all_panes() {
+    // One process view shared by every pane: /proc is walked once per
+    // poll, and the snapshot is reused for label resolution so we don't
+    // walk it a second time inside list_all_panes.
+    let snap = crate::proc::Snapshot::capture();
+    let panes = match tmux.list_all_panes_with_snap(&snap) {
         Ok(p) => p,
         Err(_) => return outage_result(prev),
     };
-    // One process view shared by every pane: /proc is walked once per poll.
-    let snap = crate::proc::Snapshot::capture();
     let mut next = HashMap::new();
     for pane in &panes {
         let (old, stale) = split_prev(prev.get(&pane.id), now, tune.stale_secs);
