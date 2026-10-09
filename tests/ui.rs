@@ -991,7 +991,14 @@ fn settings_popup_lists_styles() {
     for t in ["dark", "dracula", "nord", "gruvbox", "solarized"] {
         assert!(text.contains(t), "missing theme {t}:\n{text}");
     }
-    assert!(text.contains("Density"), "missing section:\n{text}");
+    // Other sections live behind the sidebar, not on this page.
+    for s in ["Theme", "Density", "Toggles", "Filters", "Tray icons"] {
+        assert!(text.contains(s), "missing sidebar section {s}:\n{text}");
+    }
+    // ...but each is one jump away.
+    app.goto_settings_section(2); // Toggles
+    let lines = render_lines(&mut app, 120, 30);
+    let text = lines.join("\n");
     assert!(text.contains("notifications:"), "missing toggle:\n{text}");
 }
 
