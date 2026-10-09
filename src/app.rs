@@ -2754,7 +2754,32 @@ impl App {
             .unwrap_or(0);
     }
 
-    /// Jump to a section (Left/Right, sidebar clicks): show it, select
+    /// Theme + density the settings preview renders with: the hovered
+    /// option when standing on Theme/Density (browse = preview), else
+    /// the applied config. Lets an empty setup try styles against
+    /// sample rows instead of a blank table.
+    pub fn settings_preview_style(&self) -> (String, bool) {
+        use crate::config::{DENSITIES, THEMES};
+        let items = self.settings_item_rows();
+        let rows = self.settings_rows();
+        let mut theme = self.config.theme.clone();
+        let mut comfortable = !self.config.compact();
+        if let Some(&row) = items.get(self.settings_selected) {
+            if let Some(SettingRow::Item { kind, .. }) = rows.get(row) {
+                match kind {
+                    SettingKind::Theme(i) => {
+                        theme = THEMES.get(*i).unwrap_or(&theme.as_str()).to_string();
+                    }
+                    SettingKind::Density(i) => {
+                        comfortable = DENSITIES.get(*i).map(|d| *d == "comfortable").unwrap_or(comfortable);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        (theme, comfortable)
+    }
+
     /// its first item when it has one, snap scroll to its first content
     /// row. Item-less sections (the tray-icon legend) keep the stored
     /// selection and just show.
