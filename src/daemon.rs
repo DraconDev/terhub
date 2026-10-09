@@ -194,17 +194,36 @@ pub struct Server {
 
 /// Create the runtime dir owner-only (0700): it holds the control socket,
 /// pid file, and registry. umask-permissive creation would expose them.
+///
+/// Refuses a symlink at the runtime dir itself: a symlinked dir would
+/// have its *target* chmodded (and could redirect the socket/registry
+/// to an attacker-controlled path). Pre-existing directories are
+/// tightened to 0700 when we own them; non-directory entries and
+/// symlinks are an error.
 fn ensure_runtime_dir(path: &Path) -> Result<()> {
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(path)
-        .with_context(|| format!("create runtime dir {}", path.display()))?;
-    // Pre-existing dirs keep their old mode: tighten unconditionally.
-    let mut perms = std::fs::metadata(path)?.permissions();
-    perms.set_mode(0o700);
-    std::fs::set_permissions(path, perms)?;
-    Ok(())
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => {
+            anyhow::bail!("runtime dir {} is a symlink; refusing to use it", path.display());
+        }
+        Ok(m) if m.is_dir() => {
+            let mut perms = std::fs::metadata(path)?.permissions();
+            perms.set_mode(0o700);
+            std::fs::set_permissions(path, perms)?;
+            Ok(())
+        }
+        Ok(_) => {
+            anyhow::bail!("runtime dir {} exists but is not a directory", path.display())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(path)
+                .with_context(|| format!("create runtime dir {}", path.display()))?;
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 impl Server {
@@ -258,9 +277,19 @@ impl Server {
             }
             let accepted =
                 tokio::time::timeout(Duration::from_millis(500), listener.accept()).await;
-            let (stream, _) = match accepted {
-                Ok(Ok(s)) => s,
-                _ => continue,
+            let stream = match accepted {
+                Ok(Ok((s, _))) => s,
+                Ok(Err(e)) => {
+                    // A real accept error (EMFILE/ENFILE under fd
+                    // exhaustion, etc.) is not the same as a quiet
+                    // timeout. Log it and back off so we don't busy-spin
+                    // a whole core, then loop so the shutdown flag still
+                    // gets a chance to fire.
+                    eprintln!("terhubd: accept error: {e}");
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    continue;
+                }
+                Err(_) => continue, // timeout: loop to check shutdown
             };
             let reg = self.registry.clone();
             let runtime = self.runtime.clone();
@@ -1309,6 +1338,31 @@ fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
     out
 }
 
+/// Lock the registry, run the mutation, snapshot, drop the lock, then
+/// save. Keeping the disk write outside the lock means a hook burst
+/// serialises behind the in-memory mutation but never behind the
+/// filesystem — every other reader (snapshot, automation) keeps making
+/// progress while a save is in flight.
+fn mutate_and_save<F, R>(
+    registry: &Arc<Mutex<HashMap<String, AgentRecord>>>,
+    path: &Path,
+    f: F,
+) -> R
+where
+    F: FnOnce(&mut HashMap<String, AgentRecord>) -> R,
+{
+    let snapshot = {
+        let mut reg = lock_registry(registry);
+        let result = f(&mut reg);
+        let snap = (*reg).clone();
+        drop(reg);
+        (result, snap)
+    };
+    let (result, snap) = snapshot;
+    save_registry(path, &snap);
+    result
+}
+
 fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
     let agents: Vec<&AgentRecord> = registry.values().collect();
     let text = match serde_json::to_string_pretty(&agents) {
@@ -1319,7 +1373,15 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
         }
     };
     // Tmp + rename: a crash mid-write never leaves a half file behind.
-    let tmp = path.with_extension("json.tmp");
+    // The tmp name includes pid + nanos so two daemons pointed at the
+    // same runtime dir (or a leftover tmp from a prior run) interleave
+    // instead of clobbering each other.
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    let tmp = path.with_extension(format!("tmp.{pid}.{nonce}"));
     let result = std::fs::write(&tmp, &text).and_then(|()| std::fs::rename(&tmp, path));
     match result {
         Ok(()) => note_sticky("registry-save", None),
@@ -1341,12 +1403,18 @@ const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 /// Read one line, refusing payloads over `cap` bytes instead of growing
 /// toward OOM on a peer that never sends a newline.
 fn read_capped_line(reader: &mut impl BufRead, cap: usize) -> Result<String> {
-    let mut line = String::new();
-    std::io::Read::take(&mut *reader, (cap + 1) as u64).read_line(&mut line)?;
+    let mut line = Vec::new();
+    std::io::Read::take(&mut *reader, (cap + 1) as u64).read_until(b'\n', &mut line)?;
     if line.len() > cap {
         anyhow::bail!("line exceeds {cap} bytes");
     }
-    Ok(line)
+    if !line.ends_with(b"\n") {
+        // EOF without a newline within the cap: treat as a truncated/
+        // oversize request rather than returning a partial line that
+        // could happen to parse as valid JSON and get applied.
+        anyhow::bail!("truncated line (no newline within {cap} bytes)");
+    }
+    String::from_utf8(line).map_err(|e| anyhow::anyhow!("non-utf8 line: {e}"))
 }
 
 pub fn send_request(req: &Request, timeout: Duration) -> Result<Response> {
