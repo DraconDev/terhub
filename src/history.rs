@@ -199,21 +199,84 @@ pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Ve
 
 pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> usize {
     let cutoff = now.saturating_sub(keep_days * 86400);
-    let kept: Vec<Entry> = read_entries(path)
-        .into_iter()
-        .filter(|e| e.t >= cutoff)
-        .collect();
-    if let Ok(text) = kept
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(_) => return 0,
+    };
+    let mut kept: Vec<Entry> = Vec::new();
+    let mut quarantined: Vec<Entry> = Vec::new();
+    for line in text.lines() {
+        let l = line.trim();
+        if l.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Entry>(l) {
+            Ok(e) if e.kind == "__corrupt__" => {
+                // A prior quarantine: keep it (the user may still be
+                // working on recovering the data).
+                quarantined.push(e);
+            }
+            Ok(e) if e.t >= cutoff => kept.push(e),
+            Ok(_) => {} // expired, drop
+            Err(reason) => {
+                // Torn / unparseable line: tag it __corrupt__ and
+                // preserve the raw head + the parse error in `summary`
+                // so `history status` can show both. The tagged entry
+                // is a normal, parseable Entry, so future prunes and
+                // reads treat it like any other quarantined line; the
+                // query code (build_spans, stats, recent_prompts) all
+                // filter by `kind`, so quarantines never leak into
+                // reports.
+                quarantined.push(Entry {
+                    t: 0,
+                    kind: "__corrupt__".to_string(),
+                    pane: String::new(),
+                    agent: String::new(),
+                    from: None,
+                    to: None,
+                    session: String::new(),
+                    window: String::new(),
+                    summary: corrupt_summary(l, &reason),
+                    event: None,
+                });
+            }
+        }
+    }
+    let mut all = kept;
+    all.extend(quarantined);
+    let count = all.iter().filter(|e| e.kind != "__corrupt__").count();
+    if let Ok(text) = all
         .iter()
         .map(serde_json::to_string)
         .collect::<Result<Vec<_>, _>>()
     {
-        let _ = std::fs::write(
-            path,
-            text.join("\n") + if text.is_empty() { "" } else { "\n" },
-        );
+        let body = text.join("\n") + if text.is_empty() { "" } else { "\n" };
+        // Atomic write so a crash mid-prune can't truncate the ledger.
+        let _ = crate::config::atomic_write(path, &body);
     }
-    kept.len()
+    count
+}
+
+fn corrupt_summary(raw: &str, reason: &serde_json::Error) -> String {
+    // Cap the head so a single pathological line can't grow without
+    // bound; the parse error is small and is always included.
+    const HEAD_CAP: usize = 200;
+    let head: String = raw.chars().take(HEAD_CAP).collect();
+    if raw.chars().count() > HEAD_CAP {
+        format!("{head}…  ({reason})")
+    } else {
+        format!("{head}  ({reason})")
+    }
+}
+
+/// Number of quarantined (torn) lines currently in the ledger. The
+/// `history status` / CLI surfaces this so the user can see and act on
+/// a crash that left a torn line behind.
+pub fn corrupt_count(path: &std::path::Path) -> usize {
+    read_entries(path)
+        .iter()
+        .filter(|e| e.kind == "__corrupt__")
+        .count()
 }
 
 // ---------------------------------------------------------------------------
