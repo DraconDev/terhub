@@ -5820,6 +5820,44 @@ mod tests {
     }
 
     #[test]
+    fn preview_style_follows_hovered_theme_or_density() {
+        let mut app = app_with(&["a"]);
+        app.open_settings();
+        // Hovering a theme previews it (config stays dracula-free).
+        app.settings_selected = 2; // dracula
+        let (theme, comfy) = app.settings_preview_style();
+        assert_eq!(theme, "dracula");
+        assert!(comfy);
+        // Hovering a density previews it under the applied theme.
+        let items = app.settings_item_rows();
+        let compact = items
+            .iter()
+            .position(|&r| matches!(
+                app.settings_rows()[r],
+                SettingRow::Item { kind: SettingKind::Density(1), .. }
+            ))
+            .unwrap();
+        app.settings_selected = compact;
+        let (theme, comfy) = app.settings_preview_style();
+        assert_eq!(theme, AppConfig::default().theme);
+        assert!(!comfy);
+        // A toggle row: falls back to the applied config.
+        let items = app.settings_item_rows();
+        let toggle = items
+            .iter()
+            .position(|&r| matches!(
+                app.settings_rows()[r],
+                SettingRow::Item { kind: SettingKind::ToggleNotifications, .. }
+            ))
+            .unwrap();
+        app.settings_selected = toggle;
+        app.config.theme = "nord".to_string();
+        let (theme, comfy) = app.settings_preview_style();
+        assert_eq!(theme, "nord");
+        assert!(comfy);
+    }
+
+    #[test]
     fn standing_editor_enter_persists_and_reloads() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
