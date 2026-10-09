@@ -1992,6 +1992,24 @@ impl App {
     /// Esc restores the pre-edit query (clearing lives on Esc in Normal
     /// mode, or deleting everything + Enter).
     fn on_filter_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
+        // A modifier-qualified filter_clear binding (e.g. ctrl+backspace)
+        // hard-wipes the query in place and bypasses the per-key match
+        // so Backspace's "delete one char" arm doesn't fire alongside
+        // it. Esc keeps its restore-pre-edit semantics: clear only
+        // fires when the binding is modifier-qualified.
+        let clear_spec = self.config.spec("filter_clear");
+        if clear_spec.spec != crate::config::KeySpec::None
+            && clear_spec.mods != crossterm::event::KeyModifiers::NONE
+            && crate::config::key_matches(&clear_spec, &key.code, key.modifiers)
+        {
+            self.input.clear();
+            self.cursor = 0;
+            self.filter.clear();
+            self.refresh_filtered();
+            self.follow_preview(tmux);
+            self.set_status("filter cleared".to_string());
+            return None;
+        }
         match key.code {
             KeyCode::Esc => {
                 self.filter.clone_from(&self.filter_before_edit);
@@ -2037,21 +2055,6 @@ impl App {
                 self.apply_live_filter();
             }
             _ => {}
-        }
-        // A modifier-qualified filter_clear binding (e.g. ctrl+backspace)
-        // hard-wipes the query in place, distinct from Esc which restores
-        // the pre-edit query.
-        let clear_spec = self.config.spec("filter_clear");
-        if clear_spec.spec != crate::config::KeySpec::None
-            && clear_spec.mods != crossterm::event::KeyModifiers::NONE
-            && crate::config::key_matches(&clear_spec, &key.code, key.modifiers)
-        {
-            self.input.clear();
-            self.cursor = 0;
-            self.filter.clear();
-            self.refresh_filtered();
-            self.follow_preview(tmux);
-            self.set_status("filter cleared".to_string());
         }
         None
     }
@@ -2546,7 +2549,11 @@ impl App {
             KeyCode::Down => {
                 self.hosts_selected = self.hosts_selected.saturating_add(1);
                 self.clamp_hosts();
-                self.clamp_hosts_scroll();
+                // Push the window down so the selection stays visible
+                // (clamp_hosts_scroll only ever pulled up).
+                if self.hosts_selected > self.hosts_scroll {
+                    self.hosts_scroll = self.hosts_selected;
+                }
             }
             KeyCode::Char('a') => {
                 self.mode = Mode::PromptHostAdd;
@@ -2572,6 +2579,11 @@ impl App {
     fn clamp_hosts_scroll(&mut self) {
         if self.hosts_selected < self.hosts_scroll {
             self.hosts_scroll = self.hosts_selected;
+        }
+        // After the list shrinks (remove_host, fetch_fleet) the scroll
+        // can sit past the end; pull it back so the window isn't empty.
+        if !self.fleet_hosts.is_empty() && self.hosts_scroll >= self.fleet_hosts.len() {
+            self.hosts_scroll = self.fleet_hosts.len() - 1;
         }
     }
 
