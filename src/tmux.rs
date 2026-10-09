@@ -345,6 +345,20 @@ impl Tmux {
         Ok(self.run(slice)?.trim().to_string())
     }
 
+    /// Split the active pane of `session` horizontally, returning the new
+    /// pane's id. Runs on this client's socket like every other call, so
+    /// tests and fixtures never reach the operator's live server.
+    pub fn split_window(&self, session: &str) -> Result<String> {
+        let session = session.trim();
+        if session.is_empty() {
+            bail!("session must not be empty");
+        }
+        Ok(self
+            .run(&["split-window", "-t", session, "-P", "-F", "#{pane_id}"])?
+            .trim()
+            .to_string())
+    }
+
     /// Kill whatever runs in `pane` and re-run `command` there
     /// (`respawn-pane -k`): the dead-pane recovery behind restart.
     pub fn respawn_pane(&self, pane: &str, command: &str) -> Result<()> {
