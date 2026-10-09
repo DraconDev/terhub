@@ -45,7 +45,12 @@ fn run_timed(cmd: Command, what: &str) -> Result<Output> {
 /// helpers that would otherwise hang the dispatch path.
 pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Output> {
     use std::io::Read;
+    use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
+    // New process group so a wedged child can't strand a grandchild
+    // holding our pipes open (killing the group on timeout reaps the
+    // whole tree and the reader threads unblock immediately).
+    cmd.process_group(0);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -77,17 +82,19 @@ pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Outpu
         buf
     });
     let deadline = Instant::now() + Duration::from_secs(secs);
-    let pid = child.id();
-    eprintln!("[run_with_timeout] start what={what} pid={pid:?} secs={secs}");
     let status = loop {
         match child.try_wait()? {
             Some(s) => break s,
             None if Instant::now() >= deadline => {
-                eprintln!("[run_with_timeout] DEADLINE what={what}");
-                let _ = child.kill();
+                // Kill the whole process group, not just the child:
+                // the child may have exec'd a helper (kitty, qdbus)
+                // that spawned its own grandchildren holding our pipes.
+                let pgid = child.id() as i32;
+                unsafe { libc::killpg(pgid, libc::SIGKILL) };
                 let _ = child.wait();
-                // Join the readers so a timed-out call doesn't leak a
-                // thread pair per call.
+                // The pipes are closed now (group is gone), so the
+                // readers will return promptly. Join so a panic in a
+                // reader doesn't go silent.
                 let _ = out_handle.join();
                 let _ = err_handle.join();
                 anyhow::bail!("{what} timed out after {secs}s");
