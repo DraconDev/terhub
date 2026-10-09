@@ -1053,30 +1053,30 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     // (appending at EOF would land it in the wrong section).
     let mut missing_ui = Vec::new();
     if !seen[0] {
-        missing_ui.push(format!("theme = \"{theme}\""));
+        missing_ui.push(format!("theme = \"{}\"", v.theme));
     }
     if !seen[1] {
-        missing_ui.push(format!("density = \"{density}\""));
+        missing_ui.push(format!("density = \"{}\"", v.density));
     }
     if !seen[2] {
-        missing_ui.push(format!("highlight_attached = {highlight}"));
+        missing_ui.push(format!("highlight_attached = {}", v.highlight));
     }
     if !seen[4] {
-        missing_ui.push(format!("mru_tabs = {mru_tabs}"));
+        missing_ui.push(format!("mru_tabs = {}", v.mru_tabs));
     }
     if !seen[5] {
-        let esc = filter.replace('\\', "\\\\").replace('"', "\\\"");
+        let esc = v.filter.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("filter = \"{esc}\""));
     }
     if !seen[6] {
-        let esc = sort.replace('\\', "\\\\").replace('"', "\\\"");
+        let esc = v.sort.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("sort = \"{esc}\""));
     }
     if !seen[7] {
-        missing_ui.push(format!("sort_desc = {sort_desc}"));
+        missing_ui.push(format!("sort_desc = {}", v.sort_desc));
     }
     if !seen[8] {
-        missing_ui.push(format!("hide_shells = {hide_shells}"));
+        missing_ui.push(format!("hide_shells = {}", v.hide_shells));
     }
     let mut ui_inserted = 0;
     if !missing_ui.is_empty() {
