@@ -523,8 +523,17 @@ pub struct App {
     /// Table sort: column plus direction (default: recency, newest first).
     pub sort_key: SortKey,
     pub sort_asc: bool,
-    /// Free-text row filter (case-insensitive substring, empty = off).
+    /// Temporary find query (case-insensitive substring, empty = off).
+    /// Session-only: typing, `/`, or `f` sets it; Enter keeps it for
+    /// the session; Esc clears it. Never persisted.
     pub filter: String,
+    /// Standing row exclusion, from `[ui] filter` (empty = off). Applies
+    /// before the temporary find and survives restarts; edited
+    /// deliberately via the settings row, never by typing.
+    pub exclude: String,
+    /// Which query the filter prompt is editing: the temporary find
+    /// (false) or the standing exclusion (true, from the settings row).
+    editing_standing: bool,
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
@@ -578,7 +587,7 @@ pub struct App {
 
 impl App {
     pub fn new(config: AppConfig) -> Self {
-        let filter = config.filter.clone();
+        let exclude = config.filter.clone();
         App {
             config,
             sessions: Vec::new(),
@@ -606,7 +615,9 @@ impl App {
             settings_scroll: 0,
             sort_key: SortKey::Idle,
             sort_asc: false,
-            filter,
+            filter: String::new(),
+            exclude,
+            editing_standing: false,
             filter_before_edit: String::new(),
             hide_quiet_shells: false,
             hidden_quiet: 0,
@@ -1156,6 +1167,12 @@ impl App {
                 .cloned()
                 .collect(),
         };
+        if !self.exclude.is_empty() {
+            let q = self.exclude.to_lowercase();
+            let agents = &self.agents;
+            self.filtered
+                .retain(|p| pane_matches(p, agents.get(&p.id), &q));
+        }
         if !self.filter.is_empty() {
             let q = self.filter.to_lowercase();
             let agents = &self.agents;
@@ -2768,8 +2785,19 @@ impl App {
     /// Open the text filter, editing the current query in place.
     pub fn open_filter(&mut self) {
         self.mode = Mode::PromptFilter;
+        self.editing_standing = false;
         self.filter_before_edit.clone_from(&self.filter);
         self.input.clone_from(&self.filter);
+        self.cursor = self.input.chars().count();
+    }
+
+    /// Open the prompt editing the standing exclusion (settings row):
+    /// Enter saves it to `[ui] filter`, Esc restores without saving.
+    pub fn open_standing_editor(&mut self) {
+        self.mode = Mode::PromptFilter;
+        self.editing_standing = true;
+        self.filter_before_edit.clone_from(&self.exclude);
+        self.input.clone_from(&self.exclude);
         self.cursor = self.input.chars().count();
     }
 
@@ -2810,9 +2838,14 @@ impl App {
         }
     }
 
-    /// Live re-filter while typing; restarts at the top row.
+    /// Live re-filter while typing; restarts at the top row. Edits
+    /// whichever query the prompt opened for (find or standing).
     fn apply_live_filter(&mut self) {
-        self.filter.clone_from(&self.input);
+        if self.editing_standing {
+            self.exclude.clone_from(&self.input);
+        } else {
+            self.filter.clone_from(&self.input);
+        }
         self.refresh_filtered();
         self.pane_selected = 0;
         self.pane_scroll = 0;
