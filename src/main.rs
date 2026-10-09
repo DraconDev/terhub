@@ -487,12 +487,25 @@ fn cmd_panes(session: &str) -> i32 {
                 return 0;
             }
             print_out("ID    WINDOW            CMD       PATH");
+            // Same rule as the TUI: `name:[N]` only where panes share a
+            // window, so a one-pane window reads as just its name.
+            let mut per_window: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
+            for p in &panes {
+                *per_window.entry(p.window_id.as_str()).or_insert(0) += 1;
+            }
             for p in &panes {
                 let mark = if p.active { "*" } else { " " };
+                let siblings = per_window.get(p.window_id.as_str()).copied().unwrap_or(1);
+                let window = if siblings > 1 {
+                    format!("{}:[{}]", p.window_name, p.index)
+                } else {
+                    p.window_name.clone()
+                };
                 print_out(&format!(
                     "{:<5} {:<17} {:<9} {}",
                     format!("{}{}", mark, p.id),
-                    format!("{}:[{}]", p.window_name, p.index),
+                    window,
                     p.command,
                     p.path,
                 ));
