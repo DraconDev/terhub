@@ -5677,6 +5677,55 @@ mod tests {
     }
 
     #[test]
+    fn view_seeds_sort_hide_and_exclude_from_config() {
+        // The standing view is exactly what was saved: exclusion, sort
+        // column + direction, and shell hiding all apply on first refresh.
+        let cfg = AppConfig {
+            filter: "!bash".to_string(),
+            sort: "State".to_string(),
+            sort_desc: false,
+            hide_shells: true,
+            ..AppConfig::default()
+        };
+        let mut app = App::new(cfg);
+        assert_eq!(app.exclude, "!bash");
+        assert_eq!(app.sort_key, SortKey::State);
+        assert!(app.sort_asc);
+        assert!(app.hide_quiet_shells);
+        assert!(app.filter.is_empty());
+    }
+
+    #[test]
+    fn sort_key_change_persists_view() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('o')), &tmux);
+        assert_eq!(app.sort_key, SortKey::State);
+        let text =
+            std::fs::read_to_string(crate::config::config_path()).unwrap();
+        assert!(text.contains("sort = \"State\""), "{text}");
+        assert!(text.contains("sort_desc = false"), "{text}");
+    }
+
+    #[test]
+    fn hide_shells_toggle_persists_view() {
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        // `h` is bound by default; the toggle flips and persists.
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE),
+            &tmux,
+        );
+        assert!(app.hide_quiet_shells);
+        let text =
+            std::fs::read_to_string(crate::config::config_path()).unwrap();
+        assert!(text.contains("hide_shells = true"), "{text}");
+    }
+
+    #[test]
     fn filter_prompt_live_enter_esc() {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
