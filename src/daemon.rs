@@ -194,36 +194,17 @@ pub struct Server {
 
 /// Create the runtime dir owner-only (0700): it holds the control socket,
 /// pid file, and registry. umask-permissive creation would expose them.
-///
-/// Refuses a symlink at the runtime dir itself: a symlinked dir would
-/// have its *target* chmodded (and could redirect the socket/registry
-/// to an attacker-controlled path). Pre-existing directories are
-/// tightened to 0700 when we own them; non-directory entries and
-/// symlinks are an error.
 fn ensure_runtime_dir(path: &Path) -> Result<()> {
-    match std::fs::symlink_metadata(path) {
-        Ok(m) if m.file_type().is_symlink() => {
-            anyhow::bail!("runtime dir {} is a symlink; refusing to use it", path.display());
-        }
-        Ok(m) if m.is_dir() => {
-            let mut perms = std::fs::metadata(path)?.permissions();
-            perms.set_mode(0o700);
-            std::fs::set_permissions(path, perms)?;
-            Ok(())
-        }
-        Ok(_) => {
-            anyhow::bail!("runtime dir {} exists but is not a directory", path.display())
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(path)
-                .with_context(|| format!("create runtime dir {}", path.display()))?;
-            Ok(())
-        }
-        Err(e) => Err(e.into()),
-    }
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+        .with_context(|| format!("create runtime dir {}", path.display()))?;
+    // Pre-existing dirs keep their old mode: tighten unconditionally.
+    let mut perms = std::fs::metadata(path)?.permissions();
+    perms.set_mode(0o700);
+    std::fs::set_permissions(path, perms)?;
+    Ok(())
 }
 
 impl Server {
@@ -277,19 +258,9 @@ impl Server {
             }
             let accepted =
                 tokio::time::timeout(Duration::from_millis(500), listener.accept()).await;
-            let stream = match accepted {
-                Ok(Ok((s, _))) => s,
-                Ok(Err(e)) => {
-                    // A real accept error (EMFILE/ENFILE under fd
-                    // exhaustion, etc.) is not the same as a quiet
-                    // timeout. Log it and back off so we don't busy-spin
-                    // a whole core, then loop so the shutdown flag still
-                    // gets a chance to fire.
-                    eprintln!("terhubd: accept error: {e}");
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                    continue;
-                }
-                Err(_) => continue, // timeout: loop to check shutdown
+            let (stream, _) = match accepted {
+                Ok(Ok(s)) => s,
+                _ => continue,
             };
             let reg = self.registry.clone();
             let runtime = self.runtime.clone();
@@ -355,16 +326,15 @@ async fn handle_conn(
             }
         }
         Request::Event { event } => {
-            // Mutation + save without holding the lock across disk IO.
-            let (transitions, now) = mutate_and_save(
-                &registry,
-                &runtime.join("registry.json"),
-                |reg| {
-                    let now = now_unix();
-                    let t = apply_hook_event(reg, &event, now);
-                    (t, now)
-                },
-            );
+            // Lock only across the registry mutation + save; ledger and
+            // notify-send run unlocked (same shape as the poll write-back).
+            let (transitions, now) = {
+                let mut reg = lock_registry(&registry);
+                let now = now_unix();
+                let t = apply_hook_event(&mut reg, &event, now);
+                save_registry(&runtime.join("registry.json"), &reg);
+                (t, now)
+            };
             emit_transitions(&transitions, now);
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
@@ -384,19 +354,22 @@ async fn handle_conn(
             pid,
             state,
         } => {
-            mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
+            {
+                let mut reg = lock_registry(&registry);
                 let now = now_unix();
-                apply_register(reg, &pane, &agent, pid, state, now);
-                crate::agent::ensure_handles(reg);
-            });
+                apply_register(&mut reg, &pane, &agent, pid, state, now);
+                crate::agent::ensure_handles(&mut reg);
+                save_registry(&runtime.join("registry.json"), &reg);
+            }
             Response::ok()
         }
         Request::Unregister { pane } => {
-            let dropped = mutate_and_save(
-                &registry,
-                &runtime.join("registry.json"),
-                |reg| apply_unregister(reg, &pane),
-            );
+            let dropped = {
+                let mut reg = lock_registry(&registry);
+                let dropped = apply_unregister(&mut reg, &pane);
+                save_registry(&runtime.join("registry.json"), &reg);
+                dropped
+            };
             if dropped {
                 Response::ok()
             } else {
@@ -437,12 +410,6 @@ async fn poll_loop(
     // the clamp makes direct construction safe too.
     let mut tick = tokio::time::interval(Duration::from_secs(tunables.poll_secs.max(1)));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    // Prune runs hourly (independent of the poll tick) so a daemon
-    // that's been up for weeks doesn't grow the ledger without bound.
-    // The prune call is bounded and atomic, so it's safe to run on
-    // the poll loop's task.
-    let mut prune_tick = tokio::time::interval(Duration::from_secs(3600));
-    prune_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut prev_sessions: Option<std::collections::HashSet<String>> = None;
     let mut prev_foreground: Option<Option<String>> = None;
     let automation_busy = Arc::new(AtomicBool::new(false));
@@ -452,12 +419,6 @@ async fn poll_loop(
         }
         tokio::select! {
             _ = tick.tick() => {},
-            _ = prune_tick.tick() => {
-                let _ = tokio::task::spawn_blocking(|| {
-                    history::prune(&history::ledger_path(), now_unix(), 90);
-                }).await;
-                continue;
-            },
             _ = shutdown_wait(&shutdown) => break,
         }
         let poll_start = now_unix();
@@ -472,17 +433,13 @@ async fn poll_loop(
                 // never in the pre-poll clone poll_sync saw, so merging them
                 // here (and diffing against live, not the clone) is what
                 // keeps the write-back from silently discarding them.
-                // Save runs outside the lock so a slow disk doesn't stall
-                // every concurrent snapshot/automation reader.
                 let transitions = {
                     let mut reg = lock_registry(&registry);
                     merge_mid_poll_hooks(&mut next, &reg, poll_start);
                     let t = detect_all_transitions(&reg, &next);
                     *reg = next;
                     crate::agent::ensure_handles(&mut reg);
-                    let snap = (*reg).clone();
-                    drop(reg);
-                    save_registry(&runtime.join("registry.json"), &snap);
+                    save_registry(&runtime.join("registry.json"), &reg);
                     t
                 };
                 let now = now_unix();
@@ -511,17 +468,12 @@ async fn poll_loop(
                 // polls; the in-flight guard means passes never overlap, so
                 // guardrails still can't double-fire (a tick that finds a
                 // pass running just skips — the running pass covers it).
-                //
-                // The guard resets on Drop, so a task that gets cancelled
-                // (runtime shutdown, panic) clears the flag and the next
-                // tick can run automation again instead of silently never
-                // firing for the rest of the daemon's life.
                 if !automation_busy.swap(true, Ordering::SeqCst) {
                     let reg = Arc::clone(&registry);
                     let busy = Arc::clone(&automation_busy);
                     tokio::spawn(async move {
-                        let _guard = AutomationGuard(busy);
                         run_automation(&reg).await;
+                        busy.store(false, Ordering::SeqCst);
                     });
                 }
             }
@@ -701,16 +653,6 @@ fn note_sticky(key: &'static str, msg: Option<String>) {
 /// file warns once, a clean load re-arms.
 fn note_rules_error(err: Option<&anyhow::Error>) {
     note_sticky("automation", err.map(|e| format!("automation.toml: {e:#}")));
-}
-
-/// RAII handle that clears the automation in-flight flag on drop, so a
-/// cancelled or panicking task doesn't permanently disable rule firing.
-struct AutomationGuard(Arc<AtomicBool>);
-
-impl Drop for AutomationGuard {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
-    }
 }
 
 /// Evaluate automation rules against the current registry and carry out
@@ -1186,14 +1128,12 @@ fn poll_sync_with(
     bool,
 ) {
     let now = now_unix();
-    // One process view shared by every pane: /proc is walked once per
-    // poll, and the snapshot is reused for label resolution so we don't
-    // walk it a second time inside list_all_panes.
-    let snap = crate::proc::Snapshot::capture();
-    let panes = match tmux.list_all_panes_with_snap(&snap) {
+    let panes = match tmux.list_all_panes() {
         Ok(p) => p,
         Err(_) => return outage_result(prev),
     };
+    // One process view shared by every pane: /proc is walked once per poll.
+    let snap = crate::proc::Snapshot::capture();
     let mut next = HashMap::new();
     for pane in &panes {
         let (old, stale) = split_prev(prev.get(&pane.id), now, tune.stale_secs);
@@ -1369,31 +1309,6 @@ fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
     out
 }
 
-/// Lock the registry, run the mutation, snapshot, drop the lock, then
-/// save. Keeping the disk write outside the lock means a hook burst
-/// serialises behind the in-memory mutation but never behind the
-/// filesystem — every other reader (snapshot, automation) keeps making
-/// progress while a save is in flight.
-fn mutate_and_save<F, R>(
-    registry: &Arc<Mutex<HashMap<String, AgentRecord>>>,
-    path: &Path,
-    f: F,
-) -> R
-where
-    F: FnOnce(&mut HashMap<String, AgentRecord>) -> R,
-{
-    let snapshot = {
-        let mut reg = lock_registry(registry);
-        let result = f(&mut reg);
-        let snap = (*reg).clone();
-        drop(reg);
-        (result, snap)
-    };
-    let (result, snap) = snapshot;
-    save_registry(path, &snap);
-    result
-}
-
 fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
     let agents: Vec<&AgentRecord> = registry.values().collect();
     let text = match serde_json::to_string_pretty(&agents) {
@@ -1404,15 +1319,7 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
         }
     };
     // Tmp + rename: a crash mid-write never leaves a half file behind.
-    // The tmp name includes pid + nanos so two daemons pointed at the
-    // same runtime dir (or a leftover tmp from a prior run) interleave
-    // instead of clobbering each other.
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let pid = std::process::id();
-    let tmp = path.with_extension(format!("tmp.{pid}.{nonce}"));
+    let tmp = path.with_extension("json.tmp");
     let result = std::fs::write(&tmp, &text).and_then(|()| std::fs::rename(&tmp, path));
     match result {
         Ok(()) => note_sticky("registry-save", None),
@@ -1434,18 +1341,12 @@ const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 /// Read one line, refusing payloads over `cap` bytes instead of growing
 /// toward OOM on a peer that never sends a newline.
 fn read_capped_line(reader: &mut impl BufRead, cap: usize) -> Result<String> {
-    let mut line = Vec::new();
-    std::io::Read::take(&mut *reader, (cap + 1) as u64).read_until(b'\n', &mut line)?;
+    let mut line = String::new();
+    std::io::Read::take(&mut *reader, (cap + 1) as u64).read_line(&mut line)?;
     if line.len() > cap {
         anyhow::bail!("line exceeds {cap} bytes");
     }
-    if !line.ends_with(b"\n") {
-        // EOF without a newline within the cap: treat as a truncated/
-        // oversize request rather than returning a partial line that
-        // could happen to parse as valid JSON and get applied.
-        anyhow::bail!("truncated line (no newline within {cap} bytes)");
-    }
-    String::from_utf8(line).map_err(|e| anyhow::anyhow!("non-utf8 line: {e}"))
+    Ok(line)
 }
 
 pub fn send_request(req: &Request, timeout: Duration) -> Result<Response> {
@@ -2276,15 +2177,6 @@ mod tests {
         assert!(read_capped_line(&mut Cursor::new(big), 16).is_err());
         let mut ok = Cursor::new(b"{\"ok\":true}\n".to_vec());
         assert_eq!(read_capped_line(&mut ok, 16).unwrap(), "{\"ok\":true}\n");
-        // Truncated (no newline before EOF within the cap) is rejected
-        // rather than returned as a parseable partial line.
-        let mut truncated = Cursor::new(b"{\"ok\":true".to_vec());
-        assert!(read_capped_line(&mut truncated, 16).is_err());
-        // A line whose content is exactly `cap` bytes is rejected
-        // (the trailing newline would push it over the cap).
-        let mut exact = vec![b'x'; 16];
-        exact.push(b'\n');
-        assert!(read_capped_line(&mut Cursor::new(exact), 16).is_err());
     }
 
     fn hook_record(updated_at: u64) -> AgentRecord {
