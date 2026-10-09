@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::path::PathBuf;
 
@@ -586,8 +586,11 @@ fn hex_byte(hi: u8, lo: u8) -> Option<u8> {
     Some(hex_val(hi)? * 16 + hex_val(lo)?)
 }
 
+/// Unknown fields are collected, not fatal: a stale or misplaced key
+/// (a removed binding, a section renamed) must degrade that one field to
+/// its default and be reported — never silently discard the whole file.
+/// The report names the field and its section so the fix is one edit.
 #[derive(Debug, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
 struct FileConfig {
     #[serde(default)]
     ui: UiSection,
@@ -605,11 +608,12 @@ struct FileConfig {
     template: Vec<TemplateFile>,
     #[serde(default)]
     style: StyleSection,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 /// One `[[command]]` entry: a user shell command on the selected pane.
 #[derive(Debug, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
 struct CommandFile {
     #[serde(default)]
     name: String,
@@ -617,6 +621,8 @@ struct CommandFile {
     key: String,
     #[serde(default)]
     run: String,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 /// Validated custom command. `{pane} {session} {window} {dir} {cmd}
@@ -633,7 +639,6 @@ pub const COMMAND_VARS: &[&str] = &["pane", "session", "window", "dir", "cmd", "
 
 /// One `[[profile]]` entry: a named agent program for spawn-with-prompt.
 #[derive(Debug, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
 struct ProfileFile {
     #[serde(default)]
     name: String,
@@ -641,6 +646,8 @@ struct ProfileFile {
     program: String,
     #[serde(default)]
     dir: Option<String>,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 /// Validated spawn profile. `dir` overrides the start directory.
@@ -666,12 +673,13 @@ pub fn builtin_profiles() -> Vec<SpawnProfile> {
 /// One `[[template]]` entry: a named reusable message for bulk prompt
 /// and `send --template`.
 #[derive(Debug, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
 struct TemplateFile {
     #[serde(default)]
     name: String,
     #[serde(default)]
     text: String,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 /// Validated message template.
@@ -706,16 +714,20 @@ pub fn builtin_templates() -> Vec<MessageTemplate> {
 struct NotificationsSection {
     #[serde(default = "default_true")]
     enabled: bool,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 impl Default for NotificationsSection {
     fn default() -> Self {
-        NotificationsSection { enabled: true }
+        NotificationsSection {
+            enabled: true,
+            unknown: BTreeMap::new(),
+        }
     }
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct UiSection {
     #[serde(default = "default_theme")]
     theme: String,
@@ -725,6 +737,8 @@ struct UiSection {
     highlight_attached: bool,
     #[serde(default)]
     mru_tabs: bool,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 impl Default for UiSection {
@@ -734,6 +748,7 @@ impl Default for UiSection {
             density: default_density(),
             highlight_attached: true,
             mru_tabs: false,
+            unknown: BTreeMap::new(),
         }
     }
 }
@@ -751,7 +766,6 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct DaemonSection {
     #[serde(default = "default_poll_secs")]
     poll_secs: u64,
@@ -763,6 +777,8 @@ struct DaemonSection {
     quiet_idle_secs: u64,
     #[serde(default = "default_waiting_idle_secs")]
     waiting_idle_secs: u64,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 impl Default for DaemonSection {
@@ -773,6 +789,7 @@ impl Default for DaemonSection {
             stale_secs: default_stale_secs(),
             quiet_idle_secs: default_quiet_idle_secs(),
             waiting_idle_secs: default_waiting_idle_secs(),
+            unknown: BTreeMap::new(),
         }
     }
 }
@@ -798,7 +815,6 @@ fn default_waiting_idle_secs() -> u64 {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct StyleSection {
     #[serde(default = "default_true")]
     color_agents: bool,
@@ -812,6 +828,8 @@ struct StyleSection {
     idle_warn_style: String,
     #[serde(default = "default_idle_flag_secs")]
     idle_flag_secs: u64,
+    #[serde(flatten)]
+    unknown: BTreeMap<String, toml::Value>,
 }
 
 impl Default for StyleSection {
@@ -823,6 +841,7 @@ impl Default for StyleSection {
             idle_warn: true,
             idle_warn_style: default_idle_warn_style(),
             idle_flag_secs: default_idle_flag_secs(),
+            unknown: BTreeMap::new(),
         }
     }
 }
