@@ -551,6 +551,9 @@ mod tests {
 
     #[test]
     fn attach_remote_argv_orders_ssh_flags() {
+        // The remote command is a single shell-quoted string so the
+        // session name cannot inject into the remote shell; ssh gets
+        // one argv element for it.
         let argv = attach_remote_argv("dev.example", Some("web"));
         assert_eq!(
             argv,
@@ -558,10 +561,7 @@ mod tests {
                 "-t",
                 "--",
                 "dev.example",
-                "tmux",
-                "attach-session",
-                "-t",
-                "web"
+                "tmux attach-session -t 'web'",
             ]
         );
         assert!(!argv.iter().any(|a| a.contains("BatchMode")));
