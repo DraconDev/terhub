@@ -2291,6 +2291,7 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         {
                             if let Some(key) = hit.key {
                                 app.resort(key);
+                                app.persist_view();
                                 app.follow_preview(&tmux);
                             }
                             continue; // header clicks sort, never jump

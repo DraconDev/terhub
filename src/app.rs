@@ -2850,8 +2850,9 @@ impl App {
     /// Persist the whole standing view (theme/density/toggles/filter/
     /// sort/direction/shell-hiding) with one surgical config write.
     /// Silent on success; the caller already announced the change.
-    /// Loud only when the write failed.
-    fn persist_view(&mut self) {
+    /// Loud only when the write failed. Public for the header-click
+    /// sort path, which lives in the binary.
+    pub fn persist_view(&mut self) {
         self.config.filter.clone_from(&self.exclude);
         self.config.sort = self.sort_key.as_str().to_string();
         self.config.sort_desc = !self.sort_asc;
