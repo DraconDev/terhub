@@ -765,6 +765,16 @@ struct UiSection {
     /// `!`-prefixed to exclude (e.g. `filter = "!zsh"` hides zsh panes).
     #[serde(default)]
     filter: String,
+    /// Table sort column name (`Idle` default; unknown names warn and
+    /// fall back).
+    #[serde(default = "default_sort")]
+    sort: String,
+    /// Sort descending (default true = newest/longest first).
+    #[serde(default = "default_sort_desc")]
+    sort_desc: bool,
+    /// Hide quiet shells on startup (`h` toggles live).
+    #[serde(default)]
+    hide_shells: bool,
     #[serde(flatten)]
     unknown: BTreeMap<String, toml::Value>,
 }
@@ -777,6 +787,9 @@ impl Default for UiSection {
             highlight_attached: true,
             mru_tabs: false,
             filter: String::new(),
+            sort: default_sort(),
+            sort_desc: default_sort_desc(),
+            hide_shells: false,
             unknown: BTreeMap::new(),
         }
     }
@@ -1268,6 +1281,16 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     cfg.highlight_attached = file.ui.highlight_attached;
     cfg.mru_tabs = file.ui.mru_tabs;
     cfg.filter = file.ui.filter;
+    cfg.sort = file.ui.sort;
+    if crate::app::SortKey::from_str(&cfg.sort).is_none() {
+        problems.push(format!(
+            "unknown sort '{}' (known: Pane, Session, Window, Cmd, Dir, Agent, Handle, State, Src, For, Turn, Idle, Summary)",
+            cfg.sort
+        ));
+        cfg.sort = "Idle".to_string();
+    }
+    cfg.sort_desc = file.ui.sort_desc;
+    cfg.hide_shells = file.ui.hide_shells;
     cfg.notifications_enabled = file.notifications.enabled;
     // Zero poll/stale would wedge or blind the daemon; stuck_secs = 0 is a
     // legitimate "off switch" and stays.
