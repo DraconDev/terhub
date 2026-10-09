@@ -58,7 +58,7 @@ pub fn versioned_name(base: &str, svg: &str) -> String {
 
 /// One state the icon can be in. Distinct from [`TrayView`] so the
 /// renderer stays pure and is testable with a 5-element palette.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IconState {
     Calm,
     Idle,
@@ -588,7 +588,7 @@ struct Tray {
     /// Icon names (no extension) per state, versioned by the content
     /// hash so a redesigned icon is a *new* name the panel has never
     /// resolved and can't serve a stale pixmap of.
-    names: Shared<HashMap<IconState, String>>,
+    names: std::sync::Arc<std::sync::Mutex<HashMap<IconState, String>>>,
 }
 
 impl Tray {
@@ -782,9 +782,10 @@ pub fn run() -> anyhow::Result<()> {
     // TUI's load_config() owns the theme, so we go through it rather
     // than parsing the TOML ourselves.
     let theme = crate::config::load_config(None).theme;
-    let names: Shared = Arc::new(Mutex::new(
-        install_icons(&theme).map_err(anyhow::Error::from)?,
-    ));
+    let names: std::sync::Arc<std::sync::Mutex<HashMap<IconState, String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(
+            install_icons(&theme).map_err(anyhow::Error::from)?,
+        ));
     refresh_icon_cache();
     let mut last_theme = theme;
     let conn = zbus::blocking::Connection::session()?;
@@ -792,7 +793,7 @@ pub fn run() -> anyhow::Result<()> {
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
     let tray = Tray {
         view: Arc::clone(&view),
-        names: Arc::clone(&names),
+        names: std::sync::Arc::clone(&names),
     };
     conn.request_name(unique.as_str())?;
     // Export before registering: the watcher introspects the name as
