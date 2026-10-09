@@ -231,14 +231,26 @@ pub struct HostStatus {
     pub result: Result<crate::daemon::Snapshot, String>,
 }
 
-/// Query every host concurrently (one thread each); results come back in
-/// config order so a slow host delays the answer but not the others.
+/// Max concurrent ssh children during a fleet-wide status query. A
+/// large fleet (hundreds of hosts) would otherwise spawn one thread
+/// and one `ssh` per host at once, exhausting fds and pinning a
+/// core. 16 keeps latency low while bounding the burst.
+const FLEET_FANOUT: usize = 16;
+
+/// Query every host concurrently, capped at [`FLEET_FANOUT`] in flight.
+/// Results come back in config order so a slow host delays the answer
+/// but not the others.
 pub fn fleet_status(hosts: &[Host]) -> Vec<HostStatus> {
     std::thread::scope(|s| {
+        let sem = std::sync::Arc::new(std::sync::Semaphore::new(FLEET_FANOUT));
         let handles: Vec<_> = hosts
             .iter()
             .map(|host| {
-                s.spawn(|| {
+                let sem = std::sync::Arc::clone(&sem);
+                s.spawn(move || {
+                    // Acquire a permit before opening an ssh child so
+                    // the cap is real, not just a thread cap.
+                    let _permit = sem.acquire().expect("semaphore closed");
                     let result = (|| -> Result<crate::daemon::Snapshot, String> {
                         let text = ssh_run(&host.target, &["terhub", "status", "--json"], 10)
                             .map_err(|e| format!("{e:?}"))?;
