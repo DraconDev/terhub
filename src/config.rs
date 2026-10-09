@@ -908,14 +908,15 @@ pub fn load_config(path: Option<PathBuf>) -> AppConfig {
 }
 
 /// Persist UI settings back to the config file with surgical line edits:
-/// only the four known keys are touched, everything else (comments, key
-/// bindings, manifests) is preserved byte-for-byte.
+/// only the known `[ui]`/`[notifications]` keys are touched, everything
+/// else (comments, key bindings, manifests) is preserved byte-for-byte.
 pub fn persist_ui_settings(
     theme: &str,
     density: &str,
     notifications: bool,
     highlight: bool,
     mru_tabs: bool,
+    filter: &str,
 ) -> anyhow::Result<()> {
     persist_ui_settings_to(
         &config_path(),
@@ -924,6 +925,7 @@ pub fn persist_ui_settings(
         notifications,
         highlight,
         mru_tabs,
+        filter,
     )
 }
 
@@ -934,11 +936,12 @@ fn persist_ui_settings_to(
     notifications: bool,
     highlight: bool,
     mru_tabs: bool,
+    filter: &str,
 ) -> anyhow::Result<()> {
     let text = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
     let mut out: Vec<String> = Vec::new();
     let mut section = String::new();
-    let mut seen = [false; 5]; // theme, density, highlight, enabled, mru_tabs
+    let mut seen = [false; 6]; // theme, density, highlight, enabled, mru_tabs, filter
     let (mut ui_at, mut notif_at): (Option<usize>, Option<usize>) = (None, None);
     for line in text.lines() {
         // Refresh our own stale generated header while we're here.
@@ -983,6 +986,13 @@ fn persist_ui_settings_to(
         } else if section == "[ui]" && is_key_line(line, "mru_tabs") {
             out.push(format!("mru_tabs = {mru_tabs}{}", trailing_comment(line)));
             seen[4] = true;
+        } else if section == "[ui]" && is_key_line(line, "filter") {
+            // Quotes escape the one char TOML needs escaped; a filter is
+            // plain search text, never a path, so backslash/quote are the
+            // only risks.
+            let esc = filter.replace('\\', "\\\\").replace('"', "\\\"");
+            out.push(format!("filter = \"{esc}\"{}", trailing_comment(line)));
+            seen[5] = true;
         } else if section == "[notifications]" && is_key_line(line, "enabled") {
             out.push(format!("enabled = {notifications}{}", trailing_comment(line)));
             seen[3] = true;
@@ -1004,6 +1014,10 @@ fn persist_ui_settings_to(
     }
     if !seen[4] {
         missing_ui.push(format!("mru_tabs = {mru_tabs}"));
+    }
+    if !seen[5] {
+        let esc = filter.replace('\\', "\\\\").replace('"', "\\\"");
+        missing_ui.push(format!("filter = \"{esc}\""));
     }
     let mut ui_inserted = 0;
     if !missing_ui.is_empty() {
