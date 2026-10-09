@@ -195,6 +195,91 @@ fn palette_for_theme(theme: &str) -> TrayPalette {
             wait: "#6c71c4",
             muted: "#93a1a1",
         },
+        "rose-pine" => TrayPalette {
+            // Rose Pine has no green; "live" borrows the theme's pine
+            // teal so the active state still reads as the working hue.
+            mark: "#9ccfd8",  // foam — calm
+            alarm: "#eb6f92", // love — attention
+            live: "#31748f",  // pine — live
+            done: "#f6c177",  // gold — live-idle
+            wait: "#c4a7e7",  // iris — idle
+            muted: "#6e6a86", // subtext muted — disconnected
+        },
+        "everforest" => TrayPalette {
+            mark: "#d3c6aa",  // fg warm
+            alarm: "#e67e80", // red
+            live: "#a7c080",  // green
+            done: "#dbbc7f",  // yellow
+            wait: "#d699b6",  // purple
+            muted: "#859289", // muted
+        },
+        "kanagawa" => TrayPalette {
+            mark: "#8ea4a2",  // aqua
+            alarm: "#c4746e", // red
+            live: "#87a987",  // green
+            done: "#c8b36c",  // yellow
+            wait: "#9573a7",  // purple
+            muted: "#625e5a", // muted
+        },
+        "ayu" => TrayPalette {
+            mark: "#95e6cb",  // aqua
+            alarm: "#f07178", // red
+            live: "#aad94c",  // green
+            done: "#ffb454",  // yellow
+            wait: "#d2a6ff",  // purple
+            muted: "#3e4b59", // muted
+        },
+        "nightfly" => TrayPalette {
+            mark: "#5fb4d4",  // aqua
+            alarm: "#fc514d", // red
+            live: "#a1cd76",  // green
+            done: "#ffcc00",  // yellow
+            wait: "#c792ea",  // purple
+            muted: "#5c6670", // muted
+        },
+        "palenight" => TrayPalette {
+            mark: "#86e1fc",  // aqua
+            alarm: "#f07178", // red
+            live: "#c3e88d",  // green
+            done: "#ffcb6b",  // yellow
+            wait: "#c792ea",  // purple
+            muted: "#676e95", // muted
+        },
+        "github" => TrayPalette {
+            // GitHub Dark by default; github-light is a separate theme
+            // added below for completeness.
+            mark: "#58a6ff",  // blue
+            alarm: "#ff7b72", // red
+            live: "#3fb950",  // green
+            done: "#d29922",  // yellow
+            wait: "#bc8cff",  // purple
+            muted: "#8b949e", // muted
+        },
+        "github-light" => TrayPalette {
+            mark: "#0366d6",  // blue
+            alarm: "#d73a49", // red
+            live: "#28a745",  // green
+            done: "#dbab09",  // yellow
+            wait: "#6f42c1",  // purple
+            muted: "#6a737d", // muted
+        },
+        "onehalf" => TrayPalette {
+            // OneHalf Dark canonical.
+            mark: "#61afef",  // blue
+            alarm: "#e06c75", // red
+            live: "#98c379",  // green
+            done: "#e5c07b",  // yellow
+            wait: "#c678dd",  // purple
+            muted: "#5c6370", // muted
+        },
+        "onehalf-light" => TrayPalette {
+            mark: "#4078f2",  // blue
+            alarm: "#e45649", // red
+            live: "#98c379",  // green
+            done: "#f4b73e",  // yellow
+            wait: "#a626a4",  // purple
+            muted: "#a3a3a3", // muted
+        },
         // `dark` and anything unknown fall here, matching dracula, the
         // same fallback the TUI's palette() uses.
         _ => TrayPalette {
