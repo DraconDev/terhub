@@ -162,7 +162,10 @@ status bar, no modes except small popups:
   sections), `←`/`→` jump between sections, `Enter` applies, `Esc`
   closes; clicking a sidebar entry jumps straight there. Theme and
   density apply live; the toggles and the standing filter save to the
-  config file.
+  config file. Next to the Theme and Density lists, a preview box
+  renders sample rows in the hovered style — browse themes and
+  densities with live feedback before applying, even on an empty
+  setup.
 - **Popups.** `n`/`r`/`w` open a text prompt with a real cursor
   (`←`/`→`, `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc`
   cancels); the spawn prompt also cycles agent profiles on `Tab`.
