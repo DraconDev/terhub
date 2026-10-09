@@ -3771,18 +3771,22 @@ mod tests {
     #[test]
     fn modifier_binding_fires_and_bare_key_stays() {
         // A ctrl+s bound to settings fires the settings popup; a bare s
-        // still does too (binding semantics: bare keys fire on unmodified
-        // presses, modifier bindings fire on exact combos).
+        // is no longer bound — type-to-filter picks it up instead of
+        // swallowing it (bare keys fire on unmodified presses, modifier
+        // bindings fire on exact combos).
         let mut app = app_with(&["a"]);
         app.config
             .keys
             .insert("settings".to_string(), "ctrl+s".to_string());
         let tmux = Tmux::new().unwrap();
-        // Bare s: now unbound -> swallowed (no binding wants it bare).
+        // Bare s: unbound -> opens the filter seeded with `s`.
         assert_eq!(
             app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE), &tmux),
             None
         );
+        assert_eq!(app.mode, Mode::PromptFilter);
+        assert_eq!(app.input, "s");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &tmux);
         assert_eq!(app.mode, Mode::Normal);
         // ctrl+s: bound -> opens settings.
         assert_eq!(
