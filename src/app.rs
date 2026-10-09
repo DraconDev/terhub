@@ -2073,15 +2073,19 @@ impl App {
             KeyCode::Esc => {
                 if self.editing_standing {
                     self.exclude.clone_from(&self.filter_before_edit);
-                    self.editing_standing = false;
                 } else {
                     self.filter.clone_from(&self.filter_before_edit);
                 }
                 self.cancel_modal();
-                if self.filter_before_edit.is_empty() {} // (kept for symmetry; no-op)
                 self.refresh_filtered();
                 self.follow_preview(tmux);
+                // Report before clearing the flag: the label names
+                // which query survived (search vs standing draft).
                 self.report_kept_query();
+                if self.editing_standing {
+                    self.editing_standing = false;
+                    self.mode = Mode::Settings;
+                }
             }
             KeyCode::Enter => {
                 let q = self.input.trim().to_string();
@@ -5589,7 +5593,8 @@ mod tests {
         }
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
         assert_eq!(app.exclude, "!zsh");
-        assert_eq!(app.mode, Mode::Normal);
+        // Back in settings (where the editor was opened from), not the table.
+        assert_eq!(app.mode, Mode::Settings);
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("filter = \"!zsh\""), "{text}");
         // And the saved exclusion reloads through the normal loader.
