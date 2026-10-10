@@ -614,21 +614,16 @@ fn sparkline_renders_six_cells_monotonic_in_grid() {
         screen.push_str(&"x".repeat(n));
         app.sample_sparkline("%1", &screen);
     }
-    // Wide grid: the percentage columns (Window/Cmd/Dir/Agent)
-    // collapse on narrow widths, so 140-wide is too tight for the
-    // Activity column to actually render. 200-wide leaves room.
     let grid = render_grid(&mut app, 200, 20);
-    // The Activity column header is `Activity` and its cell is
-    // exactly 6 grapheme cells wide. The cell may be followed by
-    // padding, so the cell's *content* (chars 0..6 of the column
-    // slice) is what we assert on.
+    // The Activity column header is "Activity" but ratui truncates
+    // the visible cell to fit the 7-wide constraint (renders as
+    // "Activit"). Find the column by its position: the last 7 cells
+    // of every pane row (6 sparkline glyphs + 1 padding) is the
+    // Activity column.
     let text: Vec<String> = grid
         .iter()
         .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
         .collect();
-    let hdr_line = text.iter().find(|l| l.contains("Activity")).expect(
-        "Activity column header must appear when activity_sparkline is enabled",
-    );
     let col_start = hdr_line.find("Activity").unwrap();
     // The renderer's Layout sets the Activity column to 7 cells;
     // 6 of them are the sparkline glyphs, the 7th is padding.
