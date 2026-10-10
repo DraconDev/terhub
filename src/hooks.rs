@@ -550,6 +550,52 @@ mod tests {
     }
 
     #[test]
+    fn pi_reporter_reports_questions_as_waiting() {
+        // A question tool blocks the agent and fires no lifecycle
+        // event, so without these handlers the last `turn_start`
+        // working report stands until `agent_end` — which never
+        // comes while the menu is open. This is the false-negative
+        // family: panes sitting at a question menu read `working`.
+        assert!(
+            PI_EXTENSION.contains("tool_call"),
+            "reporter must observe tool calls\n{PI_EXTENSION}"
+        );
+        assert!(
+            PI_EXTENSION.contains("questionnaire") && PI_EXTENSION.contains("\"question\""),
+            "reporter must recognize both question tools\n{PI_EXTENSION}"
+        );
+        // The waiting report carries the question text as the summary
+        // (questions[].prompt / question) so the row chip shows what
+        // the agent asked, not a generic marker.
+        assert!(
+            PI_EXTENSION.contains("questions[0].prompt"),
+            "reporter must surface the question text\n{PI_EXTENSION}"
+        );
+        assert!(
+            PI_EXTENSION.contains("report(\"waiting\""),
+            "question must report waiting\n{PI_EXTENSION}"
+        );
+        // The answer clears it: a pane the human just answered is
+        // working again, and staying waiting would be a false alarm.
+        assert!(
+            PI_EXTENSION.contains("answer received"),
+            "answer must restore working\n{PI_EXTENSION}"
+        );
+        // Generic blocking prompts (permission confirms, extension
+        // dialogs) count too — same handling, coarser summary.
+        assert!(
+            PI_EXTENSION.contains("ui_prompt_start"),
+            "reporter must observe blocking UI prompts\n{PI_EXTENSION}"
+        );
+        // ...and the awaiting guard keeps the two routes from
+        // clobbering each other's summary.
+        assert!(
+            PI_EXTENSION.contains("let awaiting = false"),
+            "reporter needs the awaiting guard\n{PI_EXTENSION}"
+        );
+    }
+
+    #[test]
     fn claude_install_merges_idempotently() {
         let dir = scratch("install");
         let path = dir.join("settings.json");
