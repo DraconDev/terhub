@@ -765,6 +765,59 @@ mod tests {
     }
 
     #[test]
+    fn wait_drained_in_group_kills_grandchild_holding_pipe() {
+        // The grandchild is a backgrounded `sleep 60`; the foreground
+        // `exec sleep 60` keeps the parent `sh` alive so the
+        // wait_drained_in_group timer fires. Both sleeps inherit the
+        // write end of the stdout pipe from `sh`, so without killpg
+        // the reader thread would block past the timeout. With
+        // killpg, the whole process group dies and the reader
+        // returns.
+        let marker = std::env::temp_dir().join(format!(
+            "terhub-test-gc-{}.pid",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "sleep 60 & echo $! > {}; exec sleep 60",
+                marker.display()
+            ))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        // Give sh a moment to fork the grandchild and write its pid.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let gc_pid_raw = std::fs::read_to_string(&marker)
+            .expect("grandchild pid file must exist");
+        let gc_pid: i32 = gc_pid_raw.trim().parse().expect("pid must parse");
+        let t0 = std::time::Instant::now();
+        let err = wait_drained_in_group(
+            &mut child,
+            std::time::Duration::from_millis(200),
+        )
+        .unwrap_err();
+        let elapsed = t0.elapsed();
+        assert!(matches!(err, DrainError::Timeout));
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "wait_drained_in_group took {elapsed:?} — killpg should be near-instant"
+        );
+        // The grandchild must be gone too. Give the kernel a moment to
+        // reap before probing /proc.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(
+            !std::path::Path::new(&format!("/proc/{gc_pid}")).exists(),
+            "grandchild pid {gc_pid} survived killpg — wait_drained_in_group \
+             did not actually signal the group"
+        );
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    #[test]
     fn wait_drained_caps_pipe_reads() {
         // 3MB of output against a 1MB cap: truncated, not accumulated —
         // and bounded even when reader threads outlive the timeout.
