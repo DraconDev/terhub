@@ -3199,6 +3199,13 @@ impl App {
         self.cursor = self.input.chars().count();
     }
 
+    /// Mark the sort pair as changed (header-click path lives in the
+    /// binary and can't reach the private `view_changes` field).
+    pub fn mark_sort_changed(&mut self) {
+        self.view_changes.sort = true;
+        self.view_changes.sort_desc = true;
+    }
+
     /// Open the prompt editing the standing exclusion (settings row):
     /// Enter saves it to `[ui] filter`, Esc restores without saving.
     /// The input starts with the `!` already in place so exclusion is
