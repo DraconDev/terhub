@@ -5,6 +5,7 @@
 //! allows sending input to remote panes.
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -195,9 +196,15 @@ pub fn ssh_run(target: &str, args: &[&str], timeout_secs: u64) -> Result<String>
         .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        // New pgid so a wedged ssh's helpers (ssh-askpass, agent,
+        // ControlMaster socket child) get killed alongside ssh on the
+        // timeout, freeing the detached reader threads in
+        // wait_drained_in_group. Without this, child.kill() leaves
+        // the helpers holding the pipes and the drain wedges.
+        .process_group(0)
         .spawn()
         .context("failed to run ssh")?;
-    let drained = match crate::automation::wait_drained(
+    let drained = match crate::automation::wait_drained_in_group(
         &mut child,
         std::time::Duration::from_secs(timeout_secs.max(1)),
     ) {
