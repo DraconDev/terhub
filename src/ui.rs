@@ -1725,14 +1725,9 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             // other is empty. Tab switches; the label of the
             // active line goes from "Text:" to "Hide:" to hint at
             // the difference. The popup itself is taller — see
-            // `centered(area, 60, 7)` below.
+            // `centered(area, 60, 6)` below.
             let include_label = "Text: ";
             let exclude_label = "Hide: ";
-            let active_offset = if app.filter_line == FilterLine::Include {
-                0
-            } else {
-                1
-            };
             let body = format!(
                 "{}{}\n{}{}",
                 include_label,
@@ -1740,24 +1735,18 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
                 exclude_label,
                 app.filter_other
             );
+            // The prefix is the cursor's x within its own row;
+            // the row itself is set by `active_row` in the
+            // renderer, so no newline compensation here.
             let prefix = if app.filter_line == FilterLine::Include {
                 Some(include_label.len())
             } else {
-                Some(exclude_label.len() + include_label.len() + 1)
+                Some(exclude_label.len())
             };
             if app.editing_standing {
                 (" Standing filter ".to_string(), body, prefix)
             } else {
-                (
-                    " Filter ".to_string(),
-                    body,
-                    // The cursor offset has to be relative to the
-                    // start of the line it's on; the renderer
-                    // knows the row via `active_offset` and adds
-                    // the prefix length itself. Pass None here
-                    // and let the renderer drive the row math.
-                    None,
-                )
+                (" Filter ".to_string(), body, prefix)
             }
         }
         Mode::PromptSpawn { profile } => {
@@ -1838,7 +1827,17 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
     if let Some(plen) = prefix {
         let cx = inner.x + (plen as u16) + (app.cursor as u16);
         let cx = cx.min(inner.x + inner.width.saturating_sub(1));
-        frame.set_cursor_position(ratatui::layout::Position::new(cx, inner.y));
+        // Two-line prompt: the cursor's y is the active line.
+        // Exclude line = inner.y + 1, Include = inner.y + 0. The
+        // popup is 6 tall (inner 4 rows), so both lines fit
+        // without clipping the bottom border.
+        let active_row = if app.filter_line == FilterLine::Include {
+            0
+        } else {
+            1
+        };
+        let cy = inner.y + active_row;
+        frame.set_cursor_position(ratatui::layout::Position::new(cx, cy));
     }
 }
 

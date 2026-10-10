@@ -713,7 +713,7 @@ pub struct App {
     /// Which line the filter prompt is currently editing. `Include`
     /// edits `filter` (live find); `Exclude` edits `exclude` (the
     /// standing exclusion). Tab toggles.
-    filter_line: FilterLine,
+    pub filter_line: FilterLine,
     /// Hide unclaimed panes quiet past [`QUIET_SHELL_SECS`] (`h` toggle).
     pub hide_quiet_shells: bool,
     /// Rows the toggle is currently hiding (0 when off), for the title.
