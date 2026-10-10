@@ -1268,6 +1268,25 @@ fn is_key_line(line: &str, key: &str) -> bool {
         && !t.starts_with('#')
 }
 
+/// The assigned key on a TOML assignment line, or `None` for blank
+/// lines, comments and section headers. Used by the dedupe pass.
+fn assigned_key(line: &str) -> Option<&str> {
+    let t = line.trim_start();
+    if t.starts_with('#') {
+        return None;
+    }
+    let (k, _rest) = t.split_once('=')?;
+    let k = k.trim();
+    if k.is_empty()
+        || !k
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    {
+        return None;
+    }
+    Some(k)
+}
+
 /// Return the trailing `# ...` comment on `line` (including the leading
 /// whitespace + `#`), or `""` if there is none. Used to preserve user
 /// comments when rewriting a key during UI persist.
