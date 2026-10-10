@@ -6226,20 +6226,24 @@ mod tests {
             "%1".to_string(),
             record("%1", "claude", AgentState::Waiting, 60),
         );
+        // %1 (claude, nvim), %2 (bash by default). The default
+        // %2 has command="bash" so exclude "bash" would hide it;
+        // use a different exclude set so the test exercises the
+        // include-or-exclude interaction.
         app.agents.insert(
             "%2".to_string(),
             record("%2", "codex", AgentState::Working, 5),
         );
         // Include: rows mentioning claude OR codex.
-        // Exclude: rows NOT mentioning bash OR npm.
+        // Exclude: rows NOT mentioning npm OR vue.
         // %1: matches include (claude) and not-exclude; kept.
         // %2: matches include (codex) and not-exclude; kept.
         app.filter = "claude codex".to_string();
-        app.exclude = "bash npm".to_string();
+        app.exclude = "npm vue".to_string();
         app.refresh_filtered();
         assert_eq!(ids(&app), vec!["%1", "%2"]);
-        // Now exclude codex too: %2 must go.
-        app.exclude = "bash npm codex".to_string();
+        // Now exclude codex too: %2 must go (its agent is codex).
+        app.exclude = "npm vue codex".to_string();
         app.refresh_filtered();
         assert_eq!(ids(&app), vec!["%1"]);
         // And add a third include token to widen the include set
