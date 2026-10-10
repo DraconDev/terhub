@@ -716,7 +716,17 @@ pub struct App {
 
 impl App {
     pub fn new(config: AppConfig) -> Self {
-        let exclude = config.filter.clone();
+        // Old configs wrote `!zsh` to mean "exclude zsh"; the new
+        // exclude line stores bare tokens, so a single leading `!`
+        // is harmless noise (the line is already exclude). Strip
+        // once here so every downstream consumer sees the same
+        // canonical form.
+        let exclude = config
+            .filter
+            .trim()
+            .trim_start_matches('!')
+            .trim()
+            .to_string();
         // Seeded from the config file: the standing view (exclusion,
         // sort, direction, shell hiding) is exactly what was saved.
         // Unknown sort names were already warned + defaulted at load.
@@ -6210,14 +6220,16 @@ mod tests {
     #[test]
     fn filter_seeds_from_config_at_startup() {
         // A persisted standing exclusion applies on the first refresh,
-        // no typing; the temporary search always starts empty.
+        // no typing; the temporary search always starts empty. Old
+        // configs wrote `!bash`; the loader strips a single leading
+        // `!` so both forms land in `app.exclude` as bare tokens.
         let cfg = AppConfig {
             filter: "!bash".to_string(),
             ..AppConfig::default()
         };
         let mut app = App::new(cfg);
         assert!(app.filter.is_empty());
-        assert_eq!(app.exclude, "!bash");
+        assert_eq!(app.exclude, "bash");
         app.panes = app_with_panes().panes;
         app.refresh_filtered();
         assert_eq!(ids(&app), vec!["%1"]);
