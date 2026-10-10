@@ -6131,6 +6131,62 @@ mod tests {
     }
 
     #[test]
+    fn stale_instance_cannot_revert_a_newer_instances_filter() {
+        use crate::config::ViewChanges;
+        // Serialize with every other env-mutating lib test; the lock
+        // is held for the whole mutation window.
+        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
+        let saved = std::env::var("TERHUB_CONFIG").ok();
+        let dir = std::env::temp_dir().join(format!(
+            "terhub-viewclobber-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cfg.toml");
+        std::fs::write(
+            &path,
+            "[ui]\ntheme = \"dark\"\nfilter = \"!bash\"\nsort = \"Idle\"\nsort_desc = true\nhide_shells = false\n",
+        )
+        .unwrap();
+        unsafe {
+            std::env::set_var("TERHUB_CONFIG", &path);
+        }
+        // Instance B opens first and holds the file as it stands.
+        let cfg = crate::config::load_config(None);
+        let mut b = crate::App::new(cfg.clone());
+        // Instance A opens against the same file and saves a new
+        // standing filter — the user's edit, from the newest window.
+        let mut a = crate::App::new(cfg);
+        a.exclude = "!zsh".to_string();
+        a.persist_filter();
+        // B (stale — it never saw the new filter) toggles a theme.
+        b.apply_setting(crate::app::SettingKind::Theme(1));
+        // The filter the user just saved must survive: B only ever
+        // changed the theme, so only the theme may be written.
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("filter = \"!zsh\""),
+            "stale instance reverted the saved filter:\n{text}"
+        );
+        assert_ne!(
+            b.view_changes,
+            ViewChanges::default(),
+            "the theme toggle should have cleared its dirty flag"
+        );
+        assert!(
+            text.contains("sort = \"Idle\""),
+            "untouched sort key was rewritten:\n{text}"
+        );
+        unsafe {
+            match saved {
+                Some(v) => std::env::set_var("TERHUB_CONFIG", v),
+                None => std::env::remove_var("TERHUB_CONFIG"),
+            }
+        }
+    }
+
+    #[test]
     fn enter_in_search_never_persists() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         // Serialize with every other env-mutating lib test (hosts modal
