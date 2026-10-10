@@ -516,6 +516,53 @@ fn columns_carry_semantic_styles_not_terminal_default() {
 }
 
 #[test]
+fn done_state_renders_in_dim_green_check() {
+    use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
+    let mut app = app_with_panes();
+    app.config.theme = "dark".to_string();
+    // A `Done` pane shares a record with Idle, but pinned to Done.
+    let now = now_unix();
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Done,
+            source: Source::Proc,
+            summary: "all tasks passed".to_string(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: now,
+            state_since: now - 60,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 7,
+            quiet_since: now - 60,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: String::new(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+        },
+    );
+    let grid = render_grid(&mut app, 140, 20);
+    let (fg, mods) = idle_cell_style(&grid, "%1");
+    // Done uses the palette's `done` role — the soft green distinct
+    // from the alarm red used for `Waiting` / `Error`. The check
+    // itself is the bold modifier (a glanceable marker, not a row
+    // tint that bleeds across the cells).
+    assert_eq!(fg, terhub::ui::palette("dark").done.fg.unwrap());
+    assert!(mods.contains(Modifier::BOLD), "done state lost its check mark");
+    // `done` must never be the alarm red — that's reserved for
+    // things actually needing the human.
+    assert_ne!(fg, Color::Red, "done state misused the alarm colour");
+}
+
+#[test]
 fn resort_restarts_view_at_top() {
     let mut app = app_with_panes();
     app.select_pane(0);
