@@ -1513,10 +1513,241 @@ mod tests {
     }
 
     #[test]
-    fn claude_waiting_screen() {
-            )
+    /// Real pi screen, captured from a pane sitting at pi's blocking
+    /// question UI (options with a `❯` caret, numbered, `Type something.`
+    /// in the tail), followed by the footer that names the keys. Repo
+    /// paths sanitized. This is the shape a `waiting` verdict must come
+    /// from — before the pi manifest existed it only matched because
+    /// claude's `^❯` happened to line up.
+    const PI_QUESTION_SCREEN: &str = "\
+ What should I work on in football-forever?
+\
+❯ 1. Run the next SPEC loop pass
+\
+     Resume the SPEC.md / src/ self-audit loop. Read SPEC.md §0.2 to find the next open `### 15.X` slot, impl
+\
+     unit, smoke, prod, svelte-check).
+\
+  2. Start the dev server
+\
+     Boot `bun run dev:football-forever` (or the local equivalent) so you can poke at it in the browser via ch
+\
+  3. Run the platform audit
+\
+     Run `bun run audit` from web/games to check gitlink drift, vendored-deps integrity, favicons, static-asse
+\
+     summary.
+\
+  4. Read PROGRESS.md / SPEC.md and propose
+\
+     Read the current spec + progress, then come back with a concrete proposal of the highest-leverage next st
+\
+  5. Type something.
+\
+──────────────────────────────────────
+\
+ Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel · Ctrl+] to collapse
+";
+
+    /// Real pi screen mid-work: a subagent audit's widget lines, then
+    /// the bottom chrome (git line, stats line, Chrome Bridge line).
+    /// The chrome is identical here and on a finished pane, so this
+    /// fixture is what proves the manifest claims nothing for working.
+    const PI_WORKING_SCREEN: &str = "\
+──────────────────────────────────────
+\
+──────────────────────────────────────
+\
+ ⏸ ok reloaded aduit it · paused · total 2h 49m
+\
+ ├─ completion audit: parked — no review recorded · bounded retry scheduled
+\
+ ├─ the stored completion claim was not evaluated — the audit waits while the item is pau
+\
+ ├─ lifecycle: safely parked · owner: detached auditor recovery · queue empty
+\
+ │  last host activity 1h 06m ago · next: automatic auditor retry in 14m 59s
+\
+ ├─ The completion claim is stored and re-probes itself every 15 minutes, so nothing is nee
+\
+ ├─ audits: 7 reviews · last infrastructure failure 0s ago
+\
+ ├─ model: primary opencode-go/step-5-preview-free · inherited from session
+\
+ └─ fallbacks: minimax/MiniMax-M3.1-Flash → opencode-go/muse-spark-1.3-contributor
+\
+~/dev/repo (main)
+\
+↑5.5M ↓256k R131M CH98.8% $7.425 7.8%/1.0M (auto)
+\
+● Chrome Bridge (indefinite) glla: ⏸ paused · completion audit parked — no review record
+";
+
+    /// Real pi screen from a finished pane: transcript tail, then the
+    /// same bottom chrome with no question menu. Must not read as
+    /// waiting — a stale-prompt regression here would put every idle
+    /// pi pane in the red-triangle count.
+    const PI_FINISHED_SCREEN: &str = "\
+ ⏸ Remove the gate-unprotected line count from SPEC.md and re-verify every other quoted line
+\
+ ├─ lifecycle: safely parked · owner: manual action · queue empty
+\
+ │  last host activity 0s ago · next: /list resume
+\
+ ├─ blocked — resume to continue
+\
+ ├─ Blocked on the one step only you can perform: entering goal-drafting mode. I attempted
+\
+ ├─ saved — 32.5k tok spent · 2 audits · resumes exactly here
+\
+ ├─ Run /goal (bare). If the harness offers the \"replace current objective\" picker, choose
+\
+ ├─ audits: 2 reviews · 2 disapproved · last disapproved 1h 08m ago
+\
+ ├─ model: primary opencode-go/step-5-preview-free · inherited from session
+\
+ ├─ fallbacks: minimax/MiniMax-M3.1-Flash → opencode-go/muse-spark-1.3-contributor
+\
+ ... (widget truncated)
+\
+~/dev/repo (main)
+\
+↑5.8M ↓549k R187M CH99.4% $3.694 16.6%/1.0M (auto)
+\
+● Chrome Bridge (indefinite) glla: ⏸ action needed · next: /list resume · safely parked
+";
+
+    fn pi_manifest() -> CompiledManifest {
+        CompiledManifest::compile(
+            &builtin_manifests()
+                .into_iter()
+                .find(|m| m.agent == "pi")
+                .expect("a builtin pi manifest must exist"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn pi_manifest_claims_the_pi_command() {
+        // Without this the whole change is inert: the daemon hands
+        // classify_screen the unwrapped pane command (`pi`), so a
+        // manifest that doesn't match it never runs.
+        let m = pi_manifest();
+        assert!(m.matches_command("pi"), "pi manifest must match the pi command");
+        assert!(
+            m.matches_command("PI"),
+            "command matching is case-insensitive"
         );
     }
+
+    #[test]
+    fn pi_manifest_classifies_real_question_menu_as_waiting() {
+        // Contract: a real captured question menu reads Waiting, and
+        // the row's summary points at the question so the human can
+        // tell which evidence fired.
+        let hit = pi_manifest()
+            .classify(PI_QUESTION_SCREEN)
+            .expect("question menu must classify");
+        assert_eq!(hit.0, AgentState::Waiting, "{hit:?}");
+        assert!(
+            hit.1.contains("Enter to select") || hit.1.contains("Run the next SPEC"),
+            "summary should name the question, got {:?}",
+            hit.1
+        );
+    }
+
+    #[test]
+    fn pi_manifest_leaves_real_working_screen_alone() {
+        // Contract: a real mid-work screen must NOT read waiting. The
+        // chrome is present here exactly as on a finished pane, which
+        // is why the manifest claims no working/idle patterns at all.
+        assert_ne!(
+            pi_manifest().classify(PI_WORKING_SCREEN).map(|(s, _)| s),
+            Some(AgentState::Waiting),
+            "working screen must not read as waiting"
+        );
+    }
+
+    #[test]
+    fn pi_manifest_leaves_real_finished_screen_alone() {
+        // Contract: a finished pane's chrome-only screen must not read
+        // as waiting either. Both negatives come from real captures so
+        // a pattern that fires on live traffic fails here.
+        assert_ne!(
+            pi_manifest().classify(PI_FINISHED_SCREEN).map(|(s, _)| s),
+            Some(AgentState::Waiting),
+            "finished screen must not read as waiting"
+        );
+    }
+
+    #[test]
+    fn pi_manifest_detects_quota_wall_as_limited() {
+        // A quota wall is the one attention state pi paints as plain
+        // text rather than a menu, so it needs its own list.
+        let m = pi_manifest();
+        assert_eq!(
+            m.classify("Error: 429 rate limit reached, try again later\n")
+                .unwrap()
+                .0,
+            AgentState::Limited
+        );
+        assert_eq!(
+            m.classify("upstream quota exceeded for this account\n")
+                .unwrap()
+                .0,
+            AgentState::Limited
+        );
+    }
+
+    #[test]
+    fn pi_panes_no_longer_depend_on_the_borrowed_claude_pattern() {
+        // Before the manifest, a pi pane only classified because the
+        // cross-manifest fallback ran claude's `^❯` over its screen.
+        // The verdict must now come from pi's own manifest, with the
+        // agent named so the Agent column and Src stay honest.
+        let manifests = builtin_manifests()
+            .iter()
+            .map(CompiledManifest::compile)
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let hit = classify_screen(&manifests, "pi", PI_QUESTION_SCREEN, false, false)
+            .expect("question menu must classify");
+        assert_eq!(hit.state, AgentState::Waiting);
+        assert_eq!(
+            hit.agent.as_deref(),
+            Some("pi"),
+            "the verdict must come from the pi manifest, not a borrowed one"
+        );
+    }
+
+    #[test]
+    fn cross_manifest_fallback_still_classifies_unknown_agents() {
+        // The fallback is load-bearing for every agent without a
+        // manifest (crush, opencode, aider…). pi gaining one must not
+        // quietly take it away, so pin the shape with an unknown
+        // command whose screen matches claude's patterns.
+        let manifests = builtin_manifests()
+            .iter()
+            .map(CompiledManifest::compile)
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let screen = "some unknown assistant\n❯ Try asking me to build something\n";
+        let hit = classify_screen(&manifests, "crush", screen, false, false)
+            .expect("unknown agent must still classify via fallback");
+        assert_eq!(hit.state, AgentState::Waiting);
+        assert_eq!(hit.agent.as_deref(), Some("claude"));
+    }
+
+    #[test]
+    fn claude_waiting_screen() {
+        let m = compiled();
+        let screen = "…\n❯ Try asking me to build something\n";
+        assert_eq!(
+            classify_screen(&m, "claude", screen, false, false),
+            hit(
+                Some("claude"),
+                AgentState::Waiting,
+                "❯ Try asking me to build something"
 
     #[test]
     fn claude_working_screen() {
