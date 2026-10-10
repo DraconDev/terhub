@@ -307,6 +307,66 @@ pub enum DrainError {
 /// they outlive the timeout on grandchild-held pipes.
 const DRAIN_CAP_BYTES: u64 = 1024 * 1024;
 
+/// Same as [`wait_drained`] but on timeout sends SIGKILL to the whole
+/// process group. The caller MUST spawn the child with
+/// `CommandExt::process_group(0)` — otherwise the child's pgid is
+/// inherited from the parent and `killpg` would signal the parent's
+/// group. With a fresh pgid (pgid == child's pid), `killpg` reaps the
+/// child plus any helpers (ssh-askpass, agent, a `sh -c` pipeline),
+/// which is what unblocks the detached reader threads on the
+/// grandchild-held pipes.
+pub fn wait_drained_in_group(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+) -> Result<DrainedChild, DrainError> {
+    use std::io::Read;
+    let out_reader = child.stdout.take().map(|o| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = o.take(DRAIN_CAP_BYTES).read_to_end(&mut buf);
+            buf
+        })
+    });
+    let err_reader = child.stderr.take().map(|e| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = e.take(DRAIN_CAP_BYTES).read_to_end(&mut buf);
+            buf
+        })
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) => {}
+            Err(e) => return Err(DrainError::WaitFailed(e.to_string())),
+        }
+        if std::time::Instant::now() >= deadline {
+            // Kill the group, not the child alone: the child may have
+            // exec'd a helper that forked its own children still
+            // holding our pipes.
+            let pgid = child.id() as libc::pid_t;
+            // Best-effort: if pgid doesn't exist (e.g. someone
+            // setpgid'd it), fall back to child.kill().
+            let killed_group = unsafe { libc::killpg(pgid, libc::SIGKILL) == 0 };
+            if !killed_group {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+            return Err(DrainError::Timeout);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let joined = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
+        h.map(|j| j.join().unwrap_or_default()).unwrap_or_default()
+    };
+    Ok(DrainedChild {
+        status,
+        stdout: joined(out_reader),
+        stderr: joined(err_reader),
+    })
+}
+
 /// Wait for a piped child with a deadline while draining stdout/stderr on
 /// reader threads. Draining *during* the wait (not after exit) is
 /// load-bearing: a child that fills the 64KB pipe buffer would otherwise
