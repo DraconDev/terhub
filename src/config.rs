@@ -1040,7 +1040,8 @@ pub fn persist_ui_settings(v: &UiPersist) -> anyhow::Result<()> {
 }
 
 fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
-    let text = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
+    let raw = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
+    let text = strip_bom(&raw);
     // Self-heal first. A key assigned twice in one section makes the
     // whole file unparseable (TOML: "Cannot overwrite a value"), and a
     // config that won't parse is answered with defaults — which
@@ -1320,6 +1321,16 @@ fn assigned_key(line: &str) -> Option<&str> {
         return None;
     }
     Some(k)
+}
+
+/// Drop a leading UTF-8 byte-order mark if present. Some editors and
+/// Windows tools save files with a U+FEFF BOM; TOML has no concept of
+/// it, and Rust's `str::trim_start` does not strip it. The config
+/// writer must drop it explicitly — otherwise the line is not seen as
+/// a `[ui]` header and a fresh `[ui]` block gets appended at EOF,
+/// corrupting the file into something the reader rejects.
+fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
 /// Return the trailing `# ...` comment on `line` (including the leading
