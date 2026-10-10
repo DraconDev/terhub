@@ -14,6 +14,12 @@ pub enum AgentState {
     Working,
     Waiting,
     Error,
+    /// Quiet between turns, but the agent *has* finished something
+    /// (a completion banner matched, the process exited 0, the screen
+    /// shows a verdicted footer). Distinct from `Idle` — Idle means
+    /// "never ran / never finished", Done means "ran, finished,
+    /// waiting for the next prompt". `Done` is never attention.
+    Done,
     Idle,
     /// Working, but the agent's process tree has burned no CPU for
     /// STUCK_SECS: hung, not busy.
@@ -31,7 +37,8 @@ impl AgentState {
                 Some(AgentState::Waiting)
             }
             "error" | "failed" | "fail" => Some(AgentState::Error),
-            "idle" | "done" | "complete" | "completed" => Some(AgentState::Idle),
+            "idle" | "ready" => Some(AgentState::Idle),
+            "done" | "finished" | "complete" | "completed" => Some(AgentState::Done),
             "stuck" | "hung" => Some(AgentState::Stuck),
             "limited" | "limit" | "quota" | "capped" => Some(AgentState::Limited),
             "unknown" => Some(AgentState::Unknown),
@@ -46,6 +53,7 @@ impl AgentState {
             AgentState::Waiting => "waiting",
             AgentState::Error => "error",
             AgentState::Idle => "idle",
+            AgentState::Done => "done",
             AgentState::Stuck => "stuck",
             AgentState::Limited => "limited",
         }
@@ -325,9 +333,18 @@ pub struct Manifest {
     /// Quota/rate-limit language: reads as Limited, never Error.
     #[serde(default)]
     pub limited: Vec<String>,
-    /// Done language (completion banners, all-tasks-verdicts): reads as
-    /// Idle — finished, not waiting. Kept separate from waiting so a done
-    /// agent never badges as needing input.
+    /// Done language (completion banners, all-tasks-verdicts): reads
+    /// as `Done` — finished, not waiting. Kept separate from waiting
+    /// so a done agent never badges as needing input, and from
+    /// `idle_fallback` (a chrome box) so a clean banner isn't shadowed
+    /// by stale scrollback.
+    #[serde(default)]
+    pub done: Vec<String>,
+    /// Legacy Done-as-Idle list: a one-line backwards-compat alias
+    /// kept so existing manifests keep working. Patterns here count
+    /// as `Done` if there's no `done:` list; if both are present,
+    /// `done:` wins and `idle:` is ignored. New manifests should use
+    /// `done:`.
     #[serde(default)]
     pub idle: Vec<String>,
     /// Done chrome (input boxes, idle footers): reads as Idle, but only
@@ -353,6 +370,7 @@ pub struct CompiledManifest {
     waiting: Vec<Regex>,
     error: Vec<Regex>,
     limited: Vec<Regex>,
+    done: Vec<Regex>,
     idle: Vec<Regex>,
     idle_fallback: Vec<Regex>,
     waiting_unless: Vec<Regex>,
@@ -380,6 +398,12 @@ impl CompiledManifest {
             error: compile_all(&m.agent, "error", &m.error)?,
             limited: compile_all(&m.agent, "limited", &m.limited)?,
             waiting_unless: compile_all(&m.agent, "waiting_unless", &m.waiting_unless)?,
+            // `done` and `idle` are siblings: a manifest that
+            // already moved to `done:` gets an empty `idle:` list
+            // (the field still compiles to a no-op regex vector).
+            // Manifests that haven't migrated still get their
+            // `idle:` patterns, treated as `Done` at classify time.
+            done: compile_all(&m.agent, "done", &m.done)?,
             idle: compile_all(&m.agent, "idle", &m.idle)?,
             idle_fallback: compile_all(&m.agent, "idle_fallback", &m.idle_fallback)?,
         })
