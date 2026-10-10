@@ -505,18 +505,29 @@ pub fn expand_command(
 /// include list is OR-combined and the exclude list is NOT-OR (any
 /// hit hides the row). Empty tokens are skipped; a lone `!` matches
 /// every row.
+/// include list: row passes if ANY non-`!` include token matches
+/// AND no `!`-prefixed token matches (the negated-include form
+/// lets the user fold a one-off exclusion into the include line
+/// without leaving it). Empty include list = no include
+/// constraint. Exclude list: row passes only if it matches NONE
+/// of the tokens (NOT-OR). The two lists are then AND-combined.
+/// Tokens are already lowercased and split on whitespace at the
+/// call site; this function is the AND-of-(OR-include,
+/// NOT-OR-exclude) classifier.
 fn pane_matches(
     p: &Pane,
     rec: Option<&AgentRecord>,
     includes: &[&str],
     excludes: &[&str],
 ) -> bool {
+    // (a) Split includes into positive and `!`-negated; an
+    // include-only-no-positives line is "no include constraint"
+    // and passes for free. Negated-includes (the user typed
+    // `!zsh` to hide zsh in a single-token query) still fire.
+    let mut has_positive = false;
+    let mut positive_match = false;
     for tok in includes {
         match tok.strip_prefix('!') {
-            // A lone `!` is the OLD "negate empty query = match
-            // everything" shortcut; on the include line it means
-            // "no constraint" (the test suite asserts this and
-            // so do users who parked a `!` while typing).
             Some(rest) if rest.is_empty() => continue,
             Some(rest) => {
                 if pane_match_any(p, rec, rest) {
@@ -524,11 +535,17 @@ fn pane_matches(
                 }
             }
             None => {
-                if !pane_match_any(p, rec, tok) {
-                    return false;
+                if !tok.is_empty() {
+                    has_positive = true;
+                    if pane_match_any(p, rec, tok) {
+                        positive_match = true;
+                    }
                 }
             }
         }
+    }
+    if has_positive && !positive_match {
+        return false;
     }
     for tok in excludes {
         if !tok.is_empty() && pane_match_any(p, rec, tok) {
@@ -563,8 +580,13 @@ fn pane_clause(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str], is_include:
     if tokens.is_empty() {
         return true;
     }
-    for tok in tokens {
-        if is_include {
+    if is_include {
+        // OR-of-positives / hidden-by-any-`!`-token, mirroring
+        // `pane_matches` so the legend's single-clause view
+        // matches the combined predicate.
+        let mut has_positive = false;
+        let mut positive_match = false;
+        for tok in tokens {
             match tok.strip_prefix('!') {
                 Some(rest) if rest.is_empty() => continue,
                 Some(rest) => {
@@ -573,13 +595,23 @@ fn pane_clause(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str], is_include:
                     }
                 }
                 None => {
-                    if !pane_match_any(p, rec, tok) {
-                        return false;
+                    if !tok.is_empty() {
+                        has_positive = true;
+                        if pane_match_any(p, rec, tok) {
+                            positive_match = true;
+                        }
                     }
                 }
             }
-        } else if !tok.is_empty() && pane_match_any(p, rec, tok) {
+        }
+        if has_positive && !positive_match {
             return false;
+        }
+    } else {
+        for tok in tokens {
+            if !tok.is_empty() && pane_match_any(p, rec, tok) {
+                return false;
+            }
         }
     }
     true
