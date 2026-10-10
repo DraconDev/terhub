@@ -5286,6 +5286,42 @@ mod tests {
     }
 
     #[test]
+    fn expand_command_quotes_substitutions_for_shell_safety() {
+        // The user template `"git -C {dir} status"` is fed to
+        // `sh -c <expanded>`. A `dir` (or pane id, session/window name,
+        // agent, state, command) containing shell metachars must NOT
+        // be able to inject an extra command. sh_quote wraps the
+        // substitution in single quotes, so `';id;'` becomes
+        // `'';id;'''` and the embedded `;` is literal inside the
+        // quoted region.
+        let mut pane = Pane::test("%1", "w", "sh");
+        pane.path = "/tmp/agent-cwd; touch /tmp/terhub-pwned".to_string();
+        let out = expand_command("git -C {dir} status", &pane, None);
+        // The shell metachars are inside single quotes — they cannot
+        // break out and run `touch /tmp/terhub-pwned`.
+        assert!(
+            out.contains("'/tmp/agent-cwd; touch /tmp/terhub-pwned'"),
+            "substitution not shell-quoted: {out:?}"
+        );
+        // Run it for real and prove no side effect.
+        let _ = std::fs::remove_file("/tmp/terhub-pwned");
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&out)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        // git may fail because the fake path doesn't exist; what
+        // matters is no second command ran.
+        assert!(!status.success(), "git should not find the fake path");
+        assert!(
+            !std::path::Path::new("/tmp/terhub-pwned").exists(),
+            "shell injection succeeded — /tmp/terhub-pwned was created"
+        );
+    }
+
+    #[test]
     fn custom_command_runs_and_shows_output() {
         use crate::config::CustomCommand;
         let mut app = app_with_panes();
