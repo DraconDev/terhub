@@ -524,14 +524,23 @@ fn pane_matches(
     includes: &[&str],
     excludes: &[&str],
 ) -> bool {
-    eprintln!("pane_matches id={} includes={:?} excludes={:?}", p.id, includes, excludes);
     for tok in includes {
-        if let Some(rest) = tok.strip_prefix('!').filter(|r| !r.is_empty()) {
-            if pane_match_any(p, rec, rest) {
-                return false;
+        match tok.strip_prefix('!') {
+            // A lone `!` is the OLD "negate empty query = match
+            // everything" shortcut; on the include line it means
+            // "no constraint" (the test suite asserts this and
+            // so do users who parked a `!` while typing).
+            Some(rest) if rest.is_empty() => continue,
+            Some(rest) => {
+                if pane_match_any(p, rec, rest) {
+                    return false;
+                }
             }
-        } else if !tok.is_empty() && !pane_match_any(p, rec, tok) {
-            return false;
+            None => {
+                if !pane_match_any(p, rec, tok) {
+                    return false;
+                }
+            }
         }
     }
     for tok in excludes {
