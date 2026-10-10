@@ -542,6 +542,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            done: vec![],
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
