@@ -1384,6 +1384,8 @@ impl App {
         self.refresh_filtered();
         self.pane_selected = 0;
         self.pane_scroll = 0;
+        self.view_changes.sort = true;
+        self.view_changes.sort_desc = true;
         self.persist_view();
     }
 
