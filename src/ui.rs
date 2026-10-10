@@ -474,6 +474,37 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
+/// Render a 6-bucket sparkline bucket array as 6 block characters.
+/// Heights are log-mapped: a single tall bar is the signal the user
+/// wants (a busy tick next to quiet ones), not arithmetic — equal
+/// bars feel like a flatline even when one tick had 50x the bytes.
+/// The lowest step (`▁`) is still visible above the row baseline, so
+/// a "quiet" pane shows a flat ridge instead of nothing.
+fn sparkline_glyphs(buckets: &[u32; 6]) -> String {
+    // Find the max so we can scale. Empty ring (all zeros) → flat
+    // ridge: a uniform 0 means a fresh pane with no samples.
+    let max = buckets.iter().copied().max().unwrap_or(0);
+    const STEPS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    if max == 0 {
+        return "▁▁▁▁▁▁".to_string();
+    }
+    // Log scale: a 4096-byte tick shows full height; a 1-byte tick
+    // shows the smallest step. log2(4096) = 12, so step index =
+    // round(log2(bucket + 1) * 7 / 12). Bounded to 7 (the last step).
+    let mut out = String::with_capacity(12);
+    for &b in buckets {
+        let step = if b == 0 {
+            0
+        } else {
+            // log2(b + 1) * 7 / 12, clamped to 7
+            let log_bits = (32 - b.saturating_add(1).leading_zeros() - 1) as u32;
+            ((log_bits as u64 * 7 + 6) / 12).min(7) as usize
+        };
+        out.push(STEPS[step]);
+    }
+    out
+}
+
 /// Preview text with embedded ANSI colors. tmux `-e` captures carry SGR
 /// styling; unparseable input falls back to stripped plain text so raw
 /// escapes never leak onto the screen.
