@@ -595,6 +595,74 @@ fn done_state_renders_in_dim_green_check() {
 }
 
 #[test]
+fn sparkline_renders_six_cells_monotonic_in_grid() {
+    // Contract item 10: the sparkline column, as rendered into the
+    // grid, shows 6 cells with non-decreasing height. A regression
+    // here would mean the renderer truncates the column, swaps the
+    // glyph order, or drops cells under wide terminals — the unit
+    // tests on `sparkline_glyphs` would not catch any of those.
+    let mut app = app_with_panes();
+    app.config.activity_sparkline = true;
+    // Drive a monotonic ramp: each tick adds more bytes to the
+    // screen, so the ring's rightmost-10 bucket (which is what the
+    // 6th cell renders) ends up larger than the 5th, which is
+    // larger than the 4th, etc. The first call seeds prev=unknown
+    // (recorded as 0); every call after that is a clean delta.
+    let mut screen = String::new();
+    for i in 0..60 {
+        let n = (i + 1) * 4; // 4, 8, 12, ... 240 bytes added
+        screen.push_str(&"x".repeat(n));
+        app.sample_sparkline("%1", &screen);
+    }
+    let grid = render_grid(&mut app, 140, 20);
+    // The Activity column header is `Activity` and its cell is
+    // exactly 6 grapheme cells wide. The cell may be followed by
+    // padding, so the cell's *content* (chars 0..6 of the column
+    // slice) is what we assert on.
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
+        .collect();
+    let hdr_line = text.iter().find(|l| l.contains("Activity")).expect(
+        "Activity column header must appear when activity_sparkline is enabled",
+    );
+    let col_start = hdr_line.find("Activity").unwrap();
+    // The renderer's Layout sets the Activity column to 7 cells;
+    // 6 of them are the sparkline glyphs, the 7th is padding.
+    // Walk the row to find the pane id and read 6 chars from the
+    // column starting at col_start.
+    let row_line = text.iter().find(|l| l.contains("%1")).unwrap();
+    let sparkline: String = row_line[col_start..]
+        .chars()
+        .take(6)
+        .collect();
+    assert_eq!(
+        sparkline.chars().count(),
+        6,
+        "Activity column must render 6 cells, got {sparkline:?}"
+    );
+    // Heights must be monotonically non-decreasing across the six
+    // cells (rightmost = freshest, leftmost = oldest). Compare on
+    // unicode codepoints — every glyph in the set has a unique
+    // height and the height order matches the codepoint order.
+    let mut prev = '\u{0000}';
+    for c in sparkline.chars() {
+        assert!(
+            (c as u32) >= (prev as u32),
+            "non-monotonic sparkline: {prev:?} > {c:?} in {sparkline:?}"
+        );
+        prev = c;
+    }
+    // The freshest bucket must be the tallest — a busy tick should
+    // light the rightmost cell, not get masked by log scaling.
+    let chars: Vec<char> = sparkline.chars().collect();
+    assert!(
+        (chars[5] as u32) >= ('▄' as u32),
+        "freshest bucket too short for a busy ramp: {sparkline:?}"
+    );
+}
+
+#[test]
 fn resort_restarts_view_at_top() {
     let mut app = app_with_panes();
     app.select_pane(0);
