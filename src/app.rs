@@ -4747,6 +4747,24 @@ mod tests {
     }
 
     #[test]
+    fn tmux_pane_format_includes_bell_flag() {
+        // A regression here would silently drop the bell evidence:
+        // the parser would still return bell=false forever, and the
+        // row would never get the chip. Pin the format string.
+        assert!(super::PANE_FORMAT.contains("#{window_bell_flag}"));
+    }
+
+    #[test]
+    fn done_state_sorts_after_working_before_idle() {
+        // Done is "ran, finished, quiet" — more meaningful than
+        // never-ran idle, less urgent than working. A regression in
+        // state_rank_of would bury finished panes below the noise.
+        use crate::agent::AgentState;
+        assert!(state_rank_of(AgentState::Working) < state_rank_of(AgentState::Done));
+        assert!(state_rank_of(AgentState::Done) < state_rank_of(AgentState::Idle));
+    }
+
+    #[test]
     fn attend_event_routes_remote_winners_out() {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
