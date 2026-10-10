@@ -1423,11 +1423,13 @@ mod tests {
             waiting_unless: vec![],
         })
         .unwrap();
-        let (state, _) = m.classify("Summary\nall tasks passed · 0 failed\n").unwrap();
+        let state = m
+            .classify("Summary\nall tasks passed · 0 failed\n")
+            .map(|(s, _)| s);
         assert_ne!(
             state,
-            AgentState::Done,
-            "default manifest with no `done:` and no `idle:` must NOT promote to Done"
+            Some(AgentState::Done),
+            "default manifest with no `done:` and no `idle:` must NOT promote to Done (got {state:?})"
         );
     }
 
