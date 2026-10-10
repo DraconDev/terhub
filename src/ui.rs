@@ -349,7 +349,7 @@ pub fn palette(theme: &str) -> Palette {
                 .bg(rgb(0x1F, 0x6F, 0xEB)),
             attached: Style::default().fg(rgb(0x7E, 0xE7, 0x87)),
             status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
-            dim: Style::default().fg(rgb(0x8B, 0x94, 0x9E)),
+            dim: Style::default().fg(rgb(0x9A, 0xA5, 0xB1)),
             focus: Style::default().fg(rgb(0xD2, 0xA8, 0xFF)),
         },
     }
@@ -1053,11 +1053,20 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Cell::from(pane_cell_id(&p.id)).style(id_style),
             ];
             if show_session {
-                cells.push(Cell::from(truncate(&p.session, 18)));
+                // Sessions are top-level categories: the title hue
+                // without its bold, so the family ties without shouting.
+                cells.push(Cell::from(truncate(&p.session, 18)).style(
+                    Style::default().fg(pal.title.fg.unwrap_or(Color::Reset)),
+                ));
             }
             cells.extend([
-                Cell::from(truncate(&window, 20)),
-                Cell::from(truncate(&p.command, if compact { 16 } else { 32 })),
+                // Window is sub-structure: recede it so session/cmd read first.
+                Cell::from(truncate(&window, 20)).style(pal.dim),
+                // Cmd is primary content (what runs): full status ink so
+                // it reads the same on every terminal instead of
+                // inheriting whatever the terminal's default fg is.
+                Cell::from(truncate(&p.command, if compact { 16 } else { 32 }))
+                    .style(Style::default().fg(pal.status.fg.unwrap_or(Color::Reset))),
                 Cell::from(truncate(dir, 24)).style(if dir.contains("(deleted)") {
                     // A vanished cwd reads struck-through, still legible.
                     pal.dim.add_modifier(Modifier::CROSSED_OUT)
@@ -1065,7 +1074,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                     pal.dim
                 }),
                 Cell::from(agent).style(agent_style),
-                Cell::from(handle).style(pal.dim),
+                // Handle groups with its agent: same hash colour, so the
+                // eye lands the pair as one owner instead of two greys.
+                Cell::from(handle).style(
+                    rec.filter(|r| !r.handle.is_empty())
+                        .map(|r| agent_text_style(&r.agent, &app.config, pal.dim))
+                        .unwrap_or(pal.dim),
+                ),
                 Cell::from(state).style(state_style),
                 Cell::from(src).style(src_style),
                 Cell::from(age).style(pal.dim),
@@ -1780,7 +1795,7 @@ mod tests {
         // re-muddy them.
         assert_eq!(p.title.fg, Some(Color::Rgb(0x79, 0xC0, 0xFF)));
         assert_eq!(p.focus.fg, Some(Color::Rgb(0xD2, 0xA8, 0xFF)));
-        assert_eq!(p.dim.fg, Some(Color::Rgb(0x8B, 0x94, 0x9E)));
+        assert_eq!(p.dim.fg, Some(Color::Rgb(0x9A, 0xA5, 0xB1)));
     }
 
     #[test]
