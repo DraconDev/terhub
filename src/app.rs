@@ -634,6 +634,16 @@ pub struct App {
     /// them (the daemon never fetches native tabs); first sighting starts
     /// fresh, like a daemon restart.
     native_quiet: HashMap<String, (u64, u64)>,
+    /// Per-pane 60-sample sparkline ring. The TUI samples bytes of
+    /// new output every tick; the renderer collapses 10 samples into
+    /// one bar to draw a 6-wide micrograph. In-memory only — a
+    /// restart resets (the contract: restarts shouldn't carry stale
+    /// activity claims across sessions).
+    sparkline_samples: HashMap<String, [u32; 60]>,
+    /// Pane id of the last sample the sparkline for that pane was
+    /// compared against. The (id, prev_screen) pair lets us compute
+    /// "bytes added since last sample" cheaply.
+    sparkline_prev: HashMap<String, String>,
     /// Hosts modal cursor.
     pub hosts_selected: usize,
     /// Hosts modal first visible row.
@@ -703,6 +713,8 @@ impl App {
             native_rows: Vec::new(),
             native_agents: Vec::new(),
             native_quiet: HashMap::new(),
+            sparkline_samples: HashMap::new(),
+            sparkline_prev: HashMap::new(),
             hosts_selected: 0,
             hosts_scroll: 0,
             preview_cpu_prev: None,
