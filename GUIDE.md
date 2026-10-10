@@ -354,8 +354,7 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
    attention states — its bottom chrome renders identically while the
    model streams and after the transcript stops, so `working`/`idle` stay
    with the process tree and the quiet clock rather than screen text.
-   Tomorrow's
-   terhub's own TUI) skip screen classification — they name agents
+   Tomorrow's terhub's own TUI is a harness dashboard: it names agents
    without running them. A record with no supporting evidence for 30
    minutes is dropped rather than shown. Idle shells nobody claimed stay
    unclaimed, so plain terminals show no state instead of guessing one.
