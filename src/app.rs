@@ -6169,10 +6169,10 @@ mod tests {
             text.contains("filter = \"!zsh\""),
             "stale instance reverted the saved filter:\n{text}"
         );
-        assert_ne!(
+        assert_eq!(
             b.view_changes,
             ViewChanges::default(),
-            "the theme toggle should have cleared its dirty flag"
+            "a successful write should clear the instance's dirty flags"
         );
         assert!(
             text.contains("sort = \"Idle\""),
