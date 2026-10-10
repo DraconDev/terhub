@@ -363,8 +363,9 @@ fn state_rank_of(state: crate::agent::AgentState) -> u8 {
         AgentState::Error => 2,
         AgentState::Limited => 3,
         AgentState::Working => 4,
-        AgentState::Idle => 5,
-        AgentState::Unknown => 6,
+        AgentState::Done => 5,
+        AgentState::Idle => 6,
+        AgentState::Unknown => 7,
     }
 }
 
