@@ -347,6 +347,14 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
    match the pane's command and recent screen text. The freshest matching
    line decides, so current output overrides stale scrollback; `waiting`/
    `error` on screen win over the process state. Harness dashboards (muxa,
+   terhub itself) are skipped. When no manifest matches the command the
+   classifier still tries every manifest over the screen (an agent without
+   its own manifest still gets a verdict), naming the agent only when the
+   screen mentions it. `pi` has its own manifest claiming only the
+   attention states — its bottom chrome renders identically while the
+   model streams and after the transcript stops, so `working`/`idle` stay
+   with the process tree and the quiet clock rather than screen text.
+   Tomorrow's
    terhub's own TUI) skip screen classification — they name agents
    without running them. A record with no supporting evidence for 30
    minutes is dropped rather than shown. Idle shells nobody claimed stay
