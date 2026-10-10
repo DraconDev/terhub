@@ -6127,6 +6127,96 @@ mod tests {
         assert_eq!(app.filtered.len(), 2);
     }
 
+    #[test]
+    fn include_line_is_or_combined_across_tokens() {
+        // The new include line: tokens are OR-combined, so a row
+        // survives if it matches ANY token. `claude waiting`
+        // keeps rows mentioning either word.
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "claude", AgentState::Waiting, 60),
+        );
+        app.agents.get_mut("%1").unwrap().summary = "approve deploy".to_string();
+        app.agents.insert(
+            "%2".to_string(),
+            record("%2", "codex", AgentState::Working, 5),
+        );
+        app.agents.get_mut("%2").unwrap().summary = "running tests".to_string();
+        app.filter = "claude waiting".to_string();
+        app.refresh_filtered();
+        // %1: matches "claude" (agent) and "waiting" (state); kept.
+        // %2: matches nothing in {claude, waiting}; hidden.
+        assert_eq!(ids(&app), vec!["%1"]);
+        // A second token widens the include set.
+        app.filter = "codex bash".to_string();
+        app.refresh_filtered();
+        // %2: matches "codex" (agent); kept. %1: matches neither; hidden.
+        assert_eq!(ids(&app), vec!["%2"]);
+    }
+
+    #[test]
+    fn exclude_line_is_not_or_combined_across_tokens() {
+        // The new exclude line: tokens are NOT-OR combined, so a
+        // row survives only if it matches NONE of the tokens.
+        // `bash npm` keeps rows that mention neither.
+        use crate::agent::AgentState;
+        let mut app = app_with_panes(); // %1 nvim, %2 bash
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "claude", AgentState::Waiting, 60),
+        );
+        app.agents.insert(
+            "%2".to_string(),
+            record("%2", "codex", AgentState::Working, 5),
+        );
+        app.exclude = "bash npm".to_string();
+        app.refresh_filtered();
+        // %1 (nvim, claude): matches neither; kept.
+        // %2 (bash, codex): matches bash; hidden.
+        assert_eq!(ids(&app), vec!["%1"]);
+        // Three tokens: same logic.
+        app.exclude = "nvim bash npm".to_string();
+        app.refresh_filtered();
+        // %1 matches nvim; %2 matches bash; both hidden.
+        assert!(app.filtered.is_empty());
+    }
+
+    #[test]
+    fn include_and_exclude_combine_as_intersect() {
+        // The two lines are independent AND clauses: a row must
+        // pass the include (any-token match) AND pass the
+        // exclude (no-token match).
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "claude", AgentState::Waiting, 60),
+        );
+        app.agents.insert(
+            "%2".to_string(),
+            record("%2", "codex", AgentState::Working, 5),
+        );
+        // Include: rows mentioning claude OR codex.
+        // Exclude: rows NOT mentioning bash OR npm.
+        // %1: matches include (claude) and not-exclude; kept.
+        // %2: matches include (codex) and not-exclude; kept.
+        app.filter = "claude codex".to_string();
+        app.exclude = "bash npm".to_string();
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%1", "%2"]);
+        // Now exclude codex too: %2 must go.
+        app.exclude = "bash npm codex".to_string();
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%1"]);
+        // And add a third include token to widen the include set
+        // back; %2 still excluded.
+        app.filter = "claude codex anything".to_string();
+        app.refresh_filtered();
+        assert_eq!(ids(&app), vec!["%1"]);
+    }
+
     fn legend_texts(rows: &[SettingRow]) -> Vec<String> {
         rows.iter()
             .filter_map(|r| match r {
