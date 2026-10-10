@@ -497,7 +497,7 @@ pub fn sparkline_glyphs(buckets: &[u32; 6]) -> String {
             0
         } else {
             // log2(b + 1) * 7 / 12, clamped to 7
-            let log_bits = (32 - b.saturating_add(1).leading_zeros() - 1) as u32;
+            let log_bits = 32 - b.saturating_add(1).leading_zeros() - 1;
             ((log_bits as u64 * 7 + 6) / 12).min(7) as usize
         };
         out.push(STEPS[step]);
