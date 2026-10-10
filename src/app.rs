@@ -824,6 +824,9 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
+            filter_other: String::new(),
+            cursor_other: 0,
+            filter_line: FilterLine::Include,
             view_changes: crate::config::ViewChanges::default(),
             hide_quiet_shells,
             hidden_quiet: 0,
@@ -3317,8 +3320,13 @@ impl App {
         self.mode = Mode::PromptFilter;
         self.editing_standing = false;
         self.filter_before_edit.clone_from(&self.filter);
+        // The new two-line prompt: both lines seed with the live
+        // values so the user can switch between them with Tab.
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
+        self.filter_other.clone_from(&self.exclude);
+        self.cursor_other = self.filter_other.chars().count();
+        self.filter_line = FilterLine::Include;
     }
 
     /// Mark the sort pair as changed (header-click path lives in the
@@ -3342,6 +3350,12 @@ impl App {
         // old single-substring form.
         self.input.clone_from(&self.exclude);
         self.cursor = self.input.chars().count();
+        // The standing editor also surfaces the include line so
+        // a power user can fold an include into the saved view
+        // too; both lines save on Enter.
+        self.filter_other.clone_from(&self.filter);
+        self.cursor_other = self.filter_other.chars().count();
+        self.filter_line = FilterLine::Exclude;
     }
 
     /// Printable keystroke with no Ctrl/Alt held: feeds type-to-filter.
