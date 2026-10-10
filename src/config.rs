@@ -1076,37 +1076,82 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             continue;
         }
         if section == "[ui]" && is_key_line(line, "theme") {
-            out.push(format!("theme = \"{}\"{}", v.theme, trailing_comment(line)));
-            seen[0] = true;
+            match v.theme {
+                Some(t) => {
+                    out.push(format!("theme = \"{t}\"{}", trailing_comment(line)));
+                    seen[0] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "density") {
-            out.push(format!("density = \"{}\"{}", v.density, trailing_comment(line)));
-            seen[1] = true;
+            match v.density {
+                Some(d) => {
+                    out.push(format!("density = \"{d}\"{}", trailing_comment(line)));
+                    seen[1] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "highlight_attached") {
-            out.push(format!("highlight_attached = {}{}", v.highlight, trailing_comment(line)));
-            seen[2] = true;
+            match v.highlight {
+                Some(h) => {
+                    out.push(format!("highlight_attached = {h}{}", trailing_comment(line)));
+                    seen[2] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "mru_tabs") {
-            out.push(format!("mru_tabs = {}{}", v.mru_tabs, trailing_comment(line)));
-            seen[4] = true;
+            match v.mru_tabs {
+                Some(m) => {
+                    out.push(format!("mru_tabs = {m}{}", trailing_comment(line)));
+                    seen[4] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "filter") {
-            // Quotes escape the one char TOML needs escaped; a filter is
-            // plain search text, never a path, so backslash/quote are the
-            // only risks.
-            let esc = v.filter.replace('\\', "\\\\").replace('"', "\\\"");
-            out.push(format!("filter = \"{esc}\"{}", trailing_comment(line)));
-            seen[5] = true;
+            match v.filter {
+                // Quotes escape the one char TOML needs escaped; a filter
+                // is plain search text, never a path, so backslash and
+                // quote are the only risks.
+                Some(f) => {
+                    let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
+                    out.push(format!("filter = \"{esc}\"{}", trailing_comment(line)));
+                    seen[5] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "sort") {
-            let esc = v.sort.replace('\\', "\\\\").replace('"', "\\\"");
-            out.push(format!("sort = \"{esc}\"{}", trailing_comment(line)));
-            seen[6] = true;
+            match v.sort {
+                Some(s) => {
+                    let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
+                    out.push(format!("sort = \"{esc}\"{}", trailing_comment(line)));
+                    seen[6] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "sort_desc") {
-            out.push(format!("sort_desc = {}{}", v.sort_desc, trailing_comment(line)));
-            seen[7] = true;
+            match v.sort_desc {
+                Some(d) => {
+                    out.push(format!("sort_desc = {d}{}", trailing_comment(line)));
+                    seen[7] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[ui]" && is_key_line(line, "hide_shells") {
-            out.push(format!("hide_shells = {}{}", v.hide_shells, trailing_comment(line)));
-            seen[8] = true;
+            match v.hide_shells {
+                Some(h) => {
+                    out.push(format!("hide_shells = {h}{}", trailing_comment(line)));
+                    seen[8] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[notifications]" && is_key_line(line, "enabled") {
-            out.push(format!("enabled = {}{}", v.notifications, trailing_comment(line)));
-            seen[3] = true;
+            match v.notifications {
+                Some(e) => {
+                    out.push(format!("enabled = {e}{}", trailing_comment(line)));
+                    seen[3] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else {
             out.push(line.to_string());
         }
