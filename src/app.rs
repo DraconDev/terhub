@@ -3446,19 +3446,45 @@ impl App {
         }
     }
 
-    /// Live re-filter while typing; restarts at the top row. Edits
-    /// whichever query the prompt opened for (search or standing).
-    /// The standing draft also drops a leading `!` on every keystroke
-    /// so the table never momentarily shows the un-normalized form.
+    /// Live re-filter while typing; restarts at the top row. The
+    /// two-line prompt makes the dispatch route on
+    /// `self.filter_line` instead of `self.editing_standing`: the
+    /// live prompt's include line writes to `filter`; the
+    /// standing prompt's exclude line writes to `exclude` (with a
+    /// `!` strip on every keystroke so the table never shows the
+    /// un-normalized form).
     fn apply_live_filter(&mut self) {
+        let q = self.input.trim();
         if self.editing_standing {
-            self.exclude = self.input.trim().trim_start_matches('!').trim().to_string();
+            if self.filter_line == FilterLine::Exclude {
+                self.exclude = q.trim_start_matches('!').trim().to_string();
+            } else {
+                self.filter.clone_from(q);
+            }
         } else {
-            self.filter.clone_from(&self.input);
+            if self.filter_line == FilterLine::Include {
+                self.filter.clone_from(q);
+            } else {
+                self.exclude = q.trim_start_matches('!').trim().to_string();
+            }
         }
         self.refresh_filtered();
         self.pane_selected = 0;
         self.pane_scroll = 0;
+    }
+
+    /// Two-line prompt helper: swap the active line's text and
+    /// cursor with the other line's, and flip `filter_line` so the
+    /// next keystroke edits the freshly-active line. The other
+    /// line's previous edit is preserved by being parked in
+    /// `filter_other` first.
+    fn swap_filter_line(&mut self) {
+        std::mem::swap(&mut self.input, &mut self.filter_other);
+        std::mem::swap(&mut self.cursor, &mut self.cursor_other);
+        self.filter_line = match self.filter_line {
+            FilterLine::Include => FilterLine::Exclude,
+            FilterLine::Exclude => FilterLine::Include,
+        };
     }
 
     /// Apply the item at popup row `row` (for mouse clicks).
