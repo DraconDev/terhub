@@ -1402,11 +1402,42 @@ mod tests {
     }
 
     #[test]
-    fn no_done_list_keeps_idle_classification() {
-        // A manifest that hasn't migrated to `done:` (still on `idle:`)
-        // must still classify its completion banner as `Idle` —
-        // no regression for the four default manifests that haven't
-        // been updated yet.
+    fn default_manifest_does_not_promote_done() {
+        // Contract item 6: a default manifest (one that hasn't migrated
+        // to `done:`) must NOT promote a completion banner to `Done`.
+        // All four builtin manifests ship with `done: vec![]` and
+        // `idle: vec![]`, so "all tasks passed" is a no-signal line —
+        // it falls through to `Working` (the default) or `Idle` (when
+        // the manifest has a chrome box), never `Done`. A regression
+        // here would silently mark every default-builtin pane Done.
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "x".to_string(),
+            commands: vec!["x".to_string()],
+            working: vec!["loading".to_string()],
+            waiting: vec!["^❯".to_string()],
+            error: vec![],
+            limited: vec![],
+            done: vec![],
+            idle: vec![],
+            idle_fallback: vec![],
+            waiting_unless: vec![],
+        })
+        .unwrap();
+        let (state, _) = m.classify("Summary\nall tasks passed · 0 failed\n").unwrap();
+        assert_ne!(
+            state,
+            AgentState::Done,
+            "default manifest with no `done:` and no `idle:` must NOT promote to Done"
+        );
+    }
+
+    #[test]
+    fn legacy_idle_list_promotes_to_done() {
+        // Goal text: legacy `idle:` lists are repurposed as the source
+        // for `Done` classifications (the rename would be silent
+        // breakage otherwise). A manifest that hasn't migrated to
+        // `done:` still works — its `idle:` patterns promote matches
+        // to `Done`, the same verdict a `done:` list would give.
         let m = CompiledManifest::compile(&Manifest {
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
