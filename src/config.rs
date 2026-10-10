@@ -953,24 +953,52 @@ pub fn load_config(path: Option<PathBuf>) -> AppConfig {
 
 /// The `[ui]`/`[notifications]` values one surgical config write
 /// carries. Bundled so the persist functions don't grow a parameter
-/// per remembered view setting.
+/// per remembered view setting. `None` means "leave whatever the file
+/// says" — the write skips the line entirely. That is what keeps one
+/// terhub instance from reverting another's saved view: an instance
+/// only persists the keys it actually changed, so a stale instance
+/// toggling a theme can no longer rewrite a newer instance's filter.
 pub struct UiPersist<'a> {
-    pub theme: &'a str,
-    pub density: &'a str,
+    pub theme: Option<&'a str>,
+    pub density: Option<&'a str>,
+    pub notifications: Option<bool>,
+    pub highlight: Option<bool>,
+    pub mru_tabs: Option<bool>,
+    pub filter: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub sort_desc: Option<bool>,
+    pub hide_shells: Option<bool>,
+}
+
+/// Which view keys one instance has changed since its last successful
+/// write. Untouched keys stay untouchable: another instance or a hand
+/// edit owns them.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ViewChanges {
+    pub theme: bool,
+    pub density: bool,
     pub notifications: bool,
     pub highlight: bool,
     pub mru_tabs: bool,
-    pub filter: &'a str,
-    pub sort: &'a str,
+    pub filter: bool,
+    pub sort: bool,
     pub sort_desc: bool,
     pub hide_shells: bool,
 }
 
+impl ViewChanges {
+    /// True when nothing was touched: the caller can skip the write.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 impl AppConfig {
-    /// Snapshot the persistable view settings for one surgical write.
+    /// Snapshot every persistable view setting (full sync: a fresh
+    /// config, or a caller that owns the whole `[ui]` section).
     pub fn ui_persist(&self) -> UiPersist<'_> {
         UiPersist {
-            theme: &self.theme,
+            theme: Some(&self.theme),
             density: &self.density,
             notifications: self.notifications_enabled,
             highlight: self.highlight_attached,
