@@ -702,6 +702,58 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
             waiting_unless: vec![],
         },
+        Manifest {
+            // pi (this repo's harness). Only attention states are
+            // claimed, because pi's screen has no working/idle marker
+            // to match: the bottom chrome (git line, the ↑/↓/cost
+            // stats line, the Chrome Bridge line) renders identically
+            // while the model streams and after the transcript stops.
+            // A `working` list built on that chrome would pin finished
+            // panes as busy, and an `idle_fallback` on it would mark
+            // live ones idle — so both states stay where the evidence
+            // lives: the process tree (`working` while the leaf runs)
+            // and the quiet clock (`idle` after the screen stops
+            // moving). Before this manifest existed, pi panes only
+            // classified through `classify_screen`'s cross-manifest
+            // fallback — i.e. a `waiting` verdict came from claude's
+            // `^❯` happening to match, which is luck, not a contract.
+            agent: "pi".to_string(),
+            commands: vec!["pi".to_string()],
+            working: vec![],
+            waiting: vec![
+                // The blocking question UI (ask_user_question /
+                // questionnaire). These lines exist only while pi is
+                // waiting on the human, so they are the honest
+                // needs-you signal — no veto needed, because the menu
+                // itself is blocking: pi shows nothing below it.
+                // `^❯ \d+\.` is the caret on a numbered option,
+                // which the plain input box never renders.
+                "enter to select".to_string(),
+                "esc to cancel".to_string(),
+                "tab to switch questions".to_string(),
+                "^❯ \d+\\.".to_string(),
+                "type something".to_string(),
+            ],
+            // No `done`/`idle`/`idle_fallback`: a finished pi pane
+            // prints nothing distinctive, the transcript just stops.
+            // Finish detection belongs to the hook (`agent_end` →
+            // idle) and the quiet clock, not to screen text.
+            done: vec![],
+            idle: vec![],
+            idle_fallback: vec![],
+            error: vec![
+                "\\b(?-i:E)rror\\b".to_string(),
+                "traceback".to_string(),
+                "something went wrong".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
+                "quota".to_string(),
+                "\\b429\\b".to_string(),
+            ],
+            waiting_unless: vec![],
+        },
     ]
 }
 
