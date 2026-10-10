@@ -578,12 +578,18 @@ fn pane_clause(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str], is_include:
     }
     for tok in tokens {
         if is_include {
-            if let Some(rest) = tok.strip_prefix('!').filter(|r| !r.is_empty()) {
-                if pane_match_any(p, rec, rest) {
-                    return false;
+            match tok.strip_prefix('!') {
+                Some(rest) if rest.is_empty() => continue,
+                Some(rest) => {
+                    if pane_match_any(p, rec, rest) {
+                        return false;
+                    }
                 }
-            } else if !tok.is_empty() && !pane_match_any(p, rec, tok) {
-                return false;
+                None => {
+                    if !pane_match_any(p, rec, tok) {
+                        return false;
+                    }
+                }
             }
         } else if !tok.is_empty() && pane_match_any(p, rec, tok) {
             return false;
@@ -6110,8 +6116,6 @@ mod tests {
         assert_eq!(ids(&app), vec!["%1"]);
         app.filter = "!".to_string();
         app.refresh_filtered();
-        eprintln!("after !: filtered = {:?}", app.filtered.iter().map(|p| p.id.clone()).collect::<Vec<_>>());
-        eprintln!("filter = {:?}, exclude = {:?}", app.filter, app.exclude);
         assert_eq!(app.filtered.len(), 2);
     }
 
