@@ -832,6 +832,12 @@ fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
         AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited => {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         }
+        // Done: quiet dim-green check — finished, not waiting, not
+        // alarming. Shares the working hue so a finished task still
+        // reads as "complete and good" instead of "fallen silent".
+        AgentState::Done => Style::default()
+            .fg(pal.done.fg.unwrap_or(Color::Green))
+            .add_modifier(Modifier::BOLD),
         AgentState::Working => Style::default().fg(Color::Green),
         AgentState::Idle | AgentState::Unknown => pal.dim,
     }
