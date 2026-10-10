@@ -950,6 +950,7 @@ impl App {
                     height: 0,
                     activity: 0,
                     pid: tab.pid,
+                    bell: false,
                 });
                 let Some(hit) = snap.detect_agent(tab.pid) else {
                     continue;
