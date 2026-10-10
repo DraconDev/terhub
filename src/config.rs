@@ -2219,6 +2219,7 @@ mod tests {
         // stale instance from reverting a newer one's saved filter.
         let dir = test_dir();
         let path = dir.join("none.toml");
+        std::fs::create_dir_all(&dir).unwrap();
         let before = "# terhub config: keys are single-key bindings.\n# hand-written\n[ui]\ntheme = \"dark\"\nfilter = \"!zsh\"\nsort = \"Idle\"\n\n[keys]\nnew = \"c\"\n";
         std::fs::write(&path, before).unwrap();
         persist_ui_settings_to(
