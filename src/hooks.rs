@@ -315,22 +315,89 @@ function report(state: string, summary: string, prompt?: string): void {
   }
 }
 
+// Model-callable tools that block until the human answers. Without
+// these, a question looks identical to work: pi fires no lifecycle
+// event while the menu is open, so the last `turn_start` working
+// report stands until `agent_end` — which never comes while the
+// agent is blocked.
+const QUESTION_TOOLS = ["question", "questionnaire"];
+
+// Best human-readable question text from a question tool's input:
+// `questionnaire` carries `questions[].prompt`, the single `question`
+// tool carries `question`.
+function questionText(event: any): string {
+  const input = event && event.input;
+  if (!input || typeof input !== "object") return "";
+  const qs = input.questions;
+  if (Array.isArray(qs) && qs.length > 0) {
+    const p = qs[0] && typeof qs[0].prompt === "string" ? qs[0].prompt : "";
+    return p;
+  }
+  return typeof input.question === "string" ? input.question : "";
+}
+
 export default function (pi: any): void {
+  // True while a blocking prompt is open. Both routes set it so the
+  // generic `ui_prompt_*` events never clobber the richer question
+  // text a tool call already reported.
+  let awaiting = false;
+
   pi.on("session_start", async () => {
+    awaiting = false;
     report("working", "session started");
   });
   pi.on("before_agent_start", async (event: any) => {
+    awaiting = false;
     const prompt = event && typeof event.prompt === "string" ? event.prompt : "";
     report("working", "turn started", prompt);
   });
   pi.on("turn_start", async () => {
+    awaiting = false;
     report("working", "turn started");
   });
   pi.on("agent_end", async () => {
+    awaiting = false;
     report("idle", "response finished");
   });
   pi.on("session_shutdown", async () => {
+    awaiting = false;
     report("idle", "session ended");
+  });
+
+  // Question tools: report waiting with the actual question, then
+  // back to working once the answer (or a cancel) arrives. Returning
+  // undefined leaves execution — and the prompt — untouched.
+  const isQuestionTool = (event: any): boolean =>
+    !!(event && typeof event.toolName === "string" && QUESTION_TOOLS.indexOf(event.toolName) !== -1);
+
+  pi.on("tool_call", async (event: any) => {
+    if (!isQuestionTool(event)) return undefined;
+    awaiting = true;
+    report("waiting", questionText(event) || "question");
+    return undefined;
+  });
+  pi.on("tool_result", async (event: any) => {
+    if (!isQuestionTool(event) || !awaiting) return undefined;
+    awaiting = false;
+    report("working", "answer received");
+    return undefined;
+  });
+
+  // Any other blocking user-facing prompt (permission confirms,
+  // extension dialogs) is a needs-you reason too, when Pi reports one.
+  pi.on("ui_prompt_start", async (event: any) => {
+    if (awaiting) return undefined;
+    awaiting = true;
+    const title = event && typeof event.title === "string" && event.title ? event.title : "";
+    const kind = event && typeof event.kind === "string" && event.kind ? event.kind : "input";
+    report("waiting", title || `waiting on ${kind}`);
+    return undefined;
+  });
+  pi.on("ui_prompt_end", async () => {
+    if (!awaiting) return undefined;
+    awaiting = false;
+    report("working", "answer received");
+    return undefined;
   });
 }
 "#;
