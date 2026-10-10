@@ -6154,10 +6154,10 @@ mod tests {
         }
         // Instance B opens first and holds the file as it stands.
         let cfg = crate::config::load_config(None);
-        let mut b = crate::App::new(cfg.clone());
+        let mut b = App::new(cfg.clone());
         // Instance A opens against the same file and saves a new
         // standing filter — the user's edit, from the newest window.
-        let mut a = crate::App::new(cfg);
+        let mut a = App::new(cfg);
         a.exclude = "!zsh".to_string();
         a.persist_filter();
         // B (stale — it never saw the new filter) toggles a theme.
