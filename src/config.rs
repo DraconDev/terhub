@@ -2248,7 +2248,7 @@ mod tests {
         assert_eq!(text.matches("filter = ").count(), 1, "{text}");
         assert_eq!(text.matches("theme = ").count(), 1, "{text}");
         // Still parses (no duplicate keys).
-        let (_cfg, problems) = load_config_from(&path);
+        let (_cfg, problems) = load_config_report(Some(path.clone()));
         assert!(problems.is_empty(), "{problems:?}");
     }
 
