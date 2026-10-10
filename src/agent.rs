@@ -1031,6 +1031,8 @@ mod tests {
                     model: String::new(),
                     ctx_pct: None,
                     reg_pid: 0,
+                bell: false,
+                bell_reason: String::new(),
                 },
             );
         }
@@ -1080,6 +1082,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
+        bell: false,
+        bell_reason: String::new(),
         }];
         assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
         assert_eq!(resolve_handle(&recs, "@pi-other"), None);

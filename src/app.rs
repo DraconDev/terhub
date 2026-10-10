@@ -999,6 +999,8 @@ impl App {
                     model: String::new(),
                     ctx_pct: None,
                     reg_pid: 0,
+                bell: false,
+                bell_reason: String::new(),
                 });
             }
         }
@@ -5489,6 +5491,8 @@ mod tests {
                 model: String::new(),
                 ctx_pct: None,
                 reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
             },
         );
         let counts = app.session_counts();
@@ -5524,6 +5528,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
+        bell: false,
+        bell_reason: String::new(),
         }
     }
 

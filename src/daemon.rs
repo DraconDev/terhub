@@ -1260,7 +1260,7 @@ fn poll_sync_with(
         } else {
             screen
                 .as_deref()
-                .and_then(|s| classify_screen(manifests, &pane.command, s, false))
+                .and_then(|s| classify_screen(manifests, &pane.command, s, pane.bell))
         };
         let proc_pair = proc_hit
             .as_ref()
@@ -2311,6 +2311,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
+        bell: false,
+        bell_reason: String::new(),
         }
     }
 
@@ -2502,6 +2504,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
+        bell: false,
+        bell_reason: String::new(),
         }
     }
 
