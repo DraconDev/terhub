@@ -3306,14 +3306,17 @@ impl App {
         let label = match kind {
             SettingKind::Theme(i) => {
                 self.config.theme = THEMES[i % THEMES.len()].to_string();
+                self.view_changes.theme = true;
                 format!("theme: {}", self.config.theme)
             }
             SettingKind::Density(i) => {
                 self.config.density = DENSITIES[i % DENSITIES.len()].to_string();
+                self.view_changes.density = true;
                 format!("density: {}", self.config.density)
             }
             SettingKind::ToggleNotifications => {
                 self.config.notifications_enabled = !self.config.notifications_enabled;
+                self.view_changes.notifications = true;
                 format!(
                     "notifications: {}",
                     Self::onoff(self.config.notifications_enabled)
@@ -3321,6 +3324,7 @@ impl App {
             }
             SettingKind::ToggleHighlight => {
                 self.config.highlight_attached = !self.config.highlight_attached;
+                self.view_changes.highlight = true;
                 format!(
                     "highlight attached: {}",
                     Self::onoff(self.config.highlight_attached)
@@ -3328,6 +3332,7 @@ impl App {
             }
             SettingKind::ToggleMruTabs => {
                 self.config.mru_tabs = !self.config.mru_tabs;
+                self.view_changes.mru_tabs = true;
                 self.apply_tab_order();
                 format!("mru tabs: {}", Self::onoff(self.config.mru_tabs))
             }
