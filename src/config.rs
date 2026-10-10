@@ -999,14 +999,34 @@ impl AppConfig {
     pub fn ui_persist(&self) -> UiPersist<'_> {
         UiPersist {
             theme: Some(&self.theme),
-            density: &self.density,
-            notifications: self.notifications_enabled,
-            highlight: self.highlight_attached,
-            mru_tabs: self.mru_tabs,
-            filter: &self.filter,
-            sort: &self.sort,
-            sort_desc: self.sort_desc,
-            hide_shells: self.hide_shells,
+            density: Some(&self.density),
+            notifications: Some(self.notifications_enabled),
+            highlight: Some(self.highlight_attached),
+            mru_tabs: Some(self.mru_tabs),
+            filter: Some(&self.filter),
+            sort: Some(&self.sort),
+            sort_desc: Some(self.sort_desc),
+            hide_shells: Some(self.hide_shells),
+        }
+    }
+
+    /// Snapshot only the keys `c` marks as changed. Keys left false
+    /// come back `None`, and the surgical writer skips them — so the
+    /// file keeps whatever another instance (or the user's hand edit)
+    /// put there.
+    pub fn ui_persist_changes(&self, c: &ViewChanges) -> UiPersist<'_> {
+        UiPersist {
+            theme: c.theme.then_some(&*self.theme),
+            density: c.density.then_some(&*self.density),
+            notifications: c
+                .notifications
+                .then_some(self.notifications_enabled),
+            highlight: c.highlight.then_some(self.highlight_attached),
+            mru_tabs: c.mru_tabs.then_some(self.mru_tabs),
+            filter: c.filter.then_some(&*self.filter),
+            sort: c.sort.then_some(&*self.sort),
+            sort_desc: c.sort_desc.then_some(self.sort_desc),
+            hide_shells: c.hide_shells.then_some(self.hide_shells),
         }
     }
 }
