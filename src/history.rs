@@ -441,11 +441,16 @@ pub struct StatsRow {
     pub wait: u64,
     pub err: u64,
     pub idle: u64,
+    /// Finished-and-acknowledged: the agent ran, hit a verdicted footer,
+    /// and stayed quiet. Separate from `idle` (which means "never ran
+    /// / never finished") so the timeline can show how productive a
+    /// day was without confusing the two.
+    pub done: u64,
 }
 
 impl StatsRow {
     pub fn total(&self) -> u64 {
-        self.work + self.wait + self.err + self.idle
+        self.work + self.wait + self.err + self.idle + self.done
     }
 }
 
