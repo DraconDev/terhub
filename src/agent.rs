@@ -476,7 +476,11 @@ impl CompiledManifest {
         // Done chrome (input boxes) applies last: never over need (even
         // vetoed need — a live task outranks chrome), never over a banner
         // (which summarizes better), and never over live activity below
-        // it — but it beats stale activity above it.
+        // it — but it beats stale activity above it. Chrome is the
+        // weakest signal: without an explicit `done:` banner, the box
+        // alone reads as `Idle` (quiet, never finished) instead of
+        // `Done` (quiet, finished) — the user can promote it with a
+        // pattern in the manifest if they want the distinction.
         if let Some(fi) = fallback {
             let dominated = need
                 || match hit {
@@ -490,7 +494,7 @@ impl CompiledManifest {
                     Some(_) => true,
                 };
             if !dominated {
-                hit = Some((AgentState::Done, fi));
+                hit = Some((AgentState::Idle, fi));
             }
         }
         hit.map(|(state, i)| {
