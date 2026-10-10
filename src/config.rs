@@ -1334,6 +1334,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.sort_desc = file.ui.sort_desc;
     cfg.hide_shells = file.ui.hide_shells;
+    cfg.activity_sparkline = file.ui.activity_sparkline;
     cfg.notifications_enabled = file.notifications.enabled;
     // Zero poll/stale would wedge or blind the daemon; stuck_secs = 0 is a
     // legitimate "off switch" and stays.
