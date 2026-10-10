@@ -386,6 +386,19 @@ fn cell_style(grid: &[Vec<(String, Color, Modifier)>], id: &str, header: &str) -
     grid[row][ix].1
 }
 
+/// Find a cell by row + literal header; `cell_style` returns just
+/// the colour, this also returns the modifier so bold checks work.
+fn cell_at(grid: &[Vec<(String, Color, Modifier)>], id: &str, header: &str) -> (Color, Modifier) {
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains(header)).unwrap();
+    let ix = hdr[..hdr.find(header).unwrap()].chars().count();
+    let row = text.iter().position(|l| l.contains(id)).unwrap();
+    (grid[row][ix].1, grid[row][ix].2)
+}
+
 fn idle_cell_style(grid: &[Vec<(String, Color, Modifier)>], id: &str) -> (Color, Modifier) {
     let text: Vec<String> = grid
         .iter()
@@ -550,7 +563,11 @@ fn done_state_renders_in_dim_green_check() {
         },
     );
     let grid = render_grid(&mut app, 140, 20);
-    let (fg, mods) = idle_cell_style(&grid, "%1");
+    // The State column header is "State" and the value is lowercase
+    // (`done`, `waiting`, `working`); the cell under "Idle" might be
+    // a different column entirely if the row contains the word
+    // "idle" elsewhere. Use the literal State column instead.
+    let (fg, mods) = cell_at(&grid, "%1", "State");
     // Done uses the palette's `done` role — the soft green distinct
     // from the alarm red used for `Waiting` / `Error`. The check
     // itself is the bold modifier (a glanceable marker, not a row
