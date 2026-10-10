@@ -1748,6 +1748,9 @@ mod tests {
                 Some("claude"),
                 AgentState::Waiting,
                 "❯ Try asking me to build something"
+            )
+        );
+    }
 
     #[test]
     fn claude_working_screen() {
