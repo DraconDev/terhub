@@ -534,8 +534,10 @@ fn pane_matches(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
 }
 
 /// Table legend, shown when `?` is pressed twice: the marks and column
-/// shorthands the table itself never explains.
-const LEGEND: &str = "legend: !=needs you · +=marked · *=focused pane · ●/○=attached · Src hook/proc/scr · For state age · Turn last turn · Idle quiet time";
+/// shorthands the table itself never explains. Ordered so the marks
+/// come first — a narrow terminal truncates the tail, never the
+/// characters the user asked about.
+const LEGEND: &str = "legend: !=needs you · +=marked · *=active pane (multi-pane window) · ●/○=attached (top bar) · Src hook/proc/scr · For/Turn/Idle timers · Activity=output/tick";
 
 pub struct App {
     pub config: AppConfig,
