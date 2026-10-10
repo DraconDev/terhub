@@ -2310,8 +2310,13 @@ impl App {
             KeyCode::Enter => {
                 let q = self.input.trim().to_string();
                 if self.editing_standing {
-                    // Standing is exclusion-only: `zsh` saves as `!zsh`.
-                    self.exclude = normalize_exclude(&q);
+                    // Standing is exclusion-only: store the raw
+                    // tokens; `pane_matches` already treats this
+                    // field as a list of NOT-OR excludes, so a
+                    // leading `!` is redundant. Strip it so
+                    // hand-edited configs (`!zsh`) and prompt
+                    // output both land in the same shape.
+                    self.exclude = q.trim_start_matches('!').trim().to_string();
                     self.persist_filter();
                     self.editing_standing = false;
                     self.cancel_modal();
