@@ -5276,13 +5276,16 @@ mod tests {
             );
             assert!(!out.contains('{'), "var {v} did not expand: {out}");
         }
-        // Unknown vars and escapes stay literal.
+        // Unknown vars and escapes stay literal; known vars are
+        // shell-quoted so the expanded string is safe to feed to
+        // `sh -c`. `%1` becomes `'%1'` (the quoting is what closes
+        // the pass-2 shell-injection finding for `[[command]]`).
         let out = expand_command(
             "{bogus} {{pane}} {pane}",
             &Pane::test("%1", "w", "sh"),
             None,
         );
-        assert_eq!(out, "{bogus} {pane} %1");
+        assert_eq!(out, "{bogus} {pane} '%1'");
     }
 
     #[test]
