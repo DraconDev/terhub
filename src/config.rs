@@ -1040,11 +1040,45 @@ pub fn persist_ui_settings(v: &UiPersist) -> anyhow::Result<()> {
 
 fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     let text = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
+    // Self-heal first. A key assigned twice in one section makes the
+    // whole file unparseable (TOML: "Cannot overwrite a value"), and a
+    // config that won't parse is answered with defaults — which
+    // silently forgets every part of the standing view, filter
+    // included. The first assignment wins; later duplicates are
+    // dropped before the rewrite pass, so persisting repairs the file
+    // instead of carrying the corruption forward.
+    let lines: Vec<&str> = {
+        use std::collections::HashSet;
+        let mut seen: HashSet<(String, String)> = HashSet::new();
+        let mut section = String::new();
+        text.lines()
+            .filter(|line| {
+                let t = line.trim_start();
+                let header = t.strip_prefix('#').unwrap_or(t).trim_start();
+                if let Some(rest) = header.strip_prefix('[')
+                    && let Some(end) = rest.find(']')
+                {
+                    let next = format!("[{}]", &rest[..end]);
+                    if next != section {
+                        section = next;
+                        seen.retain(|(s, _)| s == &section);
+                    }
+                    return true;
+                }
+                match assigned_key(line) {
+                    Some(k) if !section.is_empty() => {
+                        seen.insert((section.clone(), k.to_lowercase()))
+                    }
+                    _ => true,
+                }
+            })
+            .collect()
+    };
     let mut out: Vec<String> = Vec::new();
     let mut section = String::new();
     let mut seen = [false; 9]; // theme, density, highlight, enabled, mru_tabs, filter, sort, sort_desc, hide_shells
     let (mut ui_at, mut notif_at): (Option<usize>, Option<usize>) = (None, None);
-    for line in text.lines() {
+    for line in &lines {
         // Refresh our own stale generated header while we're here.
         if line == "# terhub config: keys are single-key bindings, theme is dark or light." {
             out.push("# terhub config: keys are single-key bindings.".to_string());
