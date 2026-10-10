@@ -1,12 +1,26 @@
-use terhub::tmux::Tmux;
+use terhub::tmux::{SOCKET_ENV, Tmux};
 
 /// Backend tests need a real tmux: fail loudly without one instead of
 /// green-but-vacuous early returns (CI installs tmux; see the workflow).
+///
+/// Each invocation gets a process-id-scoped private socket so the test
+/// suite is hermetic — the operator's `tmux ls` is never touched, no
+/// test fixture can collide with the user's live server, and a
+/// parallel cargo worker running the same suite gets its own server.
+/// This is the residual gap the 2026-10-08/09 incident left in
+/// `tests/backend.rs` (the 2026-10-09 fix hard-coded isolation for
+/// `tests/daemon.rs` but not this file).
 fn require_tmux() -> Tmux {
     assert!(
         Tmux::available(),
         "tmux is required for backend tests (install tmux to run them)"
     );
+    // std::env::set_var is unsafe in 2024+; concurrent test threads
+    // may read this, but the value is the same for all of them and
+    // they only run within this process, so the race is benign.
+    unsafe {
+        std::env::set_var(SOCKET_ENV, format!("terhub-backend-{}", std::process::id()));
+    }
     Tmux::new().unwrap()
 }
 
