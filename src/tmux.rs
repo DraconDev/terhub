@@ -42,6 +42,13 @@ pub struct Pane {
     /// Last activity in the pane's window, epoch seconds (tmux tracks
     /// activity per window, not per pane; 0 when unknown).
     pub activity: u64,
+    /// True when tmux's `window_bell_flag` is on for this window —
+    /// the pane's foreground program emitted a BEL since the last
+    /// reset. CLIs ring on input-plea prompts (`y/N`, `Press enter`),
+    /// so a flipped flag is high-precision evidence the pane needs
+    /// the human. We read it once per tick and let the classifier
+    /// downgrade back to false when the next capture clears the flag.
+    pub bell: bool,
     /// Root process id of the pane (0 when unknown).
     pub pid: u32,
 }
@@ -62,6 +69,7 @@ impl Pane {
             width: 80,
             height: 24,
             activity: 0,
+            bell: false,
             pid: 0,
         }
     }
@@ -112,8 +120,8 @@ fn parse_panes(out: &str) -> Vec<Pane> {
             width: num(8) as u32,
             height: num(9) as u32,
             session: get(10),
-            activity: num(11),
             pid: num(12) as u32,
+            bell: flag(13),
         });
     }
     panes
