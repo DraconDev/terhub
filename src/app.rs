@@ -6486,6 +6486,8 @@ mod tests {
     fn view_seeds_sort_hide_and_exclude_from_config() {
         // The standing view is exactly what was saved: exclusion, sort
         // column + direction, and shell hiding all apply on first refresh.
+        // `filter` keeps the on-disk form (`!bash`); `App::new` strips
+        // one leading `!` so the in-memory `app.exclude` is bare.
         let cfg = AppConfig {
             filter: "!bash".to_string(),
             sort: "State".to_string(),
@@ -6494,7 +6496,7 @@ mod tests {
             ..AppConfig::default()
         };
         let app = App::new(cfg);
-        assert_eq!(app.exclude, "!bash");
+        assert_eq!(app.exclude, "bash");
         assert_eq!(app.sort_key, SortKey::State);
         assert!(app.sort_asc);
         assert!(app.hide_quiet_shells);
