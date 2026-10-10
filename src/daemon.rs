@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -260,7 +260,18 @@ impl Server {
             UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
         // Pid file only after a successful bind: a concurrent-start loser
         // fails above without clobbering the winner's pid with dead data.
-        std::fs::write(&pid_file, std::process::id().to_string())?;
+        // Atomic (tmp + rename): a torn write would leave a partial pid
+        // for the next start to read.
+        {
+            let pid = std::process::id().to_string();
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let tmp = pid_file.with_extension(format!("tmp.{pid}.{nonce}"));
+            std::fs::write(&tmp, &pid)?;
+            std::fs::rename(&tmp, &pid_file)?;
+        }
 
         let reg = self.registry.clone();
         let manifests = self.manifests.clone();
