@@ -498,19 +498,6 @@ pub fn expand_command(
     out
 }
 
-/// Normalize a standing-filter query to exclusion form: trim, drop any
-/// leading `!`s the user typed, then re-add exactly one — unless empty.
-/// The standing filter always excludes (`zsh` means `!zsh`); the
-/// temporary search keeps whatever was typed, `!` or not.
-fn normalize_exclude(q: &str) -> String {
-    let rest = q.trim().trim_start_matches('!').trim();
-    if rest.is_empty() {
-        String::new()
-    } else {
-        format!("!{rest}")
-    }
-}
-
 /// Case-insensitive substring match across every text column. `q` must
 /// already be lowercased. A leading `!` on an include token negates:
 /// `!zsh` keeps every row whose columns do NOT contain `zsh`. The
@@ -3346,12 +3333,12 @@ impl App {
     }
 
     /// Live re-filter while typing; restarts at the top row. Edits
-    /// whichever query the prompt opened for (search or standing). The
-    /// standing draft normalizes on every keystroke too, so the table
-    /// never momentarily flips to inclusion mid-edit.
+    /// whichever query the prompt opened for (search or standing).
+    /// The standing draft also drops a leading `!` on every keystroke
+    /// so the table never momentarily shows the un-normalized form.
     fn apply_live_filter(&mut self) {
         if self.editing_standing {
-            self.exclude = normalize_exclude(&self.input);
+            self.exclude = self.input.trim().trim_start_matches('!').trim().to_string();
         } else {
             self.filter.clone_from(&self.input);
         }
