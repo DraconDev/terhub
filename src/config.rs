@@ -2307,6 +2307,53 @@ mod tests {
     }
 
     #[test]
+    fn persist_repairs_a_config_with_duplicate_keys() {
+        // The forgetting bug this file actually hit: a key assigned
+        // twice in one section makes the whole file unparseable, and an
+        // unparseable config is answered with defaults — so every part
+        // of the standing view (filter included) is silently forgotten
+        // on every start. A persist must repair it, not carry it on.
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dupe.toml");
+        std::fs::write(
+            &path,
+            "[ui]\ntheme = \"dark\"\nfilter = \"!bash\"\nsort = \"Idle\"\nfilter = \"!zsh\"\n\n[keys]\nnew = \"c\"\n",
+        )
+        .unwrap();
+        // Before the write, the file is unparseable.
+        assert!(
+            toml::from_str::<FileConfig>(&std::fs::read_to_string(&path).unwrap()).is_err(),
+            "fixture should be broken TOML"
+        );
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: Some("nord"),
+                density: None,
+                notifications: None,
+                highlight: None,
+                mru_tabs: None,
+                filter: Some("!zsh"),
+                sort: None,
+                sort_desc: None,
+                hide_shells: None,
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        // First assignment wins for the keys we don't touch, the file
+        // parses again, and the value we wrote landed exactly once.
+        assert_eq!(text.matches("filter = ").count(), 1, "{text}");
+        assert_eq!(text.matches("theme = ").count(), 1, "{text}");
+        assert!(text.contains("filter = \"!zsh\""), "{text}");
+        assert!(text.contains("theme = \"nord\""), "{text}");
+        toml::from_str::<FileConfig>(&text).expect("persist must leave loadable TOML");
+        // Comments and other sections survive the repair.
+        assert!(text.contains("[keys]"), "{text}");
+    }
+
+    #[test]
     fn persist_touches_only_ui_keys() {
         let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
