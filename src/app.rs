@@ -3164,23 +3164,6 @@ impl App {
         }
     }
 
-    /// Mark every view key as changed (used at startup when the file
-    /// holds values this instance had to normalize, e.g. an unknown
-    /// theme or sort name the loader warned about).
-    pub(crate) fn mark_all_view_changed(&mut self) {
-        self.view_changes = crate::config::ViewChanges {
-            theme: true,
-            density: true,
-            notifications: true,
-            highlight: true,
-            mru_tabs: true,
-            filter: true,
-            sort: true,
-            sort_desc: true,
-            hide_shells: true,
-        };
-    }
-
     /// Save the standing exclusion to `[ui] filter` so it survives
     /// restarts. Silent on success (the status line already names the
     /// query); loud only when the write failed.
