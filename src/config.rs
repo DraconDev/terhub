@@ -2402,6 +2402,51 @@ mod tests {
             }
             std::fs::remove_file(path).ok();
         }
+        // Second half of the contract: with a real patch, every value
+        // must land and the file must still parse — a shape can survive
+        // a no-op yet corrupt when a key has to be inserted or rewritten.
+        for (name, original, _, _, _) in cases {
+            let dir = test_dir();
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join(format!("shape-write-{name}.toml"));
+            std::fs::write(&path, original).unwrap();
+            persist_ui_settings_to(
+                &path,
+                &UiPersist {
+                    theme: Some("gruvbox"),
+                    density: Some("compact"),
+                    notifications: Some(false),
+                    highlight: Some(true),
+                    mru_tabs: Some(true),
+                    filter: Some("!noping"),
+                    sort: Some("State"),
+                    sort_desc: Some(false),
+                    hide_shells: Some(true),
+                },
+            )
+            .unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            let (cfg, problems) = load_config_report(Some(path.clone()));
+            assert!(
+                problems.is_empty(),
+                "{name}: patch persist reported a problem: {problems:?}\n{text}"
+            );
+            assert_eq!(cfg.theme, "gruvbox", "{name}\n{text}");
+            assert_eq!(cfg.filter, "!noping", "{name}\n{text}");
+            assert_eq!(cfg.sort, "State", "{name}\n{text}");
+            assert!(!cfg.sort_desc, "{name}\n{text}");
+            assert!(cfg.hide_shells, "{name}\n{text}");
+            assert!(cfg.compact(), "{name}\n{text}");
+            // No key may be duplicated by the write.
+            for key in ["theme", "filter", "sort", "sort_desc", "hide_shells", "density"] {
+                assert_eq!(
+                    text.matches(&format!("{key} = ")).count(),
+                    1,
+                    "{name}: key {key} written more than once\n{text}"
+                );
+            }
+            std::fs::remove_file(path).ok();
+        }
     }
 
     #[test]
