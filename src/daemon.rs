@@ -1410,14 +1410,48 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
     // Tmp + rename: a crash mid-write never leaves a half file behind.
     // The tmp name includes pid + nanos so two daemons pointed at the
     // same runtime dir (or a leftover tmp from a prior run) interleave
-    // instead of clobbering each other.
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+    // instead of clobbering each other. `create_new(true)` is the
+    // same-pid same-nanos guard: if another save on the same pid
+    // collides (sub-nanosecond race), retry with a fresh nonce rather
+    // than truncating a tmp the first save still needs.
     let pid = std::process::id();
-    let tmp = path.with_extension(format!("tmp.{pid}.{nonce}"));
-    let result = std::fs::write(&tmp, &text).and_then(|()| std::fs::rename(&tmp, path));
+    let mut attempt = 0;
+    let result: std::io::Result<()> = (|| loop {
+        attempt += 1;
+        if attempt > 8 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "save_registry: tmp path collided 8 times",
+            ));
+        }
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp = path.with_extension(format!("tmp.{pid}.{nonce}"));
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&tmp)
+        {
+            Ok(mut f) => {
+                use std::io::Write;
+                if let Err(e) = f.write_all(text.as_bytes()) {
+                    let _ = std::fs::remove_file(&tmp);
+                    return Err(e);
+                }
+                if let Err(e) = f.sync_all() {
+                    let _ = std::fs::remove_file(&tmp);
+                    return Err(e);
+                }
+                drop(f);
+                return std::fs::rename(&tmp, path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    })();
     match result {
         Ok(()) => note_sticky("registry-save", None),
         Err(e) => note_sticky(
