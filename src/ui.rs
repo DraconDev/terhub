@@ -1820,7 +1820,7 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         Mode::Hosts => return,
         Mode::Normal | Mode::Settings => return,
     };
-    let popup = centered(area, 60, 5);
+    let popup = centered(area, 60, 6);
     frame.render_widget(Clear, popup);
     let block = Block::bordered()
         .title(Line::from(heading).style(pal.title))
