@@ -88,9 +88,12 @@ pub struct AppConfig {
     pub keys: HashMap<String, String>,
     pub theme: String,
     pub density: String,
-    /// Table text filter (`!`-prefixed to exclude): empty shows
-    /// everything. Persisted so a standing exclusion (e.g. `!zsh`)
-    /// survives restarts; Enter in the filter prompt saves it.
+    /// Standing table filter, persisted to `[ui] filter`. Stored with
+    /// a leading `!` so the on-disk form reads as "exclude" at a
+    /// glance (e.g. `filter = "!zsh"`). `app::App::new` strips a
+    /// single leading `!` so `app.exclude` is bare tokens under the
+    /// multi-token model; the on-disk format is the source of
+    /// truth.
     pub filter: String,
     /// Table sort column name (`Idle` default; see `SortKey::parse_name`).
     pub sort: String,
@@ -769,8 +772,10 @@ struct UiSection {
     highlight_attached: bool,
     #[serde(default)]
     mru_tabs: bool,
-    /// Standing table filter (`filter: ""` shows everything).
-    /// `!`-prefixed to exclude (e.g. `filter = "!zsh"` hides zsh panes).
+    /// Standing table filter (`filter: ""` shows everything). The
+    /// on-disk form keeps a leading `!` so the file reads as
+    /// "exclude" (e.g. `filter = "!zsh"`). `app::App::new` strips
+    /// one leading `!` so the in-memory field is bare tokens.
     #[serde(default)]
     filter: String,
     /// Table sort column name (`Idle` default; unknown names warn and
@@ -1480,11 +1485,11 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.highlight_attached = file.ui.highlight_attached;
     cfg.mru_tabs = file.ui.mru_tabs;
-    // Old configs wrote `!zsh` to mean "exclude zsh". The new model
-    // stores bare tokens on the exclude line; strip a single leading
-    // `!` so a user's existing [ui] filter = "!zsh" still excludes
-    // zsh after the upgrade.
-    cfg.filter = file.ui.filter.trim().trim_start_matches('!').to_string();
+    // `app::App::new` strips a single leading `!` from `cfg.filter`
+    // so old configs (`filter = "!zsh"`) land in `app.exclude` as
+    // bare tokens under the new model. The on-disk format is kept
+    // here verbatim.
+    cfg.filter = file.ui.filter;
     cfg.sort = file.ui.sort;
     if crate::app::SortKey::parse_name(&cfg.sort).is_none() {
         problems.push(format!(

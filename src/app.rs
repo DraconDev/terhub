@@ -640,13 +640,18 @@ pub struct App {
     /// Table sort: column plus direction (default: recency, newest first).
     pub sort_key: SortKey,
     pub sort_asc: bool,
-    /// Temporary find query (case-insensitive substring, empty = off).
-    /// Session-only: typing, `/`, or `f` sets it; Enter keeps it for
-    /// the session; Esc clears it. Never persisted.
+    /// Temporary include query (multi-token, OR-combined,
+    /// case-insensitive substring, empty = off). A `!`-prefixed
+    /// token is a single-row exclusion (the row must not contain
+    /// the substring). Session-only: typing, `/`, or `f` sets it;
+    /// Enter keeps it for the session; Esc clears it. Never
+    /// persisted.
     pub filter: String,
-    /// Standing row exclusion, from `[ui] filter` (empty = off). Applies
-    /// before the temporary find and survives restarts; edited
-    /// deliberately via the settings row, never by typing.
+    /// Standing exclude line (multi-token, NOT-OR-combined,
+    /// case-insensitive substring, empty = off). A row is kept
+    /// only if it does not contain ANY token. Loaded from `[ui]
+    /// filter` (a single leading `!` is stripped on load) and
+    /// persisted on Enter from the standing editor.
     pub exclude: String,
     /// Which query the filter prompt is editing: the temporary find
     /// (false) or the standing exclusion (true, from the settings row).
@@ -3240,7 +3245,20 @@ impl App {
     /// restarts. Silent on success (the status line already names the
     /// query); loud only when the write failed.
     fn persist_filter(&mut self) {
-        self.config.filter.clone_from(&self.exclude);
+        // The on-disk format keeps a leading `!` so hand-edited
+        // configs and old fixtures (which wrote `!zsh`) round-trip.
+        // `App::new` strips a single leading `!` on load, so the
+        // app's in-memory `exclude` is bare tokens; the disk form
+        // carries the `!` to preserve the file's "this excludes
+        // rows mentioning zsh" read at a glance.
+        let prefixed = if self.exclude.is_empty() {
+            String::new()
+        } else if self.exclude.starts_with('!') {
+            self.exclude.clone()
+        } else {
+            format!("!{}", self.exclude)
+        };
+        self.config.filter = prefixed;
         self.view_changes.filter = true;
         self.persist_view();
     }
