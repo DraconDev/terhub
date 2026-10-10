@@ -1724,13 +1724,15 @@ mod tests {
         // The fallback is load-bearing for every agent without a
         // manifest (crush, opencode, aider…). pi gaining one must not
         // quietly take it away, so pin the shape with an unknown
-        // command whose screen matches claude's patterns.
+        // command whose screen names and matches claude's patterns.
+        // (The fallback names the agent only when the screen mentions
+        // it — same rule as the command-matched path.)
         let manifests = builtin_manifests()
             .iter()
             .map(CompiledManifest::compile)
             .collect::<Result<Vec<_>>>()
             .unwrap();
-        let screen = "some unknown assistant\n❯ Try asking me to build something\n";
+        let screen = "claude assistant\n❯ Try asking me to build something\n";
         let hit = classify_screen(&manifests, "crush", screen, false, false)
             .expect("unknown agent must still classify via fallback");
         assert_eq!(hit.state, AgentState::Waiting);
