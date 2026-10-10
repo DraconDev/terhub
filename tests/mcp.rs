@@ -5,12 +5,19 @@
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread;
 use std::time::Duration;
 
 struct Mcp {
     child: Child,
     stdin: ChildStdin,
-    reader: BufReader<std::process::ChildStdout>,
+    /// Shared with the read thread so the per-call deadline (recv_timeout)
+    /// can interrupt a wedged server. A plain `BufReader` is not `Send`
+    /// for this pattern; wrapping in `Arc<Mutex<_>>` lets the read
+    /// thread take the lock once and stream both header lines and the
+    /// body without holding the main thread.
+    reader: Arc<Mutex<BufReader<std::process::ChildStdout>>>,
 }
 
 impl Mcp {
@@ -27,7 +34,7 @@ impl Mcp {
         Mcp {
             child,
             stdin,
-            reader: BufReader::new(stdout),
+            reader: Arc::new(Mutex::new(BufReader::new(stdout))),
         }
     }
 
@@ -40,22 +47,62 @@ impl Mcp {
     }
 
     fn read_response(&mut self) -> Value {
-        let mut len: Option<usize> = None;
-        loop {
-            let mut line = String::new();
-            self.reader.read_line(&mut line).unwrap();
-            if line.trim().is_empty() {
-                break;
+        // 5s is generous for loopback stdio: the test asserts a fast
+        // round-trip, and a wedged child used to hang the suite here.
+        let reader = Arc::clone(&self.reader);
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut guard = match reader.lock() {
+                Ok(g) => g,
+                Err(e) => {
+                    let _ = tx.send(Err(format!("reader mutex poisoned: {e}")));
+                    return;
+                }
+            };
+            let mut len: Option<usize> = None;
+            loop {
+                let mut line = String::new();
+                if let Err(e) = guard.read_line(&mut line) {
+                    let _ = tx.send(Err(format!("read header: {e}")));
+                    return;
+                }
+                if line.trim().is_empty() {
+                    break;
+                }
+                if let Some((k, v)) = line.split_once(':')
+                    && k.trim().eq_ignore_ascii_case("content-length")
+                {
+                    len = v.trim().parse().ok();
+                }
             }
-            if let Some((k, v)) = line.split_once(':')
-                && k.trim().eq_ignore_ascii_case("content-length")
-            {
-                len = v.trim().parse().ok();
+            let n = match len {
+                Some(n) => n,
+                None => {
+                    let _ = tx.send(Err("framed response missing Content-Length".into()));
+                    return;
+                }
+            };
+            let mut buf = vec![0u8; n];
+            if let Err(e) = guard.read_exact(&mut buf) {
+                let _ = tx.send(Err(format!("read body: {e}")));
+                return;
             }
+            match serde_json::from_slice(&buf) {
+                Ok(v) => {
+                    let _ = tx.send(Ok(v));
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(format!("parse: {e}")));
+                }
+            }
+        });
+        match rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("terhub mcp did not respond within 5s")
+        {
+            Ok(v) => v,
+            Err(e) => panic!("mcp read_response: {e}"),
         }
-        let mut buf = vec![0u8; len.expect("framed response")];
-        self.reader.read_exact(&mut buf).unwrap();
-        serde_json::from_slice(&buf).unwrap()
     }
 
     fn stop(mut self) {
