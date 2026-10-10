@@ -958,6 +958,7 @@ pub fn load_config(path: Option<PathBuf>) -> AppConfig {
 /// terhub instance from reverting another's saved view: an instance
 /// only persists the keys it actually changed, so a stale instance
 /// toggling a theme can no longer rewrite a newer instance's filter.
+#[derive(Default)]
 pub struct UiPersist<'a> {
     pub theme: Option<&'a str>,
     pub density: Option<&'a str>,
