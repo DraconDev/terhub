@@ -1118,6 +1118,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Cell::from(turn).style(pal.dim),
                 Cell::from(act).style(if act_warn { warn_style } else { pal.dim }),
             ]);
+            // Optional activity sparkline: 6 wide cells, rightmost
+            // freshest, height rises with bytes/tick. Only when the
+            // user opts in via `[ui] activity_sparkline = true` — a
+            // wide-terminal feature, so default off.
+            if app.config.activity_sparkline {
+                cells.push(Cell::from(sparkline_glyphs(&app.sparkline_buckets(&p.id))).style(pal.dim));
+            }
             if !compact {
                 let summary = rec.map(|r| r.summary.as_str()).unwrap_or("");
                 cells.push(Cell::from(truncate(summary, 60)).style(pal.dim));
@@ -1191,6 +1198,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         headers.push("Summary".to_string());
         keys.push(Some(SortKey::Summary));
         widths.push(Constraint::Percentage(16));
+    }
+    if app.config.activity_sparkline {
+        // Sparkline column has no sort key — the data is a small
+        // rolling window, not an orderable property of the pane.
+        headers.push("Activity".to_string());
+        keys.push(None);
+        widths.push(Constraint::Length(7));
     }
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });
