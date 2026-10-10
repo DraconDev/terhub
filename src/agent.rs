@@ -141,6 +141,19 @@ pub struct AgentRecord {
     /// under it so stuck detection works for manually pinned agents.
     #[serde(default)]
     pub reg_pid: u32,
+    /// The pane's tmux `window_bell_flag` was set on the most recent
+    /// capture (the foreground program emitted a BEL). Holds until
+    /// the next classifier pass resets it. Together with `bell_reason`
+    /// it composes the needs-you evidence: `bell` is the kernel's
+    /// yes/no, `bell_reason` is what the screen showed when the bell
+    /// rang (so the chip can show "🔔 Y/N" instead of just "🔔").
+    #[serde(default)]
+    pub bell: bool,
+    /// Short human label for the bell event: "bell", "y/N", "press
+    /// enter", etc. Empty when no bell has fired since reset. Set
+    /// in lockstep with `bell`; cleared together.
+    #[serde(default)]
+    pub bell_reason: String,
 }
 
 /// Prompt text kept on the record (the ledger keeps the longer cut).
@@ -803,8 +816,12 @@ pub fn classify_screen(
     command: &str,
     screen: &str,
 ) -> Option<ScreenHit> {
-    let clean = strip_tip_lines(screen);
-    let screen = clean.as_str();
+    // Bell evidence bypasses pattern matching: the OS already told us
+    // the program needs the human. We *only* treat it as a needs-you
+    // reason when there's a matching manifest agent behind the pane
+    // (otherwise the bell is just a shell that beeped on completion).
+    // The summary is a short, recognizable label so the reason chip
+    // can render `🔔 bell` without callers having to mint one.
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
         return m.classify(screen).map(|(state, summary)| ScreenHit {
             agent: Some(m.agent.clone()),
