@@ -812,9 +812,11 @@ pub fn strip_tip_lines(screen: &str) -> String {
 }
 
 pub fn classify_screen(
-    manifests: &[CompiledManifest], command: &str, screen: &str,
+    manifests: &[CompiledManifest],
+    command: &str,
+    screen: &str,
     bell: bool,
-, false) -> Option<ScreenHit> {
+) -> Option<ScreenHit> {
     // Bell evidence is layered on top of pattern matching, not in
     // place of it. We append a synthetic line `🔔 bell` to the
     // capture when the kernel flag fired; any manifest `waiting:`
