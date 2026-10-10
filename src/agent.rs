@@ -834,11 +834,12 @@ pub fn classify_screen(
     let clean = strip_tip_lines(screen);
     let screen = clean.as_str();
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
-        return m.classify(screen).map(|(state, summary)| ScreenHit {
+        let hit = m.classify(screen).map(|(state, summary)| ScreenHit {
             agent: Some(m.agent.clone()),
             state,
             summary,
         });
+        return bell_override(hit, bell);
     }
     let flat = screen.to_lowercase();
     for m in manifests {
@@ -846,14 +847,46 @@ pub fn classify_screen(
             let agent = flat
                 .contains(m.agent.to_lowercase().as_str())
                 .then(|| m.agent.clone());
-            return Some(ScreenHit {
+            let hit = Some(ScreenHit {
                 agent,
                 state,
                 summary,
             });
+            return bell_override(hit, bell);
         }
     }
-    None
+    bell_override(None, bell)
+}
+
+/// If the bell flag fired, prefer the Waiting verdict (and surface
+/// `bell` in the summary the reason chip reads). A bare bell with no
+/// manifest match — e.g. a shell that beeped on completion — is
+/// dropped: it was noise, not a plea for input.
+fn bell_override(hit: Option<ScreenHit>, bell: bool) -> Option<ScreenHit> {
+    if !bell {
+        return hit;
+    }
+    match hit {
+        Some(mut h) => {
+            // Bell alone upgrades to Waiting; the summary carries
+            // `🔔 bell` so the chip can render it next to whatever
+            // waiting line matched. If the underlying state is
+            // already attention (Error/Stuck/Limited) we keep that
+            // — a bell during a crashed agent is redundant noise.
+            if matches!(
+                h.state,
+                AgentState::Waiting | AgentState::Working | AgentState::Idle | AgentState::Done
+            ) {
+                h.state = AgentState::Waiting;
+                h.summary = format!("🔔 {}", h.summary);
+            }
+            Some(h)
+        }
+        // No manifest hit + bell fired = nothing actionable. The
+        // program was just a bare shell that beeped. Let the caller
+        // treat it like a normal non-match.
+        None => None,
+    }
 }
 
 /// Merge helper for tests and the daemon: fold hook events over a registry.
