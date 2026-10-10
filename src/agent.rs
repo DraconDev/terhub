@@ -658,7 +658,12 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\[y/n\\]".to_string(),
                 "enter to confirm".to_string(),
             ],
-            idle: vec![
+            done: vec![
+                "✓ goal complete".to_string(),
+                "todo list \\d+/\\d+ completed".to_string(),
+            ],
+            idle: vec![],
+            done: vec![
                 "✓ goal complete".to_string(),
                 "todo list \\d+/\\d+ completed".to_string(),
             ],
