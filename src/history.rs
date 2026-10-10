@@ -489,6 +489,7 @@ pub fn stats(spans: &[Span], since: Option<u64>, group: GroupBy) -> Vec<StatsRow
             AgentState::Working => row.work += dur,
             AgentState::Waiting => row.wait += dur,
             AgentState::Error | AgentState::Stuck | AgentState::Limited => row.err += dur,
+            AgentState::Done => row.done += dur,
             AgentState::Idle => row.idle += dur,
             AgentState::Unknown => {}
         }
