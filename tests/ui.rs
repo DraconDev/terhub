@@ -478,6 +478,44 @@ fn agent_color_and_idle_warn_reach_cells() {
 }
 
 #[test]
+fn columns_carry_semantic_styles_not_terminal_default() {
+    use terhub::agent::{AgentState, now_unix};
+    let mut app = app_with_panes();
+    app.config.theme = "dark".to_string();
+    app.agents.insert(
+        "%1".to_string(),
+        idle_record("%1", "alpha", 60, now_unix()),
+    );
+    // Handles group with their agent (same hash colour, not dim).
+    app.agents.get_mut("%1").unwrap().handle = "@pi-a".to_string();
+    let grid = render_grid(&mut app, 140, 20);
+    // Session borrows the title hue (no bold): categories read as one family.
+    assert_eq!(
+        cell_style(&grid, "%1", "Session"),
+        terhub::ui::palette("dark").title.fg.unwrap(),
+        "session lost its title-family colour"
+    );
+    // Cmd is primary content ink, not the terminal default.
+    assert_eq!(
+        cell_style(&grid, "%1", "Cmd"),
+        terhub::ui::palette("dark").status.fg.unwrap(),
+        "cmd fell back to terminal default"
+    );
+    // Window recedes into dim.
+    assert_eq!(
+        cell_style(&grid, "%1", "Window"),
+        terhub::ui::palette("dark").dim.fg.unwrap(),
+        "window does not recede"
+    );
+    // Handle matches its agent cell colour exactly (group identity).
+    assert_eq!(
+        cell_style(&grid, "%1", "Handle"),
+        cell_style(&grid, "%1", "Agent"),
+        "handle does not group with its agent"
+    );
+}
+
+#[test]
 fn resort_restarts_view_at_top() {
     let mut app = app_with_panes();
     app.select_pane(0);
