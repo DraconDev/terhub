@@ -996,6 +996,12 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !app.filter.is_empty() {
         title.push_str(&format!(" · search: {}", truncate(&app.filter, 24)));
     }
+    // Two-line prompt: when the filter dialog is open, hint that
+    // Tab moves between the include and exclude lines so the user
+    // doesn't discover the feature by accident.
+    if matches!(app.mode, Mode::PromptFilter) {
+        title.push_str(" · Tab: switch include/exclude");
+    }
     if app.hidden_quiet > 0 {
         title.push_str(&format!(" · hiding {}", app.hidden_quiet));
     }
