@@ -454,9 +454,14 @@ impl CompiledManifest {
             } else if is_work {
                 hit = Some((AgentState::Working, i));
             } else if self.idle.iter().any(|r| r.is_match(line)) {
-                // Done loses every within-line tie: any hint of need or
-                // activity on the same line outranks a completion marker.
-                hit = Some((AgentState::Idle, i));
+                // Legacy `idle:` list (pre-Done migration): promotes
+                // to `Done`. Within-line precedence unchanged — a
+                // hint of need or activity on the same line outranks
+                // a completion marker.
+                hit = Some((AgentState::Done, i));
+            } else if self.done.iter().any(|r| r.is_match(line)) {
+                // New `done:` list: explicit `Done` verdict.
+                hit = Some((AgentState::Done, i));
             }
             if self.idle_fallback.iter().any(|r| r.is_match(line)) {
                 fallback = Some(i);
@@ -479,12 +484,13 @@ impl CompiledManifest {
                     Some((AgentState::Waiting | AgentState::Error | AgentState::Limited, _)) => {
                         true
                     }
+                    Some((AgentState::Done, _)) => true,
                     Some((AgentState::Idle, _)) => true,
                     Some((AgentState::Working, wi)) => wi >= fi,
                     Some(_) => true,
                 };
             if !dominated {
-                hit = Some((AgentState::Idle, fi));
+                hit = Some((AgentState::Done, fi));
             }
         }
         hit.map(|(state, i)| {
