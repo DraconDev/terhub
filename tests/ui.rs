@@ -375,6 +375,17 @@ fn idle_record(pane: &str, session: &str, quiet_age: u64, now: u64) -> terhub::a
     }
 }
 
+fn cell_style(grid: &[Vec<(String, Color, Modifier)>], id: &str, header: &str) -> Color {
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains(header)).unwrap();
+    let ix = hdr[..hdr.find(header).unwrap()].chars().count();
+    let row = text.iter().position(|l| l.contains(id)).unwrap();
+    grid[row][ix].1
+}
+
 fn idle_cell_style(grid: &[Vec<(String, Color, Modifier)>], id: &str) -> (Color, Modifier) {
     let text: Vec<String> = grid
         .iter()
