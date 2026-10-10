@@ -214,6 +214,7 @@ pub fn palette(theme: &str) -> Palette {
             status: Style::default().fg(Color::Black),
             dim: Style::default().fg(Color::DarkGray),
             focus: Style::default().fg(Color::Magenta),
+            done: Style::default().fg(Color::LightGreen),
         },
         "dracula" => Palette {
             border: Style::default().fg(rgb(0x62, 0x72, 0xA4)),
