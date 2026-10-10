@@ -3351,8 +3351,18 @@ impl App {
                 return;
             }
         };
-        match crate::config::persist_ui_settings(&self.config.ui_persist()) {
-            Ok(()) => self.set_status(format!("{label} (saved)")),
+        // Only the keys this arm touched reach the file: writing the
+        // whole snapshot here is what let a stale instance's toggle
+        // revert a newer instance's filter (see `App::persist_view`).
+        let written = {
+            let patch = self.config.ui_persist_changes(&self.view_changes);
+            crate::config::persist_ui_settings(&patch)
+        };
+        match written {
+            Ok(()) => {
+                self.view_changes = crate::config::ViewChanges::default();
+                self.set_status(format!("{label} (saved)"));
+            }
             Err(e) => self.set_status(format!("{label} (live only: {e})")),
         }
     }
