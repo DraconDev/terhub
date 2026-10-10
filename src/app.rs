@@ -3285,11 +3285,11 @@ impl App {
         self.mode = Mode::PromptFilter;
         self.editing_standing = true;
         self.filter_before_edit.clone_from(&self.exclude);
-        if self.exclude.is_empty() {
-            self.input = "!".to_string();
-        } else {
-            self.input.clone_from(&self.exclude);
-        }
+        // The new model stores bare tokens on the exclude line
+        // (the "(excludes)" row label tells the user what the
+        // line is for). Pre-filling `!` would re-introduce the
+        // old single-substring form.
+        self.input.clone_from(&self.exclude);
         self.cursor = self.input.chars().count();
     }
 
