@@ -960,7 +960,7 @@ impl App {
                 let editor_wait = !fg_comm.is_empty() && crate::proc::is_editor_name(&fg_comm);
                 let screen = crate::native::capture(&tab.id, 60).unwrap_or_default();
                 let (screen_hash, quiet_since) = self.track_native_quiet(&tab.id, &screen, now);
-                let classified = classify_screen(&compiled, &command, &screen, false);
+                let classified = classify_screen(&compiled, &command, &screen, false, crate::proc::parked_in_tty_read(tab.pid));
                 let (state, summary, source) = match classified {
                     Some(h) => (h.state, h.summary, Source::Screen),
                     None if editor_wait => (
