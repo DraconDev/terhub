@@ -624,23 +624,33 @@ fn sparkline_renders_six_cells_monotonic_in_grid() {
         .iter()
         .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
         .collect();
-    // Pull the sparkline cell out of pane %1's row. The table is
-    // 7 cells wide for the Activity column: 6 glyphs + 1 padding.
-    // Strip leading + trailing whitespace and take the first
-    // contiguous run of block glyphs — that's the sparkline.
+    // Pull the sparkline cell out of pane %1's row. The Activity
+    // column is the last column in the row, 7 cells wide: 6 block
+    // glyphs + 1 padding (or in this test, the right border │).
+    // Take the last contiguous run of block characters (U+2581
+    // through U+2588 — the sparkline glyph set) from the row.
     let row_line = text
         .iter()
         .find(|l| l.contains("%1"))
         .expect("pane %1 must render in the grid");
-    let sparkline: String = row_line
-        .chars()
-        .rev()
-        .skip_while(|c| c.is_whitespace())
-        .take(6)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
+    let sparkline: String = {
+        // Walk the row from the end, collecting block glyphs until
+        // we hit a non-block character. Then take exactly 6 of the
+        // freshest samples (the 6-cell column) and reverse to
+        // left-to-right order.
+        let mut cells: Vec<char> = Vec::with_capacity(8);
+        for c in row_line.chars().rev() {
+            let cp = c as u32;
+            if (0x2581..=0x2588).contains(&cp) {
+                cells.push(c);
+            } else if !cells.is_empty() {
+                break;
+            }
+        }
+        cells.truncate(6);
+        cells.reverse();
+        cells.into_iter().collect()
+    };
     assert_eq!(
         sparkline.chars().count(),
         6,
