@@ -6,6 +6,8 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 fn wait_for(cond: impl Fn() -> bool, tries: u32) -> bool {
@@ -33,9 +35,19 @@ impl Server {
             .spawn()
             .expect("spawn terhub serve");
         let stdout = child.stdout.take().unwrap();
-        let mut reader = BufReader::new(stdout);
-        let mut line = String::new();
-        reader.read_line(&mut line).unwrap();
+        // Bounded read: a panic in terhub serve before its first
+        // listen-line write (or a wedged bind) would otherwise hang
+        // the suite forever. Read on a thread, recv with a deadline.
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            let _ = tx.send(line);
+        });
+        let line = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("terhub serve did not print a listen line within 5s");
         // "listening on http://127.0.0.1:PORT"
         let port: u16 = line
             .trim()
@@ -61,6 +73,12 @@ impl Server {
 
     fn request(&self, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
         let mut stream = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
+        // Bounded read: a wedged server (e.g. tmux capture hanging
+        // behind /api/capture) used to block the suite forever here.
+        // 5s is generous for a loopback response.
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         let body = body.unwrap_or("");
         write!(
             stream,

@@ -71,6 +71,14 @@ fn daemon_hook_snapshot_expire_shutdown() {
         std::env::set_var("TERHUB_RUNTIME_DIR", &runtime);
         std::env::set_var("TERHUB_DATA_DIR", &data);
         std::env::set_var("TERHUB_CONFIG", &config);
+        // Hermetic tmux server for this binary, regardless of the
+        // runner's environment. CI does not pre-set this, and a
+        // developer's active `wez` server used to be touched by
+        // these tests (the 2026-10-08/09 residual gap).
+        std::env::set_var(
+            terhub::tmux::SOCKET_ENV,
+            format!("terhub-daemon-{}", std::process::id()),
+        );
     }
     let _daemon = TestDaemon::start();
 
