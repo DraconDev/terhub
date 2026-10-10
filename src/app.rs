@@ -524,6 +524,7 @@ fn pane_matches(
     includes: &[&str],
     excludes: &[&str],
 ) -> bool {
+    eprintln!("pane_matches id={} includes={:?} excludes={:?}", p.id, includes, excludes);
     for tok in includes {
         if let Some(rest) = tok.strip_prefix('!').filter(|r| !r.is_empty()) {
             if pane_match_any(p, rec, rest) {
