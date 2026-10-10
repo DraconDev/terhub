@@ -2359,26 +2359,26 @@ mod tests {
     /// values in the sections/keys it was not asked to change.
     #[test]
     fn persist_survives_real_world_config_shapes() {
-        // (name, original text) — each is valid TOML before the write.
-        let cases: &[(&str, &str)] = &[
-            ("crlf", "[ui]\r\ntheme = \"dark\"\r\nfilter = \"!zsh\"\r\n\r\n[keys]\r\nnew = \"c\"\r\n"),
-            ("commented header", "# lead\n[ui] # theme settings\ntheme = \"dark\"\n"),
-            ("indented keys", "[ui]\n  theme = \"dark\"\n\t filter = \"!zsh\"\n"),
-            ("no spaces around eq", "[ui]\ntheme=\"dark\"\n"),
-            ("single quotes", "[ui]\ntheme = 'dark'\n"),
-            ("trailing whitespace", "[ui]\ntheme = \"dark\"   \n"),
-            ("no ui section", "[keys]\nnew = \"c\"\n"),
-            ("empty ui section", "[ui]\n\n[style]\nidle_flag_secs = 300\n"),
-            ("bom", "\u{feff}[ui]\ntheme = \"dark\"\n"),
+        // (name, original text, expected theme, expected filter, has keys section)
+        let cases: &[(&str, &str, &str, &str, bool)] = &[
+            ("crlf", "[ui]\r\ntheme = \"dark\"\r\nfilter = \"!zsh\"\r\n\r\n[keys]\r\nnew = \"c\"\r\n", "dark", "!zsh", true),
+            ("commented header", "# lead\n[ui] # theme settings\ntheme = \"dark\"\n", "dark", "", false),
+            ("indented keys", "[ui]\n  theme = \"dark\"\n\t filter = \"!zsh\"\n", "dark", "!zsh", false),
+            ("no spaces around eq", "[ui]\ntheme=\"dark\"\n", "dark", "", false),
+            ("single quotes", "[ui]\ntheme = 'dark'\n", "dark", "", false),
+            ("trailing whitespace", "[ui]\ntheme = \"dark\"   \n", "dark", "", false),
+            ("no ui section", "[keys]\nnew = \"c\"\n", "dark", "", true),
+            ("empty ui section", "[ui]\n\n[style]\nidle_flag_secs = 300\n", "dark", "", false),
+            ("bom", "\u{feff}[ui]\ntheme = \"dark\"\n", "dark", "", false),
         ];
-        for (name, original) in cases {
+        for (name, original, want_theme, want_filter, has_keys) in cases {
             let dir = test_dir();
             std::fs::create_dir_all(&dir).unwrap();
             let path = dir.join(format!("shape-{name}.toml"));
             std::fs::write(&path, original).unwrap();
             // A no-op patch: nothing to change, so the file must come
-            // back byte-identical (or at least still parseable with the
-            // same values) — the persist path must not rewrite blindly.
+            // back still parseable with the same values — the persist
+            // path must not rewrite blindly.
             persist_ui_settings_to(&path, &UiPersist::default()).unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
             let (cfg, problems) = load_config_report(Some(path.clone()));
@@ -2386,13 +2386,20 @@ mod tests {
                 problems.is_empty(),
                 "{name}: no-op persist reported a problem: {problems:?}\n{text}"
             );
-            assert!(
-                cfg.theme == "dark" && cfg.filter == "!zsh",
-                "{name}: a no-op persist changed stored values: theme={} filter={} keys intact={}\n{text}",
-                cfg.theme,
-                cfg.filter,
-                text.contains("new = \"c\"")
+            assert_eq!(
+                (cfg.theme.as_str(), cfg.filter.as_str()),
+                (*want_theme, *want_filter),
+                "{name}: a no-op persist changed stored values\n{text}"
             );
+            if *has_keys {
+                assert!(text.contains("new = \"c\""), "{name}: lost [keys]\n{text}");
+            }
+            if text.contains("[style]") {
+                assert!(
+                    text.contains("idle_flag_secs = 300"),
+                    "{name}: lost [style]\n{text}"
+                );
+            }
             std::fs::remove_file(path).ok();
         }
     }
