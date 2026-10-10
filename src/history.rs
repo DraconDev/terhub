@@ -651,6 +651,13 @@ fn state_style(state: AgentState) -> ratatui::style::Style {
         AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited => {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         }
+        // Done: quiet green check — finished, not waiting, never
+        // alarming. The history view doesn't have access to the
+        // user's palette, so it falls back to the same light-green
+        // its working state uses.
+        AgentState::Done => Style::default()
+            .fg(Color::LightGreen)
+            .add_modifier(Modifier::BOLD),
         AgentState::Working => Style::default().fg(Color::Green),
         AgentState::Idle => Style::default().fg(Color::DarkGray),
         AgentState::Unknown => Style::default().fg(Color::DarkGray),

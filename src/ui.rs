@@ -21,6 +21,11 @@ pub struct Palette {
     pub status: Style,
     pub dim: Style,
     pub focus: Style,
+    /// Done-row accent: a quiet green check for finished tasks. The
+    /// State column for `AgentState::Done` reads in this colour, so
+    /// a finished pane is a one-glance "all good" without competing
+    /// for the bright red reserved for things needing action.
+    pub done: Style,
 }
 
 pub fn palette(theme: &str) -> Palette {
@@ -40,7 +45,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x31, 0x74, 0x8F)),
             status: Style::default().fg(rgb(0xE0, 0xDE, 0xF4)),
             dim: Style::default().fg(rgb(0x90, 0x8C, 0xAA)),
-            focus: Style::default().fg(rgb(0xEB, 0xBC, 0xBA)),
+                        focus: Style::default().fg(rgb(0xEB, 0xBC, 0xBA)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "everforest" => Palette {
             border: Style::default().fg(rgb(0x5D, 0x65, 0x5D)),
@@ -56,7 +62,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x7F, 0xBB, 0xB3)),
             status: Style::default().fg(rgb(0xD3, 0xC6, 0xAA)),
             dim: Style::default().fg(rgb(0x85, 0x92, 0x89)),
-            focus: Style::default().fg(rgb(0xD6, 0x99, 0xB6)),
+                        focus: Style::default().fg(rgb(0xD6, 0x99, 0xB6)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "kanagawa" => Palette {
             border: Style::default().fg(rgb(0x54, 0x54, 0x46)),
@@ -72,7 +79,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x87, 0xA9, 0x87)),
             status: Style::default().fg(rgb(0xC5, 0xC9, 0xC5)),
             dim: Style::default().fg(rgb(0x62, 0x5E, 0x5A)),
-            focus: Style::default().fg(rgb(0x95, 0x73, 0xA7)),
+                        focus: Style::default().fg(rgb(0x95, 0x73, 0xA7)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "ayu" => Palette {
             border: Style::default().fg(rgb(0x33, 0x44, 0x59)),
@@ -88,7 +96,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xAA, 0xD9, 0x4C)),
             status: Style::default().fg(rgb(0xB3, 0xB1, 0xAD)),
             dim: Style::default().fg(rgb(0x3E, 0x4B, 0x59)),
-            focus: Style::default().fg(rgb(0xD2, 0xA6, 0xFF)),
+                        focus: Style::default().fg(rgb(0xD2, 0xA6, 0xFF)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "nightfly" => Palette {
             border: Style::default().fg(rgb(0x1D, 0x3B, 0x53)),
@@ -104,7 +113,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA1, 0xCD, 0x76)),
             status: Style::default().fg(rgb(0xB2, 0xB2, 0xB2)),
             dim: Style::default().fg(rgb(0x5C, 0x66, 0x70)),
-            focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+                        focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "palenight" => Palette {
             border: Style::default().fg(rgb(0x3A, 0x3F, 0x5B)),
@@ -120,7 +130,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xC3, 0xE8, 0x8D)),
             status: Style::default().fg(rgb(0xBF, 0xCA, 0xE0)),
             dim: Style::default().fg(rgb(0x67, 0x6E, 0x95)),
-            focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+                        focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "github" => Palette {
             border: Style::default().fg(rgb(0x30, 0x35, 0x3D)),
@@ -136,7 +147,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x3F, 0xB9, 0x50)),
             status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
             dim: Style::default().fg(rgb(0x8B, 0x94, 0x9E)),
-            focus: Style::default().fg(rgb(0xBC, 0x8C, 0xFF)),
+                        focus: Style::default().fg(rgb(0xBC, 0x8C, 0xFF)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "github-light" => Palette {
             border: Style::default().fg(rgb(0xE1, 0xE4, 0xE8)),
@@ -152,7 +164,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x28, 0xA7, 0x45)),
             status: Style::default().fg(rgb(0x24, 0x29, 0x2E)),
             dim: Style::default().fg(rgb(0x6A, 0x73, 0x7D)),
-            focus: Style::default().fg(rgb(0x6F, 0x42, 0xC1)),
+                        focus: Style::default().fg(rgb(0x6F, 0x42, 0xC1)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "onehalf" => Palette {
             border: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
@@ -168,7 +181,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
             status: Style::default().fg(rgb(0xDC, 0xDE, 0xE0)),
             dim: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
-            focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+                        focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "onehalf-light" => Palette {
             border: Style::default().fg(rgb(0xE0, 0xE0, 0xE0)),
@@ -184,7 +198,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
             status: Style::default().fg(rgb(0x38, 0x3A, 0x42)),
             dim: Style::default().fg(rgb(0xA3, 0xA3, 0xA3)),
-            focus: Style::default().fg(rgb(0xA6, 0x26, 0xA4)),
+                        focus: Style::default().fg(rgb(0xA6, 0x26, 0xA4)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "light" => Palette {
             border: Style::default().fg(Color::Blue),
@@ -214,7 +229,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x50, 0xFA, 0x7B)),
             status: Style::default().fg(rgb(0xF8, 0xF8, 0xF2)),
             dim: Style::default().fg(rgb(0x62, 0x72, 0xA4)),
-            focus: Style::default().fg(rgb(0xFF, 0x79, 0xC6)),
+                        focus: Style::default().fg(rgb(0xFF, 0x79, 0xC6)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "nord" => Palette {
             border: Style::default().fg(rgb(0x4C, 0x56, 0x6A)),
@@ -230,7 +246,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA3, 0xBE, 0x8C)),
             status: Style::default().fg(rgb(0xE5, 0xE9, 0xF0)),
             dim: Style::default().fg(rgb(0x4C, 0x56, 0x6A)),
-            focus: Style::default().fg(rgb(0xD0, 0x87, 0x70)),
+                        focus: Style::default().fg(rgb(0xD0, 0x87, 0x70)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "gruvbox" => Palette {
             border: Style::default().fg(rgb(0x92, 0x83, 0x74)),
@@ -246,7 +263,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xB8, 0xBB, 0x26)),
             status: Style::default().fg(rgb(0xEB, 0xDB, 0xB2)),
             dim: Style::default().fg(rgb(0x92, 0x83, 0x74)),
-            focus: Style::default().fg(rgb(0xFE, 0x80, 0x19)),
+                        focus: Style::default().fg(rgb(0xFE, 0x80, 0x19)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "solarized" => Palette {
             border: Style::default().fg(rgb(0x58, 0x6E, 0x75)),
@@ -262,7 +280,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x85, 0x99, 0x00)),
             status: Style::default().fg(rgb(0x83, 0x94, 0x96)),
             dim: Style::default().fg(rgb(0x58, 0x6E, 0x75)),
-            focus: Style::default().fg(rgb(0xCB, 0x4B, 0x16)),
+                        focus: Style::default().fg(rgb(0xCB, 0x4B, 0x16)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "tokyonight" => Palette {
             border: Style::default().fg(rgb(0x56, 0x5F, 0x89)),
@@ -278,7 +297,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x9E, 0xCE, 0x6A)),
             status: Style::default().fg(rgb(0xC0, 0xCA, 0xF5)),
             dim: Style::default().fg(rgb(0x56, 0x5F, 0x89)),
-            focus: Style::default().fg(rgb(0xBB, 0x9A, 0xF7)),
+                        focus: Style::default().fg(rgb(0xBB, 0x9A, 0xF7)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "catppuccin" => Palette {
             border: Style::default().fg(rgb(0x6C, 0x70, 0x86)),
@@ -294,7 +314,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA6, 0xE3, 0xA1)),
             status: Style::default().fg(rgb(0xCD, 0xD6, 0xF4)),
             dim: Style::default().fg(rgb(0x6C, 0x70, 0x86)),
-            focus: Style::default().fg(rgb(0xCB, 0xA6, 0xF7)),
+                        focus: Style::default().fg(rgb(0xCB, 0xA6, 0xF7)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "onedark" => Palette {
             border: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
@@ -310,7 +331,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
             status: Style::default().fg(rgb(0xAB, 0xB2, 0xBF)),
             dim: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
-            focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+                        focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         "monokai" => Palette {
             border: Style::default().fg(rgb(0x75, 0x71, 0x5E)),
@@ -326,7 +348,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA6, 0xE2, 0x2E)),
             status: Style::default().fg(rgb(0xF8, 0xF8, 0xF2)),
             dim: Style::default().fg(rgb(0x75, 0x71, 0x5E)),
-            focus: Style::default().fg(rgb(0xF9, 0x26, 0x72)),
+                        focus: Style::default().fg(rgb(0xF9, 0x26, 0x72)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
         _ => Palette {
             // The default dark style: explicit RGBs with one job each
@@ -350,7 +373,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x7E, 0xE7, 0x87)),
             status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
             dim: Style::default().fg(rgb(0x9A, 0xA5, 0xB1)),
-            focus: Style::default().fg(rgb(0xD2, 0xA8, 0xFF)),
+                        focus: Style::default().fg(rgb(0xD2, 0xA8, 0xFF)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A))
         },
     }
 }
