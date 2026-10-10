@@ -6458,13 +6458,14 @@ mod tests {
         // The settings row opens the same prompt in standing mode.
         app.open_standing_editor();
         assert!(app.editing_standing);
-        // Bare text: the standing filter only ever excludes, so this
-        // saves as `!zsh` without the user typing the prefix.
+        // Saves as `zsh` in the in-memory field (the matcher
+        // treats the line as exclude already) and as `!zsh` in the
+        // on-disk form (kept for back-compat with old configs).
         for c in "zsh".chars() {
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
         }
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
-        assert_eq!(app.exclude, "!zsh");
+        assert_eq!(app.exclude, "zsh");
         // Back in settings (where the editor was opened from), not the table.
         assert_eq!(app.mode, Mode::Settings);
         let text = std::fs::read_to_string(&path).unwrap();
