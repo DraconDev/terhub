@@ -1176,10 +1176,23 @@ mod tests {
         assert_eq!(AgentState::parse("needs-input"), Some(AgentState::Waiting));
         assert_eq!(AgentState::parse("BLOCKED"), Some(AgentState::Waiting));
         assert_eq!(AgentState::parse("failed"), Some(AgentState::Error));
-        assert_eq!(AgentState::parse("done"), Some(AgentState::Idle));
+        // "done" used to fold into Idle; it's now its own variant. The
+        // classifier still does the heavier lifting (process exit 0,
+        // banner match) but parsing must agree.
+        assert_eq!(AgentState::parse("done"), Some(AgentState::Done));
+        assert_eq!(AgentState::parse("complete"), Some(AgentState::Done));
+        assert_eq!(AgentState::parse("idle"), Some(AgentState::Idle));
+        assert_eq!(AgentState::parse("ready"), Some(AgentState::Idle));
         assert_eq!(AgentState::parse("quota"), Some(AgentState::Limited));
         assert_eq!(AgentState::parse("CAPPED"), Some(AgentState::Limited));
         assert_eq!(AgentState::parse("bogus"), None);
+    }
+
+    #[test]
+    fn done_state_is_quiet_not_attention() {
+        // A finished agent must never badge as needing action: it's
+        // the visual whole point of the Done FYI row.
+        assert!(!AgentState::Done.needs_attention());
     }
 
     #[test]
@@ -1473,10 +1486,11 @@ mod tests {
     }
 
     #[test]
-    fn minimax_completion_reads_idle() {
+    fn minimax_completion_reads_done() {
         let m = compiled();
-        // Finished task banners: done (idle), not working — and not
-        // waiting either, which is reserved for genuine input pleas.
+        // Finished task banners: `done`, not working — and not waiting
+        // either, which is reserved for genuine input pleas. The
+        // minimax manifest's `idle:` list was migrated to `done:`.
         assert_eq!(
             classify_screen(
                 &m,
@@ -1485,7 +1499,7 @@ mod tests {
             ),
             hit(
                 Some("minimax-code"),
-                AgentState::Idle,
+                AgentState::Done,
                 "✓ Goal complete · 31min38s · 352K tokens"
             )
         );
@@ -1493,7 +1507,7 @@ mod tests {
             classify_screen(&m, "minimax-code", "✓ Todo list 15/15 completed\n"),
             hit(
                 Some("minimax-code"),
-                AgentState::Idle,
+                AgentState::Done,
                 "✓ Todo list 15/15 completed"
             )
         );
