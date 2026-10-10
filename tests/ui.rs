@@ -814,6 +814,19 @@ fn filter_prompt_renders_text() {
 }
 
 #[test]
+fn standing_prompt_renders_exclusion_chrome() {
+    let mut app = app_with(&["alpha"]);
+    app.open_standing_editor();
+    let lines = render_lines(&mut app, 100, 12);
+    let text = lines.join("\n");
+    // Never reads as a search: exclusion heading, Hide: prefix, and
+    // the pre-filled bang.
+    assert!(text.contains("Exclude filter"), "missing heading:\n{text}");
+    assert!(text.contains("Hide: !"), "missing bang prefix:\n{text}");
+    assert!(!text.contains("Text: "), "search chrome leaked:\n{text}");
+}
+
+#[test]
 fn prompt_modal_renders_input() {
     let mut app = app_with(&["alpha"]);
     app.mode = Mode::PromptNew;
