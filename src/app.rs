@@ -4750,8 +4750,14 @@ mod tests {
     fn tmux_pane_format_includes_bell_flag() {
         // A regression here would silently drop the bell evidence:
         // the parser would still return bell=false forever, and the
-        // row would never get the chip. Pin the format string.
-        assert!(super::PANE_FORMAT.contains("#{window_bell_flag}"));
+        // row would never get the chip. Pin the format string via
+        // parse_panes (the public surface) instead of the private
+        // constant: feed a 14-field line with bell=1 and check the
+        // parsed Pane.
+        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242\x1f1";
+        let panes = super::parse_panes(line);
+        assert_eq!(panes.len(), 1);
+        assert!(panes[0].bell, "bell flag must round-trip through parse_panes");
     }
 
     #[test]
