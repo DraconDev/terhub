@@ -910,6 +910,59 @@ impl App {
         next
     }
 
+    /// Sample the activity sparkline for a pane: bytes of new output
+    /// since the last sample, capped so a runaway editor doesn't blow
+    /// out the scale of every other bar. The previous screen is
+    /// cached by pane id, not in the ring buffer, so a short capture
+    /// gap (the terminal died and respawned) just resets the diff
+    /// and the bar shows 0 next to a clean baseline.
+    pub fn sample_sparkline(&mut self, id: &str, screen: &str) {
+        if !self.config.activity_sparkline {
+            return;
+        }
+        let prev = self.sparkline_prev.get(id).cloned();
+        let added: u32 = match prev.as_deref() {
+            None => 0,
+            Some(p) if screen.starts_with(p) => (screen.len() - p.len()) as u32,
+            // Capture dropped or scrolled: can't attribute the bytes.
+            _ => 0,
+        };
+        // Cap at 4096/tick; longer captures just show a tall bar.
+        let sample = added.min(4096);
+        let ring = self
+            .sparkline_samples
+            .entry(id.to_string())
+            .or_insert([0u32; 60]);
+        // Ring shift: drop the oldest, push the new sample.
+        ring.rotate_left(1);
+        ring[59] = sample;
+        // Trim a 64KB tail cache; the full screen is unbounded.
+        let cap = screen.len().min(65536);
+        self.sparkline_prev
+            .insert(id.to_string(), screen[screen.len() - cap..].to_string());
+    }
+
+    /// Aggregate a 60-sample ring into 6 buckets (10 samples each,
+    /// rightmost = freshest) for the 6-wide micrograph. Returns
+    /// per-bucket byte totals so the renderer can choose bar height
+    /// in cells. An empty buffer yields six zeros.
+    pub fn sparkline_buckets(&self, id: &str) -> [u32; 6] {
+        let mut out = [0u32; 6];
+        let Some(ring) = self.sparkline_samples.get(id) else {
+            return out;
+        };
+        // 60 samples / 6 buckets = 10 samples per bucket. Take the
+        // max within each bucket so a single busy tick lights up the
+        // bar even if surrounded by quiet ones.
+        for (i, slot) in out.iter_mut().enumerate() {
+            let start = i * 10;
+            let end = start + 10;
+            let m = ring[start..end].iter().copied().max().unwrap_or(0);
+            *slot = m;
+        }
+        out
+    }
+
     /// Fetch native terminal tabs into the table (startup + F5; replaces
     /// the cache). Agent state is fetch-time: proc identity plus one
     /// screen classification, frozen until the next fetch.
@@ -972,6 +1025,7 @@ impl App {
                 let editor_wait = !fg_comm.is_empty() && crate::proc::is_editor_name(&fg_comm);
                 let screen = crate::native::capture(&tab.id, 60).unwrap_or_default();
                 let (screen_hash, quiet_since) = self.track_native_quiet(&tab.id, &screen, now);
+                self.sample_sparkline(&tab.id, &screen);
                 let classified = classify_screen(&compiled, &command, &screen, false, crate::proc::parked_in_tty_read(tab.pid));
                 let (state, summary, source) = match classified {
                     Some(h) => (h.state, h.summary, Source::Screen),
