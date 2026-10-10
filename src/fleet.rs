@@ -342,6 +342,7 @@ pub fn snapshot_rows(
             height: 0,
             activity: a.updated_at,
             pid: 0,
+            bell: false,
         });
         let mut rec = a.clone();
         rec.pane = id;
