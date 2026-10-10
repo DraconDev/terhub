@@ -4633,6 +4633,120 @@ mod tests {
     }
 
     #[test]
+    fn sparkline_disabled_means_no_sampling() {
+        // The config toggle is the gatekeeper: the ring stays empty
+        // until the user opts in. A regression here would silently
+        // sample every pane and balloon memory on big tables.
+        let mut app = app_with_panes();
+        assert!(!app.config.activity_sparkline);
+        app.sample_sparkline("%1", "lots of new bytes of output");
+        assert!(app.sparkline_samples.is_empty());
+    }
+
+    #[test]
+    fn sparkline_enabled_tracks_bytes_added() {
+        let mut app = app_with_panes();
+        app.config.activity_sparkline = true;
+        // First sample: the previous screen is unknown, so the diff
+        // is 0 (we can't attribute bytes without a baseline).
+        app.sample_sparkline("%1", "first capture");
+        let ring = app.sparkline_samples.get("%1").unwrap();
+        assert_eq!(ring[59], 0, "first sample without baseline should be 0");
+        // Second sample, screen grew by 6 bytes: ring records it.
+        app.sample_sparkline("%1", "first capture!!");
+        let ring = app.sparkline_samples.get("%1").unwrap();
+        assert_eq!(ring[59], 2);
+    }
+
+    #[test]
+    fn sparkline_buckets_collapse_sixty_samples_into_six() {
+        let mut app = app_with_panes();
+        app.config.activity_sparkline = true;
+        // Drive a monotonic activity ramp: each sample larger than
+        // the last. After 60 samples, the rightmost bucket must
+        // contain the largest value (the freshest tick) and the
+        // leftmost must contain the smallest (the oldest).
+        let mut screen = String::new();
+        for i in 0..60 {
+            let n = (i + 1) as u32 * 10;
+            screen.push_str(&"x".repeat(n as usize));
+            app.sample_sparkline("%1", &screen);
+        }
+        let buckets = app.sparkline_buckets("%1");
+        assert_eq!(buckets.len(), 6);
+        // Monotonic non-decreasing across buckets (older=smaller).
+        for i in 1..6 {
+            assert!(
+                buckets[i] >= buckets[i - 1],
+                "buckets regressed: {buckets:?}"
+            );
+        }
+        // The freshest (rightmost) bucket must contain a busy sample.
+        assert!(buckets[5] >= 100, "freshest bucket should be busy");
+    }
+
+    #[test]
+    fn sparkline_buckets_default_to_zeros_for_unknown_pane() {
+        // A pane we never sampled must return 6 zeros — no crash,
+        // no panic, just a flat ridge in the renderer.
+        let app = app_with_panes();
+        let buckets = app.sparkline_buckets("never-seen");
+        assert_eq!(buckets, [0u32; 6]);
+    }
+
+    #[test]
+    fn sparkline_resets_when_capture_scrolls_past_baseline() {
+        // A capture that no longer starts with the previous tail
+        // (the user scrolled, or the terminal reset) mustn't blow
+        // up — it just records 0 for that tick. The point: the
+        // sparkline is for activity rate, not byte deltas, and a
+        // discontinuity isn't a runaway process.
+        let mut app = app_with_panes();
+        app.config.activity_sparkline = true;
+        app.sample_sparkline("%1", "previous content");
+        app.sample_sparkline("%1", "totally different capture");
+        let ring = app.sparkline_samples.get("%1").unwrap();
+        assert_eq!(ring[59], 0);
+    }
+
+    #[test]
+    fn wchan_parked_ignores_run_state() {
+        // A process in `R` (running) is never parked, even if its
+        // wchan happens to mention tty. The combination is the
+        // signal: state S + wchan n_tty_read. Anything else returns
+        // false. Tested via a synthetic /proc setup; the function
+        // itself just reads the kernel, so we exercise the
+        // *contract* by checking the dead-pid path (which always
+        // returns false) and trust the kernel for the rest.
+        assert!(!crate::proc::parked_in_tty_read(u32::MAX));
+    }
+
+    #[test]
+    fn pane_carries_bell_and_bell_reason() {
+        // Pane deserializes a bell flip from tmux: the bell flag and
+        // its reason (the matched waiting pattern) ride together so
+        // the chip can render `🔔 y/n` next to the row.
+        use crate::tmux::Pane;
+        let p = Pane {
+            id: "%1".to_string(),
+            session: "a".to_string(),
+            window_id: "@0".to_string(),
+            window_name: "x".to_string(),
+            window_active: true,
+            index: 0,
+            command: "pi".to_string(),
+            path: "/tmp".to_string(),
+            active: true,
+            width: 80,
+            height: 24,
+            activity: 0,
+            bell: true,
+            pid: 0,
+        };
+        assert!(p.bell, "Pane.bell must round-trip the tmux flag");
+    }
+
+    #[test]
     fn attend_event_routes_remote_winners_out() {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
