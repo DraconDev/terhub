@@ -1264,7 +1264,7 @@ fn poll_sync_with(
         } else {
             screen
                 .as_deref()
-                .and_then(|s| classify_screen(manifests, &pane.command, s, pane.bell))
+                .and_then(|s| classify_screen(manifests, &pane.command, s, pane.bell, crate::proc::parked_in_tty_read(pane.pid)))
         };
         let proc_pair = proc_hit
             .as_ref()
