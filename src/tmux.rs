@@ -132,6 +132,7 @@ fn parse_panes(out: &str) -> Vec<Pane> {
             width: num(8) as u32,
             height: num(9) as u32,
             session: get(10),
+            activity: num(11),
             pid: num(12) as u32,
             bell: flag(13),
         });
