@@ -83,10 +83,10 @@ const SEP: char = '\x1f';
 
 /// Field counts of the two formats below: more parts than this means a
 /// separator smuggled inside a field, and the line is skipped.
-const PANE_FIELDS: usize = 13;
+const PANE_FIELDS: usize = 14;
 const SESSION_FIELDS: usize = 5;
 
-const PANE_FORMAT: &str = "#{pane_id}\x1f#{window_id}\x1f#{window_name}\x1f#{window_active}\x1f#{pane_index}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_active}\x1f#{pane_width}\x1f#{pane_height}\x1f#{session_name}\x1f#{window_activity}\x1f#{pane_pid}";
+const PANE_FORMAT: &str = "#{pane_id}\x1f#{window_id}\x1f#{window_name}\x1f#{window_active}\x1f#{pane_index}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_active}\x1f#{pane_width}\x1f#{pane_height}\x1f#{session_name}\x1f#{window_activity}\x1f#{pane_pid}\x1f#{window_bell_flag}";
 
 fn parse_panes(out: &str) -> Vec<Pane> {
     let mut panes = Vec::new();
@@ -102,10 +102,22 @@ fn parse_panes(out: &str) -> Vec<Pane> {
         }
         let get = |i: usize| parts.get(i).unwrap_or(&"").to_string();
         let flag = |i: usize| {
-            !matches!(
-                parts.get(i).map(|s| s.trim()),
-                None | Some("0") | Some("") | Some("no")
-            )
+            // `window_bell_flag` is a 0/1 numeric, not a true/false
+            // string — tmux's flag formatter returns 1/0 here, while
+            // the other flags (active, window_active) are yes/no.
+            // Match both shapes.
+            if let Some(s) = parts.get(i) {
+                let t = s.trim();
+                if t == "1" {
+                    return true;
+                }
+                if t == "0" {
+                    return false;
+                }
+                !matches!(t, "0" | "" | "no")
+            } else {
+                false
+            }
         };
         let num = |i: usize| -> u64 { parts.get(i).and_then(|s| s.parse().ok()).unwrap_or(0) };
         panes.push(Pane {
