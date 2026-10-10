@@ -137,7 +137,10 @@ status bar, no modes except small popups:
   *Standing filter*: the always-on **exclusion** from `[ui] filter`, shown
   as `filter:` in the title. Whatever you type in its editor is saved
   as an exclusion (`zsh` becomes `!zsh`) — the standing filter only
-  ever hides. Edit it in settings (`s` → Filters → standing filter,
+  ever hides, so typing it can never surprise you by selecting. The
+  editor opens with the `!` already in place and previews the
+  exclusion live under an `Exclude filter / Hide:` prompt, distinct
+  from the search's `Filter / Text:` prompt. Edit it in settings (`s` → Filters → standing filter,
   `Enter` saves to the config file, `Esc` cancels). `Esc` in the table clears the search, never the
   standing filter. It composes with the session filter. Bind
   `filter_clear` (e.g. `ctrl+backspace`) for a hard wipe of the search
