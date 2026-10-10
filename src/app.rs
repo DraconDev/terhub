@@ -38,6 +38,15 @@ pub enum Mode {
     Settings,
 }
 
+/// Which line of the two-line filter prompt the user is editing.
+/// Tab flips between them; the other line is held in
+/// `filter_other` so its cursor survives the swap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterLine {
+    Include,
+    Exclude,
+}
+
 /// One settings-popup row: a section header or an actionable item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingRow {
@@ -691,6 +700,16 @@ pub struct App {
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
+    /// Draft of the OTHER line (the one not being edited) while the
+    /// filter prompt is open. Tab swaps this with `input`/`cursor` so
+    /// each line keeps its own cursor as the user flips between
+    /// include and exclude. Both snapshots are restored on Esc.
+    filter_other: String,
+    cursor_other: usize,
+    /// Which line the filter prompt is currently editing. `Include`
+    /// edits `filter` (live find); `Exclude` edits `exclude` (the
+    /// standing exclusion). Tab toggles.
+    filter_line: FilterLine,
     /// Hide unclaimed panes quiet past [`QUIET_SHELL_SECS`] (`h` toggle).
     pub hide_quiet_shells: bool,
     /// Rows the toggle is currently hiding (0 when off), for the title.
