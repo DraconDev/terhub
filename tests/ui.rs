@@ -614,7 +614,10 @@ fn sparkline_renders_six_cells_monotonic_in_grid() {
         screen.push_str(&"x".repeat(n));
         app.sample_sparkline("%1", &screen);
     }
-    let grid = render_grid(&mut app, 140, 20);
+    // Wide grid: the percentage columns (Window/Cmd/Dir/Agent)
+    // collapse on narrow widths, so 140-wide is too tight for the
+    // Activity column to actually render. 200-wide leaves room.
+    let grid = render_grid(&mut app, 200, 20);
     // The Activity column header is `Activity` and its cell is
     // exactly 6 grapheme cells wide. The cell may be followed by
     // padding, so the cell's *content* (chars 0..6 of the column
