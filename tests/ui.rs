@@ -479,7 +479,7 @@ fn agent_color_and_idle_warn_reach_cells() {
 
 #[test]
 fn columns_carry_semantic_styles_not_terminal_default() {
-    use terhub::agent::{AgentState, now_unix};
+    use terhub::agent::now_unix;
     let mut app = app_with_panes();
     app.config.theme = "dark".to_string();
     app.agents.insert(
