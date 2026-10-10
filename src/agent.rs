@@ -1337,6 +1337,48 @@ mod tests {
     }
 
     #[test]
+    fn parked_promotes_with_prompt_tail_demotes_without() {
+        // The cascade contract: a kernel-reported parked process
+        // (`S` in `n_tty_read`) plus a prompt-shape line in the
+        // freshest 15 lines must read as Waiting. The same parked
+        // state *without* a prompt-shape line must read as Working
+        // (not Waiting) — every `nvim` / `fzf` / REPL is parked
+        // but not asking the human a question.
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "x".to_string(),
+            commands: vec!["x".to_string()],
+            working: vec!["loading".to_string()],
+            waiting: vec!["^❯".to_string()],
+            error: vec![],
+            limited: vec![],
+            done: vec![],
+            idle: vec![],
+            idle_fallback: vec![],
+            waiting_unless: vec![],
+        })
+        .unwrap();
+        let manifests = vec![m];
+        // Parked + prompt tail: Waiting (the pattern drives it,
+        // the park annotation is informational).
+        let prompt_screen = "loading 0.1\n❯ do you want to proceed?\n";
+        let hit = classify_screen(&manifests, "x", prompt_screen, false, true).unwrap();
+        assert_eq!(hit.state, AgentState::Waiting, "parked + prompt didn't promote");
+        assert!(
+            hit.summary.contains("⏸ tty-read"),
+            "summary missing park annotation: {hit:?}"
+        );
+        // Parked + no prompt tail: stays Working (the contract:
+        // a parked process alone is not a needs-you reason).
+        let quiet_screen = "loading 0.1\n";
+        let hit = classify_screen(&manifests, "x", quiet_screen, false, true).unwrap();
+        assert_eq!(
+            hit.state,
+            AgentState::Working,
+            "parked alone wrongly promoted to Waiting"
+        );
+    }
+
+    #[test]
     fn done_pattern_promotes_matching_tail() {
         // A manifest that moved its completion banner to `done:`
         // must classify a matching screen as `Done`, not `Idle`.
@@ -1419,7 +1461,7 @@ mod tests {
         let m = compiled();
         // Spinner alone: working, but nobody's …
         assert_eq!(
-            classify_screen(&m, "node", "⠋ Working… (esc to interrupt)\n", false),
+            classify_screen(&m, "node", "⠋ Working… (esc to interrupt)\n", false, false),
             hit(None, AgentState::Working, "⠋ Working… (esc to interrupt)")
         );
         // … and a micro command bar is waiting-without-identity, not gemini.
