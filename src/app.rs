@@ -6140,15 +6140,17 @@ mod tests {
 
     #[test]
     fn filters_page_lists_what_each_query_hides() {
-        // %1 nvim, %2 bash. Standing `!bash` hides %2; search `nvim`
-        // hides %2 as well — but %2 already failed standing, so it
-        // lists once, under the exclusion (no double-counting).
+        // %1 nvim, %2 bash. Standing `bash` (the new bare-token
+        // shape; the on-disk form still carries a leading `!`)
+        // hides %2; search `nvim` hides %2 as well — but %2
+        // already failed standing, so it lists once, under the
+        // exclusion (no double-counting).
         let mut app = app_with_panes();
-        app.exclude = "!bash".to_string();
+        app.exclude = "bash".to_string();
         app.filter = "nvim".to_string();
         let texts = legend_texts(&app.settings_rows());
         assert!(
-            texts.iter().any(|t| t.contains("1 hidden") && t.contains("!bash")),
+            texts.iter().any(|t| t.contains("1 hidden") && t.contains("bash")),
             "exclusion caption missing:\n{texts:?}"
         );
         assert!(
