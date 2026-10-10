@@ -8,6 +8,7 @@ use crate::agent::{AgentRecord, AgentState};
 use crate::tmux::Tmux;
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::os::unix::process::CommandExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -445,9 +446,10 @@ pub fn shell_capture(
         .env("TERHUB_STATE", state)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0)
         .spawn()
         .map_err(|e| format!("spawn failed: {e}"))?;
-    let drained = match wait_drained(&mut child, timeout) {
+    let drained = match wait_drained_in_group(&mut child, timeout) {
         Ok(d) => d,
         Err(DrainError::Timeout) => return Err(format!("timed out after {}s", timeout.as_secs())),
         Err(DrainError::WaitFailed(e)) => return Err(format!("wait failed: {e}")),
@@ -513,8 +515,9 @@ pub fn execute_with_timeout(
                 .env("TERHUB_STATE", rec.state.label())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
+                .process_group(0)
                 .spawn()?;
-            let drained = match wait_drained(&mut child, timeout) {
+            let drained = match wait_drained_in_group(&mut child, timeout) {
                 Ok(d) => d,
                 Err(DrainError::Timeout) => {
                     anyhow::bail!("shell '{}' timed out", truncate(command, 40))
