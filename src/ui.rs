@@ -1642,11 +1642,23 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             "Name: ".to_string() + &app.input,
             Some("Name: ".len()),
         ),
-        Mode::PromptFilter => (
-            " Filter ".to_string(),
-            "Text: ".to_string() + &app.input,
-            Some("Text: ".len()),
-        ),
+        Mode::PromptFilter => {
+            // The standing editor wears exclusion chrome so it never
+            // reads as a search: `Hide:` plus an `!`-seeded query.
+            if app.editing_standing {
+                (
+                    " Exclude filter ".to_string(),
+                    "Hide: ".to_string() + &app.input,
+                    Some("Hide: ".len()),
+                )
+            } else {
+                (
+                    " Filter ".to_string(),
+                    "Text: ".to_string() + &app.input,
+                    Some("Text: ".len()),
+                )
+            }
+        }
         Mode::PromptSpawn { profile } => {
             let prof = app
                 .config

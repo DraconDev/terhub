@@ -595,7 +595,7 @@ pub struct App {
     pub exclude: String,
     /// Which query the filter prompt is editing: the temporary find
     /// (false) or the standing exclusion (true, from the settings row).
-    editing_standing: bool,
+    pub(crate) editing_standing: bool,
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
@@ -3087,11 +3087,17 @@ impl App {
 
     /// Open the prompt editing the standing exclusion (settings row):
     /// Enter saves it to `[ui] filter`, Esc restores without saving.
+    /// The input starts with the `!` already in place so exclusion is
+    /// structural — what you type is what gets hidden, never selected.
     pub fn open_standing_editor(&mut self) {
         self.mode = Mode::PromptFilter;
         self.editing_standing = true;
         self.filter_before_edit.clone_from(&self.exclude);
-        self.input.clone_from(&self.exclude);
+        if self.exclude.is_empty() {
+            self.input = "!".to_string();
+        } else {
+            self.input.clone_from(&self.exclude);
+        }
         self.cursor = self.input.chars().count();
     }
 
@@ -3150,10 +3156,12 @@ impl App {
     }
 
     /// Live re-filter while typing; restarts at the top row. Edits
-    /// whichever query the prompt opened for (search or standing).
+    /// whichever query the prompt opened for (search or standing). The
+    /// standing draft normalizes on every keystroke too, so the table
+    /// never momentarily flips to inclusion mid-edit.
     fn apply_live_filter(&mut self) {
         if self.editing_standing {
-            self.exclude.clone_from(&self.input);
+            self.exclude = normalize_exclude(&self.input);
         } else {
             self.filter.clone_from(&self.input);
         }
