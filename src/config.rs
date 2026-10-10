@@ -2224,15 +2224,15 @@ mod tests {
         persist_ui_settings_to(
             &path,
             &UiPersist {
-                theme: "nord",
-                density: "compact",
-                notifications: false,
-                highlight: false,
-                mru_tabs: false,
-                filter: "!zsh",
-                sort: "State",
-                sort_desc: true,
-                hide_shells: true,
+                theme: Some("nord"),
+                density: Some("compact"),
+                notifications: Some(false),
+                highlight: Some(false),
+                mru_tabs: Some(false),
+                filter: Some("!zsh"),
+                sort: Some("State"),
+                sort_desc: Some(true),
+                hide_shells: Some(true),
             },
         )
         .unwrap();
