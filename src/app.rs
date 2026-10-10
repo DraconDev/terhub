@@ -512,25 +512,47 @@ fn normalize_exclude(q: &str) -> String {
 }
 
 /// Case-insensitive substring match across every text column. `q` must
-/// already be lowercased. A leading `!` negates: `!zsh` keeps every row
-/// whose columns do NOT contain `zsh` (a lone `!` matches everything).
-fn pane_matches(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
-    let (neg, q) = match q.strip_prefix('!') {
-        Some(rest) => (true, rest),
-        None => (false, q),
-    };
-    if neg && q.is_empty() {
-        return true;
+/// already be lowercased. A leading `!` on an include token negates:
+/// `!zsh` keeps every row whose columns do NOT contain `zsh`. The
+/// `includes` and `excludes` are independent AND clauses, so the
+/// include list is OR-combined and the exclude list is NOT-OR (any
+/// hit hides the row). Empty tokens are skipped; a lone `!` matches
+/// every row.
+fn pane_matches(
+    p: &Pane,
+    rec: Option<&AgentRecord>,
+    includes: &[&str],
+    excludes: &[&str],
+) -> bool {
+    for tok in includes {
+        if let Some(rest) = tok.strip_prefix('!').filter(|r| !r.is_empty()) {
+            if pane_match_any(p, rec, rest) {
+                return false;
+            }
+        } else if !tok.is_empty() && !pane_match_any(p, rec, tok) {
+            return false;
+        }
     }
+    for tok in excludes {
+        if !tok.is_empty() && pane_match_any(p, rec, tok) {
+            return false;
+        }
+    }
+    true
+}
+
+/// True when `q` (already lowercased) appears in any of the visible
+/// columns of the row. Shared between the include and exclude
+/// clauses of `pane_matches`.
+fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
     let hit = |s: &str| s.to_lowercase().contains(q);
-    let m = hit(&p.id)
+    hit(&p.id)
         || hit(&p.session)
         || hit(&p.window_name)
         || p.index.to_string().contains(q)
         || hit(&p.command)
         || hit(&p.path)
-        || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary));
-    if neg { !m } else { m }
+        || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary))
 }
 
 /// Table legend, shown when `?` is pressed twice: the marks and column
@@ -1314,17 +1336,15 @@ impl App {
                 .cloned()
                 .collect(),
         };
-        if !self.exclude.is_empty() {
-            let q = self.exclude.to_lowercase();
+        if !self.exclude.is_empty() || !self.filter.is_empty() {
+            let include_q = self.filter.to_lowercase();
+            let exclude_q = self.exclude.to_lowercase();
+            let includes: Vec<&str> = include_q.split_whitespace().collect();
+            let excludes: Vec<&str> = exclude_q.split_whitespace().collect();
             let agents = &self.agents;
-            self.filtered
-                .retain(|p| pane_matches(p, agents.get(&p.id), &q));
-        }
-        if !self.filter.is_empty() {
-            let q = self.filter.to_lowercase();
-            let agents = &self.agents;
-            self.filtered
-                .retain(|p| pane_matches(p, agents.get(&p.id), &q));
+            self.filtered.retain(|p| {
+                pane_matches(p, agents.get(&p.id), &includes, &excludes)
+            });
         }
         self.hidden_quiet = 0;
         if self.hide_quiet_shells {
@@ -2759,13 +2779,20 @@ impl App {
         // search. Read-only rows (never selectable, never actionable).
         let q_ex = self.exclude.to_lowercase();
         let q_find = self.filter.to_lowercase();
+        let exclude_tokens: Vec<&str> = q_ex.split_whitespace().collect();
+        let include_tokens: Vec<&str> = q_find.split_whitespace().collect();
         let mut hidden_by_exclude: Vec<&Pane> = Vec::new();
         let mut hidden_by_search: Vec<&Pane> = Vec::new();
         for p in &self.panes {
             let rec = self.agents.get(&p.id);
-            if !self.exclude.is_empty() && !pane_matches(p, rec, &q_ex) {
+            // The settings page partitions by which single clause
+            // hid the row, not by the combined predicate; the
+            // combined predicate would double-count when both fire.
+            if !self.exclude.is_empty() && !pane_clause(p, rec, &exclude_tokens, false) {
                 hidden_by_exclude.push(p);
-            } else if !self.filter.is_empty() && !pane_matches(p, rec, &q_find) {
+            } else if !self.filter.is_empty()
+                && !pane_clause(p, rec, &include_tokens, true)
+            {
                 hidden_by_search.push(p);
             }
         }
