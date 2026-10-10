@@ -1318,7 +1318,7 @@ mod tests {
         let m = compiled();
         // Spinner alone: working, but nobody's …
         assert_eq!(
-            classify_screen(&m, "node", "⠋ Working… (esc to interrupt, false)\n"),
+            classify_screen(&m, "node", "⠋ Working… (esc to interrupt)\n"),
             hit(None, AgentState::Working, "⠋ Working… (esc to interrupt)")
         );
         // … and a micro command bar is waiting-without-identity, not gemini.

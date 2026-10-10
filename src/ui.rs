@@ -1931,6 +1931,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
         };
         // Working + quiet past stuck_secs (600) → warn.
         let r = rec(AgentState::Working, now - 3600);
