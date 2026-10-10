@@ -2307,6 +2307,10 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         {
                             if let Some(key) = hit.key {
                                 app.resort(key);
+                                // Only the sort keys changed: mark them so
+                                // the write can't revert another instance's
+                                // filter or shell-hiding.
+                                app.mark_sort_changed();
                                 app.persist_view();
                                 app.follow_preview(&tmux);
                             }
