@@ -700,6 +700,10 @@ pub struct App {
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
+    /// Snapshot of the OTHER line (the one not active when the
+    /// prompt opened) for Esc to restore too. The two-line prompt
+    /// makes a single-line restore silently destructive.
+    filter_before_edit_other: String,
     /// Draft of the OTHER line (the one not being edited) while the
     /// filter prompt is open. Tab swaps this with `input`/`cursor` so
     /// each line keeps its own cursor as the user flips between
@@ -824,6 +828,7 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
+            filter_before_edit_other: String::new(),
             filter_other: String::new(),
             cursor_other: 0,
             filter_line: FilterLine::Include,
@@ -3319,9 +3324,11 @@ impl App {
     pub fn open_filter(&mut self) {
         self.mode = Mode::PromptFilter;
         self.editing_standing = false;
+        // Two-line prompt: both lines seed with the live values
+        // and Tab swaps between them. Both snapshots are taken so
+        // Esc restores each line to what it was on open.
         self.filter_before_edit.clone_from(&self.filter);
-        // The new two-line prompt: both lines seed with the live
-        // values so the user can switch between them with Tab.
+        self.filter_before_edit_other.clone_from(&self.exclude);
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
         self.filter_other.clone_from(&self.exclude);
@@ -3343,11 +3350,12 @@ impl App {
     pub fn open_standing_editor(&mut self) {
         self.mode = Mode::PromptFilter;
         self.editing_standing = true;
-        self.filter_before_edit.clone_from(&self.exclude);
         // The new model stores bare tokens on the exclude line
         // (the "(excludes)" row label tells the user what the
         // line is for). Pre-filling `!` would re-introduce the
         // old single-substring form.
+        self.filter_before_edit.clone_from(&self.exclude);
+        self.filter_before_edit_other.clone_from(&self.filter);
         self.input.clone_from(&self.exclude);
         self.cursor = self.input.chars().count();
         // The standing editor also surfaces the include line so
