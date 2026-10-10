@@ -1159,30 +1159,30 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     // Insert whatever the file lacked directly under its section header
     // (appending at EOF would land it in the wrong section).
     let mut missing_ui = Vec::new();
-    if let Some(t) = v.theme {
+    if !seen[0] && let Some(t) = v.theme {
         missing_ui.push(format!("theme = \"{t}\""));
     }
-    if let Some(d) = v.density {
+    if !seen[1] && let Some(d) = v.density {
         missing_ui.push(format!("density = \"{d}\""));
     }
-    if let Some(h) = v.highlight {
+    if !seen[2] && let Some(h) = v.highlight {
         missing_ui.push(format!("highlight_attached = {h}"));
     }
-    if let Some(m) = v.mru_tabs {
+    if !seen[4] && let Some(m) = v.mru_tabs {
         missing_ui.push(format!("mru_tabs = {m}"));
     }
-    if let Some(f) = v.filter {
+    if !seen[5] && let Some(f) = v.filter {
         let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("filter = \"{esc}\""));
     }
-    if let Some(s) = v.sort {
+    if !seen[6] && let Some(s) = v.sort {
         let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("sort = \"{esc}\""));
     }
-    if let Some(d) = v.sort_desc {
+    if !seen[7] && let Some(d) = v.sort_desc {
         missing_ui.push(format!("sort_desc = {d}"));
     }
-    if let Some(h) = v.hide_shells {
+    if !seen[8] && let Some(h) = v.hide_shells {
         missing_ui.push(format!("hide_shells = {h}"));
     }
     let mut ui_inserted = 0;
