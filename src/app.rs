@@ -3226,8 +3226,17 @@ impl App {
         // Sync the live view into the config snapshot first: the patch
         // reads `self.config`, and these four fields are the ones the
         // table edits directly (`exclude`/`sort_key`/`sort_asc`/
-        // `hide_quiet_shells` are the live copies).
-        self.config.filter.clone_from(&self.exclude);
+        // `hide_quiet_shells` are the live copies). `exclude` is
+        // bare tokens in memory but the on-disk form keeps a leading
+        // `!` so hand-edited configs and old fixtures (which wrote
+        // `!zsh`) round-trip.
+        self.config.filter = if self.exclude.is_empty() {
+            String::new()
+        } else if self.exclude.starts_with('!') {
+            self.exclude.clone()
+        } else {
+            format!("!{}", self.exclude)
+        };
         self.config.sort = self.sort_key.as_str().to_string();
         self.config.sort_desc = !self.sort_asc;
         self.config.hide_shells = self.hide_quiet_shells;
@@ -3245,20 +3254,9 @@ impl App {
     /// restarts. Silent on success (the status line already names the
     /// query); loud only when the write failed.
     fn persist_filter(&mut self) {
-        // The on-disk format keeps a leading `!` so hand-edited
-        // configs and old fixtures (which wrote `!zsh`) round-trip.
-        // `App::new` strips a single leading `!` on load, so the
-        // app's in-memory `exclude` is bare tokens; the disk form
-        // carries the `!` to preserve the file's "this excludes
-        // rows mentioning zsh" read at a glance.
-        let prefixed = if self.exclude.is_empty() {
-            String::new()
-        } else if self.exclude.starts_with('!') {
-            self.exclude.clone()
-        } else {
-            format!("!{}", self.exclude)
-        };
-        self.config.filter = prefixed;
+        // `persist_view` re-derives the on-disk form (with the
+        // leading `!`) from `self.exclude`; we only need to flag
+        // the key as changed and call it.
         self.view_changes.filter = true;
         self.persist_view();
     }
