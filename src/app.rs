@@ -6100,6 +6100,8 @@ mod tests {
         assert_eq!(ids(&app), vec!["%1"]);
         app.filter = "!".to_string();
         app.refresh_filtered();
+        eprintln!("after !: filtered = {:?}", app.filtered.iter().map(|p| p.id.clone()).collect::<Vec<_>>());
+        eprintln!("filter = {:?}, exclude = {:?}", app.filter, app.exclude);
         assert_eq!(app.filtered.len(), 2);
     }
 
