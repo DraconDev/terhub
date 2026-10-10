@@ -568,7 +568,7 @@ mod tests {
         // (questions[].prompt / question) so the row chip shows what
         // the agent asked, not a generic marker.
         assert!(
-            PI_EXTENSION.contains("questions[0].prompt"),
+            PI_EXTENSION.contains("qs[0].prompt"),
             "reporter must surface the question text\n{PI_EXTENSION}"
         );
         assert!(
