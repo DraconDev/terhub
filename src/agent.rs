@@ -663,10 +663,6 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "todo list \\d+/\\d+ completed".to_string(),
             ],
             idle: vec![],
-            done: vec![
-                "✓ goal complete".to_string(),
-                "todo list \\d+/\\d+ completed".to_string(),
-            ],
             // The input box only returns when the turn is over (live
             // inference replaces it with the Running footer), but as
             // bottom chrome it must never shadow verdicts above — hence
@@ -687,7 +683,6 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
-            done: vec![],
             waiting_unless: vec![],
         },
     ]
