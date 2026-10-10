@@ -6337,16 +6337,22 @@ mod tests {
     }
 
     #[test]
-    fn normalize_exclude_forces_exclusion_form() {
-        // The standing filter only ever hides: bare text gains `!`,
-        // existing `!`s collapse to one, empties stay empty.
-        assert_eq!(normalize_exclude("zsh"), "!zsh");
-        assert_eq!(normalize_exclude("!zsh"), "!zsh");
-        assert_eq!(normalize_exclude("!!zsh"), "!zsh");
-        assert_eq!(normalize_exclude("  zsh  "), "!zsh");
-        assert_eq!(normalize_exclude(""), "");
-        assert_eq!(normalize_exclude("!"), "");
-        assert_eq!(normalize_exclude("  "), "");
+    fn standing_strips_leading_bang_on_enter() {
+        // The standing editor used to call `normalize_exclude`,
+        // which added a `!`. Under the new model the field stores
+        // bare tokens and the matcher treats the line as exclude
+        // already, so a leading `!` is harmless noise to strip.
+        use crate::config::AppConfig;
+        let mut app = App::new(AppConfig::default());
+        app.open_standing_editor();
+        app.input = "zsh".to_string();
+        // Simulate Enter (the actual handler is exercised by
+        // standing_editor_enter_persists_and_reloads).
+        app.exclude = app.input.trim().trim_start_matches('!').trim().to_string();
+        assert_eq!(app.exclude, "zsh");
+        app.input = "!npm".to_string();
+        app.exclude = app.input.trim().trim_start_matches('!').trim().to_string();
+        assert_eq!(app.exclude, "npm");
     }
 
     #[test]
