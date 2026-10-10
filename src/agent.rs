@@ -1200,6 +1200,55 @@ mod tests {
     }
 
     #[test]
+    fn done_pattern_promotes_matching_tail() {
+        // A manifest that moved its completion banner to `done:`
+        // must classify a matching screen as `Done`, not `Idle`.
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "x".to_string(),
+            commands: vec!["x".to_string()],
+            working: vec![],
+            waiting: vec![],
+            error: vec![],
+            limited: vec![],
+            done: vec!["all tasks passed".to_string()],
+            idle: vec![],
+            idle_fallback: vec![],
+            waiting_unless: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            m.classify("Summary\nall tasks passed · 0 failed\n").unwrap().0,
+            AgentState::Done
+        );
+    }
+
+    #[test]
+    fn no_done_list_keeps_idle_classification() {
+        // A manifest that hasn't migrated to `done:` (still on `idle:`)
+        // must still classify its completion banner as `Idle` —
+        // no regression for the four default manifests that haven't
+        // been updated yet.
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "x".to_string(),
+            commands: vec!["x".to_string()],
+            working: vec![],
+            waiting: vec![],
+            error: vec![],
+            limited: vec![],
+            done: vec![],
+            idle: vec!["all tasks passed".to_string()],
+            idle_fallback: vec![],
+            waiting_unless: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            m.classify("Summary\nall tasks passed · 0 failed\n").unwrap().0,
+            AgentState::Done,
+            "legacy `idle:` list must still promote to Done — the bare rename would be silent breakage"
+        );
+    }
+
+    #[test]
     fn claude_waiting_screen() {
         let m = compiled();
         let screen = "…\n❯ Try asking me to build something\n";
