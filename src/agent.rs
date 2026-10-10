@@ -1512,7 +1512,6 @@ mod tests {
         );
     }
 
-    #[test]
     /// Real pi screen, captured from a pane sitting at pi's blocking
     /// question UI (options with a `❯` caret, numbered, `Type something.`
     /// in the tail), followed by the footer that names the keys. Repo
