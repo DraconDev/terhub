@@ -6946,6 +6946,53 @@ mod tests {
     }
 
     #[test]
+    fn tab_in_filter_prompt_swaps_active_line() {
+        // The two-line filter prompt: Tab flips the active line
+        // so the user can edit either the include or the exclude
+        // without leaving the prompt. Each line keeps its own
+        // cursor across the swap.
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = app_with_panes(); // %1 nvim, %2 bash
+        let tmux = Tmux::new().unwrap();
+        app.open_filter();
+        // Defaults: include active, both lines empty.
+        assert_eq!(app.filter_line, FilterLine::Include);
+        assert_eq!(app.input, "");
+        assert_eq!(app.filter_other, "");
+        // Type into the include line.
+        for c in "claude".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+        }
+        assert_eq!(app.input, "claude");
+        assert_eq!(app.filter, "claude");
+        // Tab to the exclude line.
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tmux);
+        assert_eq!(app.filter_line, FilterLine::Exclude);
+        // The include text is parked in `filter_other`; the
+        // exclude draft is now in `input`.
+        assert_eq!(app.filter_other, "claude");
+        assert_eq!(app.input, "");
+        // Type into the exclude line.
+        for c in "bash".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+        }
+        assert_eq!(app.input, "bash");
+        assert_eq!(app.exclude, "bash");
+        // The include line is still preserved in `filter_other`.
+        assert_eq!(app.filter_other, "claude");
+        assert_eq!(app.filter, "claude");
+        // Tab back to include.
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tmux);
+        assert_eq!(app.filter_line, FilterLine::Include);
+        assert_eq!(app.input, "claude");
+        assert_eq!(app.filter_other, "bash");
+        // Esc restores both lines to what they were on open.
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &tmux);
+        assert_eq!(app.filter, "");
+        assert_eq!(app.exclude, "");
+    }
+
+    #[test]
     fn sort_key_o_cycles_with_status() {
         let _scratch = ScratchConfig::new();
         let mut app = app_with_panes();
