@@ -2411,6 +2411,12 @@ mod tests {
                     "{name}: lost [style]\n{text}"
                 );
             }
+            // A no-op persist must not silently change byte order marks;
+            // the file has none in the input, and must have none out.
+            assert!(
+                !text.starts_with('\u{feff}'),
+                "{name}: a no-op persist left a BOM at the start\n{text}"
+            );
             std::fs::remove_file(path).ok();
         }
         // Second half of the contract: with a real patch, every value
@@ -2456,6 +2462,13 @@ mod tests {
                     "{name}: key {key} written more than once\n{text}"
                 );
             }
+            // And a persisted file must not carry a BOM into a future
+            // load that doesn't strip one (terhub's own reader does, but
+            // other tools and the toml crate's parsers do not).
+            assert!(
+                !text.starts_with('\u{feff}'),
+                "{name}: persist left a leading BOM in {path:?}\n{text}"
+            );
             std::fs::remove_file(path).ok();
         }
     }
