@@ -869,7 +869,14 @@ fn cmd_hooks(action: &HooksAction) -> i32 {
             }
             let ppath = hooks::pi_extension_path();
             if hooks::pi_status(&ppath) {
-                print_out(&format!("pi: installed ({})", ppath.display()));
+                if hooks::pi_stale(&ppath) {
+                    print_out(&format!(
+                        "pi: stale — an older reporter is installed; rerun `terhub hooks install pi` for the current one ({})",
+                        ppath.display()
+                    ));
+                } else {
+                    print_out(&format!("pi: installed ({})", ppath.display()));
+                }
             } else {
                 print_out("pi: not installed");
             }

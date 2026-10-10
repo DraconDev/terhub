@@ -440,6 +440,13 @@ pub fn pi_status(path: &Path) -> bool {
     path.is_file() && std::fs::read_to_string(path).is_ok_and(|t| t.contains(MARKER))
 }
 
+/// An installed reporter that isn't the shipped template: it loads
+/// fine but misses newer events, so `hooks status` can tell the user
+/// to reinstall instead of claiming everything is current.
+pub fn pi_stale(path: &Path) -> bool {
+    pi_status(path) && std::fs::read_to_string(path).is_ok_and(|t| t != PI_EXTENSION)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,6 +554,23 @@ mod tests {
         assert!(!pi_install(&path).unwrap());
         // The shipped template carries the prompt handler.
         assert!(PI_EXTENSION.contains("before_agent_start"));
+        // A fresh install is current, a rewritten stale file is not
+        // (status uses this to tell the user to reinstall).
+        assert!(!pi_stale(&path));
+    }
+
+    #[test]
+    fn pi_stale_detects_older_reporter() {
+        let dir = scratch("pistale");
+        let path = dir.join("terhub.ts");
+        // Nothing on disk: not installed, so not stale.
+        assert!(!pi_stale(&path));
+        // An older body: our marker, missing the question handlers.
+        std::fs::write(&path, "// ours\nterhub hook --agent pi\n").unwrap();
+        assert!(pi_stale(&path), "older reporter must read as stale");
+        // Reinstalling makes it current again.
+        pi_install(&path).unwrap();
+        assert!(!pi_stale(&path), "reinstall must clear staleness");
     }
 
     #[test]
