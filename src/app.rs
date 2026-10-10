@@ -6536,26 +6536,26 @@ mod tests {
     }
 
     #[test]
-    fn standing_editor_prefills_bang_and_filters_live() {
+    fn standing_editor_prefills_existing_and_filters_live() {
+        // The standing editor seeds its input from the existing
+        // exclude line (no leading `!` under the new bare-token
+        // model — the "(excludes)" label on the row already tells
+        // the user what this line is for). Typing bare text hides
+        // live; Enter keeps the live form.
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = app_with_panes(); // %1 nvim, %2 bash
         let tmux = Tmux::new().unwrap();
-        // Empty exclusion: the input starts with the `!` already in
-        // place, so what you type is what gets hidden.
         app.open_standing_editor();
-        assert_eq!(app.input, "!");
+        assert_eq!(app.input, "");
         assert_eq!(app.exclude, "");
-        // Typing bare `zsh`-shaped text hides live as an exclusion —
-        // the table never flips to inclusion mid-edit...
         for c in "bash".chars() {
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
         }
-        assert_eq!(app.input, "!bash");
-        assert_eq!(app.exclude, "!bash");
+        assert_eq!(app.input, "bash");
+        assert_eq!(app.exclude, "bash");
         assert_eq!(ids(&app), vec!["%1"]);
-        // ...and Enter saves the exclusion form.
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
-        assert_eq!(app.exclude, "!bash");
+        assert_eq!(app.exclude, "bash");
     }
 
     #[test]
