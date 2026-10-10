@@ -1200,8 +1200,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             }
         }
     }
-    if !seen[3] {
-        let line = format!("enabled = {}", v.notifications);
+    if let Some(e) = v.notifications {
         match notif_at {
             Some(i) => {
                 let shift = if ui_at.is_some_and(|u| u < i) {
