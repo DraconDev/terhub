@@ -1289,14 +1289,15 @@ mod tests {
         .unwrap();
         // Without bell: an active "loading" footer reads as Working,
         // and the prompt alone (no other content) doesn't trigger.
+        let manifests = vec![m];
         let quiet_screen = "loading 0.1\n";
         assert_eq!(
-            classify_screen(&m, "x", quiet_screen, false).map(|h| h.state),
+            classify_screen(&manifests, "x", quiet_screen, false).map(|h| h.state),
             Some(AgentState::Working)
         );
         // With bell: same screen upgrades to Waiting, summary
         // carries the `🔔` reason so the chip can render it.
-        let hit = classify_screen(&m, "x", quiet_screen, true).unwrap();
+        let hit = classify_screen(&manifests, "x", quiet_screen, true).unwrap();
         assert_eq!(hit.state, AgentState::Waiting, "bell didn't upgrade to Waiting");
         assert!(
             hit.summary.contains("🔔"),
