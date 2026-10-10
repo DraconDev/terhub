@@ -2341,17 +2341,24 @@ impl App {
             return None;
         }
         match key.code {
+            KeyCode::Tab => {
+                // Two-line prompt: Tab swaps the active line and
+                // its cursor with the other one. Type-to-filter
+                // re-fires against whichever line is now active.
+                self.swap_filter_line();
+                self.apply_live_filter();
+            }
+            KeyCode::BackTab => {
+                self.swap_filter_line();
+                self.apply_live_filter();
+            }
             KeyCode::Esc => {
-                if self.editing_standing {
-                    self.exclude.clone_from(&self.filter_before_edit);
-                } else {
-                    self.filter.clone_from(&self.filter_before_edit);
-                }
+                // Restore both lines to what they were on open.
+                self.filter.clone_from(&self.filter_before_edit);
+                self.exclude.clone_from(&self.filter_before_edit_other);
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.follow_preview(tmux);
-                // Report before clearing the flag: the label names
-                // which query survived (search vs standing draft).
                 self.report_kept_query();
                 if self.editing_standing {
                     self.editing_standing = false;
@@ -2359,15 +2366,27 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                let q = self.input.trim().to_string();
+                // Apply whichever line is active into its target
+                // field; the other line is already live (typing
+                // updates its corresponding field on every
+                // keystroke via apply_live_filter).
+                let active_q = self.input.trim().to_string();
                 if self.editing_standing {
-                    // Standing is exclusion-only: store the raw
-                    // tokens; `pane_matches` already treats this
-                    // field as a list of NOT-OR excludes, so a
-                    // leading `!` is redundant. Strip it so
-                    // hand-edited configs (`!zsh`) and prompt
-                    // output both land in the same shape.
-                    self.exclude = q.trim_start_matches('!').trim().to_string();
+                    if self.filter_line == FilterLine::Exclude {
+                        // Standing is exclusion-only: store the
+                        // raw tokens; `pane_matches` already
+                        // treats this field as a list of NOT-OR
+                        // excludes, so a leading `!` is
+                        // redundant. Strip it so hand-edited
+                        // configs (`!zsh`) and prompt output
+                        // both land in the same shape.
+                        self.exclude = active_q
+                            .trim_start_matches('!')
+                            .trim()
+                            .to_string();
+                    } else {
+                        self.filter = active_q;
+                    }
                     self.persist_filter();
                     self.editing_standing = false;
                     self.cancel_modal();
@@ -2378,10 +2397,16 @@ impl App {
                         format!("standing filter saved: {}", self.exclude)
                     });
                 } else {
-                    self.filter = q;
+                    // Live prompt: only the include line is
+                    // session-scoped; the exclude line is
+                    // already in `app.exclude` from live typing.
+                    self.filter = active_q;
                     self.cancel_modal();
                     if !self.filter.is_empty() {
-                        self.set_status(format!("search kept for this session: {}", self.filter));
+                        self.set_status(format!(
+                            "search kept for this session: {}",
+                            self.filter
+                        ));
                     }
                 }
                 self.refresh_filtered();
