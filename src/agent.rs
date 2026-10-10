@@ -934,6 +934,10 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     } else {
                         cap_chars(&ev.prompt, RECORD_PROMPT_CAP)
                     },
+                    // Bell evidence is screen-driven; a hook event
+                    // never sets or clears it, so carry forward.
+                    bell: old.map(|r| r.bell).unwrap_or(false),
+                    bell_reason: old.map(|r| r.bell_reason.clone()).unwrap_or_default(),
                 },
             );
         }

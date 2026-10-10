@@ -593,6 +593,8 @@ fn apply_register(
                     model: old.map(|r| r.model.clone()).unwrap_or_default(),
                     ctx_pct: old.and_then(|r| r.ctx_pct),
                     reg_pid: pid,
+                    bell: false,
+                    bell_reason: String::new(),
                 },
             );
         }
@@ -1097,6 +1099,8 @@ fn merge_record_owned(
         // Polls never wipe hook prompts: carry the old cut forward.
         last_prompt_at: carried.map(|o| o.last_prompt_at).unwrap_or(0),
         last_prompt: carried.map(|o| o.last_prompt.clone()).unwrap_or_default(),
+        bell: carried.map(|o| o.bell).unwrap_or(false),
+        bell_reason: carried.map(|o| o.bell_reason.clone()).unwrap_or_default(),
     })
 }
 
