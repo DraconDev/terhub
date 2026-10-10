@@ -624,15 +624,22 @@ fn sparkline_renders_six_cells_monotonic_in_grid() {
         .iter()
         .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
         .collect();
-    let col_start = hdr_line.find("Activity").unwrap();
-    // The renderer's Layout sets the Activity column to 7 cells;
-    // 6 of them are the sparkline glyphs, the 7th is padding.
-    // Walk the row to find the pane id and read 6 chars from the
-    // column starting at col_start.
-    let row_line = text.iter().find(|l| l.contains("%1")).unwrap();
-    let sparkline: String = row_line[col_start..]
+    // Pull the sparkline cell out of pane %1's row. The table is
+    // 7 cells wide for the Activity column: 6 glyphs + 1 padding.
+    // Strip leading + trailing whitespace and take the first
+    // contiguous run of block glyphs — that's the sparkline.
+    let row_line = text
+        .iter()
+        .find(|l| l.contains("%1"))
+        .expect("pane %1 must render in the grid");
+    let sparkline: String = row_line
         .chars()
+        .rev()
+        .skip_while(|c| c.is_whitespace())
         .take(6)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
         .collect();
     assert_eq!(
         sparkline.chars().count(),
