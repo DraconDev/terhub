@@ -3126,19 +3126,40 @@ impl App {
         None
     }
 
-    /// Persist the whole standing view (theme/density/toggles/filter/
-    /// sort/direction/shell-hiding) with one surgical config write.
-    /// Silent on success; the caller already announced the change.
-    /// Loud only when the write failed. Public for the header-click
-    /// sort path, which lives in the binary.
+    /// Persist the view settings this instance actually changed.
+    /// Only the touched keys reach the config file: every key is
+    /// rewritten from the caller's memory otherwise, so a second
+    /// terhub instance (a stale dashboard in another window) toggling
+    /// a theme would silently revert the filter, sort and shell-hiding
+    /// a newer instance just saved. Silent on success; the caller
+    /// already announced the change. Loud only when the write failed.
+    /// Public for the header-click sort path, which lives in the binary.
     pub fn persist_view(&mut self) {
-        self.config.filter.clone_from(&self.exclude);
-        self.config.sort = self.sort_key.as_str().to_string();
-        self.config.sort_desc = !self.sort_asc;
-        self.config.hide_shells = self.hide_quiet_shells;
-        if let Err(e) = crate::config::persist_ui_settings(&self.config.ui_persist()) {
-            self.set_status(format!("view kept for this session only (not saved: {e})"));
+        if self.view_changes.is_empty() {
+            return;
         }
+        let patch = self.config.ui_persist_changes(&self.view_changes);
+        match crate::config::persist_ui_settings(&patch) {
+            Ok(()) => self.view_changes = crate::config::ViewChanges::default(),
+            Err(e) => self.set_status(format!("view kept for this session only (not saved: {e})")),
+        }
+    }
+
+    /// Mark every view key as changed (used at startup when the file
+    /// holds values this instance had to normalize, e.g. an unknown
+    /// theme or sort name the loader warned about).
+    pub(crate) fn mark_all_view_changed(&mut self) {
+        self.view_changes = crate::config::ViewChanges {
+            theme: true,
+            density: true,
+            notifications: true,
+            highlight: true,
+            mru_tabs: true,
+            filter: true,
+            sort: true,
+            sort_desc: true,
+            hide_shells: true,
+        };
     }
 
     /// Save the standing exclusion to `[ui] filter` so it survives
