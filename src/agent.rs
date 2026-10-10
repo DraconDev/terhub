@@ -1269,6 +1269,42 @@ mod tests {
     }
 
     #[test]
+    fn bell_flip_promotes_to_waiting_with_reason() {
+        // A pane with a matching manifest agent whose tmux
+        // `window_bell_flag` flipped since the last tick must
+        // classify as Waiting with a `🔔` reason in the summary —
+        // even if the screen doesn't currently show a prompt shape.
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "x".to_string(),
+            commands: vec!["x".to_string()],
+            working: vec!["loading".to_string()],
+            waiting: vec!["^❯".to_string()],
+            error: vec![],
+            limited: vec![],
+            done: vec![],
+            idle: vec![],
+            idle_fallback: vec![],
+            waiting_unless: vec![],
+        })
+        .unwrap();
+        // Without bell: an active "loading" footer reads as Working,
+        // and the prompt alone (no other content) doesn't trigger.
+        let quiet_screen = "loading 0.1\n";
+        assert_eq!(
+            classify_screen(&m, "x", quiet_screen, false).map(|h| h.state),
+            Some(AgentState::Working)
+        );
+        // With bell: same screen upgrades to Waiting, summary
+        // carries the `🔔` reason so the chip can render it.
+        let hit = classify_screen(&m, "x", quiet_screen, true).unwrap();
+        assert_eq!(hit.state, AgentState::Waiting, "bell didn't upgrade to Waiting");
+        assert!(
+            hit.summary.contains("🔔"),
+            "summary missing bell reason: {hit:?}"
+        );
+    }
+
+    #[test]
     fn done_pattern_promotes_matching_tail() {
         // A manifest that moved its completion banner to `done:`
         // must classify a matching screen as `Done`, not `Idle`.
