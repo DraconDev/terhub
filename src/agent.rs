@@ -816,6 +816,7 @@ pub fn classify_screen(
     command: &str,
     screen: &str,
     bell: bool,
+    parked: bool,
 ) -> Option<ScreenHit> {
     // Bell evidence is layered on top of pattern matching, not in
     // place of it. We append a synthetic line `🔔 bell` to the
@@ -824,9 +825,20 @@ pub fn classify_screen(
     // `\[y/n\]`) still drives the verdict the same way. A bell
     // without a matching manifest agent is ignored: a bare shell
     // beeping on completion is *not* a needs-you reason.
+    //
+    // `parked` is the *necessary* half of the cascade: the kernel
+    // already knows the leaf is blocked waiting on stdin, but a
+    // parked process alone (an `nvim`, a `fzf`, a `python` REPL)
+    // isn't asking the human a question. We surface the parked
+    // signal in the summary so the chip can render `⏸ tty-read`,
+    // but we *don't* manufacture a Waiting verdict when the
+    // pattern classifier's freshest-wins logic returned Working.
+    // When parked AND bell both fire, the synthetic line carries
+    // both evidence tokens so the existing waiting patterns can
+    // match the conjunction.
     let augmented: String;
-    let screen = if bell {
-        augmented = format!("{screen}\n🔔 bell\n");
+    let screen = if bell && parked {
+        augmented = format!("{screen}\n🔔 bell · tty-read\n");
         augmented.as_str()
     } else {
         screen
@@ -839,7 +851,7 @@ pub fn classify_screen(
             state,
             summary,
         });
-        return bell_override(hit, bell);
+        return park_annotate(bell_override(hit, bell), parked);
     }
     let flat = screen.to_lowercase();
     for m in manifests {
@@ -852,10 +864,29 @@ pub fn classify_screen(
                 state,
                 summary,
             });
-            return bell_override(hit, bell);
+            return park_annotate(bell_override(hit, bell), parked);
         }
     }
     bell_override(None, bell)
+}
+
+/// Park annotation: when the kernel reports the leaf process
+/// parked in `n_tty_read`, append a `⏸ tty-read` token to the
+/// summary. This does NOT promote Working → Waiting (the pattern
+/// classifier's tail-driven verdict is the source of truth for
+/// the verdict itself; a parked `nvim` is parked on a vim key, not
+/// an input plea). It only annotates the existing verdict so the
+/// row chip can show *why* a pane is sitting at `n_tty_read`.
+fn park_annotate(hit: Option<ScreenHit>, parked: bool) -> Option<ScreenHit> {
+    if !parked {
+        return hit;
+    }
+    hit.map(|mut h| {
+        if !h.summary.contains("tty-read") {
+            h.summary = format!("⏸ tty-read · {}", h.summary);
+        }
+        h
+    })
 }
 
 /// If the bell flag fired, prefer the Waiting verdict (and surface
