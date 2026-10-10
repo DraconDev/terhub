@@ -449,6 +449,41 @@ pub fn proc_state(pid: u32) -> Option<char> {
     tail.split_whitespace().next()?.chars().next()
 }
 
+/// Wait-channel name from `/proc/<pid>/wchan` (None when unreadable
+/// or when the kernel writes `0` for "no wait"). Trimmed of the
+/// leading `0` placeholder the kernel emits for runnable processes.
+///
+/// The wait channel reveals *what* the process is blocked on:
+/// `n_tty_read` = the TTY line discipline (interactive stdin), the
+/// most precise signal that a CLI is parked on user input. `pipe_read`
+/// = a pipe (less specific — could be a data feed or stdin). Anything
+/// else (e.g. `futex_wait_queue_me`) means the process is not waiting
+/// on the human.
+pub fn proc_wchan(pid: u32) -> Option<String> {
+    let s = std::fs::read_to_string(format!("/proc/{pid}/wchan"))
+        .ok()?
+        .trim()
+        .to_string();
+    if s.is_empty() || s == "0" || s == "running" {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// True when the process is parked in the kernel waiting on stdin
+/// (TTY read) — the OS-level signal that an interactive CLI is
+/// blocked on user input.
+pub fn parked_in_tty_read(pid: u32) -> bool {
+    // State must be S (interruptible sleep) — the only state in
+    // which a process is genuinely blocked on a wait channel.
+    match proc_state(pid) {
+        Some('S') => {}
+        _ => return false,
+    }
+    matches!(proc_wchan(pid).as_deref(), Some("n_tty_read"))
+}
+
 /// True when the process is currently job-stopped (T) or traced-stop (t).
 pub fn is_stopped(pid: u32) -> bool {
     matches!(proc_state(pid), Some('T') | Some('t'))
