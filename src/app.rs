@@ -3183,6 +3183,8 @@ impl App {
     /// restarts. Silent on success (the status line already names the
     /// query); loud only when the write failed.
     fn persist_filter(&mut self) {
+        self.config.filter.clone_from(&self.exclude);
+        self.view_changes.filter = true;
         self.persist_view();
     }
 
