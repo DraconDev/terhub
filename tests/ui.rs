@@ -1557,9 +1557,25 @@ fn pause_key_toggles_live_process_tree() {
     struct Guard(std::process::Child);
     impl Drop for Guard {
         fn drop(&mut self) {
+            // Bounded reap: `Child::wait()` blocks indefinitely on a
+            // child stuck in uninterruptible D-state I/O (pass-2 F4).
+            // A try_wait loop with kill+final try_wait is the same
+            // pattern as tests/daemon.rs:41-48 and matches what
+            // test teardown everywhere else in the suite does.
+            for _ in 0..20 {
+                if matches!(self.0.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
             let _ = terhub::proc::resume_group(self.0.id());
             let _ = self.0.kill();
-            let _ = self.0.wait();
+            for _ in 0..20 {
+                if matches!(self.0.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
         }
     }
     let child = std::process::Command::new("sleep")
