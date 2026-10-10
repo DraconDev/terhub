@@ -568,6 +568,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            done: vec![],
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
@@ -597,6 +598,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            done: vec![],
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
@@ -632,6 +634,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            done: vec![],
         },
         Manifest {
             // The "Message · Enter send" box only returns when the turn is
@@ -678,6 +681,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
+            done: vec![],
             waiting_unless: vec![],
         },
     ]
