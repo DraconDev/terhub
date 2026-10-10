@@ -462,8 +462,15 @@ reporter at `~/.pi/agent/extensions/terhub.ts` (a stale ours-file is
 rewritten in place so hook upgrades land; a foreign file at that path
 is moved aside to `terhub.ts.terhub-bak` so we never overwrite it).
 The prompt hooks are `UserPromptSubmit` (claude) and
-`before_agent_start` (pi, carrying the raw prompt text). `hooks status`
-shows what is wired, `hooks uninstall` removes only terhub's entries.
+`before_agent_start` (pi, carrying the raw prompt text). pi also reports
+`waiting` while it blocks on the human: question tools (`question`,
+`questionnaire`, which carry the question text as the summary) and any
+other blocking UI prompt (permission confirms, extension dialogs), then
+`working` again when the answer lands — otherwise a pane parked at a
+question menu keeps the `working` verdict its last `turn_start` reported,
+since `agent_end` never fires while the agent is blocked. `hooks status`
+shows what is wired (a stale ours-file reads as `stale`; reinstall to pick
+up newer events), `hooks uninstall` removes only terhub's entries.
 Restart running agents so they pick the hooks up. `--summary-stdin`
 reads a hook's summary from stdin (a JSON `{"message": …}` wins, else
 the first raw line) for shims whose platform delivers context on stdin.
