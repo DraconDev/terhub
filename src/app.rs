@@ -3138,8 +3138,19 @@ impl App {
         if self.view_changes.is_empty() {
             return;
         }
-        let patch = self.config.ui_persist_changes(&self.view_changes);
-        match crate::config::persist_ui_settings(&patch) {
+        // Sync the live view into the config snapshot first: the patch
+        // reads `self.config`, and these four fields are the ones the
+        // table edits directly (`exclude`/`sort_key`/`sort_asc`/
+        // `hide_quiet_shells` are the live copies).
+        self.config.filter.clone_from(&self.exclude);
+        self.config.sort = self.sort_key.as_str().to_string();
+        self.config.sort_desc = !self.sort_asc;
+        self.config.hide_shells = self.hide_quiet_shells;
+        let written = {
+            let patch = self.config.ui_persist_changes(&self.view_changes);
+            crate::config::persist_ui_settings(&patch)
+        };
+        match written {
             Ok(()) => self.view_changes = crate::config::ViewChanges::default(),
             Err(e) => self.set_status(format!("view kept for this session only (not saved: {e})")),
         }
