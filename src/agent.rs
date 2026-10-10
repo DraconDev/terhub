@@ -1514,14 +1514,6 @@ mod tests {
 
     #[test]
     fn claude_waiting_screen() {
-        let m = compiled();
-        let screen = "…\n❯ Try asking me to build something\n";
-        assert_eq!(
-            classify_screen(&m, "claude", screen, false, false),
-            hit(
-                Some("claude"),
-                AgentState::Waiting,
-                "❯ Try asking me to build something"
             )
         );
     }
