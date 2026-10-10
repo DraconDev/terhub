@@ -1719,19 +1719,44 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             Some("Name: ".len()),
         ),
         Mode::PromptFilter => {
-            // The standing editor wears exclusion chrome so it never
-            // reads as a search: `Hide:` plus an `!`-seeded query.
+            // Two-line prompt: include on top, exclude on bottom.
+            // Each row is label-padded so the cursor offsets line up
+            // and the active line's frame stays readable when the
+            // other is empty. Tab switches; the label of the
+            // active line goes from "Text:" to "Hide:" to hint at
+            // the difference. The popup itself is taller — see
+            // `centered(area, 60, 7)` below.
+            let include_label = "Text: ";
+            let exclude_label = "Hide: ";
+            let active_offset = if app.filter_line == FilterLine::Include {
+                0
+            } else {
+                1
+            };
+            let body = format!(
+                "{}{}\n{}{}",
+                include_label,
+                app.input,
+                exclude_label,
+                app.filter_other
+            );
+            let prefix = if app.filter_line == FilterLine::Include {
+                Some(include_label.len())
+            } else {
+                Some(exclude_label.len() + include_label.len() + 1)
+            };
             if app.editing_standing {
-                (
-                    " Exclude filter ".to_string(),
-                    "Hide: ".to_string() + &app.input,
-                    Some("Hide: ".len()),
-                )
+                (" Standing filter ".to_string(), body, prefix)
             } else {
                 (
                     " Filter ".to_string(),
-                    "Text: ".to_string() + &app.input,
-                    Some("Text: ".len()),
+                    body,
+                    // The cursor offset has to be relative to the
+                    // start of the line it's on; the renderer
+                    // knows the row via `active_offset` and adds
+                    // the prefix length itself. Pass None here
+                    // and let the renderer drive the row math.
+                    None,
                 )
             }
         }
