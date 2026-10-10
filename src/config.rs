@@ -1480,7 +1480,11 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     }
     cfg.highlight_attached = file.ui.highlight_attached;
     cfg.mru_tabs = file.ui.mru_tabs;
-    cfg.filter = file.ui.filter;
+    // Old configs wrote `!zsh` to mean "exclude zsh". The new model
+    // stores bare tokens on the exclude line; strip a single leading
+    // `!` so a user's existing [ui] filter = "!zsh" still excludes
+    // zsh after the upgrade.
+    cfg.filter = file.ui.filter.trim().trim_start_matches('!').to_string();
     cfg.sort = file.ui.sort;
     if crate::app::SortKey::parse_name(&cfg.sort).is_none() {
         problems.push(format!(
