@@ -134,6 +134,13 @@ pub struct AppConfig {
     /// Tint Idle when idle + quiet past this (a day-scale idle stops
     /// looking fine; `0` disables, like `stuck_secs`).
     pub idle_flag_secs: u64,
+    /// Show a 6-wide per-pane activity sparkline column (default off;
+    /// wide terminals opt in). Per-row output-rate history: the rightmost
+    /// cell is the freshest sample, bars rise with bytes/tick. In-memory
+    /// only — restarts reset. Aggregates 10 samples into one bar from a
+    /// 60-sample ring, so the visible window is ~60 ticks at 3s each,
+    /// or ~3 minutes of activity at a glance.
+    pub activity_sparkline: bool,
 }
 
 impl Default for AppConfig {
@@ -163,6 +170,7 @@ impl Default for AppConfig {
             idle_warn: true,
             idle_warn_style: "bold yellow".to_string(),
             idle_flag_secs: DEFAULT_IDLE_FLAG_SECS,
+            activity_sparkline: false,
         }
     }
 }
@@ -775,6 +783,11 @@ struct UiSection {
     /// Hide quiet shells on startup (`h` toggles live).
     #[serde(default)]
     hide_shells: bool,
+    /// Show a 6-wide per-pane activity sparkline column (default off;
+    /// wide terminals opt in). Rightmost cell is the freshest sample,
+    /// bars rise with bytes/tick; restarts reset the in-memory ring.
+    #[serde(default)]
+    activity_sparkline: bool,
     #[serde(flatten)]
     unknown: BTreeMap<String, toml::Value>,
 }
@@ -790,6 +803,7 @@ impl Default for UiSection {
             sort: default_sort(),
             sort_desc: default_sort_desc(),
             hide_shells: false,
+            activity_sparkline: false,
             unknown: BTreeMap::new(),
         }
     }
