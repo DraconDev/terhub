@@ -1208,11 +1208,11 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                 } else {
                     0
                 };
-                out.insert(i + 1 + shift, line);
+                out.insert(i + 1 + shift, format!("enabled = {e}"));
             }
             None => {
                 out.push("[notifications]".to_string());
-                out.push(line);
+                out.push(format!("enabled = {e}"));
             }
         }
     }
