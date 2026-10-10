@@ -6161,7 +6161,7 @@ mod tests {
         a.exclude = "!zsh".to_string();
         a.persist_filter();
         // B (stale — it never saw the new filter) toggles a theme.
-        b.apply_setting(crate::app::SettingKind::Theme(1));
+        b.apply_setting(SettingKind::Theme(1));
         // The filter the user just saved must survive: B only ever
         // changed the theme, so only the theme may be written.
         let text = std::fs::read_to_string(&path).unwrap();
