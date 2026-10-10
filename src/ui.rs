@@ -1,6 +1,6 @@
 //! ratatui rendering for the hub. `render` returns the screen areas occupied by
 //! the session rows and pane rows so the event loop can map mouse clicks.
-use crate::app::{is_quiet_shell, App, Focus, Mode, SortKey};
+use crate::app::{is_quiet_shell, App, FilterLine, Focus, Mode, SortKey};
 use crate::tmux::Pane;
 use ansi_to_tui::IntoText;
 use ratatui::{

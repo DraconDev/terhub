@@ -708,8 +708,8 @@ pub struct App {
     /// filter prompt is open. Tab swaps this with `input`/`cursor` so
     /// each line keeps its own cursor as the user flips between
     /// include and exclude. Both snapshots are restored on Esc.
-    filter_other: String,
-    cursor_other: usize,
+    pub filter_other: String,
+    pub cursor_other: usize,
     /// Which line the filter prompt is currently editing. `Include`
     /// edits `filter` (live find); `Exclude` edits `exclude` (the
     /// standing exclusion). Tab toggles.
