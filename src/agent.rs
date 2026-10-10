@@ -731,7 +731,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "enter to select".to_string(),
                 "esc to cancel".to_string(),
                 "tab to switch questions".to_string(),
-                "^❯ \d+\\.".to_string(),
+                r"^❯ \d+\.".to_string(),
                 "type something".to_string(),
             ],
             // No `done`/`idle`/`idle_fallback`: a finished pi pane
