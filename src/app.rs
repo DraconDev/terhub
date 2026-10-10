@@ -481,7 +481,7 @@ pub fn expand_command(
             if let Some(end) = chars[i..].iter().position(|c| *c == '}') {
                 let var: String = chars[i + 1..i + end].iter().collect();
                 match value(&var) {
-                    Some(v) => out.push_str(v),
+                    Some(v) => out.push_str(&crate::fleet::sh_quote(v)),
                     None => {
                         out.push('{');
                         out.push_str(&var);
