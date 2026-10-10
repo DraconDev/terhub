@@ -670,8 +670,10 @@ mod tests {
     #[test]
     fn overflow_fields_skip_line() {
         // More parts than expected means a separator inside a field: fail
-        // closed (skip) rather than parse shifted.
-        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242\x1fEXTRA";
+        // closed (skip) rather than parse shifted. The current
+        // PANE_FIELDS is 14 (incl. window_bell_flag), so a 15-field
+        // line is the first to overflow.
+        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242\x1f1\x1fEXTRA";
         assert!(parse_panes(line).is_empty());
     }
 

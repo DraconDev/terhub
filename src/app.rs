@@ -4265,6 +4265,7 @@ mod tests {
             height: 0,
             activity: 1700,
             pid: 0,
+            bell: false,
         }
     }
 
