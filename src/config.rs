@@ -2212,6 +2212,47 @@ mod tests {
     }
 
     #[test]
+    fn persist_skips_keys_the_patch_leaves_none() {
+        // The clobber guard at the writer level: a `None` key is not
+        // rewritten and not re-inserted, so an instance that changed
+        // one setting cannot touch the others. This is what keeps a
+        // stale instance from reverting a newer one's saved filter.
+        let dir = test_dir();
+        let path = dir.join("none.toml");
+        let before = "# terhub config: keys are single-key bindings.\n# hand-written\n[ui]\ntheme = \"dark\"\nfilter = \"!zsh\"\nsort = \"Idle\"\n\n[keys]\nnew = \"c\"\n";
+        std::fs::write(&path, before).unwrap();
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: Some("nord"),
+                // Everything else None: leave the file's value alone.
+                density: None,
+                notifications: None,
+                highlight: None,
+                mru_tabs: None,
+                filter: None,
+                sort: None,
+                sort_desc: None,
+                hide_shells: None,
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("theme = \"nord\""), "{text}");
+        // Untouched lines survive byte-for-byte, including the filter
+        // the user saved from a newer instance.
+        assert!(text.contains("filter = \"!zsh\""), "{text}");
+        assert!(text.contains("sort = \"Idle\""), "{text}");
+        assert!(text.contains("# hand-written"), "{text}");
+        // And a None key is never inserted as a duplicate.
+        assert_eq!(text.matches("filter = ").count(), 1, "{text}");
+        assert_eq!(text.matches("theme = ").count(), 1, "{text}");
+        // Still parses (no duplicate keys).
+        let (_cfg, problems) = load_config_from(&path);
+        assert!(problems.is_empty(), "{problems:?}");
+    }
+
+    #[test]
     fn persist_touches_only_ui_keys() {
         let dir = test_dir();
         std::fs::create_dir_all(&dir).unwrap();
