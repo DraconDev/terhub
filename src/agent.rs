@@ -2029,3 +2029,35 @@ mod tests {
         assert_eq!(reg["%1"].state_since, 300);
     }
 }
+
+#[cfg(test)]
+mod sparkline_tests {
+    use crate::ui::sparkline_glyphs;
+
+    #[test]
+    fn empty_ring_renders_flat_ridge() {
+        // A fresh pane with no samples shows the smallest step in
+        // every bucket — a flat ridge reads as "quiet, watching",
+        // not as a missing column.
+        let out = sparkline_glyphs(&[0u32; 6]);
+        assert_eq!(out, "▁▁▁▁▁▁");
+    }
+
+    #[test]
+    fn six_buckets_have_six_glyphs() {
+        // The contract: 6 cells, one per bucket, regardless of input.
+        let out = sparkline_glyphs(&[10, 20, 30, 40, 50, 60]);
+        assert_eq!(out.chars().count(), 6);
+        // A monotonically rising ring must render with non-decreasing
+        // glyph heights (the whole point: you can see activity
+        // ramping at a glance, no numbers required).
+        let mut prev = '▁';
+        for c in out.chars() {
+            assert!(
+                (c as u32) >= (prev as u32),
+                "non-monotonic sparkline: {prev} > {c}"
+            );
+            prev = c;
+        }
+    }
+}

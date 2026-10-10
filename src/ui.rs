@@ -480,7 +480,7 @@ fn truncate(s: &str, n: usize) -> String {
 /// bars feel like a flatline even when one tick had 50x the bytes.
 /// The lowest step (`▁`) is still visible above the row baseline, so
 /// a "quiet" pane shows a flat ridge instead of nothing.
-fn sparkline_glyphs(buckets: &[u32; 6]) -> String {
+pub fn sparkline_glyphs(buckets: &[u32; 6]) -> String {
     // Find the max so we can scale. Empty ring (all zeros) → flat
     // ridge: a uniform 0 means a fresh pane with no samples.
     let max = buckets.iter().copied().max().unwrap_or(0);
