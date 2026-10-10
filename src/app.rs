@@ -609,6 +609,11 @@ pub struct App {
     /// Space-marked pane ids for bulk kill/attend. Survives sort/filter;
     /// pruned to live panes on every refresh.
     pub marked: std::collections::HashSet<String>,
+    /// Which view settings this instance has changed since its last
+    /// successful config write. Only these keys get persisted, so a
+    /// stale instance in another window can't revert a newer one's
+    /// saved view (see `App::persist_view`).
+    pub view_changes: crate::config::ViewChanges,
     /// Filtered-list index under the mouse cursor, if any. Cleared on
     /// every list rebuild (an index can't survive a reorder).
     pub hover: Option<usize>,
@@ -701,6 +706,7 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
+            view_changes: crate::config::ViewChanges::default(),
             hide_quiet_shells,
             hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
