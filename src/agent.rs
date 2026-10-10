@@ -1604,7 +1604,7 @@ mod tests {
             ),
             hit(
                 Some("minimax-code"),
-                AgentState::Idle,
+                AgentState::Done,
                 "✓ Todo list 9/9 completed"
             )
         );
