@@ -812,11 +812,9 @@ pub fn strip_tip_lines(screen: &str) -> String {
 }
 
 pub fn classify_screen(
-    manifests: &[CompiledManifest],
-    command: &str,
-    screen: &str,
+    manifests: &[CompiledManifest], command: &str, screen: &str,
     bell: bool,
-) -> Option<ScreenHit> {
+, false) -> Option<ScreenHit> {
     // Bell evidence is layered on top of pattern matching, not in
     // place of it. We append a synthetic line `🔔 bell` to the
     // capture when the kernel flag fired; any manifest `waiting:`
@@ -1289,7 +1287,7 @@ mod tests {
         let m = compiled();
         let screen = "…\n❯ Try asking me to build something\n";
         assert_eq!(
-            classify_screen(&m, "claude", screen, false),
+            classify_screen(&m, "claude", screen, false, false),
             hit(
                 Some("claude"),
                 AgentState::Waiting,
@@ -1304,7 +1302,7 @@ mod tests {
         let screen = "Claude Code\n⠋ Working… (esc to interrupt)\n";
         assert_eq!(
             // command unknown; patterns plus the name still claim it
-            classify_screen(&m, "node", screen, false),
+            classify_screen(&m, "node", screen, false, false),
             hit(
                 Some("claude"),
                 AgentState::Working,
@@ -1318,12 +1316,12 @@ mod tests {
         let m = compiled();
         // Spinner alone: working, but nobody's …
         assert_eq!(
-            classify_screen(&m, "node", "⠋ Working… (esc to interrupt, false)\n"),
+            classify_screen(&m, "node", "⠋ Working… (esc to interrupt, false, false)\n"),
             hit(None, AgentState::Working, "⠋ Working… (esc to interrupt)")
         );
         // … and a micro command bar is waiting-without-identity, not gemini.
         assert_eq!(
-            classify_screen(&m, "micro", "> command\nSave changes? confirm\n", false),
+            classify_screen(&m, "micro", "> command\nSave changes? confirm\n", false, false),
             hit(None, AgentState::Waiting, "Save changes? confirm")
         );
     }
@@ -1335,7 +1333,7 @@ mod tests {
         // would read waiting; the interrupt offer vetoes it.
         let screen = "◈ Calling tools (27m 24s · esc to interrupt)\n───\n❯\n";
         assert_eq!(
-            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen, false),
+            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen, false, false),
             hit(
                 Some("muse"),
                 AgentState::Working,
@@ -1351,7 +1349,7 @@ mod tests {
         // bare prompt reads waiting.
         let screen = "◆ Ran 2 commands · stuff · 28s · ctrl+o\n───\n❯\n";
         assert_eq!(
-            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen, false),
+            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen, false, false),
             hit(
                 Some("muse"),
                 AgentState::Waiting,
@@ -1372,7 +1370,7 @@ mod tests {
             screen.push_str(&format!("filler line {i}\n"));
         }
         screen.push_str("❯\n");
-        assert_eq!(classify_screen(&m, "muse-bin-1.4.2", &screen, false), None);
+        assert_eq!(classify_screen(&m, "muse-bin-1.4.2", &screen, false, false), None);
     }
 
     #[test]
@@ -1398,7 +1396,7 @@ mod tests {
         let m = compiled();
         let screen = "⠋ Working…\nError: connection reset\n";
         assert_eq!(
-            classify_screen(&m, "codex", screen, false),
+            classify_screen(&m, "codex", screen, false, false),
             hit(Some("codex"), AgentState::Error, "Error: connection reset")
         );
     }
@@ -1410,7 +1408,7 @@ mod tests {
         // over error within the line.
         let screen = "⠋ Working…\nError: rate limit reached\n";
         assert_eq!(
-            classify_screen(&m, "codex", screen, false),
+            classify_screen(&m, "codex", screen, false, false),
             hit(
                 Some("codex"),
                 AgentState::Limited,
@@ -1422,7 +1420,7 @@ mod tests {
         let screen =
             "- Three of the four asset groups are ready to generate the moment quota returns.\n";
         assert_eq!(
-            classify_screen(&m, "node", screen, false),
+            classify_screen(&m, "node", screen, false, false),
             hit(
                 None,
                 AgentState::Limited,
@@ -1431,7 +1429,7 @@ mod tests {
         );
         // Bare 429 likewise.
         assert_eq!(
-            classify_screen(&m, "node", "HTTP 429 slow down\n", false),
+            classify_screen(&m, "node", "HTTP 429 slow down\n", false, false),
             hit(None, AgentState::Limited, "HTTP 429 slow down")
         );
         assert!(AgentState::Limited.needs_attention());
@@ -1440,7 +1438,7 @@ mod tests {
     #[test]
     fn plain_shell_screen_is_unknown() {
         let m = compiled();
-        assert_eq!(classify_screen(&m, "zsh", "$ ls\nfoo\n", false), None);
+        assert_eq!(classify_screen(&m, "zsh", "$ ls\nfoo\n", false, false), None);
     }
 
     #[test]
@@ -1501,12 +1499,12 @@ mod tests {
         // Waiting prompt with the gemini footer, no other agent named.
         let screen = ">\n? for shortcuts  Gemini 3.8 Flash · high";
         assert_eq!(
-            classify_screen(&m, "agy", screen, false),
+            classify_screen(&m, "agy", screen, false, false),
             hit(Some("gemini"), AgentState::Waiting, ">")
         );
         // Quota wall naming Claude models: state Limited, agent gemini.
         let screen = "Quota exhausted\nCLAUDE AND GPT MODELS\nModels within this group: Claude Opus, Claude Sonnet, GPT-OSS\nWeekly Limit Remaining\nQuota is consumed\n? for shortcuts  Gemini 3.8 Flash · high";
-        let got = classify_screen(&m, "agy", screen, false);
+        let got = classify_screen(&m, "agy", screen, false, false);
         assert_eq!(
             got.as_ref().and_then(|h| h.agent.clone()),
             Some("gemini".to_string()),
@@ -1516,7 +1514,7 @@ mod tests {
         // Bare quota lines with no agent word at all still claim gemini
         // through the command pin (previously agent=None -> dropped).
         let screen = "Individual quota reached. Please upgrade your subscription. Resets in 49m23s.\n>\n? for shortcuts  Gemini 3.8 Flash · high";
-        let got = classify_screen(&m, "agy", screen, false);
+        let got = classify_screen(&m, "agy", screen, false, false);
         assert!(
             got.is_some(),
             "quota screen with gemini footer must classify"
@@ -1528,10 +1526,10 @@ mod tests {
         let m = compiled();
         // "errors"/"errorhandler" must not trip whole-word error patterns.
         let screen = "$ fix errorhandler\n3 errors logged, retrying\n";
-        assert_eq!(classify_screen(&m, "codex", screen, false), None);
+        assert_eq!(classify_screen(&m, "codex", screen, false, false), None);
         let screen = "$ fix errorhandler\n0 failed builds, all green\n";
         assert_eq!(
-            classify_screen(&m, "gemini", screen, false),
+            classify_screen(&m, "gemini", screen, false, false),
             hit(
                 Some("gemini"),
                 AgentState::Error,
@@ -1545,10 +1543,10 @@ mod tests {
         let m = compiled();
         // "disapproved"/"approved" in audit chatter must not read as a prompt.
         let screen = "completion review disapproved — fix the gap\n• completion audit approved\n";
-        assert_eq!(classify_screen(&m, "claude", screen, false), None);
+        assert_eq!(classify_screen(&m, "claude", screen, false, false), None);
         let screen = "Approve this plan? [y/n]\n";
         assert_eq!(
-            classify_screen(&m, "claude", screen, false),
+            classify_screen(&m, "claude", screen, false, false),
             hit(
                 Some("claude"),
                 AgentState::Waiting,
@@ -1563,13 +1561,13 @@ mod tests {
         // Old error, new work below: working.
         let screen = "reporting an Error: timeout\n── ⠦ Working ──\n$ doing things\n";
         assert_eq!(
-            classify_screen(&m, "claude", screen, false),
+            classify_screen(&m, "claude", screen, false, false),
             hit(Some("claude"), AgentState::Working, "── ⠦ Working ──")
         );
         // Old work, fresh error at the bottom: error.
         let screen = "── ⠦ Working ──\nError: socket timeout\n";
         assert_eq!(
-            classify_screen(&m, "codex", screen, false),
+            classify_screen(&m, "codex", screen, false, false),
             hit(Some("codex"), AgentState::Error, "Error: socket timeout")
         );
     }
@@ -1583,7 +1581,7 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "✓ Goal complete · 31min38s · 352K tokens\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Done,
@@ -1591,7 +1589,7 @@ mod tests {
             )
         );
         assert_eq!(
-            classify_screen(&m, "minimax-code", "✓ Todo list 15/15 completed\n", false),
+            classify_screen(&m, "minimax-code", "✓ Todo list 15/15 completed\n", false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Done,
@@ -1600,7 +1598,7 @@ mod tests {
         );
         // Done loses within-line ties: any hint of need or activity wins.
         assert_eq!(
-            classify_screen(&m, "minimax-code", "⠙ ✓ Goal complete · 31min38s\n", false),
+            classify_screen(&m, "minimax-code", "⠙ ✓ Goal complete · 31min38s\n", false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Working,
@@ -1611,7 +1609,7 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "✓ Goal complete · 2h11min8s\n× Tasks · 1 failed · 5 results ready\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Error,
@@ -1620,17 +1618,17 @@ mod tests {
         );
         // Partial progress is not completion…
         assert_eq!(
-            classify_screen(&m, "minimax-code", "Todo list 3/15\n", false),
+            classify_screen(&m, "minimax-code", "Todo list 3/15\n", false, false),
             None
         );
         // …prose failures are not task failures…
         assert_eq!(
-            classify_screen(&m, "minimax-code", "SPEC-200 failed when gates ran\n", false),
+            classify_screen(&m, "minimax-code", "SPEC-200 failed when gates ran\n", false, false),
             None
         );
         // …a zero count is not a failure…
         assert_eq!(
-            classify_screen(&m, "minimax-code", "Tasks · 0 failed · /tasks details\n", false),
+            classify_screen(&m, "minimax-code", "Tasks · 0 failed · /tasks details\n", false, false),
             None
         );
         // The input box only returns when the turn is over (live
@@ -1640,7 +1638,7 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "Message · Enter send · Ctrl+J newline\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Idle,
@@ -1648,7 +1646,7 @@ mod tests {
             )
         );
         assert_eq!(
-            classify_screen(&m, "minimax-code", "› Ask Mcode to do anything\n", false),
+            classify_screen(&m, "minimax-code", "› Ask Mcode to do anything\n", false, false),
             None
         );
         // A stale throughput rate on a Completed line must not pin
@@ -1656,14 +1654,14 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "└ Completed in 1min22s · ⚡ 6535 tok/s\n"
-            , false),
+            , false, false),
             None
         );
         // The box is bottom chrome: it never shadows need above it.
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "× Tasks · 1 failed\nMessage · Enter send · Ctrl+J newline\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Error,
@@ -1674,7 +1672,7 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "✓ Todo list 9/9 completed\nMessage · Enter send · Ctrl+J newline\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Done,
@@ -1685,7 +1683,7 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "Message · Enter send · Ctrl+J newline\n⠙ Running 5min1s\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Working,
@@ -1696,7 +1694,7 @@ mod tests {
         assert_eq!(
             classify_screen(
                 &m, "minimax-code", "⠙ Running 5min1s\nMessage · Enter send · Ctrl+J newline\n"
-            , false),
+            , false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Idle,
@@ -1705,7 +1703,7 @@ mod tests {
         );
         // Live inference still reads working.
         assert_eq!(
-            classify_screen(&m, "minimax-code", "⠙ Running 13min40s · ⚡ 15092 tok/s\n", false),
+            classify_screen(&m, "minimax-code", "⠙ Running 13min40s · ⚡ 15092 tok/s\n", false, false),
             hit(
                 Some("minimax-code"),
                 AgentState::Working,
@@ -1720,14 +1718,14 @@ mod tests {
         // A footer tip must never trip the classifier, even one whose
         // words would match ("quota" is a limited pattern).
         assert_eq!(
-            classify_screen(&m, "claude", "$ working\nTip: quota for free tier\n", false),
+            classify_screen(&m, "claude", "$ working\nTip: quota for free tier\n", false, false),
             None
         );
         // …while real verdicts beside a tip still land, with real summaries.
         assert_eq!(
             classify_screen(
                 &m, "claude", "Tip: quota for free tier\nError: socket timeout\n"
-            , false),
+            , false, false),
             hit(Some("claude"), AgentState::Error, "Error: socket timeout")
         );
         // Only the footer prefix strips: prose merely starting with Tip stays.
@@ -1753,7 +1751,7 @@ mod tests {
         // Empty prompt: the task line above, not the box rule, not "❯".
         let screen = "◆ docs + gate + install\n──────────\n❯\n";
         assert_eq!(
-            classify_screen(&m, "claude", screen, false),
+            classify_screen(&m, "claude", screen, false, false),
             hit(
                 Some("claude"),
                 AgentState::Waiting,
@@ -1763,7 +1761,7 @@ mod tests {
         // Nothing textual above: keep the thin line, honestly.
         let screen = "──────────\n❯\n";
         assert_eq!(
-            classify_screen(&m, "claude", screen, false),
+            classify_screen(&m, "claude", screen, false, false),
             hit(Some("claude"), AgentState::Waiting, "❯")
         );
     }
@@ -1786,8 +1784,8 @@ mod tests {
     fn lowercase_error_is_prose() {
         let m = compiled();
         let screen = "one of them was reporting an error: a retry would be a no-op\n";
-        assert_eq!(classify_screen(&m, "claude", screen, false), None);
-        assert_eq!(classify_screen(&m, "codex", screen, false), None);
+        assert_eq!(classify_screen(&m, "claude", screen, false, false), None);
+        assert_eq!(classify_screen(&m, "codex", screen, false, false), None);
     }
 
     #[test]

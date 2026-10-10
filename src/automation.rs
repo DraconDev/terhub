@@ -518,6 +518,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
+        bell: false,
+        bell_reason: String::new(),
         }
     }
 
