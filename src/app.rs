@@ -3459,11 +3459,11 @@ impl App {
             if self.filter_line == FilterLine::Exclude {
                 self.exclude = q.trim_start_matches('!').trim().to_string();
             } else {
-                self.filter.clone_from(q);
+                self.filter = q.to_string();
             }
         } else {
             if self.filter_line == FilterLine::Include {
-                self.filter.clone_from(q);
+                self.filter = q.to_string();
             } else {
                 self.exclude = q.trim_start_matches('!').trim().to_string();
             }
