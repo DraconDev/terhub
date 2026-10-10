@@ -3242,6 +3242,7 @@ impl App {
     fn toggle_hide_quiet_shells(&mut self) {
         self.hide_quiet_shells = !self.hide_quiet_shells;
         self.refresh_filtered();
+        self.view_changes.hide_shells = true;
         self.persist_view();
         if self.hide_quiet_shells {
             let key = self.config.key_label("hide_shells");
