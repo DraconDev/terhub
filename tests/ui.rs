@@ -1218,6 +1218,7 @@ fn filter_active_indicator_uses_the_title_palette() {
         .position(|l| l.contains('\u{25fc}'))
         .expect("chip block glyph not rendered");
     let col = text[row].find('\u{25fc}').unwrap();
+    let (symbol, fg, _) = &grid[row][col];
     assert_eq!(symbol, "\u{25fc}", "off-by-one: not the chip glyph");
     assert_eq!(
         fg,
