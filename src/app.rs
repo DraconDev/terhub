@@ -3003,6 +3003,30 @@ impl App {
         rows
     }
 
+    /// Run a saved-filter row action (`r` rename / `d` delete) against
+    /// the selected row when that row is a saved filter. Passing the
+    /// template kind with index 0 and substituting the real index keeps
+    /// the two call sites symmetric.
+    fn settings_saved_filter_row(&mut self, template: SettingKind) {
+        let items = self.settings_item_rows();
+        let Some(row) = items.get(self.settings_selected).copied() else {
+            return;
+        };
+        let kind = match (&template, self.settings_rows().get(row).and_then(|r| match r {
+            SettingRow::Item { kind, .. } => Some(kind.clone()),
+            _ => None,
+        })) {
+ (SettingKind::RenameSavedFilter(_), Some(SettingKind::UseSavedFilter(i))) => {
+                SettingKind::RenameSavedFilter(i)
+            }
+            (SettingKind::DeleteSavedFilter(_), Some(SettingKind::UseSavedFilter(i))) => {
+                SettingKind::DeleteSavedFilter(i)
+            }
+            _ => return,
+        };
+        self.apply_setting(kind);
+    }
+
     fn onoff(b: bool) -> &'static str {
         if b { "on" } else { "off" }
     }
