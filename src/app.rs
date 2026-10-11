@@ -6218,6 +6218,8 @@ mod tests {
     /// process-wide lock: two such tests must never interleave env swaps,
     /// or one could persist into the real config file.
     static SCRATCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// Hands out distinct scratch config paths, one per `ScopedConfig`.
+    static NEXT_CFG: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 
     struct ScratchConfig {
@@ -7530,33 +7532,33 @@ mod tests {
     struct ScopedConfig {
         _guard: std::sync::MutexGuard<'static, ()>,
         old: Option<String>,
-        path: std::path::PathBuf,
     }
 
     impl ScopedConfig {
         fn new() -> Self {
             // SCRATCH_LOCK is the established lock for every lib test
             // that redirects config resolution. Sharing it matters:
-            // `config_path()` prefers TERHUB_CONFIG, so an XDG-based
-            // (`ScratchConfig`) test would otherwise read or write this
-            // scratch file while it is live.
+            // `config_path()` prefers TERHUB_CONFIG, so a concurrent
+            // setter would otherwise hijack this test's reads.
             let guard = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let dir = std::env::temp_dir().join(format!("terhub-savedfilter-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).unwrap();
-            let path = dir.join("config.toml");
+            // A fresh file per instance (not per process): tests that
+            // persist must not write through each other's scratch state,
+            // and a per-pid path made every such test share one file.
+            let n = NEXT_CFG.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let path = std::env::temp_dir()
+                .join(format!("terhub-cfg-{}-{n}", std::process::id()))
+                .with_extension("toml");
             let old = std::env::var("TERHUB_CONFIG").ok();
             // SAFETY: lock-held; no other lib test writes TERHUB_CONFIG.
             unsafe { std::env::set_var("TERHUB_CONFIG", &path) };
-            ScopedConfig { _guard: guard, old, path }
+            let _ = &path;
+            ScopedConfig { _guard: guard, old }
         }
 
         fn load(&self) -> (AppConfig, Vec<String>) {
             crate::config::load_config_report(None)
         }
 
-        fn text(&self) -> String {
-            std::fs::read_to_string(&self.path).unwrap_or_default()
-        }
     }
 
     impl Drop for ScopedConfig {
@@ -7615,14 +7617,6 @@ mod tests {
         assert_eq!(cfg.saved_filters[0].name, "work");
         assert_eq!(cfg.saved_filters[0].query, "vim npm");
         // The standing exclude line is untouched by saved-filter writes.
-        if !cfg.filter.is_empty() {
-            eprintln!(
-                "DBG path={:?}\nDBG file:\n{}\nDBG env={:?}",
-                scratch.path,
-                scratch.text(),
-                std::env::var("TERHUB_CONFIG")
-            );
-        }
         assert!(cfg.filter.is_empty(), "filter line disturbed: {:?}", cfg.filter);
 
         // The settings page renders the name.
