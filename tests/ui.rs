@@ -374,11 +374,16 @@ fn waiting_record(pane: &str, session: &str, summary: &str) -> terhub::agent::Ag
         cpu_still_since: 0,
         agent_start: 0,
         last_turn_secs: 0,
-        waiting_secs: 60,
-        idle_since: now,
+        screen_hash: 7,
+        quiet_since: now - 60,
+        last_prompt_at: 0,
+        last_prompt: String::new(),
         handle: String::new(),
-        prompt: String::new(),
-        work_dir: String::new(),
+        model: String::new(),
+        ctx_pct: None,
+        reg_pid: 0,
+    bell: false,
+    bell_reason: String::new(),
     }
 }
 
@@ -1305,6 +1310,10 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
         "%1".to_string(),
         ("idle".to_string(), "done".to_string()),
     );
+    // The fixture panes are all `active` in one window, which would read
+    // `*` (focus disambiguation outranks the check by design); stand the
+    // row down so the check itself is what renders.
+    app.panes.iter_mut().for_each(|p| p.active = false);
     let text = render_lines(&mut app, 120, 12).join("\n");
     let row = text
         .lines()
