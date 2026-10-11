@@ -134,6 +134,12 @@ pub struct AppConfig {
     /// multi-token model; the on-disk format is the source of
     /// truth.
     pub filter: String,
+    /// Named saved filters, persisted to `[ui] saved_filters` as an
+    /// array of inline tables
+    /// (`saved_filters = [{name = "work", query = "npm cargo"}]`).
+    /// Additive and defaulted: a config without the key loads empty,
+    /// and the standing `filter` line keeps its meaning untouched.
+    pub saved_filters: Vec<SavedFilter>,
     /// Table sort column name (`Idle` default; see `SortKey::parse_name`).
     pub sort: String,
     /// Sort descending (`true` default = newest/longest first).
