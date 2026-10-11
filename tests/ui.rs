@@ -1290,6 +1290,44 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// The footer is the discoverability surface. With 40+ panes the filter
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
+
+/// A record with no timestamp is "never recorded", not 56 years old: a
+/// zero `state_since` must render as a dash, never as 20737d. (The Turn
+/// column already guards its zero the same way.)
+#[test]
+fn zero_state_since_renders_dash_not_epoch() {
+    let mut app = app_with_panes();
+    let mut r = idle_record("%1", "alpha", 60, terhub::agent::now_unix());
+    r.state_since = 0;
+    app.agents.insert("%1".to_string(), r);
+    let grid = render_grid(&mut app, 140, 12);
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains("For")).unwrap();
+    let ix = hdr[..hdr.find("For").unwrap()].chars().count();
+    let row = text.iter().position(|l| l.contains("%1")).unwrap();
+    assert_eq!(
+        grid[row][ix].0, "\u{2014}",
+        "zero timestamp rendered as an epoch age"
+    );
+    // And a recorded timestamp still renders its age.
+    let mut app = app_with_panes();
+    let mut r = idle_record("%1", "alpha", 60, terhub::agent::now_unix());
+    r.state_since = terhub::agent::now_unix() - 90;
+    app.agents.insert("%1".to_string(), r);
+    let grid = render_grid(&mut app, 140, 12);
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
+        .collect();
+    let hdr = text.iter().find(|l| l.contains("For")).unwrap();
+    let ix = hdr[..hdr.find("For").unwrap()].chars().count();
+    let row = text.iter().position(|l| l.contains("%1")).unwrap();
+    assert_eq!(grid[row][ix].0, "1m", "real age lost its value");
+}
+
 #[test]
 fn footer_names_the_filter_key_and_follows_a_rebind() {
     let mut app = app_with(&["alpha"]);
