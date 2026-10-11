@@ -1075,6 +1075,22 @@ fn settings_filters_section_lists_saved_names() {
     assert!(text.contains("bash nvim"), "missing query text:\n{text}");
 }
 
+
+#[test]
+fn zz_probe_chip() {
+    for w in [120u16, 60, 40] {
+        let mut app = app_with_panes();
+        app.exclude = "zsh".to_string();
+        app.filter = "bash".to_string();
+        app.refresh_filtered();
+        let lines = render_lines(&mut app, w, 14);
+        println!("=== width {w} ===");
+        for (i, l) in lines.iter().enumerate() {
+            println!("{i:>2}|{l}");
+        }
+    }
+}
+
 #[test]
 fn confirm_modal_renders() {
     let mut app = app_with(&["alpha"]);
