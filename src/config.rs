@@ -2705,36 +2705,3 @@ mod tests {
         std::fs::remove_file(odd).ok();
     }
 }
-
-#[cfg(test)]
-mod saved_filters_probe {
-    use super::*;
-
-    #[test]
-    fn probe_roundtrip() {
-        let d = std::env::temp_dir().join(format!("th-probe-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        let p = d.join("config.toml");
-        std::fs::write(&p, "[ui]\ntheme = \"dark\"\nfilter = \"!zsh\"\n").unwrap();
-        let cfg = AppConfig {
-            filter: "!zsh".into(),
-            saved_filters: vec![
-                SavedFilter { name: "work".into(), query: "npm cargo".into() },
-                SavedFilter { name: "quiet".into(), query: "!shell tail".into() },
-            ],
-            ..AppConfig::default()
-        };
-        let mut vc = ViewChanges::default();
-        vc.filter = true;
-        vc.saved_filters = true;
-        let patch = cfg.ui_persist_changes(&vc);
-        persist_ui_settings_to(&p, &patch).unwrap();
-        let text = std::fs::read_to_string(&p).unwrap();
-        eprintln!("PROBE-FILE:\n{text}");
-        let (back, probs) = load_config_report(Some(p.clone()));
-        eprintln!("PROBE-LOADED: {:?} probs={:?}", back.saved_filters, probs);
-        assert_eq!(back.filter, "!zsh");
-        let _ = std::fs::remove_dir_all(&d);
-    }
-}
