@@ -775,6 +775,8 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
+            saved_filters: config.saved_filters.clone(),
+            active_saved_filter: None,
             filter_history: VecDeque::new(),
             filter_history_idx: None,
             filter_history_pending: None,
