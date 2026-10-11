@@ -84,6 +84,45 @@ fn default_keys() -> HashMap<String, String> {
 }
 
 #[derive(Debug, Clone)]
+/// A named saved filter: a label the user picks from the settings
+/// page (or cycles with the `saved_filter` key) plus the include query
+/// it applies to the table. Both are single-line; the query is stored
+/// exactly as typed (multi-token, space separated).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedFilter {
+    pub name: String,
+    pub query: String,
+}
+
+impl SavedFilter {
+    /// True when a row carrying this label would apply the query
+    /// unchanged — what lets the table header name it as active.
+    pub fn matches_query(&self, query: &str) -> bool {
+        self.query == query
+    }
+}
+
+/// Escape a string for a TOML basic-string literal (the form used by
+/// the surgical `[ui]` writer). Names and queries are single-line by
+/// construction, but they can carry quotes, backslashes and control
+/// characters, and TOML rejects a raw backslash or an unterminated
+/// string.
+pub fn toml_basic_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 pub struct AppConfig {
     pub keys: HashMap<String, String>,
     pub theme: String,
