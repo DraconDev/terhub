@@ -1249,7 +1249,29 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             }
             if !compact {
                 let summary = rec.map(|r| r.summary.as_str()).unwrap_or("");
-                cells.push(Cell::from(truncate(summary, 60)).style(pal.dim));
+                // When the row's state is Idle and the summary is the
+                // "turn just ended" event the agent reports together
+                // with that transition ("response finished"), the raw
+                // text reads as a contradiction: the user sees idle
+                // beside a string that names a working-flavored reason.
+                // The two are actually consistent — the agent went
+                // quiet after that action — but the column relationship
+                // is invisible. Prefix a `↘` so the transition is
+                // visible at a glance: "this summary is the cause of
+                // the current state, not a description of the moment".
+                // Skip if already marked (idempotent across re-renders)
+                // and skip on any other state — the marker is
+                // specifically about the Working→Idle drop.
+                let summary =
+                    if matches!(rec.map(|r| r.state), Some(crate::agent::AgentState::Idle))
+                        && summary == "response finished"
+                        && !summary.starts_with('\u{2198}')
+                    {
+                        format!("\u{2198} {summary}")
+                    } else {
+                        summary.to_string()
+                    };
+                cells.push(Cell::from(truncate(&summary, 60)).style(pal.dim));
             }
             let mut row = Row::new(cells);
             if i == app.pane_selected {

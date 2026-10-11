@@ -2232,3 +2232,89 @@ fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
 // File ends at line 1499 (this comment sits on its own line so the
 // last test's closing brace is on 1497 and the file's line count is
 // reproducible across editors).
+
+/// The Idle state + 'response finished' summary pair reads as a
+/// contradiction at a glance (the agent's last action sounds working,
+/// but the state is idle). The Summary is actually the *cause* of
+/// the current state — the agent just transitioned to idle after
+/// finishing — so the cell gets a `↘` prefix to mark the
+/// transition. Other idle summaries, and the working + 'turn
+/// started' pair, must stay unmarked.
+#[test]
+fn idle_after_response_finished_marks_summary_with_transition_glyph() {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    use terhub::config::AppConfig;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut app = App::new(AppConfig::default());
+    // Three panes + three agent records mirroring the buggy screenshot
+    // case. We use a workspace layout so the table renders.
+    app.sessions = vec![Session {
+        name: "wez".to_string(),
+        windows: 1,
+        attached: false,
+        created: "now".to_string(),
+        activity: "now".to_string(),
+    }];
+    for (i, (id, state, summary)) in [
+        ("%1", AgentState::Idle, "response finished"),
+        ("%2", AgentState::Working, "turn started"),
+        ("%3", AgentState::Idle, "session started"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        app.panes.push(pane(id, "wez", "demo", "pi"));
+        app.agents.insert(
+            id.to_string(),
+            AgentRecord {
+                pane: id.to_string(),
+                agent: "pi".to_string(),
+                state,
+                source: Source::Hook,
+                summary: summary.to_string(),
+                session: "wez".to_string(),
+                window: "demo".to_string(),
+                command: "pi".to_string(),
+                updated_at: now,
+                state_since: now,
+                cpu_ticks: 0,
+                cpu_still_since: 0,
+                agent_start: 0,
+                last_turn_secs: 0,
+                screen_hash: 0,
+                quiet_since: now,
+                last_prompt_at: 0,
+                last_prompt: String::new(),
+                handle: format!("pi-wez-{i}"),
+                model: String::new(),
+                ctx_pct: None,
+                reg_pid: 0,
+                bell: false,
+                bell_reason: String::new(),
+            },
+        );
+    }
+    app.refresh_filtered();
+    let lines = render_lines(&mut app, 180, 24);
+    let text = lines.join("\n");
+    // The transition case: idle + response finished must carry the
+    // marker. Without the marker, the row reads as a contradiction.
+    let marked = text.matches("\u{2198} response finished").count();
+    assert_eq!(
+        marked, 1,
+        "expected exactly one ↘-prefixed 'response finished' cell, got {marked}.\ntext:\n{text}"
+    );
+    // The other rows must remain unmarked — the marker is specifically
+    // for the working→idle drop, not a generic "quiet now" decoration.
+    assert!(
+        !text.contains("\u{2198} turn started"),
+        "turn started must NOT be marked (state is working):\n{text}"
+    );
+    assert!(
+        !text.contains("\u{2198} session started"),
+        "non-turn-end idle summary must NOT be marked:\n{text}"
+    );
+}
