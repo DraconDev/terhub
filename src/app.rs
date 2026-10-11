@@ -2225,6 +2225,34 @@ impl App {
         }
     }
 
+    /// Naming prompt for saved filters. Single line, like every other
+    /// prompt: Enter commits the name, Esc cancels.
+    fn on_saved_filter_name_key(&mut self, key: KeyEvent, index: Option<usize>) {
+        match key.code {
+            KeyCode::Esc => self.cancel_modal(),
+            KeyCode::Enter => {
+                let name = self.input.trim().to_string();
+                self.cancel_modal();
+                self.submit_saved_filter_name(index, name);
+            }
+            KeyCode::Backspace => self.delete_before_cursor(),
+            KeyCode::Delete => self.delete_at_cursor(),
+            KeyCode::Left => {
+                self.cursor = self.cursor.saturating_sub(1);
+            }
+            KeyCode::Right => {
+                let len = self.input.chars().count();
+                self.cursor = (self.cursor + 1).min(len);
+            }
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.input.chars().count(),
+            // The list stays put: a saved filter's name is metadata,
+            // not a query, so typing never refreshes the table.
+            KeyCode::Char(c) if !c.is_control() => self.insert_at_cursor(c),
+            _ => {}
+        }
+    }
+
     fn on_prompt_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
             KeyCode::Esc => self.cancel_modal(),
             KeyCode::Enter => {
