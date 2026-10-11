@@ -744,7 +744,7 @@ impl App {
         let sort_asc = !config.sort_desc;
         let hide_quiet_shells = config.hide_shells;
         App {
-            config: saved_filters_seed(config),
+            config,
             sessions: Vec::new(),
             selected: 0,
             mode: Mode::Normal,
