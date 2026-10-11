@@ -5247,6 +5247,83 @@ mod tests {
     }
 
     #[test]
+    fn attended_records_visit_and_survives_unchanged_ticks() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Waiting, 10),
+        );
+        assert!(!app.is_attended("%1"), "unvisited row reads attended");
+        app.mark_attended("%1");
+        assert!(app.is_attended("%1"), "visited row does not read attended");
+        // The clock moving is not news: ticks must not clear the mark.
+        // (The key is (state, summary) only; `waiting_secs`-style fields
+        // are deliberately excluded.)
+        app.agents.get_mut("%1").unwrap().cpu_ticks += 999;
+        app.agents.get_mut("%1").unwrap().updated_at += 999;
+        app.prune_attended();
+        assert!(
+            app.is_attended("%1"),
+            "a tick cleared the attended mark"
+        );
+    }
+
+    #[test]
+    fn attended_clears_on_new_state_or_new_summary() {
+        use crate::agent::AgentState;
+        let mut app = app_with_panes();
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Waiting, 10),
+        );
+        app.mark_attended("%1");
+        // A state change is new information.
+        app.agents.get_mut("%1").unwrap().state = AgentState::Working;
+        app.prune_attended();
+        assert!(
+            !app.is_attended("%1"),
+            "state change kept the attended mark"
+        );
+        // So is a new summary under the same state.
+        app.mark_attended("%1");
+        app.agents.get_mut("%1").unwrap().summary = "approve deploy?".to_string();
+        app.prune_attended();
+        assert!(
+            !app.is_attended("%1"),
+            "summary change kept the attended mark"
+        );
+    }
+
+    #[test]
+    fn attended_shell_without_a_record_stays_seen() {
+        let mut app = app_with_panes();
+        // %2 has no agent record: a plain shell has no state that could
+        // change, so visiting it stays visited.
+        app.mark_attended("%2");
+        assert!(app.is_attended("%2"));
+        app.prune_attended();
+        assert!(app.is_attended("%2"), "shell lost its attended mark");
+    }
+
+    #[test]
+    fn do_nav_failure_never_marks() {
+        // A failed jump (dead row, no server) must not record a visit:
+        // the user saw the error, not the pane.
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.do_nav(&tmux, AppEvent::FocusPane("%999-no-such-pane".to_string()));
+        assert!(
+            !app.is_attended("%999-no-such-pane"),
+            "failed jump recorded a visit"
+        );
+        assert!(
+            app.attended.is_empty(),
+            "failed jump left attended state behind"
+        );
+    }
+
+    #[test]
     fn bulk_empty_reports_instead_of_modal() {
         let mut app = app_with_panes();
         app.do_bulk();

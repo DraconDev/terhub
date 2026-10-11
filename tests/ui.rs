@@ -356,6 +356,32 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     );
 }
 
+fn waiting_record(pane: &str, session: &str, summary: &str) -> terhub::agent::AgentRecord {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    let now = terhub::agent::now_unix();
+    AgentRecord {
+        pane: pane.to_string(),
+        agent: "pi".to_string(),
+        state: AgentState::Waiting,
+        source: Source::Hook,
+        summary: summary.to_string(),
+        session: session.to_string(),
+        window: "editor".to_string(),
+        command: "pi".to_string(),
+        updated_at: now,
+        state_since: now - 60,
+        cpu_ticks: 0,
+        cpu_still_since: 0,
+        agent_start: 0,
+        last_turn_secs: 0,
+        waiting_secs: 60,
+        idle_since: now,
+        handle: String::new(),
+        prompt: String::new(),
+        work_dir: String::new(),
+    }
+}
+
 fn idle_record(pane: &str, session: &str, quiet_age: u64, now: u64) -> terhub::agent::AgentRecord {
     use terhub::agent::{AgentRecord, AgentState, Source};
     AgentRecord {
@@ -1260,6 +1286,73 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
 
+
+
+/// The attended marker: a visited row wears a quiet check until its
+/// state or summary says something new — so a sweep of the table shows
+/// what is left, not just what is loud. It never outranks a live mark:
+/// a pane that still needs you keeps its `!`, a manual mark keeps `+`.
+#[test]
+fn attended_marker_renders_and_yields_to_urgent_marks() {
+    const SEEN: char = '\u{2713}';
+    // Seen and unchanged: the check is drawn.
+    let mut app = app_with_panes();
+    app.agents.insert(
+        "%1".to_string(),
+        idle_record("%1", "alpha", 60, terhub::agent::now_unix()),
+    );
+    app.attended.insert(
+        "%1".to_string(),
+        ("idle".to_string(), "done".to_string()),
+    );
+    let text = render_lines(&mut app, 120, 12).join("\n");
+    let row = text
+        .lines()
+        .find(|l| l.contains("%1"))
+        .expect("attended row missing");
+    assert!(
+        row.contains(SEEN),
+        "visited row wears no check:\n{row}"
+    );
+
+    // A pane that still needs you keeps its `!` — the tray counts it,
+    // so the table must not pretend it is handled.
+    let mut app = app_with_panes();
+    app.agents.insert(
+        "%1".to_string(),
+        waiting_record("%1", "alpha", "approve deploy?"),
+    );
+    app.attended.insert(
+        "%1".to_string(),
+        ("waiting".to_string(), "approve deploy?".to_string()),
+    );
+    let text = render_lines(&mut app, 120, 12).join("\n");
+    let row = text
+        .lines()
+        .find(|l| l.contains("%1"))
+        .expect("needy row missing");
+    assert!(row.contains('!'), "need lost to the check:\n{row}");
+    assert!(!row.contains(SEEN), "check hid the need:\n{row}");
+
+    // A manual mark outranks the automatic one.
+    let mut app = app_with_panes();
+    app.agents.insert(
+        "%1".to_string(),
+        idle_record("%1", "alpha", 60, terhub::agent::now_unix()),
+    );
+    app.attended.insert(
+        "%1".to_string(),
+        ("idle".to_string(), "done".to_string()),
+    );
+    app.marked.insert("%1".to_string());
+    let text = render_lines(&mut app, 120, 12).join("\n");
+    let row = text
+        .lines()
+        .find(|l| l.contains("%1"))
+        .expect("marked row missing");
+    assert!(row.contains('+'), "manual mark lost to the check:\n{row}");
+    assert!(!row.contains(SEEN), "check hid the manual mark:\n{row}");
+}
 
 #[test]
 fn footer_names_the_filter_key_and_follows_a_rebind() {
