@@ -7676,7 +7676,8 @@ mod tests {
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
         // No saved filters yet: the key reports the way out.
-        app.keys
+        app.config
+            .keys
             .insert("saved_filter".to_string(), "ctrl+f".to_string());
         app.on_key(
             KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
