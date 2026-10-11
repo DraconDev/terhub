@@ -2019,6 +2019,11 @@ impl App {
                 self.open_filter();
                 true
             }
+            "saved_filter" => {
+                self.next_saved_filter();
+                self.follow_preview(tmux);
+                true
+            }
             "filter_clear" => {
                 if self.filter.is_empty() {
                     self.set_status("search already clear".to_string());
@@ -2114,6 +2119,7 @@ impl App {
             "sort",
             "filter",
             "filter_clear",
+            "saved_filter",
             "hide_shells",
             "spawn",
             "restart",
@@ -2154,6 +2160,7 @@ impl App {
             "sort",
             "filter",
             "filter_clear",
+            "saved_filter",
             "hide_shells",
             "spawn",
             "restart",
