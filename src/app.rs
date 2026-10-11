@@ -5851,8 +5851,11 @@ mod tests {
         app.set_status("killed x".to_string());
         app.expire_status();
         assert!(app.status.is_some()); // fresh: stays
-        app.status_since =
-            Some(std::time::Instant::now() - App::STATUS_TTL - std::time::Duration::from_secs(1));
+        app.status_since = Some(
+            std::time::Instant::now()
+                .checked_sub(App::STATUS_TTL + std::time::Duration::from_secs(1))
+                .expect("test clock must exceed STATUS_TTL+1s"),
+        );
         app.expire_status();
         assert!(app.status.is_none()); // stale: footer hints return
         // Unstamped (direct write) stays sticky.
