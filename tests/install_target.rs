@@ -1,9 +1,10 @@
 //! Verifies that the `make build` install pipeline is in place and
 //! runs the install step. The full behavioral check (does the
-//! binary actually update?) lives in `scripts/check-install.sh`
-//! and is run by `make check-install` / CI; this integration
-//! test guards the wiring (Makefile, script, target names) so a
-//! well-meaning refactor can't quietly drop the install step.
+//! install step actually update the binary?) lives in
+//! `scripts/check-install.sh` and is run by `make check-install` /
+//! CI; this integration test guards the wiring (Makefile, script,
+//! target names) so a well-meaning refactor can't quietly drop the
+//! install step.
 
 use std::path::Path;
 
@@ -91,4 +92,31 @@ fn install_check_script_exists_and_is_executable() {
     }
     let body = std::fs::read_to_string(p).unwrap();
     assert!(body.starts_with("#!"), "{SCRIPT} missing shebang");
+}
+
+/// The install step is provable by mtime advancement, not by SHA
+/// change. A comment-only source edit compiles to a bit-identical
+/// binary (Rust strips comments before AST), so the install can
+/// replace the file with the same content; mtime is what
+/// advances. The script must therefore compare mtimes, not SHAs.
+#[test]
+fn install_check_script_proves_install_by_mtime_not_sha() {
+    let body = std::fs::read_to_string(SCRIPT).unwrap();
+    // Must compare mtimes (the canonical "the install ran" proof).
+    assert!(
+        body.contains("stat -c %Y") || body.contains("stat -f %m"),
+        "{SCRIPT} must compare mtimes (stat -c %Y) to detect install"
+    );
+    // Must NOT rely solely on SHA — that's a false negative when
+    // the source change compiles to a bit-identical binary.
+    let uses_sha = body.contains("sha256sum");
+    if uses_sha {
+        // SHA can be a secondary check but cannot be the only
+        // proof; the mtime assertion must be the gate.
+        assert!(
+            body.contains("mtime") && body.contains("after_mtime")
+                && body.contains("before_mtime"),
+            "{SCRIPT} uses sha256sum but must also assert mtime advancement"
+        );
+    }
 }

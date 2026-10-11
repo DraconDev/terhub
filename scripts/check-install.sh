@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Verifies that `make build` actually installs the new binary to
 # ~/.cargo/bin/terhub. This is the regression test for the
-# stale-binary footgun (the working tree's target/debug/terhub
+# stale-binary footgun: the working tree's target/debug/terhub
 # was fresh but ~/.cargo/bin/terhub was stale, leading to
-# "is it broken or is the binary old?" debugging).
+# "is it broken or is the binary old?" debugging.
 #
-# Approach: capture the SHA of ~/.cargo/bin/terhub, force a rebuild
-# by touching a source file, run `make build`, then verify the SHA
-# changed. The script is idempotent: it restores the source file's
-# mtime via a sentinel comment in a CI-runnable way.
+# Approach: record the mtime of ~/.cargo/bin/terhub, force a
+# rebuild by touching a source file (cargo's incremental cache
+# is keyed on mtime, so any mtime bump triggers a rebuild), run
+# `make build`, then verify the mtime of ~/.cargo/bin/terhub
+# advanced. We compare mtime rather than SHA because adding a
+# comment to a Rust source compiles to a bit-identical binary
+# (comments are stripped before AST) — install still runs and
+# updates mtime, but the content is unchanged, so SHA is the
+# wrong signal. mtime is the canonical "the install step ran"
+# proof.
 
 set -euo pipefail
 
@@ -26,31 +32,28 @@ if [ ! -f "$SENTINEL" ]; then
     exit 1
 fi
 
-# A comment line we can append/remove to force a rebuild without
-# changing behavior. The build system only checks the file's
-# contents, so we add a no-op line at the top.
-MARKER="// check-install sentinel: $(date +%s) $$"
+before_mtime=$(stat -c %Y "$CARGO_BIN")
+echo "before: mtime=$before_mtime"
 
-before_sha=$(sha256sum "$CARGO_BIN" | cut -d' ' -f1)
-echo "before: $before_sha"
-
-# Force a rebuild: append a sentinel comment, run make build, then
-# remove the sentinel so the source is back to its original shape.
-trap 'sed -i "\|^// check-install sentinel:|d" "$SENTINEL" 2>/dev/null || true' EXIT
-echo "$MARKER" >> "$SENTINEL"
-
+# Force a rebuild: touch updates the source mtime, so cargo's
+# incremental cache marks it dirty and recompiles. The release
+# profile produced by `cargo install` then overwrites
+# ~/.cargo/bin/terhub, refreshing its mtime even when the binary
+# is bit-identical (which happens when the source change is a
+# comment-only edit).
+touch "$SENTINEL"
 make build >/dev/null 2>&1
 
-after_sha=$(sha256sum "$CARGO_BIN" | cut -d' ' -f1)
-echo "after:  $after_sha"
+after_mtime=$(stat -c %Y "$CARGO_BIN")
+echo "after:  mtime=$after_mtime"
 
-if [ "$before_sha" = "$after_sha" ]; then
-    echo "FAIL: $CARGO_BIN SHA did not change after make build"
+if [ "$after_mtime" -le "$before_mtime" ]; then
+    echo "FAIL: $CARGO_BIN mtime did not advance after make build"
     echo "      the install step is broken or skipped"
     exit 1
 fi
 
-# Verify the new binary actually runs.
+# Sanity: the new binary actually runs.
 "$CARGO_BIN" --help >/dev/null
 
-echo "OK: $CARGO_BIN was reinstalled by 'make build'"
+echo "OK: $CARGO_BIN was reinstalled by 'make build' (mtime advanced by $((after_mtime - before_mtime))s)"
