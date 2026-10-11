@@ -312,7 +312,7 @@ fn unclaimed_row_has_no_agent_state() {
 fn idle_column_prefers_visible_quiet_over_tmux_activity() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
-    let now = terhub::agent::now_unix();
+    let now = now_unix();
     // Fresh tmux activity (a repaint 5s ago) but a screen unchanged for
     // an hour: the Idle cell must show the quiet clock, not the repaint.
     app.panes[0].activity = now - 5;
@@ -426,7 +426,7 @@ fn long_idle_tints_idle_cell() {
     use terhub::agent::now_unix;
     let mut app = app_with_panes();
     app.config.idle_warn_style = "bold red".to_string();
-    let now = terhub::agent::now_unix();
+    let now = now_unix();
     app.agents
         .insert("%1".to_string(), idle_record("%1", "alpha", 7 * 3600, now));
     app.agents
@@ -453,7 +453,7 @@ fn agent_color_and_idle_warn_reach_cells() {
         .agent_styles
         .insert("pi".to_string(), "red".to_string());
     app.config.idle_warn_style = "bold red".to_string();
-    let now = terhub::agent::now_unix();
+    let now = now_unix();
     app.panes[0].activity = now - 3600;
     app.refresh_filtered();
     app.agents.insert(
@@ -510,7 +510,7 @@ fn columns_carry_semantic_styles_not_terminal_default() {
     app.config.theme = "dark".to_string();
     app.agents.insert(
         "%1".to_string(),
-        idle_record("%1", "alpha", 60, terhub::agent::now_unix()),
+        idle_record("%1", "alpha", 60, now_unix()),
     );
     // Handles group with their agent (same hash colour, not dim).
     app.agents.get_mut("%1").unwrap().handle = "@pi-a".to_string();
@@ -547,7 +547,7 @@ fn done_state_renders_in_dim_green_check() {
     let mut app = app_with_panes();
     app.config.theme = "dark".to_string();
     // A `Done` pane shares a record with Idle, but pinned to Done.
-    let now = terhub::agent::now_unix();
+    let now = now_unix();
     app.agents.insert(
         "%1".to_string(),
         AgentRecord {
@@ -808,7 +808,7 @@ fn footer_hints_match_navigation() {
 fn preview_title_shows_agent_context() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
-    let now = terhub::agent::now_unix();
+    let now = now_unix();
     app.agents.insert(
         "%1".to_string(),
         AgentRecord {
@@ -851,7 +851,7 @@ fn preview_title_shows_agent_context() {
 fn preview_title_shows_model_and_ctx_strip() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
-    let now = terhub::agent::now_unix();
+    let now = now_unix();
     app.agents.insert(
         "%1".to_string(),
         AgentRecord {
@@ -1080,26 +1080,6 @@ fn settings_filters_section_lists_saved_names() {
 /// is never silent. Four states — no filter, search only, exclusion
 /// only, both at once — each with its own label, so the label always
 /// names what is actually hiding rows.
-
-#[test]
-fn zz_probe_colors() {
-    let mut app = app_with_panes();
-    app.config.theme = "dark".to_string();
-    for (id, h, st) in [("%1","@pi-wez-14",0),("%2","@pi-wez-18",1),("%3","@pi-wez-1",2)] {
-        let mut r = idle_record(id, "wez", 60, terhub::agent::now_unix());
-        r.handle = h.to_string();
-        app.agents.insert(id.to_string(), r);
-    }
-    let grid = render_grid(&mut app, 140, 12);
-    let text: Vec<String> = grid.iter().map(|row| row.iter().map(|(s,_,_)| s.as_str()).collect()).collect();
-    let hdr = text.iter().position(|l| l.contains("Agent")).unwrap();
-    for col in ["pi", "@pi-wez-14", "@pi-wez-18", "@pi-wez-1"] {
-        let row = text.iter().position(|l| l.contains(col)).unwrap();
-        let c = text[row][..text[row].find(col).unwrap()].chars().count();
-        println!("PROBE {:<12} fg={:?}", col, grid[row][c].1);
-    }
-}
-
 #[test]
 fn filter_active_indicator_covers_every_filter_state() {
     const BLOCK: char = '\u{25fc}';
