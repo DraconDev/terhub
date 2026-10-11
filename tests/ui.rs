@@ -1383,50 +1383,6 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
 }
 
 
-/// Comfortable density breathes when the table can afford it: the column
-/// gap doubles once the table is wide, and stays tight below that so no
-/// cell is spent on air. The Pane column is fixed-width, so the gap
-/// between the `Pane` and `Session` header words measures spacing alone.
-
-#[test]
-fn clock_cluster_keeps_air_inside_its_own_cells() {
-    // The three clocks (For/Turn/Idle) share units and sit adjacent, so
-    // without separation they read as one number. A global spacing bump
-    // would cost ~12 cells a row and break the "long commands fit at
-    // 195" guarantee — instead each clock keeps one trailing cell of air
-    // inside its own fixed-width column, which already carries the slack.
-    // Net width cost: zero; `header_hits_align_with_labels` still passes
-    // unmodified because hit areas do not move.
-    let mut app = app_with_panes();
-    let lines = render_lines(&mut app, 150, 8);
-    let hdr = lines
-        .iter()
-        .find(|l| l.starts_with('\u{2502}') && l.contains("For"))
-        .expect("table header missing");
-    // Distance from each clock's last letter to the next word: the
-    // trailing in-cell pad plus column spacing, with room left over for
-    // a sort arrow (which is why this counts to the next word, not to
-    // the next non-space).
-    for (label, next) in [("For", "Turn"), ("Turn", "Idle"), ("Idle", "Summary")] {
-        let dist = hdr.find(next).unwrap()
-            - (hdr.find(label).unwrap() + label.len());
-        assert!(
-            dist >= 3,
-            "{label} has no air before {next} (gap {dist}):\n{hdr}"
-        );
-    }
-    // And the guarantee that motivated the in-cell approach: long content
-    // still fits at the width the layout suite pins.
-    let mut app = app_with(&["alpha"]);
-    app.panes = vec![pane("%1", "alpha", "editor", "muse-bin-1.4.2-R4684.1")];
-    app.refresh_filtered();
-    let text = render_lines(&mut app, 195, 8).join("\n");
-    assert!(
-        text.contains("muse-bin-1.4.2-R4684.1"),
-        "clock air cost content:\n{text}"
-    );
-}
-
 #[test]
 fn confirm_modal_renders() {
     let mut app = app_with(&["alpha"]);

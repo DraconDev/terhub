@@ -1229,9 +1229,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 ),
                 Cell::from(state).style(state_style),
                 Cell::from(src).style(src_style),
-                Cell::from(format!("{age} ")).style(pal.dim),
-                Cell::from(format!("{turn} ")).style(pal.dim),
-                Cell::from(format!("{act} ")).style(if act_warn { warn_style } else { pal.dim }),
+                Cell::from(age).style(pal.dim),
+                Cell::from(turn).style(pal.dim),
+                Cell::from(act).style(if act_warn { warn_style } else { pal.dim }),
             ]);
             // Optional activity sparkline: 6 wide cells, rightmost
             // freshest, height rises with bytes/tick. Only when the
@@ -1274,11 +1274,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     }
     headers.extend(
         [
-            "Window", "Cmd", "Dir", "Agent", "Handle", "State", "Src",
-            // The three clocks read as one block unless each keeps a cell
-            // of trailing air; the Length-6 columns have the slack, so
-            // this costs no content. (The sort arrow appends after it.)
-            "For ", "Turn ", "Idle ",
+            "Window", "Cmd", "Dir", "Agent", "Handle", "State", "Src", "For", "Turn", "Idle",
         ]
         .map(str::to_string),
     );
@@ -1328,11 +1324,6 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });
     }
-    // Column gap stays 1: a global 2 costs ~12 cells a row, and the
-    // layout suite pins long commands fitting at 195 — air must not
-    // cost content. The clock cluster (For/Turn/Idle) gets its air
-    // inside its own cells instead (see below): same relief, zero net
-    // width, because those fixed columns already carry slack.
     let spacing = if compact { 0 } else { 1 };
     // Header hit cells: the same Layout split Table uses for its columns.
     let hits: Vec<HeaderHit> = Layout::horizontal(widths.clone())
