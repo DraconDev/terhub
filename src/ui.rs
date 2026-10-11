@@ -1,6 +1,6 @@
 //! ratatui rendering for the hub. `render` returns the screen areas occupied by
 //! the session rows and pane rows so the event loop can map mouse clicks.
-use crate::app::{is_quiet_shell, App, FilterLine, Focus, Mode, SortKey};
+use crate::app::{is_quiet_shell, App, Focus, Mode, SortKey};
 use crate::tmux::Pane;
 use ansi_to_tui::IntoText;
 use ratatui::{
@@ -996,12 +996,6 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !app.filter.is_empty() {
         title.push_str(&format!(" · search: {}", truncate(&app.filter, 24)));
     }
-    // Two-line prompt: when the filter dialog is open, hint that
-    // Tab moves between the include and exclude lines so the user
-    // doesn't discover the feature by accident.
-    if matches!(app.mode, Mode::PromptFilter) {
-        title.push_str(" · Tab: switch include/exclude");
-    }
     if app.hidden_quiet > 0 {
         title.push_str(&format!(" · hiding {}", app.hidden_quiet));
     }
@@ -1725,30 +1719,25 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
             Some("Name: ".len()),
         ),
         Mode::PromptFilter => {
-            // Two-line prompt: the active line is on top, the
-            // parked line is on the bottom. The label of each
-            // row names its semantic role (Text: for include,
-            // Hide: for exclude), not the row order. Tab
-            // toggles; the cursor follows the active line (see
-            // the renderer's `active_row` math).
-            let include_label = "Text: ";
-            let exclude_label = "Hide: ";
-            let (active_label, other_label) = match app.filter_line {
-                FilterLine::Include => (include_label, exclude_label),
-                FilterLine::Exclude => (exclude_label, include_label),
-            };
-            let body = format!(
-                "{}{}\n{}{}",
-                active_label, app.input, other_label, app.filter_other
-            );
-            // The prefix is the cursor's x within its own row;
-            // the row itself is set by `active_row` in the
-            // renderer, so no newline compensation here.
-            let prefix = Some(active_label.len());
+            // The standing editor wears exclusion chrome so it never
+            // reads as a search: `Hide:` plus a pre-filled `!`. The
+            // live prompt is a plain Text: with no pre-fill. Both
+            // are single-line — the new standing model lets the user
+            // type space-separated tokens (each becomes an exclude
+            // in the NOT-OR sense), but the prompt itself is one
+            // line.
             if app.editing_standing {
-                (" Standing filter ".to_string(), body, prefix)
+                (
+                    " Exclude filter ".to_string(),
+                    "Hide: ".to_string() + &app.input,
+                    Some("Hide: ".len()),
+                )
             } else {
-                (" Filter ".to_string(), body, prefix)
+                (
+                    " Filter ".to_string(),
+                    "Text: ".to_string() + &app.input,
+                    Some("Text: ".len()),
+                )
             }
         }
         Mode::PromptSpawn { profile } => {
@@ -1811,7 +1800,7 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         Mode::Hosts => return,
         Mode::Normal | Mode::Settings => return,
     };
-    let popup = centered(area, 60, 6);
+    let popup = centered(area, 60, 5);
     frame.render_widget(Clear, popup);
     let block = Block::bordered()
         .title(Line::from(heading).style(pal.title))

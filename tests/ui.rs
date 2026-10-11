@@ -980,21 +980,18 @@ fn filter_prompt_renders_text() {
 }
 
 #[test]
-fn standing_prompt_renders_two_line_chrome() {
-    // The standing editor opens the two-line prompt: the heading
-    // names the section, both lines render with their labels,
-    // and the exclude line is the active one so the cursor sits
-    // on it. Seed the values BEFORE opening so the prompt's
-    // initial snapshot picks them up.
+fn standing_prompt_renders_exclusion_chrome() {
+    // The standing editor wears exclusion chrome so it never
+    // reads as a search: `Hide:` plus a pre-filled `!`. The
+    // editor accepts space-separated tokens (each becomes a
+    // NOT-OR exclude); the prompt itself is one line.
     let mut app = app_with(&["alpha"]);
-    app.exclude = "zsh".to_string();
-    app.filter = "claude".to_string();
     app.open_standing_editor();
     let lines = render_lines(&mut app, 100, 12);
     let text = lines.join("\n");
-    assert!(text.contains("Standing filter"), "missing heading:\n{text}");
-    assert!(text.contains("Text: claude"), "missing include line:\n{text}");
-    assert!(text.contains("Hide: zsh"), "missing exclude line:\n{text}");
+    assert!(text.contains("Exclude filter"), "missing heading:\n{text}");
+    assert!(text.contains("Hide: !"), "missing bang prefix:\n{text}");
+    assert!(!text.contains("Text: "), "search chrome leaked:\n{text}");
 }
 
 #[test]

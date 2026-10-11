@@ -38,15 +38,6 @@ pub enum Mode {
     Settings,
 }
 
-/// Which line of the two-line filter prompt the user is editing.
-/// Tab flips between them; the other line is held in
-/// `filter_other` so its cursor survives the swap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FilterLine {
-    Include,
-    Exclude,
-}
-
 /// One settings-popup row: a section header or an actionable item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingRow {
@@ -508,65 +499,24 @@ pub fn expand_command(
 }
 
 /// Case-insensitive substring match across every text column. `q` must
-/// already be lowercased. A leading `!` on an include token negates:
-/// `!zsh` keeps every row whose columns do NOT contain `zsh`. The
-/// `includes` and `excludes` are independent AND clauses, so the
-/// include list is OR-combined and the exclude list is NOT-OR (any
-/// hit hides the row). Empty tokens are skipped; a lone `!` matches
-/// every row.
-/// include list: row passes if ANY non-`!` include token matches
-/// AND no `!`-prefixed token matches (the negated-include form
-/// lets the user fold a one-off exclusion into the include line
-/// without leaving it). Empty include list = no include
-/// constraint. Exclude list: row passes only if it matches NONE
-/// of the tokens (NOT-OR). The two lists are then AND-combined.
-/// Tokens are already lowercased and split on whitespace at the
-/// call site; this function is the AND-of-(OR-include,
-/// NOT-OR-exclude) classifier.
-fn pane_matches(
-    p: &Pane,
-    rec: Option<&AgentRecord>,
-    includes: &[&str],
-    excludes: &[&str],
-) -> bool {
-    // (a) Split includes into positive and `!`-negated; an
-    // include-only-no-positives line is "no include constraint"
-    // and passes for free. Negated-includes (the user typed
-    // `!zsh` to hide zsh in a single-token query) still fire.
-    let mut has_positive = false;
-    let mut positive_match = false;
-    for tok in includes {
-        match tok.strip_prefix('!') {
-            Some("") => continue,
-            Some(rest) => {
-                if pane_match_any(p, rec, rest) {
-                    return false;
-                }
-            }
-            None => {
-                if !tok.is_empty() {
-                    has_positive = true;
-                    if pane_match_any(p, rec, tok) {
-                        positive_match = true;
-                    }
-                }
-            }
-        }
+/// already be lowercased. A leading `!` negates: `!zsh` keeps every
+/// row whose columns do NOT contain `zsh` (a lone `!` matches
+/// everything).
+fn pane_matches(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
+    let (neg, q) = match q.strip_prefix('!') {
+        Some(rest) => (true, rest),
+        None => (false, q),
+    };
+    if neg && q.is_empty() {
+        return true;
     }
-    if has_positive && !positive_match {
-        return false;
-    }
-    for tok in excludes {
-        if !tok.is_empty() && pane_match_any(p, rec, tok) {
-            return false;
-        }
-    }
-    true
+    let m = pane_match_any(p, rec, q);
+    if neg { !m } else { m }
 }
 
 /// True when `q` (already lowercased) appears in any of the visible
-/// columns of the row. Shared between the include and exclude
-/// clauses of `pane_matches`.
+/// columns of the row. Shared between `pane_matches` and the multi-
+/// token standing filter helper.
 fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
     let hit = |s: &str| s.to_lowercase().contains(q);
     hit(&p.id)
@@ -578,49 +528,16 @@ fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
         || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary))
 }
 
-/// Single-clause version of `pane_matches`: returns true when a row
-/// passes the given include-or-exclude clause in isolation. Used by
-/// the settings page to partition "hidden by" rows by which clause
-/// fired (the combined predicate would double-count). `is_include`
-/// selects between OR-of-includes (true) and NOT-OR-of-excludes
-/// (false); each token is still a single substring, and `!`-prefixed
-/// include tokens are respected.
-fn pane_clause(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str], is_include: bool) -> bool {
-    if tokens.is_empty() {
-        return true;
-    }
-    if is_include {
-        // OR-of-positives / hidden-by-any-`!`-token, mirroring
-        // `pane_matches` so the legend's single-clause view
-        // matches the combined predicate.
-        let mut has_positive = false;
-        let mut positive_match = false;
-        for tok in tokens {
-            match tok.strip_prefix('!') {
-                Some("") => continue,
-                Some(rest) => {
-                    if pane_match_any(p, rec, rest) {
-                        return false;
-                    }
-                }
-                None => {
-                    if !tok.is_empty() {
-                        has_positive = true;
-                        if pane_match_any(p, rec, tok) {
-                            positive_match = true;
-                        }
-                    }
-                }
-            }
-        }
-        if has_positive && !positive_match {
+/// Multi-token NOT-OR for the standing filter: a row is kept only
+/// if it matches NONE of the (lowercased) tokens. A leading `!` on
+/// any token is stripped before matching so the prompt's
+/// pre-filled `!` and the user-typed `!` are both treated as a
+/// bare exclude. Empty tokens are skipped.
+fn pane_matches_excludes(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str]) -> bool {
+    for tok in tokens {
+        let stripped = tok.trim().trim_start_matches('!');
+        if !stripped.is_empty() && pane_match_any(p, rec, stripped) {
             return false;
-        }
-    } else {
-        for tok in tokens {
-            if !tok.is_empty() && pane_match_any(p, rec, tok) {
-                return false;
-            }
         }
     }
     true
@@ -700,20 +617,6 @@ pub struct App {
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
-    /// Snapshot of the OTHER line (the one not active when the
-    /// prompt opened) for Esc to restore too. The two-line prompt
-    /// makes a single-line restore silently destructive.
-    filter_before_edit_other: String,
-    /// Draft of the OTHER line (the one not being edited) while the
-    /// filter prompt is open. Tab swaps this with `input`/`cursor` so
-    /// each line keeps its own cursor as the user flips between
-    /// include and exclude. Both snapshots are restored on Esc.
-    pub filter_other: String,
-    pub cursor_other: usize,
-    /// Which line the filter prompt is currently editing. `Include`
-    /// edits `filter` (live find); `Exclude` edits `exclude` (the
-    /// standing exclusion). Tab toggles.
-    pub filter_line: FilterLine,
     /// Hide unclaimed panes quiet past [`QUIET_SHELL_SECS`] (`h` toggle).
     pub hide_quiet_shells: bool,
     /// Rows the toggle is currently hiding (0 when off), for the title.
@@ -828,10 +731,6 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
-            filter_before_edit_other: String::new(),
-            filter_other: String::new(),
-            cursor_other: 0,
-            filter_line: FilterLine::Include,
             view_changes: crate::config::ViewChanges::default(),
             hide_quiet_shells,
             hidden_quiet: 0,
@@ -1440,15 +1339,33 @@ impl App {
                 .cloned()
                 .collect(),
         };
-        if !self.exclude.is_empty() || !self.filter.is_empty() {
-            let include_q = self.filter.to_lowercase();
-            let exclude_q = self.exclude.to_lowercase();
-            let includes: Vec<&str> = include_q.split_whitespace().collect();
-            let excludes: Vec<&str> = exclude_q.split_whitespace().collect();
+        if !self.exclude.is_empty() {
+            // Standing filter: multi-token, NOT-OR combined. Each
+            // token's leading `!` is stripped (the on-disk form
+            // has one, the prompt's live re-filter strips it on
+            // every keystroke). `pane_matches_excludes` returns
+            // true when the row is kept.
+            let tokens: Vec<String> = self
+                .exclude
+                .split_whitespace()
+                .map(|t| t.to_lowercase())
+                .collect();
+            let token_refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
             let agents = &self.agents;
             self.filtered.retain(|p| {
-                pane_matches(p, agents.get(&p.id), &includes, &excludes)
+                pane_matches_excludes(p, agents.get(&p.id), &token_refs)
             });
+        }
+        if !self.filter.is_empty() {
+            // Live find: single substring (the OLD model), with
+            // a `!` prefix for negation. NOT tokenized — the
+            // user-typed `claude waiting` is a single substring
+            // that has to appear in some column, exactly like
+            // before this pass.
+            let q = self.filter.to_lowercase();
+            let agents = &self.agents;
+            self.filtered
+                .retain(|p| pane_matches(p, agents.get(&p.id), &q));
         }
         self.hidden_quiet = 0;
         if self.hide_quiet_shells {
@@ -2341,24 +2258,17 @@ impl App {
             return None;
         }
         match key.code {
-            KeyCode::Tab => {
-                // Two-line prompt: Tab swaps the active line and
-                // its cursor with the other one. Type-to-filter
-                // re-fires against whichever line is now active.
-                self.swap_filter_line();
-                self.apply_live_filter();
-            }
-            KeyCode::BackTab => {
-                self.swap_filter_line();
-                self.apply_live_filter();
-            }
             KeyCode::Esc => {
-                // Restore both lines to what they were on open.
-                self.filter.clone_from(&self.filter_before_edit);
-                self.exclude.clone_from(&self.filter_before_edit_other);
+                if self.editing_standing {
+                    self.exclude.clone_from(&self.filter_before_edit);
+                } else {
+                    self.filter.clone_from(&self.filter_before_edit);
+                }
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.follow_preview(tmux);
+                // Report before clearing the flag: the label names
+                // which query survived (search vs standing draft).
                 self.report_kept_query();
                 if self.editing_standing {
                     self.editing_standing = false;
@@ -2366,27 +2276,14 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                // Apply whichever line is active into its target
-                // field; the other line is already live (typing
-                // updates its corresponding field on every
-                // keystroke via apply_live_filter).
-                let active_q = self.input.trim().to_string();
+                let q = self.input.trim().to_string();
                 if self.editing_standing {
-                    if self.filter_line == FilterLine::Exclude {
-                        // Standing is exclusion-only: store the
-                        // raw tokens; `pane_matches` already
-                        // treats this field as a list of NOT-OR
-                        // excludes, so a leading `!` is
-                        // redundant. Strip it so hand-edited
-                        // configs (`!zsh`) and prompt output
-                        // both land in the same shape.
-                        self.exclude = active_q
-                            .trim_start_matches('!')
-                            .trim()
-                            .to_string();
-                    } else {
-                        self.filter = active_q;
-                    }
+                    // Standing is exclusion-only: store the raw
+                    // tokens (NOT-OR combined, leading `!`
+                    // stripped). The on-disk form re-adds the `!`
+                    // in `persist_view` for back-compat with old
+                    // configs.
+                    self.exclude = q.trim_start_matches('!').trim().to_string();
                     self.persist_filter();
                     self.editing_standing = false;
                     self.cancel_modal();
@@ -2397,10 +2294,7 @@ impl App {
                         format!("standing filter saved: {}", self.exclude)
                     });
                 } else {
-                    // Live prompt: only the include line is
-                    // session-scoped; the exclude line is
-                    // already in `app.exclude` from live typing.
-                    self.filter = active_q;
+                    self.filter = q;
                     self.cancel_modal();
                     if !self.filter.is_empty() {
                         self.set_status(format!(
@@ -2913,20 +2807,18 @@ impl App {
         // search. Read-only rows (never selectable, never actionable).
         let q_ex = self.exclude.to_lowercase();
         let q_find = self.filter.to_lowercase();
-        let exclude_tokens: Vec<&str> = q_ex.split_whitespace().collect();
-        let include_tokens: Vec<&str> = q_find.split_whitespace().collect();
         let mut hidden_by_exclude: Vec<&Pane> = Vec::new();
         let mut hidden_by_search: Vec<&Pane> = Vec::new();
         for p in &self.panes {
             let rec = self.agents.get(&p.id);
             // The settings page partitions by which single clause
             // hid the row, not by the combined predicate; the
-            // combined predicate would double-count when both fire.
-            if !self.exclude.is_empty() && !pane_clause(p, rec, &exclude_tokens, false) {
+            // combined predicate would double-count when both
+            // fire. The exclude clause is multi-token (NOT-OR);
+            // the search clause is the OLD single-substring form.
+            if !self.exclude.is_empty() && !pane_matches_excludes(p, rec, &[q_ex.as_str()]) {
                 hidden_by_exclude.push(p);
-            } else if !self.filter.is_empty()
-                && !pane_clause(p, rec, &include_tokens, true)
-            {
+            } else if !self.filter.is_empty() && !pane_matches(p, rec, &q_find) {
                 hidden_by_search.push(p);
             }
         }
@@ -3349,16 +3241,9 @@ impl App {
     pub fn open_filter(&mut self) {
         self.mode = Mode::PromptFilter;
         self.editing_standing = false;
-        // Two-line prompt: both lines seed with the live values
-        // and Tab swaps between them. Both snapshots are taken so
-        // Esc restores each line to what it was on open.
         self.filter_before_edit.clone_from(&self.filter);
-        self.filter_before_edit_other.clone_from(&self.exclude);
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
-        self.filter_other.clone_from(&self.exclude);
-        self.cursor_other = self.filter_other.chars().count();
-        self.filter_line = FilterLine::Include;
     }
 
     /// Mark the sort pair as changed (header-click path lives in the
@@ -3370,25 +3255,22 @@ impl App {
 
     /// Open the prompt editing the standing exclusion (settings row):
     /// Enter saves it to `[ui] filter`, Esc restores without saving.
-    /// The input starts with the `!` already in place so exclusion is
-    /// structural — what you type is what gets hidden, never selected.
+    /// The input starts with `!` already in place so the user is
+    /// typing into an exclusion query. If the existing value is
+    /// already prefixed with `!` (legacy hand-typed configs or a
+    /// re-opened prompt after the load-time strip), the prompt
+    /// preserves the single-bang form instead of doubling.
     pub fn open_standing_editor(&mut self) {
         self.mode = Mode::PromptFilter;
         self.editing_standing = true;
-        // The new model stores bare tokens on the exclude line
-        // (the "(excludes)" row label tells the user what the
-        // line is for). Pre-filling `!` would re-introduce the
-        // old single-substring form.
         self.filter_before_edit.clone_from(&self.exclude);
-        self.filter_before_edit_other.clone_from(&self.filter);
-        self.input.clone_from(&self.exclude);
+        let stripped = self.exclude.trim().trim_start_matches('!').trim();
+        if stripped.is_empty() {
+            self.input = "!".to_string();
+        } else {
+            self.input = format!("!{stripped}");
+        }
         self.cursor = self.input.chars().count();
-        // The standing editor also surfaces the include line so
-        // a power user can fold an include into the saved view
-        // too; both lines save on Enter.
-        self.filter_other.clone_from(&self.filter);
-        self.cursor_other = self.filter_other.chars().count();
-        self.filter_line = FilterLine::Exclude;
     }
 
     /// Printable keystroke with no Ctrl/Alt held: feeds type-to-filter.
@@ -3446,45 +3328,19 @@ impl App {
         }
     }
 
-    /// Live re-filter while typing; restarts at the top row. The
-    /// two-line prompt makes the dispatch route on
-    /// `self.filter_line` instead of `self.editing_standing`: the
-    /// live prompt's include line writes to `filter`; the
-    /// standing prompt's exclude line writes to `exclude` (with a
-    /// `!` strip on every keystroke so the table never shows the
-    /// un-normalized form).
+    /// Live re-filter while typing; restarts at the top row. Edits
+    /// whichever query the prompt opened for (search or standing).
+    /// The standing draft also drops a leading `!` on every keystroke
+    /// so the table never momentarily shows the un-normalized form.
     fn apply_live_filter(&mut self) {
-        let q = self.input.trim();
         if self.editing_standing {
-            if self.filter_line == FilterLine::Exclude {
-                self.exclude = q.trim_start_matches('!').trim().to_string();
-            } else {
-                self.filter = q.to_string();
-            }
+            self.exclude = self.input.trim().trim_start_matches('!').trim().to_string();
         } else {
-            if self.filter_line == FilterLine::Include {
-                self.filter = q.to_string();
-            } else {
-                self.exclude = q.trim_start_matches('!').trim().to_string();
-            }
+            self.filter = self.input.trim().to_string();
         }
         self.refresh_filtered();
         self.pane_selected = 0;
         self.pane_scroll = 0;
-    }
-
-    /// Two-line prompt helper: swap the active line's text and
-    /// cursor with the other line's, and flip `filter_line` so the
-    /// next keystroke edits the freshly-active line. The other
-    /// line's previous edit is preserved by being parked in
-    /// `filter_other` first.
-    fn swap_filter_line(&mut self) {
-        std::mem::swap(&mut self.input, &mut self.filter_other);
-        std::mem::swap(&mut self.cursor, &mut self.cursor_other);
-        self.filter_line = match self.filter_line {
-            FilterLine::Include => FilterLine::Exclude,
-            FilterLine::Exclude => FilterLine::Include,
-        };
     }
 
     /// Apply the item at popup row `row` (for mouse clicks).
@@ -6252,39 +6108,12 @@ mod tests {
     }
 
     #[test]
-    fn include_line_is_or_combined_across_tokens() {
-        // The new include line: tokens are OR-combined, so a row
-        // survives if it matches ANY token. `claude waiting`
-        // keeps rows mentioning either word.
-        use crate::agent::AgentState;
-        let mut app = app_with_panes();
-        app.agents.insert(
-            "%1".to_string(),
-            record("%1", "claude", AgentState::Waiting, 60),
-        );
-        app.agents.get_mut("%1").unwrap().summary = "approve deploy".to_string();
-        app.agents.insert(
-            "%2".to_string(),
-            record("%2", "codex", AgentState::Working, 5),
-        );
-        app.agents.get_mut("%2").unwrap().summary = "running tests".to_string();
-        app.filter = "claude waiting".to_string();
-        app.refresh_filtered();
-        // %1: matches "claude" (agent) and "waiting" (state); kept.
-        // %2: matches nothing in {claude, waiting}; hidden.
-        assert_eq!(ids(&app), vec!["%1"]);
-        // A second token widens the include set.
-        app.filter = "codex bash".to_string();
-        app.refresh_filtered();
-        // %2: matches "codex" (agent); kept. %1: matches neither; hidden.
-        assert_eq!(ids(&app), vec!["%2"]);
-    }
-
-    #[test]
     fn exclude_line_is_not_or_combined_across_tokens() {
-        // The new exclude line: tokens are NOT-OR combined, so a
-        // row survives only if it matches NONE of the tokens.
-        // `bash npm` keeps rows that mention neither.
+        // The new standing-filter (settings) behavior: tokens are
+        // NOT-OR combined, so a row survives only if it matches
+        // NONE of the tokens. `bash npm` keeps rows that mention
+        // neither. The live `/` filter stays as a single
+        // substring (no tokenize).
         use crate::agent::AgentState;
         let mut app = app_with_panes(); // %1 nvim, %2 bash
         app.agents.insert(
@@ -6305,43 +6134,12 @@ mod tests {
         app.refresh_filtered();
         // %1 matches nvim; %2 matches bash; both hidden.
         assert!(app.filtered.is_empty());
-    }
-
-    #[test]
-    fn include_and_exclude_combine_as_intersect() {
-        // The two lines are independent AND clauses: a row must
-        // pass the include (any-token match) AND pass the
-        // exclude (no-token match).
-        use crate::agent::AgentState;
-        let mut app = app_with_panes();
-        app.agents.insert(
-            "%1".to_string(),
-            record("%1", "claude", AgentState::Waiting, 60),
-        );
-        // %1 (claude, nvim), %2 (bash by default). The default
-        // %2 has command="bash" so exclude "bash" would hide it;
-        // use a different exclude set so the test exercises the
-        // include-or-exclude interaction.
-        app.agents.insert(
-            "%2".to_string(),
-            record("%2", "codex", AgentState::Working, 5),
-        );
-        // Include: rows mentioning claude OR codex.
-        // Exclude: rows NOT mentioning npm OR vue.
-        // %1: matches include (claude) and not-exclude; kept.
-        // %2: matches include (codex) and not-exclude; kept.
-        app.filter = "claude codex".to_string();
-        app.exclude = "npm vue".to_string();
+        // `!`-prefix on a token is stripped (the on-disk form
+        // and the prompt pre-fill both have one), so `!bash` and
+        // `bash` are equivalent.
+        app.exclude = "!bash".to_string();
         app.refresh_filtered();
-        assert_eq!(ids(&app), vec!["%1", "%2"]);
-        // Now exclude codex too: %2 must go (its agent is codex).
-        app.exclude = "npm vue codex".to_string();
-        app.refresh_filtered();
-        assert_eq!(ids(&app), vec!["%1"]);
-        // And add a third include token to widen the include set
-        // back; %2 still excluded.
-        app.filter = "claude codex anything".to_string();
-        app.refresh_filtered();
+        // %2 matches bash; hidden. %1 doesn't; kept.
         assert_eq!(ids(&app), vec!["%1"]);
     }
 
@@ -6758,20 +6556,22 @@ mod tests {
     #[test]
     fn standing_editor_prefills_existing_and_filters_live() {
         // The standing editor seeds its input from the existing
-        // exclude line (no leading `!` under the new bare-token
-        // model — the "(excludes)" label on the row already tells
-        // the user what this line is for). Typing bare text hides
-        // live; Enter keeps the live form.
+        // exclude line, prepending `!` so the user is always
+        // typing into an exclude query. Typing into the prompt
+        // hides rows live; Enter keeps the bare-token form (the
+        // on-disk file gets a `!` re-added for back-compat).
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = app_with_panes(); // %1 nvim, %2 bash
         let tmux = Tmux::new().unwrap();
         app.open_standing_editor();
-        assert_eq!(app.input, "");
+        // Empty exclusion: input pre-fills with `!`.
+        assert_eq!(app.input, "!");
         assert_eq!(app.exclude, "");
+        // Typing appends after the pre-filled bang.
         for c in "bash".chars() {
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
         }
-        assert_eq!(app.input, "bash");
+        assert_eq!(app.input, "!bash");
         assert_eq!(app.exclude, "bash");
         assert_eq!(ids(&app), vec!["%1"]);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
@@ -6943,53 +6743,6 @@ mod tests {
         app.apply_sort();
         assert_eq!(app.filtered[0].id, "%2");
         assert_eq!(app.filtered[1].id, "%1");
-    }
-
-    #[test]
-    fn tab_in_filter_prompt_swaps_active_line() {
-        // The two-line filter prompt: Tab flips the active line
-        // so the user can edit either the include or the exclude
-        // without leaving the prompt. Each line keeps its own
-        // cursor across the swap.
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        let mut app = app_with_panes(); // %1 nvim, %2 bash
-        let tmux = Tmux::new().unwrap();
-        app.open_filter();
-        // Defaults: include active, both lines empty.
-        assert_eq!(app.filter_line, FilterLine::Include);
-        assert_eq!(app.input, "");
-        assert_eq!(app.filter_other, "");
-        // Type into the include line.
-        for c in "claude".chars() {
-            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
-        }
-        assert_eq!(app.input, "claude");
-        assert_eq!(app.filter, "claude");
-        // Tab to the exclude line.
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tmux);
-        assert_eq!(app.filter_line, FilterLine::Exclude);
-        // The include text is parked in `filter_other`; the
-        // exclude draft is now in `input`.
-        assert_eq!(app.filter_other, "claude");
-        assert_eq!(app.input, "");
-        // Type into the exclude line.
-        for c in "bash".chars() {
-            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
-        }
-        assert_eq!(app.input, "bash");
-        assert_eq!(app.exclude, "bash");
-        // The include line is still preserved in `filter_other`.
-        assert_eq!(app.filter_other, "claude");
-        assert_eq!(app.filter, "claude");
-        // Tab back to include.
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tmux);
-        assert_eq!(app.filter_line, FilterLine::Include);
-        assert_eq!(app.input, "claude");
-        assert_eq!(app.filter_other, "bash");
-        // Esc restores both lines to what they were on open.
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &tmux);
-        assert_eq!(app.filter, "");
-        assert_eq!(app.exclude, "");
     }
 
     #[test]
