@@ -1289,6 +1289,9 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
         let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("filter = \"{esc}\""));
     }
+    if !seen[6] && let Some(f) = v.saved_filters {
+        missing_ui.push(format!("saved_filters = [{}]", encode_saved_filters(f)));
+    }
     if !seen[6] && let Some(s) = v.sort {
         let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("sort = \"{esc}\""));
