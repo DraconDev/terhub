@@ -1214,7 +1214,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.theme {
                 Some(t) => {
                     out.push(format!("theme = \"{t}\"{}", trailing_comment(line)));
-                    seen[0] = true;
+                    seen[THEME] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1222,7 +1222,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.density {
                 Some(d) => {
                     out.push(format!("density = \"{d}\"{}", trailing_comment(line)));
-                    seen[1] = true;
+                    seen[DENSITY] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1230,7 +1230,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.highlight {
                 Some(h) => {
                     out.push(format!("highlight_attached = {h}{}", trailing_comment(line)));
-                    seen[2] = true;
+                    seen[HIGHLIGHT] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1238,7 +1238,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.mru_tabs {
                 Some(m) => {
                     out.push(format!("mru_tabs = {m}{}", trailing_comment(line)));
-                    seen[4] = true;
+                    seen[MRU_TABS] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1250,7 +1250,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                 Some(f) => {
                     let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
                     out.push(format!("filter = \"{esc}\"{}", trailing_comment(line)));
-                    seen[5] = true;
+                    seen[FILTER] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1281,7 +1281,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.sort_desc {
                 Some(d) => {
                     out.push(format!("sort_desc = {d}{}", trailing_comment(line)));
-                    seen[7] = true;
+                    seen[SORT_DESC] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1289,7 +1289,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.hide_shells {
                 Some(h) => {
                     out.push(format!("hide_shells = {h}{}", trailing_comment(line)));
-                    seen[8] = true;
+                    seen[HIDE_SHELLS] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1297,7 +1297,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             match v.notifications {
                 Some(e) => {
                     out.push(format!("enabled = {e}{}", trailing_comment(line)));
-                    seen[3] = true;
+                    seen[NOTIF_ENABLED] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1308,33 +1308,33 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     // Insert whatever the file lacked directly under its section header
     // (appending at EOF would land it in the wrong section).
     let mut missing_ui = Vec::new();
-    if !seen[0] && let Some(t) = v.theme {
+    if !seen[THEME] && let Some(t) = v.theme {
         missing_ui.push(format!("theme = \"{t}\""));
     }
-    if !seen[1] && let Some(d) = v.density {
+    if !seen[DENSITY] && let Some(d) = v.density {
         missing_ui.push(format!("density = \"{d}\""));
     }
-    if !seen[2] && let Some(h) = v.highlight {
+    if !seen[HIGHLIGHT] && let Some(h) = v.highlight {
         missing_ui.push(format!("highlight_attached = {h}"));
     }
-    if !seen[4] && let Some(m) = v.mru_tabs {
+    if !seen[MRU_TABS] && let Some(m) = v.mru_tabs {
         missing_ui.push(format!("mru_tabs = {m}"));
     }
-    if !seen[5] && let Some(f) = v.filter {
+    if !seen[FILTER] && let Some(f) = v.filter {
         let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("filter = \"{esc}\""));
     }
-    if !seen[6] && let Some(f) = v.saved_filters {
+    if !seen[SAVED_FILTERS] && let Some(f) = v.saved_filters {
         missing_ui.push(format!("saved_filters = [{}]", encode_saved_filters(f)));
     }
-    if !seen[6] && let Some(s) = v.sort {
+    if !seen[SORT] && let Some(s) = v.sort {
         let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("sort = \"{esc}\""));
     }
-    if !seen[7] && let Some(d) = v.sort_desc {
+    if !seen[SORT_DESC] && let Some(d) = v.sort_desc {
         missing_ui.push(format!("sort_desc = {d}"));
     }
-    if !seen[8] && let Some(h) = v.hide_shells {
+    if !seen[HIDE_SHELLS] && let Some(h) = v.hide_shells {
         missing_ui.push(format!("hide_shells = {h}"));
     }
     let mut ui_inserted = 0;
@@ -1352,7 +1352,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             }
         }
     }
-    if !seen[3] && let Some(e) = v.notifications {
+    if !seen[NOTIF_ENABLED] && let Some(e) = v.notifications {
         match notif_at {
             Some(i) => {
                 let shift = if ui_at.is_some_and(|u| u < i) {
