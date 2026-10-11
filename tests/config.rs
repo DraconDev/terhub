@@ -83,3 +83,62 @@ fn style_section_parses_and_validates() {
     );
     std::fs::remove_file(path).ok();
 }
+
+/// A config written before named filters existed must still load: the
+/// key is optional, and the `[ui] filter` line keeps its standing-
+/// exclusion meaning untouched.
+#[test]
+fn legacy_config_without_saved_filters_still_loads() {
+    use std::path::PathBuf;
+    let path = std::env::temp_dir().join(format!(
+        "terhub-legacy-savedfilters-{}.toml",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "[ui]\ntheme = \"dark\"\nfilter = \"!zsh\"\nsort = \"Pane\"\n",
+    )
+    .unwrap();
+    let (cfg, problems) = terhub::config::load_config_report(Some(path.clone()));
+    assert!(problems.is_empty(), "legacy config reported problems: {problems:?}");
+    assert!(cfg.saved_filters.is_empty(), "stray saved filters");
+    // The standing line survives verbatim; App strips one `!`.
+    assert_eq!(cfg.filter, "!zsh");
+    std::fs::remove_file(&path).ok();
+}
+
+/// Writing saved filters leaves the `[ui] filter` line exactly as the
+/// user (or another instance) left it: the surgical writer only touches
+/// keys the caller marked changed.
+#[test]
+fn saving_saved_filters_leaves_the_filter_line_alone() {
+    use terhub::config::ViewChanges;
+    let path = std::env::temp_dir().join(format!(
+        "terhub-savedfilter-write-{}.toml",
+        std::process::id()
+    ));
+    std::fs::write(&path, "[ui]\ntheme = \"dark\"\nfilter = \"!zsh\"\n").unwrap();
+    let mut cfg = AppConfig::default();
+    cfg.filter = "!zsh".to_string();
+    cfg.saved_filters = vec![terhub::config::SavedFilter {
+        name: "work".to_string(),
+        query: "vim npm".to_string(),
+    }];
+    let mut changes = ViewChanges::default();
+    changes.saved_filters = true;
+    let patch = cfg.ui_persist_changes(&changes);
+    terhub::config::persist_ui_settings_to(&path, &patch).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("filter = \"!zsh\""), "filter line rewritten:\n{text}");
+    assert!(
+        text.contains("saved_filters = [{name = \"work\", query = \"vim npm\"}]"),
+        "saved filters missing:\n{text}"
+    );
+    // And the file still parses, with both halves intact.
+    let (back, problems) = terhub::config::load_config_report(Some(path.clone()));
+    assert!(problems.is_empty(), "reload problems: {problems:?}");
+    assert_eq!(back.filter, "!zsh");
+    assert_eq!(back.saved_filters.len(), 1);
+    assert_eq!(back.saved_filters[0].query, "vim npm");
+    std::fs::remove_file(&path).ok();
+}
