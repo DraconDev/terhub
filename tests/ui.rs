@@ -1130,7 +1130,8 @@ fn filter_active_indicator_covers_every_filter_state() {
 }
 
 /// Wide terminals: the chip sits on the title line, right of the title,
-/// inside the same border — one header line, no clipped label.
+/// inside the same border - one header line, nothing clipped, and the
+/// table gives up no rows for it.
 #[test]
 fn filter_active_indicator_rides_the_title_line_on_wide_terminals() {
     const BLOCK: char = '\u{25fc}';
@@ -1138,67 +1139,68 @@ fn filter_active_indicator_rides_the_title_line_on_wide_terminals() {
     app.exclude = "zsh".to_string();
     app.filter = "vim".to_string();
     app.refresh_filtered();
-    let lines = render_lines(&mut app, 120, 12);
-    // The table's top border is the line carrying the title.
-    let line = lines
+    let lines = render_lines(&mut app, 140, 14);
+    let label = format!("{BLOCK} filter: zsh \u{b7} search: vim");
+    let row = lines
         .iter()
-        .find(|l| l.contains("terhub —") && l.contains(BLOCK))
-        .unwrap_or_else(|| panic!("chip did not share the title line:\n{lines:?}"));
+        .position(|l| l.contains(&label))
+        .unwrap_or_else(|| panic!("chip missing or clipped:\n{lines:?}"));
     assert!(
-        line.contains("terhub —"),
-        "title missing from the chip's line:\n{line}"
+        lines[row].contains("terhub \u{2014}"),
+        "chip did not share the title line:\n{lines:?}"
     );
+    // Same border line as the title, so no row above the table is spent.
     assert!(
-        line.contains(&format!("{BLOCK} filter: zsh · search: vim")),
-        "chip label clipped on a wide terminal:\n{line}"
+        lines[row].starts_with('\u{250c}'),
+        "chip is not inside the table border:\n{lines:?}"
     );
-    // Riding the title line costs the table no rows: the header row is
-    // still the second line, directly under the border.
-    let border = lines.iter().position(|l| l.contains(&format!("{BLOCK} filter"))).unwrap();
+    // And the unfiltered layout is untouched: one row fewer spent on
+    // chrome would push the header down.
+    let mut plain = app_with_panes();
+    let plain_lines = render_lines(&mut plain, 140, 14);
     assert_eq!(
-        lines[border + 1],
-        render_lines(&mut { let mut a = app_with_panes(); a.filter = "vim".to_string(); a.refresh_filtered(); a }, 120, 12)[2],
-        "own-row chip unexpectedly stole a row"
+        lines[row + 1],
+        plain_lines[2],
+        "wide chip stole a row from the header"
     );
 }
 
 /// Narrow terminals: the title alone fills the border, so the chip moves
 /// to a header line of its own directly above the table instead of being
-/// clipped mid-label.
+/// clipped mid-label. The label stays whole at every width.
 #[test]
 fn filter_active_indicator_wraps_to_a_second_header_line_when_narrow() {
     const BLOCK: char = '\u{25fc}';
-    for width in [100u16, 80, 60, 44] {
+    for width in [140u16, 120, 100, 80, 60, 44] {
         let mut app = app_with_panes();
         app.exclude = "zsh".to_string();
         app.filter = "vim".to_string();
         app.refresh_filtered();
-        let lines = render_lines(&mut app, width, 12);
-        let label = format!("{BLOCK} filter: zsh · search: vim");
-        let own = lines.iter().position(|l| l.contains(&label));
-        if width >= 100 {
+        let lines = render_lines(&mut app, width, 14);
+        let label = format!("{BLOCK} filter: zsh \u{b7} search: vim");
+        let row = lines
+            .iter()
+            .position(|l| l.contains(&label))
+            .unwrap_or_else(|| panic!("w={width}: chip vanished or clipped:\n{lines:?}"));
+        assert!(
+            lines[row + 1].starts_with('\u{250c}'),
+            "w={width}: chip line is not adjacent to the table:\n{lines:?}"
+        );
+        if width >= 140 {
             assert!(
-                own.is_some() && lines[own.unwrap()].contains("terhub —"),
+                lines[row].contains("terhub \u{2014}"),
                 "w={width}: chip should share the title line:\n{lines:?}"
             );
         } else {
-            let row = own.unwrap_or_else(|| {
-                panic!("w={width}: chip vanished or clipped:\n{lines:?}")
-            });
             assert!(
-                !lines[row].contains("terhub —"),
-                "w={width}: chip should have its own line:\n{lines:?}"
-            );
-            // The table's border follows immediately after.
-            assert!(
-                lines[row + 1].starts_with('\u{250c}'),
-                "w={width}: chip line is not adjacent to the table:\n{lines:?}"
+                !lines[row].contains("terhub \u{2014}"),
+                "w={width}: chip should have wrapped to its own line:\n{lines:?}"
             );
         }
     }
 }
 
-/// The chip is drawn in the semantic palette — the same title ink as the
+/// The chip is drawn in the semantic palette - the same title ink as the
 /// rest of the chrome, so it reads as part of the header rather than a
 /// different widget that happened to appear.
 #[test]
@@ -1208,7 +1210,7 @@ fn filter_active_indicator_uses_the_title_palette() {
     app.filter = "vim".to_string();
     app.refresh_filtered();
     let grid = render_grid(&mut app, 120, 12);
-    // Locate the chip's blank glyph by its own text position.
+    // Locate the chip's block glyph by its own text position.
     let text: Vec<String> = grid
         .iter()
         .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect())
@@ -1217,13 +1219,22 @@ fn filter_active_indicator_uses_the_title_palette() {
         .iter()
         .position(|l| l.contains('\u{25fc}'))
         .expect("chip block glyph not rendered");
-    let col = text[row].find('\u{25fc}').unwrap();
+    // `find` returns a byte index; the grid is indexed by cell, and the
+    // line holds multi-byte glyphs, so count characters.
+    let col = text[row][..text[row].find('\u{25fc}').unwrap()].chars().count();
     let (symbol, fg, _) = grid[row][col].clone();
     assert_eq!(symbol, "\u{25fc}", "off-by-one: not the chip glyph");
     assert_eq!(
         fg,
         terhub::ui::palette("dark").title.fg.unwrap(),
         "chip block left the title palette"
+    );
+    // The label carries the same ink, so the whole chip reads as one.
+    let (_, label_fg, _) = grid[row][col + 1].clone();
+    assert_eq!(
+        label_fg,
+        terhub::ui::palette("dark").title.fg.unwrap(),
+        "chip label left the title palette"
     );
 }
 
