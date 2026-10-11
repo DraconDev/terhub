@@ -6892,10 +6892,13 @@ mod tests {
 
         // A standing commit lands in the same list, still bang-prefixed.
         app.open_standing_editor();
+        eprintln!("DBG mode={:?} editing={} input={:?}", app.mode, app.editing_standing, app.input);
         for c in "zsh".chars() {
             app.on_key(press(KeyCode::Char(c)), &tmux);
         }
+        eprintln!("DBG after typing input={:?} exclude={:?}", app.input, app.exclude);
         app.on_key(press(KeyCode::Enter), &tmux);
+        eprintln!("DBG after enter mode={:?} input={:?} exclude={:?} hist={:?}", app.mode, app.input, app.exclude, app.filter_history);
         assert_eq!(app.exclude, "zsh");
         app.on_key(press(KeyCode::Esc), &tmux);
 
