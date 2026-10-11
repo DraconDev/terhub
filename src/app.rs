@@ -5,7 +5,7 @@ use crate::config::{AppConfig, key_matches};
 use crate::daemon;
 use crate::tmux::{Pane, Session, Tmux};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -617,6 +617,24 @@ pub struct App {
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
+    /// In-memory history of committed filter queries (live `/` and
+    /// standing editor share this list, FIFO, capped at
+    /// `FILTER_HISTORY_CAP`). Resets on app restart — a fresh
+    /// session starts with no history.
+    filter_history: VecDeque<String>,
+    /// `Some(i)` = the prompt is currently displaying
+    /// `filter_history[i]`. `None` = the prompt is showing the live
+    /// draft (what the user typed or recalled via Down past the
+    /// latest entry). Persists across Char / Backspace so the user
+    /// can navigate into history, edit, and keep navigating;
+    /// reset to `None` by Esc, Enter, and opening the prompt.
+    filter_history_idx: Option<usize>,
+    /// Input value to return to when Down past the latest history
+    /// entry. Captured on the first Up that transitions from draft
+    /// to history; cleared on Esc, Enter, and opening the prompt.
+    /// Lets "Up then Down" round-trip back to the edited draft
+    /// rather than to the pre-prompt snapshot.
+    filter_history_pending: Option<String>,
     /// Hide unclaimed panes quiet past [`QUIET_SHELL_SECS`] (`h` toggle).
     pub hide_quiet_shells: bool,
     /// Rows the toggle is currently hiding (0 when off), for the title.
@@ -731,6 +749,9 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
+            filter_history: VecDeque::new(),
+            filter_history_idx: None,
+            filter_history_pending: None,
             view_changes: crate::config::ViewChanges::default(),
             hide_quiet_shells,
             hidden_quiet: 0,
