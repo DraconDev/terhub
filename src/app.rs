@@ -6785,8 +6785,12 @@ mod tests {
     fn stale_instance_cannot_revert_a_newer_instances_filter() {
         use crate::config::ViewChanges;
         // Serialize with every other env-mutating lib test; the lock
-        // is held for the whole mutation window.
+        // is held for the whole mutation window. CONFIG_LOCK is the
+        // shared seam for every test that redirects TERHUB_CONFIG
+        // (see `ScopedConfig`): without it a parallel save would land
+        // in this test's scratch file.
         let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _config_lock = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
         let saved = std::env::var("TERHUB_CONFIG").ok();
         let dir = std::env::temp_dir().join(format!(
