@@ -789,11 +789,38 @@ mod tests {
             .process_group(0)
             .spawn()
             .unwrap();
-        // Give sh a moment to fork the grandchild and write its pid.
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        let gc_pid_raw = std::fs::read_to_string(&marker)
-            .expect("grandchild pid file must exist");
-        let gc_pid: i32 = gc_pid_raw.trim().parse().expect("pid must parse");
+        // `sh` must fork the grandchild and write its pid file. That
+        // fork+write is not instantaneous — under a loaded test host it
+        // regularly takes longer than a single fixed sleep, which is
+        // exactly what made this test flaky: the blind sleep elapsed
+        // before the file appeared, and the read failed. So poll
+        // instead: re-read the file until it holds a parseable pid,
+        // bounded so a genuinely broken spawn still fails fast rather
+        // than hanging the suite.
+        const PID_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
+        const POLL: std::time::Duration = std::time::Duration::from_millis(10);
+        let gc_pid = {
+            let deadline = std::time::Instant::now() + PID_WAIT;
+            let mut found = None;
+            while found.is_none() {
+                if let Ok(raw) = std::fs::read_to_string(&marker) {
+                    // An `echo $! >` truncates before it writes, so a
+                    // read can legitimately race an empty file; only a
+                    // parseable pid proves the grandchild exists.
+                    if let Ok(pid) = raw.trim().parse::<i32>() {
+                        found = Some(pid);
+                        break;
+                    }
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "grandchild never wrote {wait:?} for its pid file",
+                    wait = PID_WAIT,
+                );
+                std::thread::sleep(POLL);
+            }
+            found.unwrap()
+        };
         let t0 = std::time::Instant::now();
         let err = wait_drained_in_group(
             &mut child,
