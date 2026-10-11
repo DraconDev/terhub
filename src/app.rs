@@ -3276,6 +3276,25 @@ impl App {
     /// editor combined) are kept; older entries fall off the front.
     const FILTER_HISTORY_CAP: usize = 10;
 
+    /// Adapt a history entry to the prompt it is being recalled
+    /// into. The list is shared between the two prompts (per the
+    /// contract), but they use different surface forms: the standing
+    /// editor carries a leading `!` exclusion marker, and the live
+    /// prompt is include-only. Recall lets an entry round-trip both
+    /// ways instead of silently changing meaning.
+    fn filter_history_recall(&self, entry: &str) -> String {
+        let trimmed = entry.trim();
+        if self.editing_standing {
+            if trimmed.starts_with('!') {
+                trimmed.to_string()
+            } else {
+                format!("!{trimmed}")
+            }
+        } else {
+            trimmed.trim_start_matches('!').trim().to_string()
+        }
+    }
+
     /// Reset history navigation state. Called on Esc, Enter, and
     /// every prompt opening so a fresh prompt always starts in
     /// draft mode (input = current filter / exclude, idx = None).
@@ -3313,14 +3332,14 @@ impl App {
                 self.filter_history_pending = Some(self.input.clone());
                 let last = self.filter_history.len() - 1;
                 self.filter_history_idx = Some(last);
-                self.input = self.filter_history[last].clone();
+                self.input = self.filter_history_recall(&self.filter_history[last]);
             }
             Some(0) => {
                 // Already at the oldest entry; stay.
             }
             Some(i) => {
                 self.filter_history_idx = Some(i - 1);
-                self.input = self.filter_history[i - 1].clone();
+                self.input = self.filter_history_recall(&self.filter_history[i - 1]);
             }
         }
         self.cursor = self.input.chars().count();
@@ -3343,7 +3362,7 @@ impl App {
                     }
                 } else {
                     self.filter_history_idx = Some(next);
-                    self.input = self.filter_history[next].clone();
+                    self.input = self.filter_history_recall(&self.filter_history[next]);
                 }
             }
         }
