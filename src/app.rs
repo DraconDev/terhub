@@ -2226,7 +2226,6 @@ impl App {
     }
 
     fn on_prompt_key(&mut self, key: KeyEvent, tmux: &Tmux) -> Option<AppEvent> {
-        match key.code {
             KeyCode::Esc => self.cancel_modal(),
             KeyCode::Enter => {
                 let value = self.input.trim().to_string();
