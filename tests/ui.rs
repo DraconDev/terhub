@@ -1371,28 +1371,21 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
 /// between the `Pane` and `Session` header words measures spacing alone.
 #[test]
 fn comfortable_spacing_doubles_only_when_wide() {
+    /// Cells of air between the end of the `Pane` header word and the
+    /// next column's first glyph. The Pane column is fixed-width, so
+    /// this measures spacing alone — and it never names the Session
+    /// header, which a narrow table legitimately truncates.
     fn header_gap(width: u16) -> usize {
         let mut app = app_with_panes();
         let lines = render_lines(&mut app, width, 8);
-        let hdr = lines.iter().find(|l| {
-            l.contains("Pane") && l.contains("Session")
-        });
-        let hdr = match hdr {
-            Some(h) => h,
-            None => panic!(
-                "w={width}: table header missing:\n{}",
-                lines.join("\n")
-            ),
-        };
+        let hdr = lines
+            .iter()
+            .find(|l| l.starts_with('\u{2502}') && l.contains("Pane"))
+            .unwrap_or_else(|| panic!("w={width}: table header missing"));
         let after_pane = hdr.find("Pane").unwrap() + "Pane".len();
-        hdr[after_pane..].find("Session").unwrap()
-    }
-    {
-        let mut app = app_with_panes();
-        let lines = render_lines(&mut app, 110, 8);
-        for (i, l) in lines.iter().enumerate() {
-            eprintln!("D110 L{i}|{l}");
-        }
+        hdr[after_pane..]
+            .find(|c: char| !c.is_whitespace())
+            .unwrap_or_else(|| panic!("w={width}: no column after Pane"))
     }
     let wide = header_gap(150);
     let narrow = header_gap(110);
