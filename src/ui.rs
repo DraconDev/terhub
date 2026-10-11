@@ -475,6 +475,20 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
+/// The record/share blur: replace a column's text with a solid fill of
+/// the same width so the table layout (and every non-sensitive column)
+/// stays intact while the value is gone. The fill is a `█` of the
+/// target width; the *style* is the caller's business, the helper only
+/// owns the string. When the value is a dash placeholder ("—") or is
+/// empty, the cell already says "nothing here" — leave it, swapping a
+/// dash for blocks just moves the eye without hiding anything.
+fn blur_cell(value: &str) -> String {
+    if value.is_empty() || value.chars().all(|c| c == '—' || c.is_whitespace()) {
+        return value.to_string();
+    }
+    "█".repeat(value.chars().count())
+}
+
 /// The chip's label at full length, or `None` when nothing is filtered:
 /// every filter that is hiding rows, so an active filter is never silent.
 ///
@@ -831,13 +845,30 @@ fn render_selector(
 ) -> (Rect, Vec<Rect>) {
     let segs = selector_segments(app);
     let width = area.width as usize;
+    // Record/share mode blurs the session names in the bar too — the tab
+    // is identity, not state. The counts and the dots stay: "how many
+    // and which state" is exactly what the recording should show. It is
+    // computed up front so the width closure below can measure the
+    // blurred label (a `█` per char) instead of the live name, keeping
+    // the scroll-window math honest.
+    let blur = app.config.blur_cols;
     // "› " focus flag, " │ " separators, "‹ " / " ›" overflow markers.
     const FLAG: usize = 2;
     const SEP: usize = 3;
     let seg_width = |i: usize| {
         let (mark, name, counts, _, dot) = &segs[i];
-        seg_text(mark, &truncate(name, 20), counts).chars().count()
-            + if dot.is_some() { 2 } else { 0 }
+        // Truncate first, then blur the truncated name: the fill must
+        // match the width the live tab would take (20 chars, ellipsis
+        // when longer), so the scroll window math is identical whether
+        // or not the toggle is on. Blurring the raw name would overfit
+        // wide tabs into the overflow and drop the scroll behaviour.
+        let name_trunc = truncate(name, 20);
+        let name_shown = if blur {
+            blur_cell(&name_trunc)
+        } else {
+            name_trunc
+        };
+        seg_text(mark, &name_shown, counts).chars().count() + if dot.is_some() { 2 } else { 0 }
     };
     // Slide the window until the selection fits on screen.
     if app.selected < app.session_scroll {
@@ -876,7 +907,16 @@ fn render_selector(
     let mut used = (x - area.x) as usize + 2; // room for a possible " ›"
     for (offset, i) in (start..segs.len()).enumerate() {
         let (mark, name, counts, attached, dot) = &segs[i];
-        let text = seg_text(mark, &truncate(name, 20), counts);
+        // Same truncate-then-blur contract as the width closure above,
+        // so a tab's rendered width equals the width the scroll window
+        // reserved for it — the bar never reflows on the toggle.
+        let name_trunc = truncate(name, 20);
+        let name_display = if blur {
+            blur_cell(&name_trunc)
+        } else {
+            name_trunc
+        };
+        let text = seg_text(mark, &name_display, counts);
         let w = text.chars().count() + if dot.is_some() { 2 } else { 0 };
         if used + w + SEP > width {
             break;
@@ -1202,32 +1242,72 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 Cell::from(mark).style(mark_style),
                 Cell::from(pane_cell_id(&p.id)).style(id_style),
             ];
+            // Record/share mode: replace the identity-revealing values
+            // with a solid fill of the same width. The fill keeps the
+            // table layout and every non-sensitive column intact; only
+            // the text that would reveal a repo, session, command, or
+            // prompt is gone. State, Src, the time columns, and the
+            // mark column stay readable — that is the point.
+            let blur = app.config.blur_cols;
+            let session_cell = if show_session {
+                let s = truncate(&p.session, 18);
+                if blur { blur_cell(&s) } else { s }
+            } else {
+                String::new()
+            };
+            let window_cell = if blur {
+                blur_cell(&truncate(&window, 20))
+            } else {
+                truncate(&window, 20)
+            };
+            let cmd_cell = if blur {
+                blur_cell(&truncate(&p.command, if compact { 16 } else { 32 }))
+            } else {
+                truncate(&p.command, if compact { 16 } else { 32 })
+            };
+            let dir_cell = if blur {
+                blur_cell(&truncate(dir, 24))
+            } else {
+                truncate(dir, 24)
+            };
+            let agent_cell = if blur {
+                blur_cell(&agent)
+            } else {
+                agent.clone()
+            };
+            let handle_cell = if blur {
+                blur_cell(&handle)
+            } else {
+                handle.clone()
+            };
             if show_session {
                 // Sessions are top-level categories: the title hue
                 // without its bold, so the family ties without shouting.
+                // A blurred session is a solid fill in the same hue —
+                // the column shape survives, only the name is gone.
                 cells.push(
-                    Cell::from(truncate(&p.session, 18))
+                    Cell::from(session_cell)
                         .style(Style::default().fg(pal.title.fg.unwrap_or(Color::Reset))),
                 );
             }
             cells.extend([
                 // Window is sub-structure: recede it so session/cmd read first.
-                Cell::from(truncate(&window, 20)).style(pal.dim),
+                Cell::from(window_cell).style(pal.dim),
                 // Cmd is primary content (what runs): full status ink so
                 // it reads the same on every terminal instead of
                 // inheriting whatever the terminal's default fg is.
-                Cell::from(truncate(&p.command, if compact { 16 } else { 32 }))
+                Cell::from(cmd_cell)
                     .style(Style::default().fg(pal.status.fg.unwrap_or(Color::Reset))),
-                Cell::from(truncate(dir, 24)).style(if dir.contains("(deleted)") {
+                Cell::from(dir_cell).style(if dir.contains("(deleted)") {
                     // A vanished cwd reads struck-through, still legible.
                     pal.dim.add_modifier(Modifier::CROSSED_OUT)
                 } else {
                     pal.dim
                 }),
-                Cell::from(agent).style(agent_style),
+                Cell::from(agent_cell).style(agent_style),
                 // Handle groups with its agent: same hash colour, so the
                 // eye lands the pair as one owner instead of two greys.
-                Cell::from(handle).style(
+                Cell::from(handle_cell).style(
                     rec.filter(|r| !r.handle.is_empty())
                         .map(|r| agent_text_style(&r.agent, &app.config, pal.dim))
                         .unwrap_or(pal.dim),
@@ -1271,6 +1351,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                     } else {
                         summary.to_string()
                     };
+                let summary = if blur { blur_cell(&summary) } else { summary };
                 cells.push(Cell::from(truncate(&summary, 60)).style(pal.dim));
             }
             let mut row = Row::new(cells);

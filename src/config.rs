@@ -150,6 +150,12 @@ pub struct AppConfig {
     pub hide_shells: bool,
     pub highlight_attached: bool,
     pub notifications_enabled: bool,
+    /// Blur the identity-revealing table columns (Session, Window, Cmd,
+    /// Dir, Agent, Handle, Summary) so a recorded screen or shared
+    /// screenshot hides what the user is working on while every state
+    /// and count column stays readable. Default off: it is a recording
+    /// aid, not an everyday view. Persisted to `[ui] blur_cols`.
+    pub blur_cols: bool,
     /// Daemon tunables (restart the daemon to apply): poll cadence, stuck
     /// threshold (`0` disables stuck detection), evidence staleness.
     pub poll_secs: u64,
@@ -222,6 +228,7 @@ impl Default for AppConfig {
             idle_warn_style: "bold yellow".to_string(),
             idle_flag_secs: DEFAULT_IDLE_FLAG_SECS,
             activity_sparkline: false,
+            blur_cols: false,
         }
     }
 }
@@ -846,6 +853,11 @@ struct UiSection {
     /// bars rise with bytes/tick; restarts reset the in-memory ring.
     #[serde(default)]
     activity_sparkline: bool,
+    /// Blur the identity-revealing table columns (Session, Window, Cmd,
+    /// Dir, Agent, Handle, Summary) for recordings and shared shots.
+    /// Default off. See `AppConfig::blur_cols`.
+    #[serde(default)]
+    blur_cols: bool,
     #[serde(flatten)]
     unknown: BTreeMap<String, toml::Value>,
 }
@@ -863,6 +875,7 @@ impl Default for UiSection {
             sort_desc: default_sort_desc(),
             hide_shells: false,
             activity_sparkline: false,
+            blur_cols: false,
             unknown: BTreeMap::new(),
         }
     }
@@ -1032,6 +1045,9 @@ pub struct UiPersist<'a> {
     pub sort: Option<&'a str>,
     pub sort_desc: Option<bool>,
     pub hide_shells: Option<bool>,
+    /// `[ui] blur_cols` — record/share mode. `None` leaves the file's
+    /// value alone; a `Some(bool)` is a deliberate flip of the toggle.
+    pub blur_cols: Option<bool>,
 }
 
 /// Which view keys one instance has changed since its last successful
@@ -1049,6 +1065,7 @@ pub struct ViewChanges {
     pub sort: bool,
     pub sort_desc: bool,
     pub hide_shells: bool,
+    pub blur_cols: bool,
 }
 
 impl ViewChanges {
@@ -1073,6 +1090,7 @@ impl AppConfig {
             sort: Some(&self.sort),
             sort_desc: Some(self.sort_desc),
             hide_shells: Some(self.hide_shells),
+            blur_cols: Some(self.blur_cols),
         }
     }
 
@@ -1092,6 +1110,7 @@ impl AppConfig {
             sort: c.sort.then_some(&*self.sort),
             sort_desc: c.sort_desc.then_some(self.sort_desc),
             hide_shells: c.hide_shells.then_some(self.hide_shells),
+            blur_cols: c.blur_cols.then_some(self.blur_cols),
         }
     }
 }
@@ -1292,6 +1311,14 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                 }
                 None => out.push(line.to_string()),
             }
+        } else if section == "[ui]" && is_key_line(line, "blur_cols") {
+            match v.blur_cols {
+                Some(b) => {
+                    out.push(format!("blur_cols = {b}{}", trailing_comment(line)));
+                    seen[BLUR_COLS] = true;
+                }
+                None => out.push(line.to_string()),
+            }
         } else if section == "[notifications]" && is_key_line(line, "enabled") {
             match v.notifications {
                 Some(e) => {
@@ -1354,6 +1381,11 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     {
         missing_ui.push(format!("hide_shells = {h}"));
     }
+    if !seen[BLUR_COLS]
+        && let Some(b) = v.blur_cols
+    {
+        missing_ui.push(format!("blur_cols = {b}"));
+    }
     let mut ui_inserted = 0;
     if !missing_ui.is_empty() {
         match ui_at {
@@ -1412,8 +1444,9 @@ mod slot {
     pub const SORT: usize = 7;
     pub const SORT_DESC: usize = 8;
     pub const HIDE_SHELLS: usize = 9;
+    pub const BLUR_COLS: usize = 10;
     /// Highest `[ui]` slot; the array spans `0..=SLOT_UI`.
-    pub const SLOT_UI: usize = HIDE_SHELLS;
+    pub const SLOT_UI: usize = BLUR_COLS;
 }
 use slot::*;
 
@@ -1665,6 +1698,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     cfg.sort_desc = file.ui.sort_desc;
     cfg.hide_shells = file.ui.hide_shells;
     cfg.activity_sparkline = file.ui.activity_sparkline;
+    cfg.blur_cols = file.ui.blur_cols;
     cfg.notifications_enabled = file.notifications.enabled;
     // Zero poll/stale would wedge or blind the daemon; stuck_secs = 0 is a
     // legitimate "off switch" and stays.
@@ -1872,7 +1906,7 @@ pub fn default_config_text() -> String {
         .collect();
     keys.sort();
     let mut out = String::from(
-        "[ui]\ntheme = \"dark\"\ndensity = \"comfortable\"\nhighlight_attached = true\n\n[keys]\n",
+        "[ui]\ntheme = \"dark\"\ndensity = \"comfortable\"\nhighlight_attached = true\nblur_cols = false\n\n[keys]\n",
     );
     for (k, v) in keys {
         if v.is_empty() {
@@ -2474,6 +2508,7 @@ mod tests {
                 sort: None,
                 sort_desc: None,
                 hide_shells: None,
+                blur_cols: None,
             },
         )
         .unwrap();
@@ -2525,6 +2560,7 @@ mod tests {
                 sort: None,
                 sort_desc: None,
                 hide_shells: None,
+                blur_cols: None,
             },
         )
         .unwrap();
@@ -2651,6 +2687,7 @@ mod tests {
                     sort: Some("State"),
                     sort_desc: Some(false),
                     hide_shells: Some(true),
+                    blur_cols: Some(false),
                 },
             )
             .unwrap();
@@ -2715,6 +2752,7 @@ mod tests {
                 sort: Some("State"),
                 sort_desc: Some(true),
                 hide_shells: Some(true),
+                blur_cols: Some(true),
             },
         )
         .unwrap();

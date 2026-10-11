@@ -982,8 +982,7 @@ fn ensure_registered(watcher: &zbus::blocking::Proxy<'_>, unique: &str) {
     // is exactly the race that produced the field-observed "icon went
     // invisible" bug. On error, do nothing this tick and retry next
     // poll — the self-heal loop is what makes the retry safe.
-    let Ok(listed) = watcher.get_property::<Vec<String>>("RegisteredStatusNotifierItems")
-    else {
+    let Ok(listed) = watcher.get_property::<Vec<String>>("RegisteredStatusNotifierItems") else {
         return;
     };
     if item_is_listed(&listed, unique) {

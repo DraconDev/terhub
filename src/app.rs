@@ -74,6 +74,11 @@ pub enum SettingKind {
     ToggleNotifications,
     ToggleHighlight,
     ToggleMruTabs,
+    /// Record/share mode: blank out the identity-revealing table columns
+    /// (Session, Window, Cmd, Dir, Agent, Handle, Summary) so a
+    /// recording or shared screenshot hides what the user is working on
+    /// while every state and count column stays readable.
+    ToggleBlurCols,
     /// Opens the text prompt editing the standing exclusion; Enter
     /// saves it to `[ui] filter`, Esc cancels. Not a toggle.
     EditStandingFilter,
@@ -2922,6 +2927,14 @@ impl App {
             active: self.config.highlight_attached,
             kind: SettingKind::ToggleHighlight,
         });
+        rows.push(SettingRow::Item {
+            label: format!(
+                "blur columns (record/share): {}",
+                Self::onoff(self.config.blur_cols)
+            ),
+            active: self.config.blur_cols,
+            kind: SettingKind::ToggleBlurCols,
+        });
         rows.push(SettingRow::Header("Filters"));
         rows.push(SettingRow::Item {
             label: if self.exclude.is_empty() {
@@ -3862,6 +3875,12 @@ impl App {
                 self.view_changes.mru_tabs = true;
                 self.apply_tab_order();
                 format!("mru tabs: {}", Self::onoff(self.config.mru_tabs))
+            }
+            SettingKind::ToggleBlurCols => {
+                self.config.blur_cols = !self.config.blur_cols;
+                self.view_changes.blur_cols = true;
+                self.view_changes.density = true;
+                format!("blur columns: {}", Self::onoff(self.config.blur_cols))
             }
             SettingKind::EditStandingFilter => {
                 // Editing, not applying: the prompt saves on Enter.

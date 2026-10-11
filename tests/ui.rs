@@ -2318,3 +2318,184 @@ fn idle_after_response_finished_marks_summary_with_transition_glyph() {
         "non-turn-end idle summary must NOT be marked:\n{text}"
     );
 }
+
+/// Record/share blur: when `blur_cols` is on, the identity-revealing
+/// columns (Session, Window, Cmd, Dir, Agent, Handle, Summary) render
+/// as a solid fill of the same width instead of their text. The
+/// state and count columns must stay readable — that is the whole
+/// point: a recording that shows "which agents need you" without
+/// revealing the repo names, commands, or prompts being worked on.
+/// A dash placeholder ("—") is already "nothing here" and is not
+/// blurrable into blocks (that would just move the eye).
+#[test]
+fn blur_cols_hides_identity_but_keeps_state_readable() {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    use terhub::config::AppConfig;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut app = App::new(AppConfig::default());
+    app.config.blur_cols = true;
+    app.sessions = vec![Session {
+        name: "secret-repo".to_string(),
+        windows: 1,
+        attached: false,
+        created: "now".to_string(),
+        activity: "now".to_string(),
+    }];
+    app.panes
+        .push(pane("%1", "secret-repo", "main", "cargo test"));
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Hook,
+            summary: "build the thing".to_string(),
+            session: "secret-repo".to_string(),
+            window: "main".to_string(),
+            command: "cargo test".to_string(),
+            updated_at: now,
+            state_since: now,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: now,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: "pi-main-1".to_string(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
+        },
+    );
+    app.refresh_filtered();
+    let lines = render_lines(&mut app, 180, 24);
+    let text = lines.join("\n");
+    // Identity strings are gone from the rendered grid.
+    assert!(
+        !text.contains("secret-repo"),
+        "session name leaked:\n{text}"
+    );
+    assert!(!text.contains("cargo test"), "command leaked:\n{text}");
+    assert!(!text.contains("build the thing"), "prompt leaked:\n{text}");
+    assert!(!text.contains("pi-main-1"), "handle leaked:\n{text}");
+    // The fill is present and the state column is still readable.
+    assert!(text.contains("█"), "no solid fill in the grid:\n{text}");
+    assert!(
+        text.contains("working"),
+        "state column must stay readable:\n{text}"
+    );
+    assert!(
+        text.contains("hook"),
+        "src column must stay readable:\n{text}"
+    );
+    assert!(text.contains("%1"), "pane id must stay readable:\n{text}");
+}
+
+/// With `blur_cols` off (the default) the same data renders in full,
+/// proving the blur is an opt-in transform, not a data mutation.
+#[test]
+fn blur_cols_off_keeps_full_text() {
+    use terhub::agent::{AgentRecord, AgentState, Source};
+    use terhub::config::AppConfig;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut app = App::new(AppConfig::default());
+    // blur_cols defaults to false; leave it.
+    app.sessions = vec![Session {
+        name: "open-repo".to_string(),
+        windows: 1,
+        attached: false,
+        created: "now".to_string(),
+        activity: "now".to_string(),
+    }];
+    app.panes.push(pane("%1", "open-repo", "main", "make"));
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Hook,
+            summary: "ship it".to_string(),
+            session: "open-repo".to_string(),
+            window: "main".to_string(),
+            command: "make".to_string(),
+            updated_at: now,
+            state_since: now,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: now,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: "pi-main-1".to_string(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
+        },
+    );
+    app.refresh_filtered();
+    let lines = render_lines(&mut app, 180, 24);
+    let text = lines.join("\n");
+    assert!(
+        text.contains("open-repo"),
+        "session must be visible when off:\n{text}"
+    );
+    assert!(
+        text.contains("make"),
+        "command must be visible when off:\n{text}"
+    );
+    assert!(
+        text.contains("ship it"),
+        "summary must be visible when off:\n{text}"
+    );
+    assert!(!text.contains("█"), "no solid fill when off:\n{text}");
+}
+
+/// A dash placeholder is already "nothing here"; blurring it would
+/// swap one dash for blocks with no privacy gain. Both blank and
+/// dash inputs must come out unchanged.
+#[test]
+fn blur_cell_leaves_dash_and_blank_alone() {
+    // Call through the same path the renderer uses: a dash cell must
+    // stay a dash, a real value must become blocks.
+    use terhub::config::AppConfig;
+    let app = App::new(AppConfig::default());
+    let _ = &app; // keep the import honest; the helper is module-private
+    // in ui.rs, so we verify the *rendered* result instead by asserting
+    // through the public render path above. This test is a guard that
+    // the dash case still renders as a dash (not blocks) when a row
+    // has no agent.
+    let mut app = App::new(AppConfig::default());
+    app.config.blur_cols = true;
+    app.sessions = vec![Session {
+        name: "s".to_string(),
+        windows: 1,
+        attached: false,
+        created: "now".to_string(),
+        activity: "now".to_string(),
+    }];
+    // A pane with no agent record: Agent/Handle/Summary are all dashes.
+    app.panes.push(pane("%1", "s", "w", "bash"));
+    app.refresh_filtered();
+    let lines = render_lines(&mut app, 180, 24);
+    let text = lines.join("\n");
+    // The Agent cell is a dash, not a block; the command "bash" IS
+    // blurred though (it is a value, not a placeholder).
+    assert!(text.contains("—"), "dashes must survive blur:\n{text}");
+    assert!(!text.contains("bash"), "command still leaks:\n{text}");
+}
