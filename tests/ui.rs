@@ -1255,6 +1255,33 @@ fn filter_active_indicator_uses_the_title_palette() {
     );
 }
 
+
+/// The footer is the discoverability surface. With 40+ panes the filter
+/// key is the most valuable one on screen, so it must be named — and it
+/// must follow the user's rebind, not a hard-coded `f`.
+#[test]
+fn footer_names_the_filter_key_and_follows_a_rebind() {
+    let mut app = app_with(&["alpha"]);
+    let text = render_lines(&mut app, 200, 8).join("\n");
+    assert!(
+        text.contains(" = filter"),
+        "footer no longer advertises the filter key:\n{text}"
+    );
+    // Default binding is `f`; the label is derived from config, so a
+    // rebind is reflected instead of lying to the user.
+    assert_eq!(app.config.key_label("filter"), "f");
+    app.config.set_key("filter", "ctrl+s");
+    let rebound = render_lines(&mut app, 200, 8).join("\n");
+    assert!(
+        rebound.contains("ctrl+s = filter"),
+        "footer ignored the rebound filter key:\n{rebound}"
+    );
+    assert!(
+        !rebound.contains(" = filter · ") || rebound.contains("ctrl+s = filter"),
+        "stale key survived the rebind:\n{rebound}"
+    );
+}
+
 #[test]
 fn confirm_modal_renders() {
     let mut app = app_with(&["alpha"]);
