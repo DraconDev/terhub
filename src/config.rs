@@ -1254,9 +1254,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                 }
                 None => out.push(line.to_string()),
             }
-        } else if section == "[ui]" && is_key_line(line, "save_filters")
-            || (section == "[ui]" && is_key_line(line, "saved_filters"))
-        {
+        } else if section == "[ui]" && is_key_line(line, "saved_filters") {
             match v.saved_filters {
                 Some(f) => {
                     out.push(format!(
