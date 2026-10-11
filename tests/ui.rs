@@ -1167,43 +1167,54 @@ fn filter_active_indicator_rides_the_title_line_on_wide_terminals() {
 
 /// Narrow terminals: the title alone fills the border, so the chip moves
 /// to a header line of its own directly above the table instead of being
-/// clipped mid-label. The label stays whole at every width.
+/// clipped mid-label. The label stays whole at every width, and the chip
+/// never lands anywhere but the header region.
 #[test]
 fn filter_active_indicator_wraps_to_a_second_header_line_when_narrow() {
     const BLOCK: char = '\u{25fc}';
-    for width in [140u16, 120, 100, 80, 60, 44] {
+    let mut rode_title_line = Vec::new();
+    for width in [160u16, 140, 120, 100, 80, 60, 44] {
         let mut app = app_with_panes();
         app.exclude = "zsh".to_string();
         app.filter = "vim".to_string();
         app.refresh_filtered();
         let lines = render_lines(&mut app, width, 14);
         let label = format!("{BLOCK} filter: zsh \u{b7} search: vim");
+        // Never clipped: the whole label is drawn at every width.
         let row = lines
             .iter()
             .position(|l| l.contains(&label))
             .unwrap_or_else(|| panic!("w={width}: chip vanished or clipped:\n{lines:?}"));
-        if width >= 140 {
-            // Inline: the title's own border line, header row right after.
+        let inline = lines[row].contains("terhub \u{2014}");
+        if inline {
+            rode_title_line.push(width);
+            // It is inside the table's own border, header row right after.
             assert!(
-                lines[row].contains("terhub \u{2014}"),
-                "w={width}: chip should share the title line:\n{lines:?}"
-            );
-            assert!(
-                lines[row + 1].starts_with('\u{2502}'),
-                "w={width}: inline chip is not inside the border:\n{lines:?}"
+                lines[row].starts_with('\u{250c}') && lines[row + 1].starts_with('\u{2502}'),
+                "w={width}: inline chip is not inside the table border:\n{lines:?}"
             );
         } else {
-            // Wrapped: its own line, with the table border directly under.
-            assert!(
-                !lines[row].contains("terhub \u{2014}"),
-                "w={width}: chip should have wrapped to its own line:\n{lines:?}"
-            );
+            // Its own line, immediately above the table's top border.
             assert!(
                 lines[row + 1].starts_with('\u{250c}'),
                 "w={width}: chip line is not adjacent to the table:\n{lines:?}"
             );
+            assert!(
+                !lines[row].contains('|'),
+                "w={width}: chip drifted into the table body:\n{lines:?}"
+            );
         }
     }
+    // Both placements really occur, so neither branch above is vacuous:
+    // wide enough to share the title line, narrow enough to need its own.
+    assert!(
+        rode_title_line.iter().any(|w| *w >= 140),
+        "chip never rode the title line on a wide terminal: {rode_title_line:?}"
+    );
+    assert!(
+        rode_title_line.iter().all(|w| *w >= 120),
+        "chip rode the title line while narrow and should have wrapped: {rode_title_line:?}"
+    );
 }
 
 /// The chip is drawn in the semantic palette - the same title ink as the
