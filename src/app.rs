@@ -2923,7 +2923,7 @@ impl App {
         // currently driving the table.
         for (i, f) in self.saved_filters.iter().enumerate() {
             rows.push(SettingRow::Item {
-                label: format!("saved: {} — {}", f.name, truncate_query(&f.query, 24)),
+                label: format!("saved: {} — {}", f.name, Self::truncate_query(&f.query, 24)),
                 active: self.active_saved_filter.as_deref() == Some(f.name.as_str()),
                 kind: SettingKind::UseSavedFilter(i),
             });
@@ -3187,8 +3187,13 @@ impl App {
                 self.filter.trim().to_string()
             }
         };
+        // Renaming moves the header marker to the new name (index is
+        // Some = rename); a brand-new name keeps whatever was active.
+        let renamed = index.and_then(|i| self.saved_filters.get(i)).map(|f| f.name.clone());
         self.save_named_filter(name.clone(), query.clone());
-        if old.is_some() {
+        if let Some(old_name) = renamed
+            && self.active_saved_filter.as_deref() == Some(old_name.as_str())
+        {
             self.active_saved_filter = Some(name);
         }
         self.set_status(format!("saved filter '{name}': {query}"));
