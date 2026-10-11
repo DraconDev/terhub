@@ -1259,6 +1259,21 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// The footer is the discoverability surface. With 40+ panes the filter
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
+
+#[test]
+fn zz_probe_spacing() {
+    let mut app = app_with_panes();
+    for (i,(id,h,d)) in [("%1","@pi-wez-14","darklord"),("%2","@pi-wez-18","freeport")].iter().enumerate() {
+        let mut r = idle_record(id, "wez", 60, terhub::agent::now_unix());
+        r.handle = h.to_string(); r.summary = "response finished".into();
+        if i == 0 { app.panes.push(terhub::tray::probe_pane(id, d)); }
+        app.agents.insert(id.to_string(), r);
+    }
+    let lines = render_lines(&mut app, 150, 8);
+    println!("HDR|{}", lines[2]);
+    println!("ROW|{}", lines[3]);
+}
+
 #[test]
 fn footer_names_the_filter_key_and_follows_a_rebind() {
     let mut app = app_with(&["alpha"]);

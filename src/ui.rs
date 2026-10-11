@@ -1311,7 +1311,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });
     }
-    let spacing = if compact { 0 } else { 1 };
+    let spacing = if compact { 0 } else { 2 };
     // Header hit cells: the same Layout split Table uses for its columns.
     let hits: Vec<HeaderHit> = Layout::horizontal(widths.clone())
         .spacing(spacing)
