@@ -1837,3 +1837,37 @@ fn probe_filter_prompt_visual() {
     eprintln!("input = {:?}", app2.input);
     eprintln!("filter_other = {:?}", app2.filter_other);
 }
+
+#[test]
+fn probe_filter_typing_visual() {
+    // Type into the live prompt: the include line should
+    // accumulate characters and the table should re-filter as we
+    // go. Render after a few keystrokes so the user-reported
+    // "broken" can paste back the actual cells.
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use terhub::tmux::Tmux;
+    let mut app = app_with(&["alpha"]);
+    let tmux = Tmux::new().unwrap();
+    app.open_filter();
+    for c in "claude".chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+    }
+    let lines = render_lines(&mut app, 100, 16);
+    for l in &lines {
+        eprintln!("AFTER_TYPE | {l}");
+    }
+    eprintln!("filter = {:?}", app.filter);
+    eprintln!("exclude = {:?}", app.exclude);
+
+    // Now Tab to the exclude line and type there.
+    app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tmux);
+    for c in "zsh".chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+    }
+    let lines2 = render_lines(&mut app, 100, 16);
+    for l in &lines2 {
+        eprintln!("AFTER_TAB_TYPE | {l}");
+    }
+    eprintln!("filter = {:?}", app.filter);
+    eprintln!("exclude = {:?}", app.exclude);
+}
