@@ -1379,10 +1379,20 @@ fn comfortable_spacing_doubles_only_when_wide() {
         });
         let hdr = match hdr {
             Some(h) => h,
-            None => panic!("w={width}: table header missing:\n{}", lines.join("\n")),
+            None => panic!(
+                "w={width}: table header missing:\n{}",
+                lines.join("\n")
+            ),
         };
         let after_pane = hdr.find("Pane").unwrap() + "Pane".len();
         hdr[after_pane..].find("Session").unwrap()
+    }
+    {
+        let mut app = app_with_panes();
+        let lines = render_lines(&mut app, 110, 8);
+        for (i, l) in lines.iter().enumerate() {
+            eprintln!("D110 L{i}|{l}");
+        }
     }
     let wide = header_gap(150);
     let narrow = header_gap(110);
