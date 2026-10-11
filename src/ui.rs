@@ -482,19 +482,13 @@ fn app_active_filter(app: &App) -> bool {
         || app.active_saved_filter.is_some()
 }
 
-/// Narrowest label worth showing inline on the title line. Below this the
-/// chip moves to its own header line: a truncated chip is worse than no
-/// chip, because it hides its own tail.
-const FILTER_CHIP_BLOCK: usize = 8;
-
-/// The filter chip: a coloured block plus a label naming every filter
-/// that is hiding rows right now. Without it a filter is easy to
-/// forget — the rows just quietly do not show up.
+/// The chip's label at full length, or `None` when nothing is filtered:
+/// every filter that is hiding rows, so an active filter is never silent.
 ///
-/// `max_label` bounds the label so the chip can never be clipped: the
-/// caller asks for the width it can actually give the label and gets
-/// back something that fits.
-fn filter_chip(app: &App, pal: &Palette, max_label: usize) -> Option<Line<'static>> {
+/// Kept separate from the styled rendering so the caller can measure the
+/// label *before* it is truncated — it has to know how wide the chip
+/// wants to be to decide whether the title line has room for it.
+fn filter_chip_label(app: &App) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
     // The standing exclusion (`[ui] filter`) only ever hides.
     if !app.exclude.is_empty() {
@@ -511,13 +505,18 @@ fn filter_chip(app: &App, pal: &Palette, max_label: usize) -> Option<Line<'stati
     if parts.is_empty() {
         return None;
     }
-    let label = truncate(&parts.join(" · "), max_label);
-    Some(Line::from(vec![
+    Some(parts.join(" · "))
+}
+
+/// Build the chip from its label, capped at `max_label` cells so the
+/// caller can never be handed something wider than it can draw.
+fn filter_chip(label: &str, pal: &Palette, max_label: usize) -> Line<'static> {
+    Line::from(vec![
         // The block: a filled square in the title ink, so the chip reads
         // as one object rather than more title text.
         Span::styled("◼", pal.title),
-        Span::styled(format!(" {label}"), pal.title),
-    ]))
+        Span::styled(format!(" {}", truncate(label, max_label)), pal.title),
+    ])
 }
 
 /// Render a 6-bucket sparkline bucket array as 6 block characters.
