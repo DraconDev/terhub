@@ -1312,8 +1312,9 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
     );
     // The fixture panes are all `active` in one window, which would read
     // `*` (focus disambiguation outranks the check by design); stand the
-    // row down so the check itself is what renders.
+    // rows down and re-filter so the check itself is what renders.
     app.panes.iter_mut().for_each(|p| p.active = false);
+    app.refresh_filtered();
     let text = render_lines(&mut app, 120, 12).join("\n");
     let row = text
         .lines()
@@ -1361,6 +1362,35 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
         .expect("marked row missing");
     assert!(row.contains('+'), "manual mark lost to the check:\n{row}");
     assert!(!row.contains(SEEN), "check hid the manual mark:\n{row}");
+}
+
+
+/// Comfortable density breathes when the table can afford it: the column
+/// gap doubles once the table is wide, and stays tight below that so no
+/// cell is spent on air. The Pane column is fixed-width, so the gap
+/// between the `Pane` and `Session` header words measures spacing alone.
+#[test]
+fn comfortable_spacing_doubles_only_when_wide() {
+    fn header_gap(width: u16) -> usize {
+        let mut app = app_with_panes();
+        let lines = render_lines(&mut app, width, 8);
+        let hdr = lines
+            .iter()
+            .find(|l| l.contains("Pane") && l.contains("Session"))
+            .expect("table header missing");
+        let after_pane = hdr.find("Pane").unwrap() + "Pane".len();
+        hdr[after_pane..].find("Session").unwrap()
+    }
+    let wide = header_gap(150);
+    let narrow = header_gap(110);
+    assert_eq!(
+        wide,
+        narrow + 1,
+        "wide table did not gain exactly one cell of air"
+    );
+    // The threshold itself: 130 breathes, 129 stays tight.
+    assert_eq!(header_gap(130), header_gap(150), "130 should breathe");
+    assert_eq!(header_gap(129), header_gap(110), "129 should stay tight");
 }
 
 #[test]
