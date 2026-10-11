@@ -2728,7 +2728,7 @@ mod saved_filters_probe {
         persist_ui_settings_to(&p, &patch).unwrap();
         let text = std::fs::read_to_string(&p).unwrap();
         eprintln!("PROBE-FILE:\n{text}");
-        let (back, probs) = load_from(&p);
+        let (back, probs) = load_config_report(Some(p.clone()));
         eprintln!("PROBE-LOADED: {:?} probs={:?}", back.saved_filters, probs);
         assert_eq!(back.filter, "!zsh");
         let _ = std::fs::remove_dir_all(&d);
