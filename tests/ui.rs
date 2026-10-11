@@ -984,12 +984,12 @@ fn standing_prompt_renders_two_line_chrome() {
     // The standing editor opens the two-line prompt: the heading
     // names the section, both lines render with their labels,
     // and the exclude line is the active one so the cursor sits
-    // on it.
+    // on it. Seed the values BEFORE opening so the prompt's
+    // initial snapshot picks them up.
     let mut app = app_with(&["alpha"]);
-    app.open_standing_editor();
     app.exclude = "zsh".to_string();
     app.filter = "claude".to_string();
-    app.filter_other = app.filter.clone();
+    app.open_standing_editor();
     let lines = render_lines(&mut app, 100, 12);
     let text = lines.join("\n");
     assert!(text.contains("Standing filter"), "missing heading:\n{text}");
