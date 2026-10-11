@@ -3226,7 +3226,7 @@ impl App {
         };
         self.rename_saved_filter(index, name.clone());
         if self.active_saved_filter.as_deref() == Some(old.0.as_str()) {
-            self.active_saved_filter = Some(name);
+            self.active_saved_filter = Some(name.clone());
         }
         self.set_status(format!("saved filter '{}': {}", name, old.1));
     }
