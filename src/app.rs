@@ -7738,7 +7738,7 @@ mod tests {
     /// A hand-typed query drops the header name; typing a saved query
     /// exactly restores it. The marker never outlives its query.
     #[test]
-    fn saved_filter_marker_follows_the_query() {
+    fn saved_filters_marker_follows_the_query() {
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
@@ -7764,7 +7764,7 @@ mod tests {
     /// A naming prompt with an empty name commits nothing, and Esc
     /// leaves the list untouched.
     #[test]
-    fn saved_filter_empty_name_and_esc() {
+    fn saved_filters_empty_name_and_esc() {
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
