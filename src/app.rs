@@ -2401,6 +2401,10 @@ impl App {
                     });
                 } else {
                     self.filter = q.clone();
+                    // Re-typing a saved query exactly makes it that
+                    // filter again (round-trip through the prompt),
+                    // otherwise the header reverts to the raw query.
+                    self.active_saved_filter = self.find_saved_filter_by_query(&q);
                     self.push_filter_history(q);
                     self.cancel_modal();
                     if !self.filter.is_empty() {
