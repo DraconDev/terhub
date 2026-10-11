@@ -2246,13 +2246,18 @@ impl App {
     }
 
     /// Naming prompt for saved filters. Single line, like every other
-    /// prompt: Enter commits the name, Esc cancels.
+    /// prompt: Enter commits the name, Esc cancels. Both return to the
+    /// settings page the prompt was opened from.
     fn on_saved_filter_name_key(&mut self, key: KeyEvent, index: Option<usize>) {
         match key.code {
-            KeyCode::Esc => self.cancel_modal(),
+            KeyCode::Esc => {
+                self.cancel_modal();
+                self.mode = Mode::Settings;
+            }
             KeyCode::Enter => {
                 let name = self.input.trim().to_string();
                 self.cancel_modal();
+                self.mode = Mode::Settings;
                 self.submit_saved_filter_name(index, name);
             }
             KeyCode::Backspace => self.delete_before_cursor(),
@@ -3755,14 +3760,10 @@ impl App {
         } else {
             let q = self.input.trim().to_string();
             self.filter = q.clone();
-            // A hand-typed query is no longer the named filter's query,
-            // so the header stops naming it. Re-typing the same text
-            // restores the name (checked on commit below).
-            if self.active_saved_filter.as_deref()
-                != self.find_saved_filter_by_query(&q).as_deref()
-            {
-                self.active_saved_filter = None;
-            }
+            // The header names a saved filter only while the query is
+            // exactly that filter's query: typing the saved text restores
+            // the name, and any edit away from it drops it.
+            self.active_saved_filter = self.find_saved_filter_by_query(&q);
         }
         self.refresh_filtered();
         self.pane_selected = 0;
