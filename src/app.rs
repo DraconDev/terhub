@@ -2963,6 +2963,153 @@ impl App {
         if b { "on" } else { "off" }
     }
 
+    // ---- saved (named) filters -------------------------------------
+
+    /// Persist the saved-filter list to `[ui] saved_filters`. Called
+    /// after add / rename / delete so the list survives a restart.
+    fn persist_saved_filters(&mut self) {
+        self.config.saved_filters.clone_from(&self.saved_filters);
+        self.view_changes.saved_filters = true;
+        let written = {
+            let patch = self.config.ui_persist_changes(&self.view_changes);
+            crate::config::persist_ui_settings(&patch)
+        };
+        match written {
+            Ok(()) => self.view_changes.saved_filters = false,
+            Err(e) => self.set_status(format!("saved filters not written: {e}")),
+        }
+    }
+
+    /// Apply saved filter `i`: the live search takes its query and the
+    /// table header names it. The standing exclusion is untouched —
+    /// a named filter and the standing filter compose.
+    fn use_saved_filter(&mut self, i: usize) {
+        let Some(f) = self.saved_filters.get(i) else {
+            return;
+        };
+        self.filter = f.query.clone();
+        self.active_saved_filter = Some(f.name.clone());
+        self.refresh_filtered();
+        self.pane_selected = 0;
+        self.pane_scroll = 0;
+        self.set_status(format!("filter '{}': {}", f.name, f.query));
+    }
+
+    /// Insert or replace a named filter, then persist. A name that
+    /// already exists updates that entry instead of adding a duplicate
+    /// row (rename and add-by-name converge here).
+    fn save_named_filter(&mut self, name: String, query: String) {
+        let name = name.trim().to_string();
+        let query = query.trim().to_string();
+        if name.is_empty() || query.is_empty() {
+            return;
+        }
+        if let Some(existing) = self.saved_filters.iter_mut().find(|f| f.name == name) {
+            existing.query = query;
+        } else {
+            self.saved_filters.push(crate::config::SavedFilter {
+                name: name.clone(),
+                query,
+            });
+        }
+        self.persist_saved_filters();
+    }
+
+    /// Delete saved filter `i`, forgetting its header marker when it
+    /// was the active one so the title doesn't name a dead filter.
+    fn delete_saved_filter(&mut self, i: usize) {
+        let Some(f) = self.saved_filters.get(i) else {
+            return;
+        };
+        let name = f.name.clone();
+        self.saved_filters.remove(i);
+        if self.active_saved_filter.as_deref() == Some(name.as_str()) {
+            self.active_saved_filter = None;
+        }
+        self.persist_saved_filters();
+    }
+
+    /// Name of the saved filter whose query equals the live search, if
+    /// any. Lets the title keep naming a saved filter after a restart
+    /// when `[ui] filter` matches it exactly.
+    fn find_saved_filter_by_query(&self, query: &str) -> Option<String> {
+        self.saved_filters
+            .iter()
+            .find(|f| f.matches_query(query))
+            .map(|f| f.name.clone())
+    }
+
+    /// Cycle to the next saved filter, wrapping past the last one back
+    /// to the first. With no saved filters at all, nothing happens
+    /// (the status says so instead of silently doing nothing).
+    fn next_saved_filter(&mut self) {
+        if self.saved_filters.is_empty() {
+            self.set_status("no saved filters (settings › filters › n)".to_string());
+            return;
+        }
+        let next = match self.active_saved_filter.as_deref() {
+            None => 0,
+            Some(active) => self
+                .saved_filters
+                .iter()
+                .position(|f| f.name == active)
+                .map(|i| (i + 1) % self.saved_filters.len())
+                .unwrap_or(0),
+        };
+        self.use_saved_filter(next);
+    }
+
+    /// Open the naming prompt: `None` names the current search as a new
+    /// filter, `Some(i)` renames filter `i`.
+    fn open_saved_filter_prompt(&mut self, index: Option<usize>) {
+        self.mode = Mode::PromptSavedFilter { index };
+        self.input = match index {
+            Some(i) => self
+                .saved_filters
+                .get(i)
+                .map(|f| f.name.clone())
+                .unwrap_or_default(),
+            None => String::new(),
+        };
+        self.cursor = self.input.chars().count();
+    }
+
+    /// Name typed in the saved-filter prompt: commit it and persist.
+    /// `Some(i)` renames (query carried over); `None` names the live
+    /// search query.
+    fn submit_saved_filter_name(&mut self, index: Option<usize>, name: String) {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            self.set_status("filter needs a name".to_string());
+            return;
+        }
+        let query = match index {
+            Some(i) => match self.saved_filters.get(i) {
+                Some(f) => f.query.clone(),
+                None => return,
+            },
+            None => {
+                if self.filter.trim().is_empty() {
+                    self.set_status("nothing to save (search is empty)".to_string());
+                    return;
+                }
+                self.filter.trim().to_string()
+            }
+        };
+        let old = index.and_then(|i| self.saved_filters.get(i)).map(|f| f.name.clone());
+        // Renaming the active filter must move the header marker to the
+        // new name, not strand it on the old one.
+        let was_active = match (&old, &self.active_saved_filter) {
+            (Some(o), Some(active)) if o == active => Some(active.clone()),
+            _ => None,
+        };
+        self.save_named_filter(name.clone(), query.clone());
+        if let Some(_prev) = was_active {
+            self.active_saved_filter = Some(name);
+        }
+        self.set_status(format!("saved filter '{name}': {query}"));
+    }
+
     /// Row indices of actionable items (headers aren't selectable).
     fn settings_item_rows(&self) -> Vec<usize> {
         self.settings_rows()
