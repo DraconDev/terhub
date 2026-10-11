@@ -1070,24 +1070,30 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     // On a narrow terminal the title alone fills the border, so the chip
     // drops onto its own header line above the table: a chip clipped
     // mid-label is exactly the "I forgot I was filtering" this
-    // indicator exists to prevent. So decide the placement *first*, then
-    // build the chip against the width that placement actually offers.
+    // indicator exists to prevent. So measure how wide the chip *wants*
+    // to be before choosing where it goes, and give the label exactly
+    // the room that choice leaves.
     let inner_w = area.width.saturating_sub(2) as usize;
-    // The room left on the title line: the border width minus the title
-    // text minus the separator ratatui puts between two titles.
-    let inline_room = inner_w.saturating_sub(title.chars().count()).saturating_sub(2);
-    let own_row = app_active_filter(app) && inline_room < FILTER_CHIP_BLOCK;
-    let chip = own_row.then(|| filter_chip(app, pal, inner_w.saturating_sub(2))).flatten();
-    if let Some(line) = &chip {
-        frame.render_widget(
-            line.clone(),
-            Rect {
-                x: area.x,
-                y: area.y,
-                width: area.width,
-                height: 1,
-            },
-        );
+    // Room left on the title line: the border width minus the title text
+    // minus the separator ratatui inserts between two titles.
+    let inline_room =
+        inner_w.saturating_sub(title.chars().count()).saturating_sub(2);
+    let own_row = filter_chip_label(app).is_some_and(|label| {
+        // block + space + label
+        inline_room < label.chars().count() + 2
+    });
+    if own_row {
+        if let Some(label) = &filter_chip_label(app) {
+            frame.render_widget(
+                filter_chip(label, pal, inner_w.saturating_sub(2)),
+                Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: 1,
+                },
+            );
+        }
     }
     // The table shrinks by the chip's row when the chip sits on its own
     // line; everything below keys off `area`, so rebind it once here.
@@ -1334,16 +1340,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     } else {
         pal.border
     };
-    let inline_chip = if own_row {
-        None
-    } else {
-        filter_chip(app, pal, inline_room)
-    };
     let mut block = Block::bordered()
         .title(Line::from(title).style(pal.title))
         .border_style(border);
-    if let Some(line) = inline_chip {
-        block = block.title(line);
+    if !own_row {
+        if let Some(label) = filter_chip_label(app) {
+            block = block.title(filter_chip(&label, pal, inline_room));
+        }
     }
     let table = Table::new(rows, widths)
         .header(header)
