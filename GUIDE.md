@@ -109,7 +109,12 @@ status bar, no modes except small popups:
   mark on the row and steps down (file-manager style), `u` clears all
   marks; with marks set, `x` kills the whole marked set under one
   confirmation and `a` attends the longest-waiting marked pane. Marks
-  survive sort/filter and show as a count in the title bar. Long lists scroll;
+  survive sort/filter and show as a count in the title bar. Any pane
+  you reach with `Enter` or `a` also records the visit: the row wears a
+  quiet `✓` until its state or summary changes — so a sweep of the
+  table shows what you have not looked at yet. A pane that still needs
+  you keeps its `!` (the tray still counts it), and `+`/`*` outrank the
+  check. Long lists scroll;
   the selection is always kept in view.
 - **Preview on demand.** Nothing is previewed by default: right-click a
   row or press `p` to open a scrollable fullscreen reader over the pane's
