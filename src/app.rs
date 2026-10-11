@@ -737,6 +737,18 @@ impl App {
             .trim_start_matches('!')
             .trim()
             .to_string();
+        // A saved filter whose query matches the standing/loaded search
+        // keeps its name across a restart: the header still names it.
+        // `config.filter` carries the on-disk `[ui] filter` value, which
+        // is the include query under the multi-token model.
+        let active_saved_filter = config
+            .saved_filters
+            .iter()
+            .find(|f| f.matches_query(&config.filter))
+            .map(|f| f.name.clone());
+        // Cloned before the move into the struct literal: the fields
+        // below consume `config`.
+        let saved_filters = config.saved_filters.clone();
         // Seeded from the config file: the standing view (exclusion,
         // sort, direction, shell hiding) is exactly what was saved.
         // Unknown sort names were already warned + defaulted at load.
