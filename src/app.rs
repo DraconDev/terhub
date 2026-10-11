@@ -6745,8 +6745,258 @@ mod tests {
         assert_eq!(ids(&app), vec!["%2"]);
     }
 
+    /// The shared history list lets one prompt recall what the
+    /// other committed. Up/Down cycle most-recent-first; Down past the
+    /// newest entry returns to the live draft.
+    #[test]
+    fn filter_history_cycles() {
+        let tmux = Tmux::new().unwrap();
+
+        // --- empty history: Up/Down leave the draft untouched. ---
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        app.on_key(press(KeyCode::Char('a')), &tmux);
+        assert_eq!(app.input, "a");
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "a");
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "a");
+        app.on_key(press(KeyCode::Esc), &tmux);
+
+        // --- single query: Up once shows it, Down returns to draft. ---
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        for c in ['c', 'a', 't'] {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.filter, "cat");
+        // Reopen: the draft is seeded from the live query.
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        assert_eq!(app.input, "cat");
+        app.on_key(press(KeyCode::Up), &tmux); // history[0] == "cat"
+        assert_eq!(app.input, "cat");
+        app.on_key(press(KeyCode::Up), &tmux); // already oldest: stays
+        assert_eq!(app.input, "cat");
+        app.on_key(press(KeyCode::Down), &tmux); // past the newest: draft
+        assert_eq!(app.input, "cat");
+        app.on_key(press(KeyCode::Esc), &tmux);
+
+        // --- multiple entries cycle newest-first and clamp. ---
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        for q in ["alpha", "beta", "gamma"] {
+            app.on_key(press(KeyCode::Char('f')), &tmux);
+            for _ in 0..10 {
+                app.on_key(press(KeyCode::Backspace), &tmux);
+            }
+            for c in q.chars() {
+                app.on_key(press(KeyCode::Char(c)), &tmux);
+            }
+            app.on_key(press(KeyCode::Enter), &tmux);
+        }
+        assert_eq!(app.filter, "gamma");
+
+        // --- cycling past the end clamps at the oldest entry. ---
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "gamma");
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "beta");
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "alpha");
+        // History is exhausted: further Up is a no-op (clamped).
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "alpha");
+        // And Down walks back out the way it came.
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "beta");
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "gamma");
+        // Past the newest entry we land back on the live draft, which
+        // is the current live query ("gamma") captured on entry.
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "gamma");
+
+        // --- edit-and-save: a recalled entry can be edited and the
+        // edited form is what Enter commits (and history records). ---
+        app.on_key(press(KeyCode::Up), &tmux); // gamma
+        app.on_key(press(KeyCode::Char('z')), &tmux); // -> gammaz
+        assert_eq!(app.input, "gammaz");
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.filter, "gammaz");
+        // Reopen: the edited query is the newest entry.
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "gammaz");
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "gamma");
+        app.on_key(press(KeyCode::Esc), &tmux);
+
+        // --- Tab does not lose history: Tab is inert in the prompt,
+        // and the history survives it (and survives being reopened). ---
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        app.on_key(press(KeyCode::Tab), &tmux);
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "gammaz");
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.filter, "gamma");
+    }
+
+    /// The standing editor shares the same history list, and recall
+    /// preserves the exclusion marker (the `!` form).
+    #[test]
+    fn filter_history_shared_with_standing_editor() {
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+
+        // Seed history from the live prompt.
+        for q in ["vim", "npm"] {
+            app.on_key(press(KeyCode::Char('/')), &tmux);
+            for c in q.chars() {
+                app.on_key(press(KeyCode::Char(c)), &tmux);
+            }
+            app.on_key(press(KeyCode::Enter), &tmux);
+        }
+        assert_eq!(app.filter, "npm");
+
+        // Standing editor: Up recalls "npm" in the bang form.
+        app.open_standing_editor();
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "!npm");
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "!vim");
+        app.on_key(press(KeyCode::Up), &tmux); // clamped
+        assert_eq!(app.input, "!vim");
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "!npm");
+        // The pre-existing standing value is the draft.
+        app.on_key(press(KeyCode::Down), &tmux);
+        app.on_key(press(KeyCode::Esc), &tmux);
+
+        // A standing commit lands in the same list, still bang-prefixed.
+        app.open_standing_editor();
+        app.on_key(press(KeyCode::Char('z')), &tmux);
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.exclude, "zsh");
+        app.on_key(press(KeyCode::Esc), &tmux);
+
+        // Reopen: Up shows the bang form of what was just committed.
+        app.open_standing_editor();
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "!zsh");
+        app.on_key(press(KeyCode::Esc), &tmux);
+
+        // Recalled back into the live prompt, the marker is dropped.
+        app.on_key(press(KeyCode::Char('/')), &tmux);
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "zsh");
+        app.on_key(press(KeyCode::Esc), &tmux);
+    }
+
+    /// Esc restores the pre-edit query and never rewinds history: the
+    /// navigation state is discarded, and the next prompt opens in
+    /// draft mode.
+    #[test]
+    fn filter_history_esc_restores_pre_edit_and_ignores_history() {
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        for word in ["one", "two"] {
+            for c in word.chars() {
+                app.on_key(press(KeyCode::Char(c)), &tmux);
+            }
+        }
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.filter, "onetwo");
+
+        app.filter = "alpha".to_string();
+        app.refresh_filtered();
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        app.on_key(press(KeyCode::Up), &tmux); // onetwo
+        assert_eq!(app.input, "onetwo");
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        // Esc ignored history entirely: the pre-edit query is back.
+        assert_eq!(app.filter, "alpha");
+
+        // The next open starts fresh — no stale history position.
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        assert_eq!(app.input, "alpha");
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "onetwo");
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "alpha");
+        app.on_key(press(KeyCode::Esc), &tmux);
+    }
+
+    /// The history is capped: committing more than the cap evicts the
+    /// oldest entries, and duplicates of the newest entry are dropped.
+    #[test]
+    fn filter_history_caps_and_dedups() {
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        for n in 0..12 {
+            app.on_key(press(KeyCode::Char('f')), &tmux);
+            for _ in 0..10 {
+                app.on_key(press(KeyCode::Backspace), &tmux);
+            }
+            for c in format!("q{n}").chars() {
+                app.on_key(press(KeyCode::Char(c)), &tmux);
+            }
+            app.on_key(press(KeyCode::Enter), &tmux);
+        }
+        // Only the cap survives; the oldest (q0, q1) are gone.
+        assert_eq!(app.filter_history.len(), App::FILTER_HISTORY_CAP);
+        assert_eq!(app.filter_history.front().unwrap(), "q2");
+        assert_eq!(app.filter_history.back().unwrap(), "q11");
+
+        // Re-opening and pressing Up yields the newest, then walks back
+        // only as far as the cap allows.
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        for _ in 0..10 {
+            app.on_key(press(KeyCode::Backspace), &tmux);
+        }
+        app.on_key(press(KeyCode::Up), &tmux);
+        assert_eq!(app.input, "q11");
+        for _ in 0..App::FILTER_HISTORY_CAP {
+            app.on_key(press(KeyCode::Up), &tmux);
+        }
+        assert_eq!(app.input, "q2"); // clamped at the oldest survived
+
+        // A duplicate of the newest entry is not appended.
+        let len = app.filter_history.len();
+        app.on_key(press(KeyCode::Esc), &tmux);
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.filter_history.len(), len);
+    }
+
+    /// Esc restores the pre-edit query.
     #[test]
     fn filter_esc_restores_pre_edit_query() {
+        let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
+        app.focus = Focus::Panes;
+        app.filter = "ba".to_string();
+        app.refresh_filtered();
+        // Reopen, type more (live narrows), then Esc: the pre-edit query
+        // comes back — Esc is cancel, not clear (clear lives on Esc in
+        // Normal mode, or deleting everything + Enter).
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        assert_eq!(app.input, "ba");
+        app.on_key(press(KeyCode::Char('x')), &tmux);
+        assert_eq!(app.filter, "bax");
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.filter, "ba");
+        assert_eq!(ids(&app), vec!["%2"]);
+    }
+
     #[test]
     fn esc_unwind_clears_filter_before_stepping_back() {
         let mut app = app_with_panes();
