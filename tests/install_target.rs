@@ -10,24 +10,46 @@ use std::path::Path;
 const MAKEFILE: &str = "Makefile";
 const SCRIPT: &str = "scripts/check-install.sh";
 
+/// Extract the body of a Makefile target: the indented lines
+/// following the `name:` header, until the first non-indented
+/// line. Returns "" if the target isn't defined.
+fn target_body(makefile: &str, name: &str) -> String {
+    let header = format!("{name}:");
+    let mut iter = makefile.lines();
+    // Find the header.
+    loop {
+        match iter.next() {
+            Some(l) if l.trim_start().starts_with(&header) => break,
+            Some(_) => continue,
+            None => return String::new(),
+        }
+    }
+    // Collect indented (or blank) lines.
+    let mut body = String::new();
+    for l in iter {
+        if l.is_empty() || l.starts_with([' ', '\t']) {
+            body.push_str(l);
+            body.push('\n');
+        } else {
+            break;
+        }
+    }
+    body
+}
+
 #[test]
 fn makefile_defines_build_target_that_installs() {
     let body = std::fs::read_to_string(MAKEFILE)
         .unwrap_or_else(|e| panic!("read {MAKEFILE}: {e}"));
+    let build_block = target_body(&body, "build");
+    assert!(
+        !build_block.is_empty(),
+        "{MAKEFILE} missing `build:` target"
+    );
     // The build target must call both `cargo build` (so the
     // working tree is current) AND `cargo install` (so the
     // $PATH binary is too). Without the second, the stale
     // ~/.cargo/bin/terhub footgun returns.
-    assert!(
-        body.lines().any(|l| l.trim_start().starts_with("build:")),
-        "{MAKEFILE} missing `build:` target"
-    );
-    let build_block = body
-        .lines()
-        .skip_while(|l| !l.trim_start().starts_with("build:"))
-        .take_while(|l| !l.trim_start().starts_with(".") && !l.trim_start().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
     assert!(
         build_block.contains("cargo build"),
         "{MAKEFILE} `build` target must run `cargo build`"
@@ -42,12 +64,11 @@ fn makefile_defines_build_target_that_installs() {
 #[test]
 fn makefile_has_check_install_target_pointing_at_script() {
     let body = std::fs::read_to_string(MAKEFILE).unwrap();
-    let check_block = body
-        .lines()
-        .skip_while(|l| !l.trim_start().starts_with("check-install:"))
-        .take_while(|l| !l.trim_start().starts_with(".") && !l.trim_start().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let check_block = target_body(&body, "check-install");
+    assert!(
+        !check_block.is_empty(),
+        "{MAKEFILE} missing `check-install:` target"
+    );
     assert!(
         check_block.contains("check-install.sh"),
         "{MAKEFILE} `check-install` target must invoke the script"
