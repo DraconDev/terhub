@@ -1264,7 +1264,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                         encode_saved_filters(f),
                         trailing_comment(line)
                     ));
-                    seen[6] = true;
+                    seen[SAVED_FILTERS] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1273,7 +1273,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                 Some(s) => {
                     let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
                     out.push(format!("sort = \"{esc}\"{}", trailing_comment(line)));
-                    seen[6] = true;
+                    seen[SORT] = true;
                 }
                 None => out.push(line.to_string()),
             }
