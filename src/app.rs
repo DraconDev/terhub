@@ -7491,4 +7491,236 @@ mod tests {
             app.status
         );
     }
+
+    // ---- saved (named) filters ------------------------------------
+
+    /// A saved filter drives the table, names itself in the title, and
+    /// survives a config round-trip. Covers add + switch + reload.
+    #[test]
+    fn saved_filters_add_switch_and_reload() {
+        let _scratch = ScratchConfig::new();
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+
+        // Name the current search: 'f' opens the live prompt, type a
+        // multi-token query, Enter commits it, then 's' → Filters → 'n'
+        // names it.
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        for c in "vim npm".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.filter, "vim npm");
+        app.on_key(press(KeyCode::Char('s')), &tmux);
+        assert_eq!(app.mode, Mode::Settings);
+        app.on_key(press(KeyCode::Char('n')), &tmux);
+        assert_eq!(
+            app.mode,
+            Mode::PromptSavedFilter { index: None },
+            "naming prompt did not open"
+        );
+        for c in "work".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.mode, Mode::Settings);
+        assert_eq!(app.saved_filters.len(), 1);
+        assert_eq!(app.saved_filters[0].name, "work");
+        assert_eq!(app.saved_filters[0].query, "vim npm");
+
+        // Reload from disk: the entry is back, so a restart keeps it.
+        let (cfg, problems) = crate::config::load_config_report(None);
+        assert!(problems.is_empty(), "load problems: {problems:?}");
+        assert_eq!(cfg.saved_filters.len(), 1, "saved filter did not persist");
+        assert_eq!(cfg.saved_filters[0].name, "work");
+        assert_eq!(cfg.saved_filters[0].query, "vim npm");
+        // The standing exclude line is untouched by saved-filter writes.
+        assert!(cfg.filter.is_empty(), "filter line disturbed: {:?}", cfg.filter);
+
+        // The settings page renders the name.
+        let labels: Vec<String> = app
+            .settings_rows()
+            .iter()
+            .filter_map(|r| match r {
+                SettingRow::Item { label, .. } => Some(label.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            labels.iter().any(|l| l.contains("work") && l.contains("vim npm")),
+            "saved filter missing from settings rows: {labels:?}"
+        );
+
+        // Switch to it: the live search takes its query and the header
+        // names it.
+        app.filter = String::new();
+        app.active_saved_filter = None;
+        app.refresh_filtered();
+        app.apply_setting(SettingKind::UseSavedFilter(0));
+        assert_eq!(app.filter, "vim npm");
+        assert_eq!(app.active_saved_filter.as_deref(), Some("work"));
+    }
+
+    /// Rename moves the entry and the header marker; delete removes the
+    /// entry and drops the marker.
+    #[test]
+    fn saved_filters_rename_and_delete() {
+        let _scratch = ScratchConfig::new();
+        let mut app = app_with_panes();
+        app.saved_filters = vec![crate::config::SavedFilter {
+            name: "old".to_string(),
+            query: "zsh".to_string(),
+        }];
+        app.filter = "zsh".to_string();
+        app.active_saved_filter = Some("old".to_string());
+        app.refresh_filtered();
+
+        // 's' opens settings; 'r' on the selected saved-filter row
+        // renames it. The section cursor starts on the first Filters
+        // row (the standing filter), so step down once to the saved row.
+        app.on_key(press(KeyCode::Char('s')), &tmux_for(app));
+        let _ = &mut app;
+        let rows = app.settings_rows();
+        let saved_at = rows.iter().position(|r| match r {
+            SettingRow::Item { kind, .. } => *kind == SettingKind::UseSavedFilter(0),
+            _ => false,
+        });
+        assert!(saved_at.is_some(), "no saved-filter row: {rows:?}");
+        // Select that row through the public settings API.
+        let item_ordinal = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| matches!(r, SettingRow::Item { .. }))
+            .position(|(i, _)| Some(&i) == saved_at.as_ref());
+        app.settings_selected = item_ordinal.unwrap();
+        app.settings_scroll = saved_at.unwrap();
+
+        app.on_key(press(KeyCode::Char('r')), &tmux_for(app));
+        assert_eq!(
+            app.mode,
+            Mode::PromptSavedFilter { index: Some(0) },
+            "rename prompt did not open"
+        );
+        // The prompt seeds the current name.
+        assert_eq!(app.input, "old");
+        for c in "new".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux_for(app));
+        }
+        app.on_key(press(KeyCode::Enter), &tmux_for(app));
+        assert_eq!(app.saved_filters[0].name, "new");
+        // The header marker moved with it.
+        assert_eq!(app.active_saved_filter.as_deref(), Some("new"));
+        assert_eq!(app.saved_filters.len(), 1, "rename must not duplicate");
+
+        // Delete via 'd' on the selected row.
+        app.on_key(press(KeyCode::Char('d')), &tmux_for(app));
+        assert!(app.saved_filters.is_empty(), "delete did not remove the row");
+        assert_eq!(app.active_saved_filter, None, "marker survived its filter");
+        // …and the file agrees.
+        let (cfg, _p) = crate::config::load_config_report(None);
+        assert!(cfg.saved_filters.is_empty(), "delete did not persist");
+    }
+
+    /// Ctrl+F cycles saved filters and wraps; an empty list is a no-op
+    /// that says so instead of silently doing nothing.
+    #[test]
+    fn saved_filters_ctrl_f_cycles_and_wraps() {
+        let _scratch = ScratchConfig::new();
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        // No saved filters yet: the key reports the way out.
+        app.keys
+            .insert("saved_filter".to_string(), "ctrl+f".to_string());
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+            &tmux,
+        );
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.contains("no saved filters")),
+            "empty-list status missing: {:?}",
+            app.status
+        );
+        assert_eq!(app.active_saved_filter, None);
+
+        // Two entries: cycle first → wraps back to first.
+        app.saved_filters = vec![
+            crate::config::SavedFilter {
+                name: "a".to_string(),
+                query: "alpha".to_string(),
+            },
+            crate::config::SavedFilter {
+                name: "b".to_string(),
+                query: "beta".to_string(),
+            },
+        ];
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+            &tmux,
+        );
+        assert_eq!(app.active_saved_filter.as_deref(), Some("a"));
+        assert_eq!(app.filter, "alpha");
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+            &tmux,
+        );
+        assert_eq!(app.active_saved_filter.as_deref(), Some("b"));
+        assert_eq!(app.filter, "beta");
+        // Wrap-around.
+        app.on_key(
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+            &tmux,
+        );
+        assert_eq!(app.active_saved_filter.as_deref(), Some("a"));
+        assert_eq!(app.filter, "alpha");
+    }
+
+    /// A hand-typed query drops the header name; typing a saved query
+    /// exactly restores it. The marker never outlives its query.
+    #[test]
+    fn saved_filter_marker_follows_the_query() {
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.saved_filters = vec![crate::config::SavedFilter {
+            name: "work".to_string(),
+            query: "vim".to_string(),
+        }];
+        // Typing the saved query exactly re-names it.
+        app.on_key(press(KeyCode::Char('f')), &tmux);
+        for c in "vim".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
+        assert_eq!(app.active_saved_filter.as_deref(), Some("work"));
+        // Editing away from it drops the name.
+        app.on_key(press(KeyCode::Char('x')), &tmux);
+        assert_eq!(app.active_saved_filter, None);
+        // Clearing the search drops it too.
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.filter, "vimx");
+        assert_eq!(app.active_saved_filter, None);
+    }
+
+    /// A naming prompt with an empty name commits nothing, and Esc
+    /// leaves the list untouched.
+    #[test]
+    fn saved_filter_empty_name_and_esc() {
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with_panes();
+        app.focus = Focus::Panes;
+        app.filter = "vim".to_string();
+        app.on_key(press(KeyCode::Char('s')), &tmux);
+        app.on_key(press(KeyCode::Char('n')), &tmux);
+        assert_eq!(app.mode, Mode::PromptSavedFilter { index: None });
+        // Esc: nothing saved.
+        app.on_key(press(KeyCode::Esc), &tmux);
+        assert_eq!(app.saved_filters.len(), 0);
+        // Empty name on Enter: also nothing saved, and the mode closes.
+        app.on_key(press(KeyCode::Char('n')), &tmux);
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(app.saved_filters.len(), 0);
+    }
 }
