@@ -1066,7 +1066,6 @@ impl AppConfig {
             highlight: Some(self.highlight_attached),
             mru_tabs: Some(self.mru_tabs),
             filter: Some(&self.filter),
-            saved_filters: None,
             saved_filters: Some(&self.saved_filters),
             sort: Some(&self.sort),
             sort_desc: Some(self.sort_desc),
