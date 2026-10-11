@@ -160,6 +160,15 @@ status bar, no modes except small popups:
   `h` hides unclaimed panes quiet over 10 minutes (one key, reversible,
   hidden count in the title) — the fast way to drop idle shells from a
   dashboard view.
+- **Named (saved) filters.** `ctrl+f` cycles the saved filters in
+  `[ui] saved_filters`, wrapping past the last one back to the first;
+  the active name shows as `filter:` in the title (a hand-typed query
+  keeps showing `search:`). Manage them in settings (`s` → Filters):
+  `Enter` on a row applies it, `n` names the current search, `r`
+  renames, `d` deletes, and every change is written to the config.
+  A saved filter composes with the standing exclusion, and typing an
+  edited query drops the name until you type the saved query exactly
+  again. The naming prompt is one line, like every other prompt.
   Prompts eat all clicks; the settings page rows and its sidebar are clickable.
 - **Refresh.** `F5` re-reads tmux and re-fetches native terminal tabs
   (Konsole/kitty/WezTerm show as `konsole:…` rows under `All` only; see
@@ -241,6 +250,8 @@ density = "v"
 settings = "s"
 sort = "o"
 filter = "f"
+# Cycle the named filters in [ui] saved_filters (wraps).
+saved_filter = "ctrl+f"
 # Optional hard-clear for the filter query. Unbound by default; bind
 # e.g. filter_clear = "ctrl+backspace" to wipe the query mid-prompt.
 # Esc in the filter prompt always restores the pre-edit query.
