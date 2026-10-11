@@ -3258,6 +3258,85 @@ impl App {
         self.persist_view();
     }
 
+    /// Cap on the in-memory filter history. Per the verification
+    /// contract, the last 10 committed queries (live `/` and standing
+    /// editor combined) are kept; older entries fall off the front.
+    const FILTER_HISTORY_CAP: usize = 10;
+
+    /// Reset history navigation state. Called on Esc, Enter, and
+    /// every prompt opening so a fresh prompt always starts in
+    /// draft mode (input = current filter / exclude, idx = None).
+    fn filter_history_reset(&mut self) {
+        self.filter_history_idx = None;
+        self.filter_history_pending = None;
+    }
+
+    /// Push a committed query to history. Skips empty queries and
+    /// duplicates of the most recent entry (so "Up then Down then
+    /// Enter" doesn't double-log the same string).
+    fn push_filter_history(&mut self, q: String) {
+        if q.is_empty() {
+            return;
+        }
+        if self.filter_history.back() == Some(&q) {
+            return;
+        }
+        while self.filter_history.len() >= Self::FILTER_HISTORY_CAP {
+            self.filter_history.pop_front();
+        }
+        self.filter_history.push_back(q);
+    }
+
+    /// Up arrow in the prompt: move to the previous history entry.
+    /// Captures the live draft on the first Up so a subsequent Down
+    /// past the latest entry returns to the edited draft rather
+    /// than to the pre-prompt snapshot.
+    fn filter_history_prev(&mut self) {
+        if self.filter_history.is_empty() {
+            return;
+        }
+        match self.filter_history_idx {
+            None => {
+                self.filter_history_pending = Some(self.input.clone());
+                let last = self.filter_history.len() - 1;
+                self.filter_history_idx = Some(last);
+                self.input = self.filter_history[last].clone();
+            }
+            Some(0) => {
+                // Already at the oldest entry; stay.
+            }
+            Some(i) => {
+                self.filter_history_idx = Some(i - 1);
+                self.input = self.filter_history[i - 1].clone();
+            }
+        }
+        self.cursor = self.input.chars().count();
+    }
+
+    /// Down arrow in the prompt: move to the next history entry, or
+    /// past the latest entry return to the captured draft.
+    fn filter_history_next(&mut self) {
+        match self.filter_history_idx {
+            None => {
+                // Already at the draft; nothing to do.
+            }
+            Some(i) => {
+                let next = i + 1;
+                if next >= self.filter_history.len() {
+                    // Past the latest entry; return to the draft.
+                    self.filter_history_idx = None;
+                    if let Some(pending) = self.filter_history_pending.take() {
+                        self.input = pending;
+                    }
+                } else {
+                    self.filter_history_idx = Some(next);
+                    self.input = self.filter_history[next].clone();
+                }
+            }
+        }
+        self.cursor = self.input.chars().count();
+    }
+
     /// Open the text filter, editing the current query in place.
     pub fn open_filter(&mut self) {
         self.mode = Mode::PromptFilter;
@@ -3265,6 +3344,7 @@ impl App {
         self.filter_before_edit.clone_from(&self.filter);
         self.input.clone_from(&self.filter);
         self.cursor = self.input.chars().count();
+        self.filter_history_reset();
     }
 
     /// Mark the sort pair as changed (header-click path lives in the
