@@ -787,7 +787,7 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
-            saved_filters: saved_filters,
+            saved_filters,
             active_saved_filter,
             filter_history: VecDeque::new(),
             filter_history_idx: None,
@@ -3030,7 +3030,7 @@ impl App {
             return;
         };
         let kind = match (&template, self.settings_rows().get(row).and_then(|r| match r {
-            SettingRow::Item { kind, .. } => Some(kind.clone()),
+            SettingRow::Item { kind, .. } => Some(*kind),
             _ => None,
         })) {
  (SettingKind::RenameSavedFilter(_), Some(SettingKind::UseSavedFilter(i))) => {
@@ -7660,7 +7660,7 @@ mod tests {
         // 's' opens settings; 'r' on the selected saved-filter row
         // renames it. The section cursor starts on the first Filters
         // row (the standing filter), so step down once to the saved row.
-        app.on_key(press(KeyCode::Char('s')), &&tmux);
+        app.on_key(press(KeyCode::Char('s')), &tmux);
         let _ = &mut app;
         let rows = app.settings_rows();
         let saved_at = rows.iter().position(|r| match r {
@@ -7677,7 +7677,7 @@ mod tests {
         app.settings_selected = item_ordinal.unwrap();
         app.settings_scroll = saved_at.unwrap();
 
-        app.on_key(press(KeyCode::Char('r')), &&tmux);
+        app.on_key(press(KeyCode::Char('r')), &tmux);
         assert_eq!(
             app.mode,
             Mode::PromptSavedFilter { index: Some(0) },
@@ -7691,16 +7691,16 @@ mod tests {
         }
         assert_eq!(app.input, "");
         for c in "new".chars() {
-            app.on_key(press(KeyCode::Char(c)), &&tmux);
+            app.on_key(press(KeyCode::Char(c)), &tmux);
         }
-        app.on_key(press(KeyCode::Enter), &&tmux);
+        app.on_key(press(KeyCode::Enter), &tmux);
         assert_eq!(app.saved_filters[0].name, "new");
         // The header marker moved with it.
         assert_eq!(app.active_saved_filter.as_deref(), Some("new"));
         assert_eq!(app.saved_filters.len(), 1, "rename must not duplicate");
 
         // Delete via 'd' on the selected row.
-        app.on_key(press(KeyCode::Char('d')), &&tmux);
+        app.on_key(press(KeyCode::Char('d')), &tmux);
         assert!(app.saved_filters.is_empty(), "delete did not remove the row");
         assert_eq!(app.active_saved_filter, None, "marker survived its filter");
         // …and the file agrees.
