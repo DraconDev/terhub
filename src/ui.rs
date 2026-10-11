@@ -474,6 +474,19 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
+/// True when any filter — the standing exclusion and/or the live
+/// search — is hiding rows right now. Drives whether the chip exists.
+fn app_active_filter(app: &App) -> bool {
+    !app.exclude.is_empty()
+        || !app.filter.is_empty()
+        || app.active_saved_filter.is_some()
+}
+
+/// Narrowest label worth showing inline on the title line. Below this the
+/// chip moves to its own header line: a truncated chip is worse than no
+/// chip, because it hides its own tail.
+const FILTER_CHIP_BLOCK: usize = 8;
+
 /// The filter chip: a coloured block plus a label naming every filter
 /// that is hiding rows right now. Without it a filter is easy to
 /// forget — the rows just quietly do not show up.
