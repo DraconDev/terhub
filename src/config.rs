@@ -198,6 +198,7 @@ impl Default for AppConfig {
             theme: DEFAULT_THEME.to_string(),
             density: DEFAULT_DENSITY.to_string(),
             filter: String::new(),
+            saved_filters: Vec::new(),
             sort: "Idle".to_string(),
             sort_desc: true,
             hide_shells: false,
