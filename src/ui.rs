@@ -1023,24 +1023,6 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if !app.marked.is_empty() {
         title.push_str(&format!(" · {} marked", app.marked.len()));
     }
-    if !app.exclude.is_empty() {
-        title.push_str(&format!(" · filter: {}", truncate(&app.exclude, 24)));
-    }
-    if !app.filter.is_empty() {
-        // A named filter says its name; a hand-typed query says the
-        // query. Both are visible, so an active filter is never silent.
-        match app.active_saved_filter.as_deref() {
-            Some(name) => title.push_str(&format!(" · filter: {}", truncate(name, 24))),
-            None => title.push_str(&format!(" · search: {}", truncate(&app.filter, 24))),
-        }
-    } else if app.active_saved_filter.is_some() {
-        // The list was filtered to nothing or cleared by hand: keep the
-        // name so the user knows a named filter was in play.
-        title.push_str(&format!(
-            " · filter: {}",
-            truncate(app.active_saved_filter.as_deref().unwrap_or(""), 24)
-        ));
-    }
     if app.hidden_quiet > 0 {
         title.push_str(&format!(" · hiding {}", app.hidden_quiet));
     }
