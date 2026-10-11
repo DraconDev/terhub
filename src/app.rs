@@ -5390,7 +5390,7 @@ mod tests {
 
     #[test]
     fn hosts_modal_add_remove_roundtrip() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         let tmux = Tmux::test("/nonexistent-tmux-binary".into());
         app.on_key(press(KeyCode::Char('m')), &tmux);
@@ -5413,7 +5413,7 @@ mod tests {
 
     #[test]
     fn host_add_rejects_garbage_and_stays_open() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         let tmux = Tmux::test("/nonexistent-tmux-binary".into());
         app.on_key(press(KeyCode::Char('m')), &tmux);
@@ -5431,7 +5431,7 @@ mod tests {
     #[test]
     fn hosts_enter_jumps_to_needy_remote() {
         use crate::agent::AgentState;
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         app.fleet_hosts = vec![crate::fleet::Host {
             name: "dev".to_string(),
@@ -6222,7 +6222,7 @@ mod tests {
 
     #[test]
     fn settings_open_navigate_apply_persists() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
         assert_eq!(app.on_key(press(KeyCode::Char('s')), &tmux), None);
@@ -6273,7 +6273,7 @@ mod tests {
 
     #[test]
     fn mru_toggle_flips_orders_and_persists() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with(&["a", "b"]);
         let mut p = Pane::test("%1", "w", "pi");
         p.session = "b".to_string();
@@ -6291,7 +6291,7 @@ mod tests {
 
     #[test]
     fn settings_click_hits_items_not_headers() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         app.open_settings();
         assert!(!app.settings_apply_at_row(0)); // Theme header
@@ -6510,7 +6510,7 @@ mod tests {
 
     #[test]
     fn sort_key_refollows_preview_to_new_top() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.show_preview = true;
@@ -6999,7 +6999,7 @@ mod tests {
         // env-mutating test (a concurrent TERHUB_CONFIG setter would
         // hijack config_path()); no second lock — std mutexes deadlock
         // on re-entry.
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.on_key(press(KeyCode::Char('o')), &tmux);
@@ -7013,7 +7013,7 @@ mod tests {
     #[test]
     fn hide_shells_toggle_persists_view() {
         // Same serialization as above; ScratchConfig already holds it.
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         // `h` is bound by default; the toggle flips and persists.
@@ -7473,7 +7473,7 @@ mod tests {
 
     #[test]
     fn sort_key_o_cycles_with_status() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.select_pane(1);
@@ -7492,13 +7492,55 @@ mod tests {
         );
     }
 
+    /// Point config reads/writes at one scratch file (the `TERHUB_CONFIG`
+    /// seam), so saved-filter persistence is asserted against a real
+    /// round-trip without touching the user's config.
+    struct ScopedConfig {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        old: Option<String>,
+        path: std::path::PathBuf,
+    }
+
+    impl ScopedConfig {
+        fn new() -> Self {
+            let guard = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let dir = std::env::temp_dir().join(format!("terhub-savedfilter-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("config.toml");
+            let old = std::env::var("TERHUB_CONFIG").ok();
+            // SAFETY: lock-held; no other lib test writes TERHUB_CONFIG.
+            unsafe { std::env::set_var("TERHUB_CONFIG", &path) };
+            ScopedConfig { _guard: guard, old, path }
+        }
+
+        fn load(&self) -> (AppConfig, Vec<String>) {
+            crate::config::load_config_report(None)
+        }
+
+        fn text(&self) -> String {
+            std::fs::read_to_string(&self.path).unwrap_or_default()
+        }
+    }
+
+    impl Drop for ScopedConfig {
+        fn drop(&mut self) {
+            // SAFETY: same confined var, restored before any other reader.
+            unsafe {
+                match &self.old {
+                    Some(v) => std::env::set_var("TERHUB_CONFIG", v),
+                    None => std::env::remove_var("TERHUB_CONFIG"),
+                }
+            }
+        }
+    }
+
     // ---- saved (named) filters ------------------------------------
 
     /// A saved filter drives the table, names itself in the title, and
     /// survives a config round-trip. Covers add + switch + reload.
     #[test]
     fn saved_filters_add_switch_and_reload() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
@@ -7530,7 +7572,7 @@ mod tests {
         assert_eq!(app.saved_filters[0].query, "vim npm");
 
         // Reload from disk: the entry is back, so a restart keeps it.
-        let (cfg, problems) = crate::config::load_config_report(None);
+        let (cfg, problems) = scratch.load();
         assert!(problems.is_empty(), "load problems: {problems:?}");
         assert_eq!(cfg.saved_filters.len(), 1, "saved filter did not persist");
         assert_eq!(cfg.saved_filters[0].name, "work");
@@ -7566,8 +7608,9 @@ mod tests {
     /// entry and drops the marker.
     #[test]
     fn saved_filters_rename_and_delete() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with_panes();
+        let tmux = Tmux::new().unwrap();
         app.saved_filters = vec![crate::config::SavedFilter {
             name: "old".to_string(),
             query: "zsh".to_string(),
@@ -7579,7 +7622,7 @@ mod tests {
         // 's' opens settings; 'r' on the selected saved-filter row
         // renames it. The section cursor starts on the first Filters
         // row (the standing filter), so step down once to the saved row.
-        app.on_key(press(KeyCode::Char('s')), &tmux_for(app));
+        app.on_key(press(KeyCode::Char('s')), &&tmux);
         let _ = &mut app;
         let rows = app.settings_rows();
         let saved_at = rows.iter().position(|r| match r {
@@ -7596,7 +7639,7 @@ mod tests {
         app.settings_selected = item_ordinal.unwrap();
         app.settings_scroll = saved_at.unwrap();
 
-        app.on_key(press(KeyCode::Char('r')), &tmux_for(app));
+        app.on_key(press(KeyCode::Char('r')), &&tmux);
         assert_eq!(
             app.mode,
             Mode::PromptSavedFilter { index: Some(0) },
@@ -7605,20 +7648,20 @@ mod tests {
         // The prompt seeds the current name.
         assert_eq!(app.input, "old");
         for c in "new".chars() {
-            app.on_key(press(KeyCode::Char(c)), &tmux_for(app));
+            app.on_key(press(KeyCode::Char(c)), &&tmux);
         }
-        app.on_key(press(KeyCode::Enter), &tmux_for(app));
+        app.on_key(press(KeyCode::Enter), &&tmux);
         assert_eq!(app.saved_filters[0].name, "new");
         // The header marker moved with it.
         assert_eq!(app.active_saved_filter.as_deref(), Some("new"));
         assert_eq!(app.saved_filters.len(), 1, "rename must not duplicate");
 
         // Delete via 'd' on the selected row.
-        app.on_key(press(KeyCode::Char('d')), &tmux_for(app));
+        app.on_key(press(KeyCode::Char('d')), &&tmux);
         assert!(app.saved_filters.is_empty(), "delete did not remove the row");
         assert_eq!(app.active_saved_filter, None, "marker survived its filter");
         // …and the file agrees.
-        let (cfg, _p) = crate::config::load_config_report(None);
+        let (cfg, _p) = scratch.load();
         assert!(cfg.saved_filters.is_empty(), "delete did not persist");
     }
 
@@ -7626,7 +7669,7 @@ mod tests {
     /// that says so instead of silently doing nothing.
     #[test]
     fn saved_filters_ctrl_f_cycles_and_wraps() {
-        let _scratch = ScratchConfig::new();
+        let scratch = ScopedConfig::new();
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
