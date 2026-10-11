@@ -20,7 +20,7 @@ use terhub::{
 };
 
 #[derive(Parser)]
-#[command(name = "terhub", about = "Terminal-first session hub over tmux.")]
+#[command(name = "terhub", about = "terhub — tmux made readable. See every pane, know which agents need you, jump to them.")]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,

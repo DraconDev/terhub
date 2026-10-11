@@ -1,12 +1,17 @@
-# terhub
+# terhub — tmux made readable
 
-Terminal-first session hub over tmux. One fullscreen TUI (plus a plain CLI)
-to see every session and pane, know which agents need you, jump to them,
-and drive them — from scripts, rules, MCP clients, a loopback web dashboard,
-or other hosts over SSH. Full Rust, mouse-friendly, non-vim, and every key
-rebindable.
+> **terhub** is a fullscreen TUI (plus a plain CLI) that sits on top of
+> **tmux** and shows every session, every pane, every agent, and which
+> ones need you — then lets you jump to them, mark them, and drive them.
+> Think of it as the missing overview pane that tmux never had.
 
-![terhub TUI, annotated: session tabs with worst-state dots, live needy counts, filter chip, waiting rows with reasons, idle-age tints, key hints](assets/screenshot-annotated.png)
+If you know what tmux is, the rest of this README will make sense in
+30 seconds. If you don't: tmux is the terminal multiplexer that runs
+your long-lived shells, splits them into panes, and keeps them alive
+when your SSH session drops. terhub is the screen you open in another
+terminal to see all of that at a glance.
+
+![terhub TUI: every pane, two red rows that need you, filter chip, footer of keys](assets/screenshot.png)
 
 ## Install
 
