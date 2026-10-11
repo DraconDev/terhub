@@ -1290,10 +1290,8 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// The footer is the discoverability surface. With 40+ panes the filter
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
-
-
-
-/// The attended marker: a visited row wears a quiet check until its
+#[test]
+fn footer_names_the_filter_key_and_follows_a_rebind() { a visited row wears a quiet check until its
 /// state or summary says something new — so a sweep of the table shows
 /// what is left, not just what is loud. It never outranks a live mark:
 /// a pane that still needs you keeps its `!`, a manual mark keeps `+`.
