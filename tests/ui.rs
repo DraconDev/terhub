@@ -1312,6 +1312,11 @@ fn footer_names_the_filter_key_and_follows_a_rebind() {
 }
 
 /// The attended marker: a visited row wears a quiet check until its
+/// state or summary says something new — so a sweep of the table shows
+/// what is left, not just what is loud. It never outranks a live mark:
+/// a pane that still needs you keeps its `!`, a manual mark keeps `+`.
+#[test]
+fn attended_marker_renders_and_yields_to_urgent_marks() {
     const SEEN: char = '\u{2713}';
     // Seen and unchanged: the check is drawn.
     let mut app = app_with_panes();
