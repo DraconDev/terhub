@@ -787,8 +787,8 @@ impl App {
             exclude,
             editing_standing: false,
             filter_before_edit: String::new(),
-            saved_filters: config.saved_filters.clone(),
-            active_saved_filter: None,
+            saved_filters: saved_filters,
+            active_saved_filter,
             filter_history: VecDeque::new(),
             filter_history_idx: None,
             filter_history_pending: None,
@@ -3005,6 +3005,17 @@ impl App {
 
     fn onoff(b: bool) -> &'static str {
         if b { "on" } else { "off" }
+    }
+
+    /// Shorten a saved query for a one-line settings row. Cuts at a
+    /// char boundary and marks the truncation, so a long multi-token
+    /// query never wraps the popup.
+    fn truncate_query(q: &str, max: usize) -> String {
+        let mut out: String = q.chars().take(max).collect();
+        if q.chars().count() > max {
+            out.push('…');
+        }
+        out
     }
 
     // ---- saved (named) filters -------------------------------------
