@@ -2285,6 +2285,7 @@ impl App {
                 } else {
                     self.filter.clone_from(&self.filter_before_edit);
                 }
+                self.filter_history_reset();
                 self.cancel_modal();
                 self.refresh_filtered();
                 self.follow_preview(tmux);
@@ -2305,6 +2306,11 @@ impl App {
                     // in `persist_view` for back-compat with old
                     // configs.
                     self.exclude = q.trim_start_matches('!').trim().to_string();
+                    // History records the committed input as the user
+                    // typed it in this prompt — the bang-prefixed form
+                    // — so recalling it into the standing editor
+                    // round-trips without losing the exclusion marker.
+                    self.push_filter_history(q);
                     self.persist_filter();
                     self.editing_standing = false;
                     self.cancel_modal();
@@ -2315,7 +2321,8 @@ impl App {
                         format!("standing filter saved: {}", self.exclude)
                     });
                 } else {
-                    self.filter = q;
+                    self.filter = q.clone();
+                    self.push_filter_history(q);
                     self.cancel_modal();
                     if !self.filter.is_empty() {
                         self.set_status(format!(
