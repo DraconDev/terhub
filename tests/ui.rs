@@ -1290,7 +1290,7 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// The footer is the discoverability surface. With 40+ panes the filter
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
-
+///
 /// A record with no timestamp is "never recorded", not 56 years old: a
 /// zero `state_since` must render as a dash, never as 20737d. (The Turn
 /// column already guards its zero the same way.)
