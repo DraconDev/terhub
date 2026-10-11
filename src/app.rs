@@ -2346,6 +2346,12 @@ impl App {
             }
             KeyCode::Home => self.cursor = 0,
             KeyCode::End => self.cursor = self.input.chars().count(),
+            // History navigation. The nav state persists across Char
+            // and Backspace (you can navigate into history, edit,
+            // and keep navigating), so these are the only arms that
+            // touch `filter_history_idx`.
+            KeyCode::Up => self.filter_history_prev(),
+            KeyCode::Down => self.filter_history_next(),
             KeyCode::Char(c) if !c.is_control() => {
                 self.insert_at_cursor(c);
                 self.apply_live_filter();
