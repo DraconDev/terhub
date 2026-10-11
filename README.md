@@ -6,7 +6,7 @@ and drive them — from scripts, rules, MCP clients, a loopback web dashboard,
 or other hosts over SSH. Full Rust, mouse-friendly, non-vim, and every key
 rebindable.
 
-![terhub TUI: 33 panes, two waiting agents in red, filter chip active](assets/screenshot.png)
+![terhub TUI, annotated: session tabs with worst-state dots, live needy counts, filter chip, waiting rows with reasons, idle-age tints, key hints](assets/screenshot-annotated.png)
 
 ## Install
 
