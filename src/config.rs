@@ -1125,6 +1125,13 @@ pub fn persist_ui_settings(v: &UiPersist) -> anyhow::Result<()> {
     persist_ui_settings_to(&config_path(), v)
 }
 
+/// [`persist_ui_settings`] against an explicit path. The in-crate
+/// callers (and the tests) resolve `config_path()` themselves, so the
+/// seam keeps the env lookup out of the write.
+pub fn persist_ui_settings_at(path: &std::path::Path, v: &UiPersist) -> anyhow::Result<()> {
+    persist_ui_settings_to(&path.to_path_buf(), v)
+}
+
 fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     let raw = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
     let text = strip_bom(&raw);

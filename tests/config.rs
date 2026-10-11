@@ -127,7 +127,7 @@ fn saving_saved_filters_leaves_the_filter_line_alone() {
     let mut changes = ViewChanges::default();
     changes.saved_filters = true;
     let patch = cfg.ui_persist_changes(&changes);
-    terhub::config::persist_ui_settings_to(&path, &patch).unwrap();
+    terhub::config::persist_ui_settings_at(&path, &patch).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("filter = \"!zsh\""), "filter line rewritten:\n{text}");
     assert!(
