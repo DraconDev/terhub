@@ -1,15 +1,16 @@
-# terhub — tmux made readable
+# terhub — your terminal command center
 
-> **terhub** is a fullscreen TUI (plus a plain CLI) that sits on top of
-> **tmux** and shows every session, every pane, every agent, and which
-> ones need you — then lets you jump to them, mark them, and drive them.
-> Think of it as the missing overview pane that tmux never had.
+> **terhub** is a fullscreen TUI (plus a plain CLI) that gathers every
+> session, every pane, and every agent from every place you work
+> (local tmux/zellij, SSH hosts, agent processes) into one screen, names
+> which ones need you, and lets you jump to them, mark them, and drive
+> them. It's the overview that the terminal never had.
 
-If you know what tmux is, the rest of this README will make sense in
-30 seconds. If you don't: tmux is the terminal multiplexer that runs
-your long-lived shells, splits them into panes, and keeps them alive
-when your SSH session drops. terhub is the screen you open in another
-terminal to see all of that at a glance.
+If you've ever lost a pane in a stack of `tmux ls` outputs, missed an
+agent waiting for input because you were in the wrong window, or wanted
+to see at a glance which of fifteen sessions actually need you —
+terhub is the screen that fixes that. It works on top of tmux and
+zellij locally, and reaches across SSH to other hosts.
 
 ![terhub TUI: every pane, two red rows that need you, filter chip, footer of keys](assets/screenshot.png)
 
