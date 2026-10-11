@@ -474,6 +474,39 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
+/// The filter chip: a coloured block plus a label naming every filter
+/// that is hiding rows right now. Without it a filter is easy to
+/// forget — the rows just quietly do not show up.
+///
+/// `max_label` bounds the label so the chip can never be clipped: the
+/// caller asks for the width it can actually give the label and gets
+/// back something that fits.
+fn filter_chip(app: &App, pal: &Palette, max_label: usize) -> Option<Line<'static>> {
+    let mut parts: Vec<String> = Vec::new();
+    // The standing exclusion (`[ui] filter`) only ever hides.
+    if !app.exclude.is_empty() {
+        parts.push(format!("filter: {}", truncate(&app.exclude, 24)));
+    }
+    // A saved filter says its name; a hand-typed query says the query.
+    match app.active_saved_filter.as_deref() {
+        Some(name) => parts.push(format!("filter: {}", truncate(name, 24))),
+        None if !app.filter.is_empty() => {
+            parts.push(format!("search: {}", truncate(&app.filter, 24)));
+        }
+        None => {}
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    let label = truncate(&parts.join(" · "), max_label);
+    Some(Line::from(vec![
+        // The block: a filled square in the title ink, so the chip reads
+        // as one object rather than more title text.
+        Span::styled("◼", pal.title),
+        Span::styled(format!(" {label}"), pal.title),
+    ]))
+}
+
 /// Render a 6-bucket sparkline bucket array as 6 block characters.
 /// Heights are log-mapped: a single tall bar is the signal the user
 /// wants (a busy tick next to quiet ones), not arithmetic — equal
