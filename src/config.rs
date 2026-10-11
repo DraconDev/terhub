@@ -856,6 +856,7 @@ impl Default for UiSection {
             highlight_attached: true,
             mru_tabs: false,
             filter: String::new(),
+            saved_filters: Vec::new(),
             sort: default_sort(),
             sort_desc: default_sort_desc(),
             hide_shells: false,
