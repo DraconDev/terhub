@@ -1291,12 +1291,27 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
 #[test]
-fn footer_names_the_filter_key_and_follows_a_rebind() { a visited row wears a quiet check until its
-/// state or summary says something new — so a sweep of the table shows
-/// what is left, not just what is loud. It never outranks a live mark:
-/// a pane that still needs you keeps its `!`, a manual mark keeps `+`.
-#[test]
-fn attended_marker_renders_and_yields_to_urgent_marks() {
+fn footer_names_the_filter_key_and_follows_a_rebind() {
+    let mut app = app_with(&["alpha"]);
+    let text = render_lines(&mut app, 200, 8).join("\n");
+    assert!(
+        text.contains(" = filter"),
+        "footer no longer advertises the filter key:\n{text}"
+    );
+    // Default binding is `f`; the label is derived from config, so a
+    // rebind is reflected instead of lying to the user.
+    assert_eq!(app.config.key_label("filter"), "f");
+    app.config
+        .keys
+        .insert("filter".to_string(), "ctrl+s".to_string());
+    let rebound = render_lines(&mut app, 200, 8).join("\n");
+    assert!(
+        rebound.contains("ctrl+s = filter"),
+        "footer ignored the rebound filter key:\n{rebound}"
+    );
+}
+
+/// The attended marker: a visited row wears a quiet check until its
     const SEEN: char = '\u{2713}';
     // Seen and unchanged: the check is drawn.
     let mut app = app_with_panes();
@@ -1395,31 +1410,6 @@ fn comfortable_spacing_doubles_only_when_wide() {
     // The threshold itself: 130 breathes, 129 stays tight.
     assert_eq!(header_gap(130), header_gap(150), "130 should breathe");
     assert_eq!(header_gap(129), header_gap(110), "129 should stay tight");
-}
-
-#[test]
-fn footer_names_the_filter_key_and_follows_a_rebind() {
-    let mut app = app_with(&["alpha"]);
-    let text = render_lines(&mut app, 200, 8).join("\n");
-    assert!(
-        text.contains(" = filter"),
-        "footer no longer advertises the filter key:\n{text}"
-    );
-    // Default binding is `f`; the label is derived from config, so a
-    // rebind is reflected instead of lying to the user.
-    assert_eq!(app.config.key_label("filter"), "f");
-    app.config
-        .keys
-        .insert("filter".to_string(), "ctrl+s".to_string());
-    let rebound = render_lines(&mut app, 200, 8).join("\n");
-    assert!(
-        rebound.contains("ctrl+s = filter"),
-        "footer ignored the rebound filter key:\n{rebound}"
-    );
-    assert!(
-        !rebound.contains(" = filter · ") || rebound.contains("ctrl+s = filter"),
-        "stale key survived the rebind:\n{rebound}"
-    );
 }
 
 #[test]
