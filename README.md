@@ -2,15 +2,15 @@
 
 > **terhub** is a fullscreen TUI (plus a plain CLI) that gathers every
 > session, every pane, and every agent from every place you work
-> (local tmux/zellij, SSH hosts, agent processes) into one screen, names
-> which ones need you, and lets you jump to them, mark them, and drive
-> them. It's the overview that the terminal never had.
+> (local tmux/zellij/screen, SSH hosts, agent processes) into one
+> screen, names which ones need you, and lets you jump to them, mark
+> them, and drive them. It's the overview that the terminal never had.
 
 If you've ever lost a pane in a stack of `tmux ls` outputs, missed an
 agent waiting for input because you were in the wrong window, or wanted
 to see at a glance which of fifteen sessions actually need you —
-terhub is the screen that fixes that. It works on top of tmux and
-zellij locally, and reaches across SSH to other hosts.
+terhub is the screen that fixes that. It works on top of tmux, zellij,
+and screen locally, and reaches across SSH to other hosts.
 
 ![terhub TUI: every pane, two red rows that need you, filter chip, footer of keys](assets/screenshot.png)
 
@@ -23,8 +23,8 @@ do anything (you can still attach and read).
 
 | Capability           | tmux | zellij | screen | SSH fleet | native tabs |
 |----------------------|:----:|:------:|:------:|:---------:|:-----------:|
-| List sessions        |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
-| Attach               |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
+| List sessions        |  ✓   |   ✓    |   ✓    |     ✓     |      ✓      |
+| Attach               |  ✓   |   ✓    |   ✓    |     ✓     |      ✓      |
 | List panes           |  ✓   |   –    |   –    |     ✓     |      –      |
 | Capture last lines   |  ✓   |   –    |   –    |     ✓     |      –      |
 | Kill / swap / focus  |  ✓   |   –    |   –    |     ✓     |      –      |

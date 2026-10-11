@@ -2,11 +2,11 @@
 
 terhub is a terminal command center: one fullscreen TUI (plus a plain CLI)
 that gathers every session, pane, and agent from every place you work
-(local tmux, local zellij, SSH hosts, agent processes) into one screen,
-names which ones need you, and lets you jump to them, mark them, and
-drive them — from scripts, rules, MCP clients, a loopback web dashboard,
-or other hosts over SSH. Full Rust, mouse-friendly, non-vim, and every
-key rebindable.
+(local tmux, local zellij, local GNU screen, SSH hosts, agent processes)
+into one screen, names which ones need you, and lets you jump to them,
+mark them, and drive them — from scripts, rules, MCP clients, a loopback
+web dashboard, or other hosts over SSH. Full Rust, mouse-friendly,
+non-vim, and every key rebindable.
 
 If you only want the cheat-sheet, see [README.md](README.md). This guide
 explains how the pieces fit and how to set each one up.
@@ -779,8 +779,8 @@ broken.
 
 | Capability           | tmux | zellij | screen | SSH fleet | native tabs |
 |----------------------|:----:|:------:|:------:|:---------:|:-----------:|
-| List sessions        |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
-| Attach               |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
+| List sessions        |  ✓   |   ✓    |   ✓    |     ✓     |      ✓      |
+| Attach               |  ✓   |   ✓    |   ✓    |     ✓     |      ✓      |
 | List panes           |  ✓   |   –    |   –    |     ✓     |      –      |
 | Capture last lines   |  ✓   |   –    |   –    |     ✓     |      –      |
 | Kill / swap / focus  |  ✓   |   –    |   –    |     ✓     |      –      |
