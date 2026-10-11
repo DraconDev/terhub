@@ -3743,7 +3743,16 @@ impl App {
         if self.editing_standing {
             self.exclude = self.input.trim().trim_start_matches('!').trim().to_string();
         } else {
-            self.filter = self.input.trim().to_string();
+            let q = self.input.trim().to_string();
+            self.filter = q.clone();
+            // A hand-typed query is no longer the named filter's query,
+            // so the header stops naming it. Re-typing the same text
+            // restores the name (checked on commit below).
+            if self.active_saved_filter.as_deref()
+                != self.find_saved_filter_by_query(&q).as_deref()
+            {
+                self.active_saved_filter = None;
+            }
         }
         self.refresh_filtered();
         self.pane_selected = 0;
