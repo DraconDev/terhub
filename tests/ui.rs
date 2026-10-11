@@ -1006,6 +1006,68 @@ fn prompt_modal_renders_input() {
 }
 
 #[test]
+fn saved_filter_name_appears_in_the_table_header() {
+    let mut app = app_with_panes();
+    // An active saved filter is visible in the title, not silent.
+    app.saved_filters = vec![terhub::config::SavedFilter {
+        name: "work".to_string(),
+        query: "bash".to_string(),
+    }];
+    app.filter = "bash".to_string();
+    app.active_saved_filter = Some("work".to_string());
+    app.refresh_filtered();
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(
+        text.contains("filter: work"),
+        "saved filter name missing from header:\n{text}"
+    );
+    assert!(
+        !text.contains("search: bash"),
+        "a named filter must not also read as a raw search:\n{text}"
+    );
+
+    // Typed by hand: the title names the query, not a saved filter.
+    app.active_saved_filter = None;
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(
+        text.contains("search: bash"),
+        "hand-typed query lost its header text:\n{text}"
+    );
+}
+
+#[test]
+fn saved_filter_prompt_is_single_line() {
+    // Naming a filter is an add prompt…
+    let mut app = app_with(&["alpha"]);
+    app.mode = Mode::PromptSavedFilter { index: None };
+    app.input = "work".to_string();
+    let text = render_lines(&mut app, 100, 12).join("\n");
+    assert!(text.contains("Filter name: work"), "missing label:\n{text}");
+    assert!(!text.contains("Hide: "), "exclusion chrome leaked:\n{text}");
+
+    // …and the rename prompt seeds the existing name on the same line.
+    let mut app = app_with(&["alpha"]);
+    app.mode = Mode::PromptSavedFilter { index: Some(0) };
+    app.input = "old".to_string();
+    let text = render_lines(&mut app, 100, 12).join("\n");
+    assert!(text.contains("Rename: old"), "missing rename label:\n{text}");
+}
+
+#[test]
+fn settings_filters_section_lists_saved_names() {
+    let mut app = app_with_panes();
+    app.saved_filters = vec![terhub::config::SavedFilter {
+        name: "work".to_string(),
+        query: "bash nvim".to_string(),
+    }];
+    app.mode = Mode::Settings;
+    let text = render_lines(&mut app, 120, 30).join("\n");
+    assert!(text.contains("Filters"), "missing section:\n{text}");
+    assert!(text.contains("saved: work"), "missing saved name:\n{text}");
+    assert!(text.contains("bash nvim"), "missing query text:\n{text}");
+}
+
+#[test]
 fn confirm_modal_renders() {
     let mut app = app_with(&["alpha"]);
     app.mode = Mode::ConfirmKill("alpha".to_string());
