@@ -1182,19 +1182,25 @@ fn filter_active_indicator_wraps_to_a_second_header_line_when_narrow() {
             .iter()
             .position(|l| l.contains(&label))
             .unwrap_or_else(|| panic!("w={width}: chip vanished or clipped:\n{lines:?}"));
-        assert!(
-            lines[row + 1].starts_with('\u{250c}'),
-            "w={width}: chip line is not adjacent to the table:\n{lines:?}"
-        );
         if width >= 140 {
+            // Inline: the title's own border line, header row right after.
             assert!(
                 lines[row].contains("terhub \u{2014}"),
                 "w={width}: chip should share the title line:\n{lines:?}"
             );
+            assert!(
+                lines[row + 1].starts_with('\u{2502}'),
+                "w={width}: inline chip is not inside the border:\n{lines:?}"
+            );
         } else {
+            // Wrapped: its own line, with the table border directly under.
             assert!(
                 !lines[row].contains("terhub \u{2014}"),
                 "w={width}: chip should have wrapped to its own line:\n{lines:?}"
+            );
+            assert!(
+                lines[row + 1].starts_with('\u{250c}'),
+                "w={width}: chip line is not adjacent to the table:\n{lines:?}"
             );
         }
     }
