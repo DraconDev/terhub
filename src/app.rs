@@ -3170,6 +3170,33 @@ impl App {
         self.cursor = self.input.chars().count();
     }
 
+    /// Rename saved filter `i` in place, keeping its position and
+    /// query. Renaming onto a name another row already holds merges the
+    /// two instead of producing two rows with the same label.
+    fn rename_saved_filter(&mut self, i: usize, new_name: String) {
+        let new_name = new_name.trim().to_string();
+        if new_name.is_empty() {
+            return;
+        }
+        let Some(old_name) = self.saved_filters.get(i).map(|f| f.name.clone()) else {
+            return;
+        };
+        if new_name == old_name {
+            return;
+        }
+        if let Some(dup) = self.saved_filters.iter().position(|f| f.name == new_name) {
+            self.saved_filters.remove(dup);
+            // The removed row may shift the index of the renamed one.
+            let target = if dup < i { i - 1 } else { i };
+            if let Some(f) = self.saved_filters.get_mut(target) {
+                f.name = new_name;
+            }
+        } else if let Some(f) = self.saved_filters.get_mut(i) {
+            f.name = new_name;
+        }
+        self.persist_saved_filters();
+    }
+
     /// Name typed in the saved-filter prompt: commit it and persist.
     /// `Some(i)` renames (query carried over); `None` names the live
     /// search query.
@@ -3179,29 +3206,29 @@ impl App {
             self.set_status("filter needs a name".to_string());
             return;
         }
-        let query = match index {
-            Some(i) => match self.saved_filters.get(i) {
-                Some(f) => f.query.clone(),
-                None => return,
-            },
-            None => {
-                if self.filter.trim().is_empty() {
-                    self.set_status("nothing to save (search is empty)".to_string());
-                    return;
-                }
-                self.filter.trim().to_string()
+        let Some(index) = index else {
+            // Adding: the live search is the query.
+            if self.filter.trim().is_empty() {
+                self.set_status("nothing to save (search is empty)".to_string());
+                return;
             }
-        };
-        // Renaming moves the header marker to the new name (index is
-        // Some = rename); a brand-new name keeps whatever was active.
-        let renamed = index.and_then(|i| self.saved_filters.get(i)).map(|f| f.name.clone());
-        self.save_named_filter(name.clone(), query.clone());
-        if let Some(old_name) = renamed
-            && self.active_saved_filter.as_deref() == Some(old_name.as_str())
-        {
+            let query = self.filter.trim().to_string();
             self.active_saved_filter = Some(name.clone());
+            self.save_named_filter(name.clone(), query.clone());
+            self.set_status(format!("saved filter '{name}': {query}"));
+            return;
+        };
+        // Renaming: carry the query over and move the header marker when
+        // the renamed row was the active one.
+        let Some(old) = self.saved_filters.get(index).map(|f| (f.name.clone(), f.query.clone()))
+        else {
+            return;
+        };
+        self.rename_saved_filter(index, name.clone());
+        if self.active_saved_filter.as_deref() == Some(old.0.as_str()) {
+            self.active_saved_filter = Some(name);
         }
-        self.set_status(format!("saved filter '{name}': {query}"));
+        self.set_status(format!("saved filter '{}': {}", name, old.1));
     }
 
     /// Row indices of actionable items (headers aren't selectable).
