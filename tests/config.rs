@@ -224,7 +224,7 @@ fn combined_saved_filters_and_sort_patch_writes_both_lines() {
         let path = std::env::temp_dir()
             .join(format!("terhub-combined-parse-{tag}-{}.toml", std::process::id()));
         std::fs::write(&path, text).unwrap();
-        let (cfg, problems) = load_config_report(Some(path.clone()));
+        let (cfg, problems) = terhub::config::load_config_report(Some(path.clone()));
         assert!(problems.is_empty(), "{tag}: parse problems {problems:?}");
         assert_eq!(cfg.saved_filters.len(), 1, "{tag}: saved filters gone");
         assert_eq!(cfg.saved_filters[0].query, "vim", "{tag}: query wrong");
