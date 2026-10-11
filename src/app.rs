@@ -1284,9 +1284,11 @@ impl App {
                 // and close the preview. The merges below re-filter once
                 // the row set is complete.
                 // Drop marks for dead panes; survivors keep theirs.
+                // Attended entries die with their pane too.
                 let live: std::collections::HashSet<&str> =
                     self.panes.iter().map(|p| p.id.as_str()).collect();
                 self.marked.retain(|id| live.contains(id.as_str()));
+                self.attended.retain(|id, _| live.contains(id.as_str()));
             }
             Err(e) => {
                 // Non-destructive: a failed tick keeps stale rows, the
@@ -1329,6 +1331,7 @@ impl App {
                 self.agents_live = false;
             }
         }
+        self.prune_attended();
     }
 
     /// Footer toast lifetime: confirmations fade back to the hints instead
@@ -4222,7 +4225,48 @@ impl App {
             self.set_status(format!("{what} failed: {e:#}"));
             return;
         }
+        // A successful jump means the user has seen this pane as it is
+        // right now — record it before the refresh re-reads everything.
+        match &ev {
+            AppEvent::FocusPane(id) | AppEvent::FocusNative(id) => self.mark_attended(id),
+            _ => {}
+        }
         self.refresh(tmux);
+    }
+
+    /// Record that the user has seen this pane as it is right now:
+    /// the row wears `\u{2713}` until its state or summary says something
+    /// new. Panes with no agent record (plain shells) store an empty pair
+    /// and simply stay seen — a shell has no state that could change.
+    fn mark_attended(&mut self, id: &str) {
+        let seen = match self.agents.get(id) {
+            Some(r) => (r.state.label().to_string(), r.summary.clone()),
+            None => (String::new(), String::new()),
+        };
+        self.attended.insert(id.to_string(), seen);
+    }
+
+    /// True when the row still matches what the user saw: same state,
+    /// same summary. Ticks (`waiting_secs`, `last_turn_secs`) are
+    /// deliberately not part of the key — the clock moving is not news.
+    fn is_attended(&self, id: &str) -> bool {
+        match (self.attended.get(id), self.agents.get(id)) {
+            (Some((st, sum)), Some(r)) => st == r.state.label() && sum == &r.summary,
+            (Some((st, sum)), None) => st.is_empty() && sum.is_empty(),
+            (None, _) => false,
+        }
+    }
+
+    /// Drop attended entries the pane has outgrown: a new state or a new
+    /// summary is new information, so the row stops reading as seen.
+    /// Live-pane pruning happens with `marked` in the pane tick; this is
+    /// the state/summary half, run after every agent snapshot.
+    fn prune_attended(&mut self) {
+        let agents = &self.agents;
+        self.attended.retain(|id, (st, sum)| match agents.get(id) {
+            Some(r) => st == r.state.label() && sum == &r.summary,
+            None => st.is_empty() && sum.is_empty(),
+        });
     }
 
     /// Space: toggle the row's mark and step the cursor so the next
