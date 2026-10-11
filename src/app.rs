@@ -7546,10 +7546,6 @@ mod tests {
         fn load(&self) -> (AppConfig, Vec<String>) {
             crate::config::load_config_report(None)
         }
-
-        fn text(&self) -> String {
-            std::fs::read_to_string(&self.path).unwrap_or_default()
-        }
     }
 
     impl Drop for ScopedConfig {
