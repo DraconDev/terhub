@@ -1270,7 +1270,9 @@ fn footer_names_the_filter_key_and_follows_a_rebind() {
     // Default binding is `f`; the label is derived from config, so a
     // rebind is reflected instead of lying to the user.
     assert_eq!(app.config.key_label("filter"), "f");
-    app.config.set_key("filter", "ctrl+s");
+    app.config
+        .keys
+        .insert("filter".to_string(), "ctrl+s".to_string());
     let rebound = render_lines(&mut app, 200, 8).join("\n");
     assert!(
         rebound.contains("ctrl+s = filter"),
