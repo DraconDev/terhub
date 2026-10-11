@@ -5418,7 +5418,7 @@ mod tests {
 
     #[test]
     fn hosts_modal_add_remove_roundtrip() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         let tmux = Tmux::test("/nonexistent-tmux-binary".into());
         app.on_key(press(KeyCode::Char('m')), &tmux);
@@ -5441,7 +5441,7 @@ mod tests {
 
     #[test]
     fn host_add_rejects_garbage_and_stays_open() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         let tmux = Tmux::test("/nonexistent-tmux-binary".into());
         app.on_key(press(KeyCode::Char('m')), &tmux);
@@ -5459,7 +5459,7 @@ mod tests {
     #[test]
     fn hosts_enter_jumps_to_needy_remote() {
         use crate::agent::AgentState;
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         app.fleet_hosts = vec![crate::fleet::Host {
             name: "dev".to_string(),
@@ -6252,7 +6252,7 @@ mod tests {
 
     #[test]
     fn settings_open_navigate_apply_persists() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
         assert_eq!(app.on_key(press(KeyCode::Char('s')), &tmux), None);
@@ -6303,7 +6303,7 @@ mod tests {
 
     #[test]
     fn mru_toggle_flips_orders_and_persists() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with(&["a", "b"]);
         let mut p = Pane::test("%1", "w", "pi");
         p.session = "b".to_string();
@@ -6321,7 +6321,7 @@ mod tests {
 
     #[test]
     fn settings_click_hits_items_not_headers() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with(&["a"]);
         app.open_settings();
         assert!(!app.settings_apply_at_row(0)); // Theme header
@@ -6540,7 +6540,7 @@ mod tests {
 
     #[test]
     fn sort_key_refollows_preview_to_new_top() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.show_preview = true;
@@ -7029,7 +7029,7 @@ mod tests {
         // env-mutating test (a concurrent TERHUB_CONFIG setter would
         // hijack config_path()); no second lock — std mutexes deadlock
         // on re-entry.
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.on_key(press(KeyCode::Char('o')), &tmux);
@@ -7043,7 +7043,7 @@ mod tests {
     #[test]
     fn hide_shells_toggle_persists_view() {
         // Same serialization as above; ScratchConfig already holds it.
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         // `h` is bound by default; the toggle flips and persists.
@@ -7503,7 +7503,7 @@ mod tests {
 
     #[test]
     fn sort_key_o_cycles_with_status() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.select_pane(1);
@@ -7570,7 +7570,7 @@ mod tests {
     /// survives a config round-trip. Covers add + switch + reload.
     #[test]
     fn saved_filters_add_switch_and_reload() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
@@ -7638,7 +7638,7 @@ mod tests {
     /// entry and drops the marker.
     #[test]
     fn saved_filters_rename_and_delete() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.saved_filters = vec![crate::config::SavedFilter {
@@ -7704,7 +7704,7 @@ mod tests {
     /// that says so instead of silently doing nothing.
     #[test]
     fn saved_filters_ctrl_f_cycles_and_wraps() {
-        let scratch = ScopedConfig::new();
+        let _scratch = ScopedConfig::new();
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
