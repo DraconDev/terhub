@@ -731,11 +731,16 @@ pub fn pane_cell_id(id: &str) -> String {
 /// `!` needs you; `+` is space-marked for bulk ops; `*` is the focused
 /// pane, shown only where a window holds several panes and focus is
 /// actually ambiguous. Attention always wins over the mark.
+/// The mark column, most urgent first: a pane that still needs you
+/// keeps its `!` even after a visit (the tray still counts it), then the
+/// manual `+` and the focus `*`; `\u{2713}` is only for rows with nothing
+/// louder to say — it answers "have I looked at everything yet".
 pub fn row_mark(
     is_needy: bool,
     marked: bool,
     active: bool,
     panes_in_window: usize,
+    attended: bool,
 ) -> &'static str {
     if is_needy {
         "!"
@@ -743,6 +748,8 @@ pub fn row_mark(
         "+"
     } else if active && panes_in_window > 1 {
         "*"
+    } else if attended {
+        "\u{2713}"
     } else {
         " "
     }
@@ -1112,7 +1119,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             let rec = app.agents.get(&p.id);
             let is_needy = rec.is_some_and(|r| r.state.needs_attention());
             let siblings = counts.get(p.window_id.as_str()).copied().unwrap_or(1);
-            let mark = row_mark(is_needy, app.marked.contains(&p.id), p.active, siblings);
+            let mark = row_mark(
+                is_needy,
+                app.marked.contains(&p.id),
+                p.active,
+                siblings,
+                app.is_attended(&p.id),
+            );
             let mark_style = if is_needy {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
             } else {
@@ -1311,7 +1324,17 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     if let Some(i) = keys.iter().position(|k| *k == Some(app.sort_key)) {
         headers[i].push(if app.sort_asc { '▲' } else { '▼' });
     }
-    let spacing = if compact { 0 } else { 1 };
+    // Column gap: comfortable breathes once the table is wide enough
+    // to afford it (each extra cell costs ~12 across the row). Below
+    // that every cell counts, so it stays tight. Compact keeps 0.
+    const WIDE_TABLE: u16 = 130;
+    let spacing = if compact {
+        0
+    } else if area.width >= WIDE_TABLE {
+        2
+    } else {
+        1
+    };
     // Header hit cells: the same Layout split Table uses for its columns.
     let hits: Vec<HeaderHit> = Layout::horizontal(widths.clone())
         .spacing(spacing)
@@ -2115,12 +2138,14 @@ mod tests {
 
     #[test]
     fn row_mark_rules() {
-        assert_eq!(row_mark(true, false, false, 1), "!");
-        assert_eq!(row_mark(true, true, true, 2), "!");
-        assert_eq!(row_mark(false, true, false, 1), "+");
-        assert_eq!(row_mark(false, true, true, 2), "+");
-        assert_eq!(row_mark(false, false, true, 2), "*");
-        assert_eq!(row_mark(false, false, false, 2), " ");
+        assert_eq!(row_mark(true, false, false, 1, false), "!");
+        assert_eq!(row_mark(true, true, true, 2, true), "!");
+        assert_eq!(row_mark(false, true, false, 1, true), "+");
+        assert_eq!(row_mark(false, true, true, 2, false), "+");
+        assert_eq!(row_mark(false, false, true, 2, true), "*");
+        assert_eq!(row_mark(false, false, false, 2, true), "\u{2713}");
+        assert_eq!(row_mark(false, false, false, 2, false), " ");
+        assert_eq!(row_mark(false, false, false, 1, true), "\u{2713}");
         // Focused but alone in its window: nothing to disambiguate.
         assert_eq!(row_mark(false, false, true, 1), " ");
     }
