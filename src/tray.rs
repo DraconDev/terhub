@@ -975,9 +975,17 @@ pub fn item_is_listed(entries: &[String], unique: &str) -> bool {
 /// the watcher no longer lists us. Idempotent: a tick that finds us
 /// listed does nothing, so this costs one property read per poll.
 fn ensure_registered(watcher: &zbus::blocking::Proxy<'_>, unique: &str) {
-    let listed = watcher
-        .get_property::<Vec<String>>("RegisteredStatusNotifierItems")
-        .unwrap_or_default();
+    // The property read can fail transiently (the watcher is mid-restart,
+    // the bus is busy) — a failure must NOT read as "we're unlisted":
+    // `unwrap_or_default` turns every error into an empty list and makes
+    // us re-register on a tick that didn't actually prove anything, which
+    // is exactly the race that produced the field-observed "icon went
+    // invisible" bug. On error, do nothing this tick and retry next
+    // poll — the self-heal loop is what makes the retry safe.
+    let Ok(listed) = watcher.get_property::<Vec<String>>("RegisteredStatusNotifierItems")
+    else {
+        return;
+    };
     if item_is_listed(&listed, unique) {
         return;
     }
