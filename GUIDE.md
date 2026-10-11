@@ -167,7 +167,7 @@ status bar, no modes except small popups:
   dashboard view.
 - **Named (saved) filters.** `ctrl+f` cycles the saved filters in
   `[ui] saved_filters`, wrapping past the last one back to the first;
-  the active name shows as `filter:` in the title (a hand-typed query
+  the active name shows as `filter:` in the chip (a hand-typed query
   keeps showing `search:`). Manage them in settings (`s` → Filters):
   `Enter` on a row applies it, `n` names the current search, `r`
   renames, `d` deletes, and every change is written to the config.
