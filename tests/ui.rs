@@ -1389,34 +1389,38 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
 /// between the `Pane` and `Session` header words measures spacing alone.
 
 #[test]
-fn comfortable_spacing_doubles_only_when_wide() {
-    /// Cells of air between the end of the `Pane` header word and the
-    /// next column's first glyph. The Pane column is fixed-width, so
-    /// this measures spacing alone — and it never names the Session
-    /// header, which a narrow table legitimately truncates.
-    fn header_gap(width: u16) -> usize {
-        let mut app = app_with_panes();
-        let lines = render_lines(&mut app, width, 8);
-        let hdr = lines
-            .iter()
-            .find(|l| l.starts_with('\u{2502}') && l.contains("Pane"))
-            .unwrap_or_else(|| panic!("w={width}: table header missing"));
-        let after_pane = hdr.find("Pane").unwrap() + "Pane".len();
-        hdr[after_pane..]
-            .find(|c: char| !c.is_whitespace())
-            .unwrap_or_else(|| panic!("w={width}: no column after Pane"))
+fn clock_cluster_keeps_air_inside_its_own_cells() {
+    // The three clocks (For/Turn/Idle) share units and sit adjacent, so
+    // without separation they read as one number. A global spacing bump
+    // would cost ~12 cells a row and break the "long commands fit at
+    // 195" guarantee — instead each clock keeps one trailing cell of air
+    // inside its own fixed-width column, which already carries the slack.
+    // Net width cost: zero; `header_hits_align_with_labels` still passes
+    // unmodified because hit areas do not move.
+    let mut app = app_with_panes();
+    let lines = render_lines(&mut app, 150, 8);
+    let hdr = lines
+        .iter()
+        .find(|l| l.starts_with('\u{2502}') && l.contains("For"))
+        .expect("table header missing");
+    for (label, next) in [("For", "Turn"), ("Turn", "Idle"), ("Idle", "Summary")] {
+        let start = hdr.find(label).unwrap() + label.len();
+        let gap = hdr[start..].find(|c: char| !c.is_whitespace()).unwrap();
+        assert!(
+            gap >= 2,
+            "{label} has no air before {next}:\n{hdr}"
+        );
     }
-    let wide = header_gap(170);
-    let narrow = header_gap(140);
-    assert_eq!(
-        wide,
-        narrow + 1,
-        "wide table did not gain exactly one cell of air"
+    // And the guarantee that motivated the in-cell approach: long content
+    // still fits at the width the layout suite pins.
+    let mut app = app_with(&["alpha"]);
+    app.panes = vec![pane("%1", "alpha", "editor", "muse-bin-1.4.2-R4684.1")];
+    app.refresh_filtered();
+    let text = render_lines(&mut app, 195, 8).join("\n");
+    assert!(
+        text.contains("muse-bin-1.4.2-R4684.1"),
+        "clock air cost content:\n{text}"
     );
-    // The threshold itself: 150 breathes (one cell above the widths
-    // the layout suite pins), 149 stays tight.
-    assert_eq!(header_gap(150), header_gap(170), "150 should breathe");
-    assert_eq!(header_gap(149), header_gap(140), "149 should stay tight");
 }
 
 #[test]
