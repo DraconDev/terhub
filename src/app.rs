@@ -6190,6 +6190,8 @@ mod tests {
     /// process-wide lock: two such tests must never interleave env swaps,
     /// or one could persist into the real config file.
     static SCRATCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// Serializes tests that redirect `TERHUB_CONFIG` to a scratch file.
+    static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct ScratchConfig {
         old: Option<String>,
