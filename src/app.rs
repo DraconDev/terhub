@@ -6892,14 +6892,12 @@ mod tests {
 
         // A standing commit lands in the same list, still bang-prefixed.
         app.open_standing_editor();
-        eprintln!("DBG mode={:?} editing={} input={:?}", app.mode, app.editing_standing, app.input);
         for c in "zsh".chars() {
             app.on_key(press(KeyCode::Char(c)), &tmux);
         }
-        eprintln!("DBG after typing input={:?} exclude={:?}", app.input, app.exclude);
         app.on_key(press(KeyCode::Enter), &tmux);
-        eprintln!("DBG after enter mode={:?} input={:?} exclude={:?} hist={:?}", app.mode, app.input, app.exclude, app.filter_history);
         assert_eq!(app.exclude, "zsh");
+        assert_eq!(app.filter_history.back().unwrap(), "!zsh");
         app.on_key(press(KeyCode::Esc), &tmux);
 
         // Reopen: Up shows the bang form of what was just committed.
@@ -6909,6 +6907,10 @@ mod tests {
         app.on_key(press(KeyCode::Esc), &tmux);
 
         // Recalled back into the live prompt, the marker is dropped.
+        // Saving the standing filter leaves Settings; Esc returns to
+        // Normal, where the live-prompt binding lives.
+        app.mode = Mode::Normal;
+        app.focus = Focus::Panes;
         app.on_key(press(KeyCode::Char('f')), &tmux);
         app.on_key(press(KeyCode::Up), &tmux);
         assert_eq!(app.input, "zsh");
