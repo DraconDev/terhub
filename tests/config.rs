@@ -89,7 +89,6 @@ fn style_section_parses_and_validates() {
 /// exclusion meaning untouched.
 #[test]
 fn legacy_config_without_saved_filters_still_loads() {
-    use std::path::PathBuf;
     let path = std::env::temp_dir().join(format!(
         "terhub-legacy-savedfilters-{}.toml",
         std::process::id()
@@ -118,14 +117,18 @@ fn saving_saved_filters_leaves_the_filter_line_alone() {
         std::process::id()
     ));
     std::fs::write(&path, "[ui]\ntheme = \"dark\"\nfilter = \"!zsh\"\n").unwrap();
-    let mut cfg = AppConfig::default();
-    cfg.filter = "!zsh".to_string();
-    cfg.saved_filters = vec![terhub::config::SavedFilter {
-        name: "work".to_string(),
-        query: "vim npm".to_string(),
-    }];
-    let mut changes = ViewChanges::default();
-    changes.saved_filters = true;
+    let cfg = AppConfig {
+        filter: "!zsh".to_string(),
+        saved_filters: vec![terhub::config::SavedFilter {
+            name: "work".to_string(),
+            query: "vim npm".to_string(),
+        }],
+        ..AppConfig::default()
+    };
+    let changes = ViewChanges {
+        saved_filters: true,
+        ..ViewChanges::default()
+    };
     let patch = cfg.ui_persist_changes(&changes);
     terhub::config::persist_ui_settings_at(&path, &patch).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
