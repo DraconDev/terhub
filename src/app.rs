@@ -2207,6 +2207,10 @@ impl App {
         match self.mode.clone() {
             Mode::PromptNew | Mode::PromptRename(_) => self.on_prompt_key(key, tmux),
             Mode::PromptFilter => self.on_filter_key(key, tmux),
+            Mode::PromptSavedFilter { index } => {
+                self.on_saved_filter_name_key(key, index);
+                None
+            }
             Mode::PromptSpawn { .. } => self.on_spawn_key(key, tmux),
             Mode::PromptBulk { .. } => self.on_bulk_key(key, tmux),
             Mode::ConfirmKill(_) => self.on_confirm_key(key, tmux),
