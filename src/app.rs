@@ -3777,6 +3777,31 @@ impl App {
                 self.open_standing_editor();
                 return;
             }
+            SettingKind::UseSavedFilter(i) => {
+                // Applying a saved filter is not a settings write: the
+                // list itself is unchanged, so return before the tail
+                // (which both persists and claims "saved").
+                self.use_saved_filter(i);
+                return;
+            }
+            SettingKind::AddSavedFilter => {
+                self.open_saved_filter_prompt(None);
+                return;
+            }
+            SettingKind::RenameSavedFilter(i) => {
+                if i < self.saved_filters.len() {
+                    self.open_saved_filter_prompt(Some(i));
+                }
+                return;
+            }
+            SettingKind::DeleteSavedFilter(i) => {
+                if let Some(f) = self.saved_filters.get(i) {
+                    let name = f.name.clone();
+                    self.delete_saved_filter(i);
+                    self.set_status(format!("deleted filter '{name}'"));
+                }
+                return;
+            }
         };
         // Only the keys this arm touched reach the file: writing the
         // whole snapshot here is what let a stale instance's toggle
