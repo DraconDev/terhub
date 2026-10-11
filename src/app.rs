@@ -564,7 +564,7 @@ fn pane_matches_excludes(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str]) -
 /// shorthands the table itself never explains. Ordered so the marks
 /// come first — a narrow terminal truncates the tail, never the
 /// characters the user asked about.
-const LEGEND: &str = "legend: !=needs you · +=marked · *=active pane (multi-pane window) · ●/○=attached (top bar) · Src hook/proc/scr · For/Turn/Idle timers · Activity=output/tick";
+const LEGEND: &str = "legend: !=needs you · +=marked · *=active pane (multi-pane window) · ✓=seen via jump/attend · ●/○=attached (top bar) · Src hook/proc/scr · For/Turn/Idle timers · Activity=output/tick";
 
 pub struct App {
     pub config: AppConfig,
@@ -668,6 +668,14 @@ pub struct App {
     /// Space-marked pane ids for bulk kill/attend. Survives sort/filter;
     /// pruned to live panes on every refresh.
     pub marked: std::collections::HashSet<String>,
+    /// Panes the user has visited via a jump/attend, mapped to the
+    /// (state, summary) seen at the time. A row that still matches reads
+    /// "attended" (`\u{2713}`); a new state or a new summary is new
+    /// information, so the entry is pruned on the next agent refresh and
+    /// the row stops reading as seen. Deliberately never persisted:
+    /// "seen" belongs to this viewing session, not the config. Pruned to
+    /// live panes alongside `marked`.
+    pub attended: HashMap<String, (String, String)>,
     /// Which view settings this instance has changed since its last
     /// successful config write. Only these keys get persisted, so a
     /// stale instance in another window can't revert a newer one's
@@ -796,6 +804,7 @@ impl App {
             hide_quiet_shells,
             hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
+        attended: HashMap::new(),
             hover: None,
             own_pane: None,
             fleet_rows: Vec::new(),
