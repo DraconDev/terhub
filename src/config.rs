@@ -1542,6 +1542,15 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     // bare tokens under the new model. The on-disk format is kept
     // here verbatim.
     cfg.filter = file.ui.filter;
+    // Saved filters load verbatim; entries with an empty name or query
+    // are dropped here so a hand-edited config can't leave an unnamed
+    // row on the settings page. Re-encoding is the writer's job.
+    cfg.saved_filters = file
+        .ui
+        .saved_filters
+        .into_iter()
+        .filter(|f| !f.name.trim().is_empty() && !f.query.trim().is_empty())
+        .collect();
     cfg.sort = file.ui.sort;
     if crate::app::SortKey::parse_name(&cfg.sort).is_none() {
         problems.push(format!(
