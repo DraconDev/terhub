@@ -1403,12 +1403,16 @@ fn clock_cluster_keeps_air_inside_its_own_cells() {
         .iter()
         .find(|l| l.starts_with('\u{2502}') && l.contains("For"))
         .expect("table header missing");
+    // Distance from each clock's last letter to the next word: the
+    // trailing in-cell pad plus column spacing, with room left over for
+    // a sort arrow (which is why this counts to the next word, not to
+    // the next non-space).
     for (label, next) in [("For", "Turn"), ("Turn", "Idle"), ("Idle", "Summary")] {
-        let start = hdr.find(label).unwrap() + label.len();
-        let gap = hdr[start..].find(|c: char| !c.is_whitespace()).unwrap();
+        let dist = hdr.find(next).unwrap()
+            - (hdr.find(label).unwrap() + label.len());
         assert!(
-            gap >= 2,
-            "{label} has no air before {next}:\n{hdr}"
+            dist >= 3,
+            "{label} has no air before {next} (gap {dist}):\n{hdr}"
         );
     }
     // And the guarantee that motivated the in-cell approach: long content
