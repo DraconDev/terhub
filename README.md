@@ -1,5 +1,7 @@
 # terhub — your terminal command center
 
+[![Topics: tmux, zellij, screen, tui, ratatui, rust, mcp-server, ssh, agent-monitor, command-center](https://img.shields.io/github/topics/DraconDev/terhub?style=flat-square)](https://github.com/DraconDev/terhub)
+
 > **terhub** is a fullscreen TUI (plus a plain CLI) that gathers every
 > session, every pane, and every agent from every place you work
 > (local tmux/zellij/screen, SSH hosts, agent processes) into one
