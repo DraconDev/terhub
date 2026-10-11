@@ -7648,8 +7648,13 @@ mod tests {
             Mode::PromptSavedFilter { index: Some(0) },
             "rename prompt did not open"
         );
-        // The prompt seeds the current name.
+        // The prompt seeds the current name (cursor at the end), so a
+        // rename clears it first — exactly what a user does.
         assert_eq!(app.input, "old");
+        for _ in 0.."old".len() {
+            app.on_key(press(KeyCode::Backspace), &tmux);
+        }
+        assert_eq!(app.input, "");
         for c in "new".chars() {
             app.on_key(press(KeyCode::Char(c)), &&tmux);
         }
