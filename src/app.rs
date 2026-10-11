@@ -744,7 +744,7 @@ impl App {
         let sort_asc = !config.sort_desc;
         let hide_quiet_shells = config.hide_shells;
         App {
-            config,
+            config: saved_filters_seed(config),
             sessions: Vec::new(),
             selected: 0,
             mode: Mode::Normal,
@@ -3128,15 +3128,8 @@ impl App {
                 self.filter.trim().to_string()
             }
         };
-        let old = index.and_then(|i| self.saved_filters.get(i)).map(|f| f.name.clone());
-        // Renaming the active filter must move the header marker to the
-        // new name, not strand it on the old one.
-        let was_active = match (&old, &self.active_saved_filter) {
-            (Some(o), Some(active)) if o == active => Some(active.clone()),
-            _ => None,
-        };
         self.save_named_filter(name.clone(), query.clone());
-        if let Some(_prev) = was_active {
+        if old.is_some() {
             self.active_saved_filter = Some(name);
         }
         self.set_status(format!("saved filter '{name}': {query}"));
