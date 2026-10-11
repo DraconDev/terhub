@@ -1375,6 +1375,32 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Index of each surgically-writable `[ui]` key inside the `seen`
+/// bookkeeping array. Named because the array is positional: inserting
+/// a key without shifting its neighbours silently breaks the append
+/// pass (the bug that dropped a `sort` line when a `saved_filters`
+/// patch carried both).
+mod slot {
+    pub const THEME: usize = 0;
+    pub const DENSITY: usize = 1;
+    pub const HIGHLIGHT: usize = 2;
+    /// `mru_tabs` sits in `[ui]` but its slot index is shared with the
+    /// `[notifications] enabled` key below (distinct sections, so the
+    /// shared index is unambiguous).
+    pub const MRU_TABS: usize = 4;
+    pub const FILTER: usize = 5;
+    pub const SAVED_FILTERS: usize = 6;
+    pub const SORT: usize = 7;
+    pub const SORT_DESC: usize = 8;
+    pub const HIDE_SHELLS: usize = 9;
+    /// Highest `[ui]` slot; the array spans `0..=SLOT_UI`.
+    pub const SLOT_UI: usize = HIDE_SHELLS;
+    /// `[notifications] enabled` — its own section, so reusing the
+    /// `mru_tabs` index is safe (only one of the two can be live).
+    pub const NOTIF_ENABLED: usize = MRU_TABS;
+}
+use slot::*;
+
 /// Write `text` to `path` atomically: write to a unique tmp file in
 /// the same directory, fsync, rename. A crash mid-write leaves the
 /// original file intact (and the tmp is orphaned in the same dir; a
