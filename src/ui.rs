@@ -1058,51 +1058,36 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     // On a narrow terminal the title alone fills the border, so the chip
     // drops onto its own header line above the table: a chip clipped
     // mid-label is exactly the "I forgot I was filtering" this
-    // indicator exists to prevent. `max_label` is what is actually
-    // available once the placement is known.
+    // indicator exists to prevent. So decide the placement *first*, then
+    // build the chip against the width that placement actually offers.
     let inner_w = area.width.saturating_sub(2) as usize;
-    let inline_room = inner_w
-        .saturating_sub(title.chars().count())
-        .saturating_sub(2);
-    let chip = filter_chip(app, pal, inline_room);
-    let (chip_row, inline_chip) = match &chip {
-        // Fits beside the title: leave the table area untouched.
-        Some(line) if line.width() <= inline_room => (None, true),
-        // Otherwise it gets its own row, with the whole border width
-        // available for its label.
-        Some(_) => (
-            Some(Rect {
+    // The room left on the title line: the border width minus the title
+    // text minus the separator ratatui puts between two titles.
+    let inline_room = inner_w.saturating_sub(title.chars().count()).saturating_sub(2);
+    let own_row = app_active_filter(app) && inline_room < FILTER_CHIP_BLOCK;
+    let chip = own_row.then(|| filter_chip(app, pal, inner_w.saturating_sub(2))).flatten();
+    if let Some(line) = &chip {
+        frame.render_widget(
+            line.clone(),
+            Rect {
                 x: area.x,
                 y: area.y,
                 width: area.width,
                 height: 1,
-            }),
-            false,
-        ),
-        None => (None, false),
-    };
-    if let (Some(line), Some(row)) = (&chip, chip_row) {
-        frame.render_widget(line.clone(), row);
+            },
+        );
     }
-    let chip = chip.map(|mut line| {
-        if line.width() > inline_room {
-            // Re-label against the full border width now that the chip
-            // owns a row of its own, so nothing is clipped.
-            line = filter_chip(app, pal, inner_w.saturating_sub(2))
-                .unwrap_or_else(|| line.clone());
-        }
-        line
-    });
-    // The table shrinks by the chip's row when the chip is on its own
+    // The table shrinks by the chip's row when the chip sits on its own
     // line; everything below keys off `area`, so rebind it once here.
-    let area = match chip_row {
-        Some(r) => Rect {
-            x: r.x,
-            y: r.y + r.height,
-            width: r.width,
-            height: area.height.saturating_sub(r.height),
-        },
-        None => area,
+    let area = if own_row {
+        Rect {
+            x: area.x,
+            y: area.y + 1,
+            width: area.width,
+            height: area.height.saturating_sub(1),
+        }
+    } else {
+        area
     };
     let visible = area.height.saturating_sub(3) as usize;
     // Window sizes come from the full pane list: stable under filtering,
@@ -1337,13 +1322,16 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     } else {
         pal.border
     };
+    let inline_chip = if own_row {
+        None
+    } else {
+        filter_chip(app, pal, inline_room)
+    };
     let mut block = Block::bordered()
         .title(Line::from(title).style(pal.title))
         .border_style(border);
-    if inline_chip {
-        if let Some(line) = chip {
-            block = block.title(line);
-        }
+    if let Some(line) = inline_chip {
+        block = block.title(line);
     }
     let table = Table::new(rows, widths)
         .header(header)
