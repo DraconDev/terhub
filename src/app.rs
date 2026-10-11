@@ -6218,8 +6218,7 @@ mod tests {
     /// process-wide lock: two such tests must never interleave env swaps,
     /// or one could persist into the real config file.
     static SCRATCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    /// Serializes tests that redirect `TERHUB_CONFIG` to a scratch file.
-    static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 
     struct ScratchConfig {
         old: Option<String>,
@@ -6785,12 +6784,11 @@ mod tests {
     fn stale_instance_cannot_revert_a_newer_instances_filter() {
         use crate::config::ViewChanges;
         // Serialize with every other env-mutating lib test; the lock
-        // is held for the whole mutation window. CONFIG_LOCK is the
-        // shared seam for every test that redirects TERHUB_CONFIG
-        // (see `ScopedConfig`): without it a parallel save would land
-        // in this test's scratch file.
+        // is held for the whole mutation window. SCRATCH_LOCK is the
+        // shared seam for every test that redirects config resolution
+        // (`ScopedConfig` included): without it a parallel save would
+        // land in this test's scratch file.
         let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _config_lock = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
         let saved = std::env::var("TERHUB_CONFIG").ok();
         let dir = std::env::temp_dir().join(format!(
@@ -7537,7 +7535,12 @@ mod tests {
 
     impl ScopedConfig {
         fn new() -> Self {
-            let guard = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            // SCRATCH_LOCK is the established lock for every lib test
+            // that redirects config resolution. Sharing it matters:
+            // `config_path()` prefers TERHUB_CONFIG, so an XDG-based
+            // (`ScratchConfig`) test would otherwise read or write this
+            // scratch file while it is live.
+            let guard = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let dir = std::env::temp_dir().join(format!("terhub-savedfilter-{}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             let path = dir.join("config.toml");
