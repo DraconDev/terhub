@@ -1374,9 +1374,6 @@ fn comfortable_spacing_doubles_only_when_wide() {
     fn header_gap(width: u16) -> usize {
         let mut app = app_with_panes();
         let lines = render_lines(&mut app, width, 8);
-        for (i, l) in lines.iter().enumerate() {
-            println!("L{i}|{l}");
-        }
         let hdr = lines
             .iter()
             .find(|l| l.contains("Pane") && l.contains("Session"))
