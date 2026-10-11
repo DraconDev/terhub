@@ -145,7 +145,12 @@ status bar, no modes except small popups:
   command, dir, agent, state, summary); prefix with `!` to exclude
   instead (`!zsh` hides every row mentioning zsh). Typing filters live,
   `Enter` keeps the query **for this session only — it is never saved**,
-  `Esc` clears it; the active query shows as `search:` in the title bar.
+  `Esc` clears it.
+  *Filter chip*: while any filter is active, the table header carries a
+  `◼` block plus a label naming every filter that is hiding rows —
+  `◼ filter: zsh · search: vim` — so a filter is never silent. It rides
+  the title line when there is room and drops to a header line of its
+  own above the table on narrow terminals, rather than being clipped.
   *Standing filter*: the always-on **exclusion** from `[ui] filter`, shown
   as `filter:` in the title. Whatever you type in its editor is saved
   as an exclusion (`zsh` becomes `!zsh`) — the standing filter only
