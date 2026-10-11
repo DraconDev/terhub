@@ -1807,3 +1807,33 @@ fn narrow_table_keeps_fixed_columns_and_clicks_in_bounds() {
 // File ends at line 1499 (this comment sits on its own line so the
 // last test's closing brace is on 1497 and the file's line count is
 // reproducible across editors).
+
+#[test]
+fn probe_filter_prompt_visual() {
+    // What the user actually sees in the prompt — printed so a
+    // failing UX report can paste the output back without
+    // rebuilding the TUI manually.
+    use terhub::app::FilterLine;
+    let mut app = app_with(&["alpha"]);
+    app.exclude = "zsh npm".to_string();
+    app.open_filter();
+    let lines = render_lines(&mut app, 100, 16);
+    for l in &lines {
+        eprintln!("LIVE | {l}");
+    }
+    eprintln!("filter_line = {:?}", FilterLine::Include);
+    eprintln!("input = {:?}", app.input);
+    eprintln!("filter_other = {:?}", app.filter_other);
+
+    let mut app2 = app_with(&["alpha"]);
+    app2.exclude = "zsh".to_string();
+    app2.filter = "claude".to_string();
+    app2.open_standing_editor();
+    let lines2 = render_lines(&mut app2, 100, 16);
+    for l in &lines2 {
+        eprintln!("STAND | {l}");
+    }
+    eprintln!("filter_line = {:?}", FilterLine::Exclude);
+    eprintln!("input = {:?}", app2.input);
+    eprintln!("filter_other = {:?}", app2.filter_other);
+}
