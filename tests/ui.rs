@@ -1374,10 +1374,13 @@ fn comfortable_spacing_doubles_only_when_wide() {
     fn header_gap(width: u16) -> usize {
         let mut app = app_with_panes();
         let lines = render_lines(&mut app, width, 8);
-        let hdr = lines
-            .iter()
-            .find(|l| l.contains("Pane") && l.contains("Session"))
-            .expect("table header missing");
+        let hdr = lines.iter().find(|l| {
+            l.contains("Pane") && l.contains("Session")
+        });
+        let hdr = match hdr {
+            Some(h) => h,
+            None => panic!("w={width}: table header missing:\n{}", lines.join("\n")),
+        };
         let after_pane = hdr.find("Pane").unwrap() + "Pane".len();
         hdr[after_pane..].find("Session").unwrap()
     }
