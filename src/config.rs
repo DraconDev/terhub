@@ -1384,9 +1384,9 @@ mod slot {
     pub const THEME: usize = 0;
     pub const DENSITY: usize = 1;
     pub const HIGHLIGHT: usize = 2;
-    /// `mru_tabs` sits in `[ui]` but its slot index is shared with the
-    /// `[notifications] enabled` key below (distinct sections, so the
-    /// shared index is unambiguous).
+    /// `[notifications] enabled` — a different section from the `[ui]`
+    /// keys, hence its own index.
+    pub const NOTIF_ENABLED: usize = 3;
     pub const MRU_TABS: usize = 4;
     pub const FILTER: usize = 5;
     pub const SAVED_FILTERS: usize = 6;
@@ -1395,9 +1395,6 @@ mod slot {
     pub const HIDE_SHELLS: usize = 9;
     /// Highest `[ui]` slot; the array spans `0..=SLOT_UI`.
     pub const SLOT_UI: usize = HIDE_SHELLS;
-    /// `[notifications] enabled` — its own section, so reusing the
-    /// `mru_tabs` index is safe (only one of the two can be live).
-    pub const NOTIF_ENABLED: usize = MRU_TABS;
 }
 use slot::*;
 
