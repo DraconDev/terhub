@@ -1142,7 +1142,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     };
     let mut out: Vec<String> = Vec::new();
     let mut section = String::new();
-    let mut seen = [false; 9]; // theme, density, highlight, enabled, mru_tabs, filter, sort, sort_desc, hide_shells
+    let mut seen = [false; 10]; // theme, density, highlight, enabled, mru_tabs, filter, saved_filters, sort, sort_desc, hide_shells
     let (mut ui_at, mut notif_at): (Option<usize>, Option<usize>) = (None, None);
     for line in lines.iter().copied() {
         // Refresh our own stale generated header while we're here.
