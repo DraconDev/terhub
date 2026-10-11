@@ -1054,6 +1054,56 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
 
     let now = crate::agent::now_unix();
     let warn_style = crate::config::parse_style_spec(&app.config.idle_warn_style);
+    // The filter chip rides the title line when there is room for both.
+    // On a narrow terminal the title alone fills the border, so the chip
+    // drops onto its own header line above the table: a chip clipped
+    // mid-label is exactly the "I forgot I was filtering" this
+    // indicator exists to prevent. `max_label` is what is actually
+    // available once the placement is known.
+    let inner_w = area.width.saturating_sub(2) as usize;
+    let inline_room = inner_w
+        .saturating_sub(title.chars().count())
+        .saturating_sub(2);
+    let chip = filter_chip(app, pal, inline_room);
+    let (chip_row, inline_chip) = match &chip {
+        // Fits beside the title: leave the table area untouched.
+        Some(line) if line.width() <= inline_room => (None, true),
+        // Otherwise it gets its own row, with the whole border width
+        // available for its label.
+        Some(_) => (
+            Some(Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: 1,
+            }),
+            false,
+        ),
+        None => (None, false),
+    };
+    if let (Some(line), Some(row)) = (&chip, chip_row) {
+        frame.render_widget(line.clone(), row);
+    }
+    let chip = chip.map(|mut line| {
+        if line.width() > inline_room {
+            // Re-label against the full border width now that the chip
+            // owns a row of its own, so nothing is clipped.
+            line = filter_chip(app, pal, inner_w.saturating_sub(2))
+                .unwrap_or_else(|| line.clone());
+        }
+        line
+    });
+    // The table shrinks by the chip's row when the chip is on its own
+    // line; everything below keys off `area`, so rebind it once here.
+    let area = match chip_row {
+        Some(r) => Rect {
+            x: r.x,
+            y: r.y + r.height,
+            width: r.width,
+            height: area.height.saturating_sub(r.height),
+        },
+        None => area,
+    };
     let visible = area.height.saturating_sub(3) as usize;
     // Window sizes come from the full pane list: stable under filtering,
     // so a suffix never flickers when a sibling is filtered out.
@@ -1287,13 +1337,17 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     } else {
         pal.border
     };
+    let mut block = Block::bordered()
+        .title(Line::from(title).style(pal.title))
+        .border_style(border);
+    if inline_chip {
+        if let Some(line) = chip {
+            block = block.title(line);
+        }
+    }
     let table = Table::new(rows, widths)
         .header(header)
-        .block(
-            Block::bordered()
-                .title(Line::from(title).style(pal.title))
-                .border_style(border),
-        )
+        .block(block)
         .column_spacing(spacing);
     frame.render_widget(table, area);
 
