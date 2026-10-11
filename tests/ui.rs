@@ -1325,7 +1325,9 @@ fn zero_state_since_renders_dash_not_epoch() {
     let hdr = text.iter().find(|l| l.contains("For")).unwrap();
     let ix = hdr[..hdr.find("For").unwrap()].chars().count();
     let row = text.iter().position(|l| l.contains("%1")).unwrap();
-    assert_eq!(grid[row][ix].0, "1m", "real age lost its value");
+    // Cells hold single graphemes, so rejoin from the column start.
+    let got: String = grid[row][ix..].iter().map(|(s, _, _)| s.as_str()).collect();
+    assert!(got.starts_with("1m"), "real age lost its value: {got:?}");
 }
 
 #[test]
