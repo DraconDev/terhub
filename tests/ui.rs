@@ -1290,7 +1290,27 @@ fn filter_active_indicator_uses_the_title_palette() {
 /// The footer is the discoverability surface. With 40+ panes the filter
 /// key is the most valuable one on screen, so it must be named — and it
 /// must follow the user's rebind, not a hard-coded `f`.
-///
+#[test]
+fn footer_names_the_filter_key_and_follows_a_rebind() {
+    let mut app = app_with(&["alpha"]);
+    let text = render_lines(&mut app, 200, 8).join("\n");
+    assert!(
+        text.contains(" = filter"),
+        "footer no longer advertises the filter key:\n{text}"
+    );
+    // Default binding is `f`; the label is derived from config, so a
+    // rebind is reflected instead of lying to the user.
+    assert_eq!(app.config.key_label("filter"), "f");
+    app.config
+        .keys
+        .insert("filter".to_string(), "ctrl+s".to_string());
+    let rebound = render_lines(&mut app, 200, 8).join("\n");
+    assert!(
+        rebound.contains("ctrl+s = filter"),
+        "footer ignored the rebound filter key:\n{rebound}"
+    );
+}
+
 /// A record with no timestamp is "never recorded", not 56 years old: a
 /// zero `state_since` must render as a dash, never as 20737d. (The Turn
 /// column already guards its zero the same way.)
@@ -1328,27 +1348,6 @@ fn zero_state_since_renders_dash_not_epoch() {
     // Cells hold single graphemes, so rejoin from the column start.
     let got: String = grid[row][ix..].iter().map(|(s, _, _)| s.as_str()).collect();
     assert!(got.starts_with("1m"), "real age lost its value: {got:?}");
-}
-
-#[test]
-fn footer_names_the_filter_key_and_follows_a_rebind() {
-    let mut app = app_with(&["alpha"]);
-    let text = render_lines(&mut app, 200, 8).join("\n");
-    assert!(
-        text.contains(" = filter"),
-        "footer no longer advertises the filter key:\n{text}"
-    );
-    // Default binding is `f`; the label is derived from config, so a
-    // rebind is reflected instead of lying to the user.
-    assert_eq!(app.config.key_label("filter"), "f");
-    app.config
-        .keys
-        .insert("filter".to_string(), "ctrl+s".to_string());
-    let rebound = render_lines(&mut app, 200, 8).join("\n");
-    assert!(
-        rebound.contains("ctrl+s = filter"),
-        "footer ignored the rebound filter key:\n{rebound}"
-    );
 }
 
 /// The attended marker: a visited row wears a quiet check until its
