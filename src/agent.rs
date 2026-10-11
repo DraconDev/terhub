@@ -2373,4 +2373,4 @@ mod sparkline_tests {
         }
     }
 }
-// check-install sentinel: test2
+// check-install sentinel: test3
