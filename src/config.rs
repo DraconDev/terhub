@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::style::{Color, Modifier, Style};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::path::PathBuf;
