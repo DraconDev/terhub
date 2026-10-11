@@ -4471,6 +4471,10 @@ impl App {
                 cfg.key_label("hosts"),
                 cfg.key_label("quit"),
             );
+            // Only worth a line when the binding is not a no-op.
+            if cfg.spec("saved_filter").spec != crate::config::KeySpec::None {
+                help.push_str(&format!(" {}=cycle filters", cfg.key_label("saved_filter")));
+            }
             if !cfg.commands.is_empty() {
                 help.push_str(" custom:");
                 for c in &cfg.commands {
