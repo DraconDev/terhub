@@ -7553,6 +7553,10 @@ mod tests {
         fn load(&self) -> (AppConfig, Vec<String>) {
             crate::config::load_config_report(None)
         }
+
+        fn text(&self) -> String {
+            std::fs::read_to_string(&self.path).unwrap_or_default()
+        }
     }
 
     impl Drop for ScopedConfig {
@@ -7611,6 +7615,14 @@ mod tests {
         assert_eq!(cfg.saved_filters[0].name, "work");
         assert_eq!(cfg.saved_filters[0].query, "vim npm");
         // The standing exclude line is untouched by saved-filter writes.
+        if !cfg.filter.is_empty() {
+            eprintln!(
+                "DBG path={:?}\nDBG file:\n{}\nDBG env={:?}",
+                scratch.path,
+                scratch.text(),
+                std::env::var("TERHUB_CONFIG")
+            );
+        }
         assert!(cfg.filter.is_empty(), "filter line disturbed: {:?}", cfg.filter);
 
         // The settings page renders the name.
