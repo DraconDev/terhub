@@ -537,7 +537,7 @@ fn pane_matches(
     let mut positive_match = false;
     for tok in includes {
         match tok.strip_prefix('!') {
-            Some(rest) if rest.is_empty() => continue,
+            Some("") => continue,
             Some(rest) => {
                 if pane_match_any(p, rec, rest) {
                     return false;
@@ -597,7 +597,7 @@ fn pane_clause(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str], is_include:
         let mut positive_match = false;
         for tok in tokens {
             match tok.strip_prefix('!') {
-                Some(rest) if rest.is_empty() => continue,
+                Some("") => continue,
                 Some(rest) => {
                     if pane_match_any(p, rec, rest) {
                         return false;
