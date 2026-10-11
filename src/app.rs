@@ -36,6 +36,12 @@ pub enum Mode {
         scroll: usize,
     },
     Settings,
+    /// Naming prompt for saved filters: `None` = add a new named
+    /// filter holding the current search query, `Some(i)` = rename
+    /// saved filter `i`. Enter commits the name, Esc cancels.
+    PromptSavedFilter {
+        index: Option<usize>,
+    },
 }
 
 /// One settings-popup row: a section header or an actionable item.
@@ -71,6 +77,17 @@ pub enum SettingKind {
     /// Opens the text prompt editing the standing exclusion; Enter
     /// saves it to `[ui] filter`, Esc cancels. Not a toggle.
     EditStandingFilter,
+    /// Switch the table to saved filter `i`'s query and name it in
+    /// the header.
+    UseSavedFilter(usize),
+    /// Rename saved filter `i` via the naming prompt.
+    RenameSavedFilter(usize),
+    /// Delete saved filter `i` (clears the header name when it was
+    /// the active one).
+    DeleteSavedFilter(usize),
+    /// Name the current search query and save it as a filter. The
+    /// row only appears while a search is active.
+    AddSavedFilter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
