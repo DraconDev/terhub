@@ -1080,6 +1080,27 @@ fn settings_filters_section_lists_saved_names() {
 /// is never silent. Four states — no filter, search only, exclusion
 /// only, both at once — each with its own label, so the label always
 /// names what is actually hiding rows.
+
+#[test]
+fn zz_probe_colors() {
+    let mut app = app_with_panes();
+    app.config.theme = "dark".to_string();
+    for (id, h, st) in [("%1","@pi-wez-14",0),("%2","@pi-wez-18",1),("%3","@pi-wez-1",2)] {
+        let mut r = idle_record(id, "wez", 60, now_unix());
+        r.handle = h.to_string();
+        r.state = crate::ui_stub_state(st);
+        app.agents.insert(id.to_string(), r);
+    }
+    let grid = render_grid(&mut app, 140, 12);
+    let text: Vec<String> = grid.iter().map(|row| row.iter().map(|(s,_,_)| s.as_str()).collect()).collect();
+    let hdr = text.iter().position(|l| l.contains("Agent")).unwrap();
+    for col in ["pi", "@pi-wez-14", "@pi-wez-18", "@pi-wez-1"] {
+        let row = text.iter().position(|l| l.contains(col)).unwrap();
+        let c = text[row][..text[row].find(col).unwrap()].chars().count();
+        println!("PROBE {:<12} fg={:?}", col, grid[row][c].1);
+    }
+}
+
 #[test]
 fn filter_active_indicator_covers_every_filter_state() {
     const BLOCK: char = '\u{25fc}';
