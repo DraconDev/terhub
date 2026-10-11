@@ -3372,6 +3372,7 @@ impl App {
             self.input = format!("!{stripped}");
         }
         self.cursor = self.input.chars().count();
+        self.filter_history_reset();
     }
 
     /// Printable keystroke with no Ctrl/Alt held: feeds type-to-filter.
