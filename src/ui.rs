@@ -474,14 +474,6 @@ fn truncate(s: &str, n: usize) -> String {
     out
 }
 
-/// True when any filter — the standing exclusion and/or the live
-/// search — is hiding rows right now. Drives whether the chip exists.
-fn app_active_filter(app: &App) -> bool {
-    !app.exclude.is_empty()
-        || !app.filter.is_empty()
-        || app.active_saved_filter.is_some()
-}
-
 /// The chip's label at full length, or `None` when nothing is filtered:
 /// every filter that is hiding rows, so an active filter is never silent.
 ///
@@ -1082,18 +1074,16 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         // block + space + label
         inline_room < label.chars().count() + 2
     });
-    if own_row {
-        if let Some(label) = &filter_chip_label(app) {
-            frame.render_widget(
-                filter_chip(label, pal, inner_w.saturating_sub(2)),
-                Rect {
-                    x: area.x,
-                    y: area.y,
-                    width: area.width,
-                    height: 1,
-                },
-            );
-        }
+    if own_row && let Some(label) = &filter_chip_label(app) {
+        frame.render_widget(
+            filter_chip(label, pal, inner_w.saturating_sub(2)),
+            Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: 1,
+            },
+        );
     }
     // The table shrinks by the chip's row when the chip sits on its own
     // line; everything below keys off `area`, so rebind it once here.
@@ -1343,10 +1333,8 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     let mut block = Block::bordered()
         .title(Line::from(title).style(pal.title))
         .border_style(border);
-    if !own_row {
-        if let Some(label) = filter_chip_label(app) {
-            block = block.title(filter_chip(&label, pal, inline_room));
-        }
+    if !own_row && let Some(label) = filter_chip_label(app) {
+        block = block.title(filter_chip(&label, pal, inline_room));
     }
     let table = Table::new(rows, widths)
         .header(header)
