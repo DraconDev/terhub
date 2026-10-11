@@ -6827,12 +6827,19 @@ mod tests {
         assert_eq!(app.input, "gammaz");
         app.on_key(press(KeyCode::Enter), &tmux);
         assert_eq!(app.filter, "gammaz");
-        // Reopen: the edited query is the newest entry.
+        // Reopen: the edited query is the newest entry. The draft is
+        // the live query itself ("gammaz"), so Up shows gammaz (the
+        // same text, now recalled from history), Up again walks back
+        // to gamma, and Down returns to the draft.
         app.on_key(press(KeyCode::Char('f')), &tmux);
         app.on_key(press(KeyCode::Up), &tmux);
         assert_eq!(app.input, "gammaz");
-        app.on_key(press(KeyCode::Down), &tmux);
+        app.on_key(press(KeyCode::Up), &tmux);
         assert_eq!(app.input, "gamma");
+        app.on_key(press(KeyCode::Down), &tmux);
+        assert_eq!(app.input, "gammaz");
+        app.on_key(press(KeyCode::Down), &tmux); // draft
+        assert_eq!(app.input, "gammaz");
         app.on_key(press(KeyCode::Esc), &tmux);
 
         // --- Tab does not lose history: Tab is inert in the prompt,
@@ -6853,15 +6860,21 @@ mod tests {
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
 
-        // Seed history from the live prompt.
+        // Seed history from the live prompt (`f` opens it seeded with
+        // the current query, so clear first: `/` would insert a
+        // literal slash once the prompt is open).
         for q in ["vim", "npm"] {
-            app.on_key(press(KeyCode::Char('/')), &tmux);
+            app.on_key(press(KeyCode::Char('f')), &tmux);
+            for _ in 0..10 {
+                app.on_key(press(KeyCode::Backspace), &tmux);
+            }
             for c in q.chars() {
                 app.on_key(press(KeyCode::Char(c)), &tmux);
             }
             app.on_key(press(KeyCode::Enter), &tmux);
         }
         assert_eq!(app.filter, "npm");
+        assert_eq!(app.filter_history, ["vim", "npm"]);
 
         // Standing editor: Up recalls "npm" in the bang form.
         app.open_standing_editor();
@@ -6891,7 +6904,7 @@ mod tests {
         app.on_key(press(KeyCode::Esc), &tmux);
 
         // Recalled back into the live prompt, the marker is dropped.
-        app.on_key(press(KeyCode::Char('/')), &tmux);
+        app.on_key(press(KeyCode::Char('f')), &tmux);
         app.on_key(press(KeyCode::Up), &tmux);
         assert_eq!(app.input, "zsh");
         app.on_key(press(KeyCode::Esc), &tmux);
