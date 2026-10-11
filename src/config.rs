@@ -1023,6 +1023,10 @@ pub struct UiPersist<'a> {
     pub highlight: Option<bool>,
     pub mru_tabs: Option<bool>,
     pub filter: Option<&'a str>,
+    /// Named saved filters as a TOML array-of-inline-tables line
+    /// (`saved_filters = [{name = "work", query = "npm cargo"}]`).
+    /// `None` leaves whatever the file says in place.
+    pub saved_filters: Option<&'a [SavedFilter]>,
     pub sort: Option<&'a str>,
     pub sort_desc: Option<bool>,
     pub hide_shells: Option<bool>,
@@ -1039,6 +1043,7 @@ pub struct ViewChanges {
     pub highlight: bool,
     pub mru_tabs: bool,
     pub filter: bool,
+    pub saved_filters: bool,
     pub sort: bool,
     pub sort_desc: bool,
     pub hide_shells: bool,
@@ -1062,6 +1067,7 @@ impl AppConfig {
             highlight: Some(self.highlight_attached),
             mru_tabs: Some(self.mru_tabs),
             filter: Some(&self.filter),
+            saved_filters: Some(&self.saved_filters),
             sort: Some(&self.sort),
             sort_desc: Some(self.sort_desc),
             hide_shells: Some(self.hide_shells),
@@ -1082,6 +1088,7 @@ impl AppConfig {
             highlight: c.highlight.then_some(self.highlight_attached),
             mru_tabs: c.mru_tabs.then_some(self.mru_tabs),
             filter: c.filter.then_some(&*self.filter),
+            saved_filters: c.saved_filters.then_some(&*self.saved_filters),
             sort: c.sort.then_some(&*self.sort),
             sort_desc: c.sort_desc.then_some(self.sort_desc),
             hide_shells: c.hide_shells.then_some(self.hide_shells),
