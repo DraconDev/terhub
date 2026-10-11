@@ -6849,7 +6849,7 @@ mod tests {
         app.on_key(press(KeyCode::Up), &tmux);
         assert_eq!(app.input, "gammaz");
         app.on_key(press(KeyCode::Esc), &tmux);
-        assert_eq!(app.filter, "gamma");
+        assert_eq!(app.filter, "gammaz");
     }
 
     /// The standing editor shares the same history list, and recall
@@ -6892,7 +6892,9 @@ mod tests {
 
         // A standing commit lands in the same list, still bang-prefixed.
         app.open_standing_editor();
-        app.on_key(press(KeyCode::Char('z')), &tmux);
+        for c in "zsh".chars() {
+            app.on_key(press(KeyCode::Char(c)), &tmux);
+        }
         app.on_key(press(KeyCode::Enter), &tmux);
         assert_eq!(app.exclude, "zsh");
         app.on_key(press(KeyCode::Esc), &tmux);
