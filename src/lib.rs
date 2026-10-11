@@ -1,4 +1,9 @@
-//! terhub: terminal-first session hub over tmux.
+//! terhub — tmux made readable.
+//!
+//! A fullscreen TUI plus a plain CLI that sits on top of tmux. It shows
+//! every session, every pane, every agent, and which ones need you — then
+//! lets you jump to them, mark them, and drive them. Think of it as the
+//! missing overview pane that tmux never had.
 
 /// FNV-1a 64-bit: deterministic hash for change detection and stable
 /// name coloring. SipHash is randomly keyed per process, which would
