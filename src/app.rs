@@ -2862,6 +2862,25 @@ impl App {
             active: !self.exclude.is_empty(),
             kind: SettingKind::EditStandingFilter,
         });
+        // Named saved filters. One row each: Enter applies the query,
+        // `r` renames it, `d` deletes it. The marker names the one
+        // currently driving the table.
+        for (i, f) in self.saved_filters.iter().enumerate() {
+            rows.push(SettingRow::Item {
+                label: format!("saved: {} — {}", f.name, truncate_query(&f.query, 24)),
+                active: self.active_saved_filter.as_deref() == Some(f.name.as_str()),
+                kind: SettingKind::UseSavedFilter(i),
+            });
+        }
+        // Save-the-search row: only worth showing while there is a
+        // search to name (the standing exclusion is not a query).
+        if !self.filter.is_empty() {
+            rows.push(SettingRow::Item {
+                label: "save current search as named filter … (n)".to_string(),
+                active: false,
+                kind: SettingKind::AddSavedFilter,
+            });
+        }
         // What the two queries actually hide, so the exclusion is
         // inspectable instead of a leap of faith. Partitioned with no
         // double-counting: rows failing the standing test list under
