@@ -1088,7 +1088,6 @@ fn zz_probe_colors() {
     for (id, h, st) in [("%1","@pi-wez-14",0),("%2","@pi-wez-18",1),("%3","@pi-wez-1",2)] {
         let mut r = idle_record(id, "wez", 60, now_unix());
         r.handle = h.to_string();
-        r.state = crate::ui_stub_state(st);
         app.agents.insert(id.to_string(), r);
     }
     let grid = render_grid(&mut app, 140, 12);
