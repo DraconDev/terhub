@@ -1330,7 +1330,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     const WIDE_TABLE: u16 = 130;
     let spacing = if compact {
         0
-    } else if area.width >= WIDE_TABLE {
+    } else if area.width >= 9999 {
         2
     } else {
         1

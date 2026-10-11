@@ -1387,6 +1387,17 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
 /// gap doubles once the table is wide, and stays tight below that so no
 /// cell is spent on air. The Pane column is fixed-width, so the gap
 /// between the `Pane` and `Session` header words measures spacing alone.
+
+#[test]
+fn zz_probe_fit() {
+    for w in [150u16, 160, 170, 180, 190] {
+        let mut app = app_with_panes();
+        let lines = render_lines(&mut app, w, 8);
+        let ok = lines.iter().any(|l| l.contains("Summary"));
+        println!("FIT w={w} summary_fits={ok}");
+    }
+}
+
 #[test]
 fn comfortable_spacing_doubles_only_when_wide() {
     /// Cells of air between the end of the `Pane` header word and the
