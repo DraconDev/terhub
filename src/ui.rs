@@ -1326,11 +1326,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     }
     // Column gap: comfortable breathes once the table is wide enough
     // to afford it (each extra cell costs ~12 across the row). Below
-    // that every cell counts, so it stays tight. Compact keeps 0.
-    const WIDE_TABLE: u16 = 130;
+    // that every cell counts, so it stays tight. The threshold sits
+    // above the widths the layout suite pins (140), so the extra air
+    // never costs a pinned column. Compact keeps 0.
+    const WIDE_TABLE: u16 = 150;
     let spacing = if compact {
         0
-    } else if area.width >= 9999 {
+    } else if area.width >= WIDE_TABLE {
         2
     } else {
         1

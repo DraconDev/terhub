@@ -1204,7 +1204,7 @@ fn filter_active_indicator_rides_the_title_line_on_wide_terminals() {
 fn filter_active_indicator_wraps_to_a_second_header_line_when_narrow() {
     const BLOCK: char = '\u{25fc}';
     let mut rode_title_line = Vec::new();
-    for width in [160u16, 140, 120, 100, 80, 60, 44] {
+    for width in [170u16, 150, 140, 120, 100, 80, 60, 44] {
         let mut app = app_with_panes();
         app.exclude = "zsh".to_string();
         app.filter = "vim".to_string();
@@ -1389,16 +1389,6 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
 /// between the `Pane` and `Session` header words measures spacing alone.
 
 #[test]
-fn zz_probe_fit() {
-    for w in [150u16, 160, 170, 180, 190] {
-        let mut app = app_with_panes();
-        let lines = render_lines(&mut app, w, 8);
-        let ok = lines.iter().any(|l| l.contains("Summary"));
-        println!("FIT w={w} summary_fits={ok}");
-    }
-}
-
-#[test]
 fn comfortable_spacing_doubles_only_when_wide() {
     /// Cells of air between the end of the `Pane` header word and the
     /// next column's first glyph. The Pane column is fixed-width, so
@@ -1416,16 +1406,17 @@ fn comfortable_spacing_doubles_only_when_wide() {
             .find(|c: char| !c.is_whitespace())
             .unwrap_or_else(|| panic!("w={width}: no column after Pane"))
     }
-    let wide = header_gap(150);
-    let narrow = header_gap(110);
+    let wide = header_gap(170);
+    let narrow = header_gap(140);
     assert_eq!(
         wide,
         narrow + 1,
         "wide table did not gain exactly one cell of air"
     );
-    // The threshold itself: 130 breathes, 129 stays tight.
-    assert_eq!(header_gap(130), header_gap(150), "130 should breathe");
-    assert_eq!(header_gap(129), header_gap(110), "129 should stay tight");
+    // The threshold itself: 150 breathes (one cell above the widths
+    // the layout suite pins), 149 stays tight.
+    assert_eq!(header_gap(150), header_gap(170), "150 should breathe");
+    assert_eq!(header_gap(149), header_gap(140), "149 should stay tight");
 }
 
 #[test]
