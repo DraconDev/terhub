@@ -20,14 +20,22 @@ fn combined_saved_filters_and_sort_patch_writes_both_lines() {
         text
     }
 
-    let patch = terhub::config::ViewChanges {
+    // `ViewChanges` is the change flag set; `ui_persist_changes` folds it
+    // into the `UiPersist` patch the surgical writer consumes.
+    let changes = terhub::config::ViewChanges {
+        saved_filters: true,
+        sort: true,
+        ..Default::default()
+    };
+    let cfg = AppConfig {
         saved_filters: vec![SavedFilter {
             name: "work".to_string(),
             query: "vim".to_string(),
         }],
         sort: Some("Idle".to_string()),
-        ..Default::default()
+        ..AppConfig::default()
     };
+    let patch = cfg.ui_persist_changes(&changes);
 
     // A: the file already has a `sort` line and no `saved_filters`.
     let a = persist(
