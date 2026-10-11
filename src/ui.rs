@@ -2147,7 +2147,8 @@ mod tests {
         assert_eq!(row_mark(false, false, false, 2, false), " ");
         assert_eq!(row_mark(false, false, false, 1, true), "\u{2713}");
         // Focused but alone in its window: nothing to disambiguate.
-        assert_eq!(row_mark(false, false, true, 1), " ");
+        assert_eq!(row_mark(false, false, true, 1, false), " ");
+        assert_eq!(row_mark(false, false, true, 1, true), "\u{2713}");
     }
 
     #[test]

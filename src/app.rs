@@ -4249,7 +4249,8 @@ impl App {
     /// True when the row still matches what the user saw: same state,
     /// same summary. Ticks (`waiting_secs`, `last_turn_secs`) are
     /// deliberately not part of the key — the clock moving is not news.
-    fn is_attended(&self, id: &str) -> bool {
+    /// Cross-module read for the table renderer (see `row_mark`).
+    pub fn is_attended(&self, id: &str) -> bool {
         match (self.attended.get(id), self.agents.get(id)) {
             (Some((st, sum)), Some(r)) => st == r.state.label() && sum == &r.summary,
             (Some((st, sum)), None) => st.is_empty() && sum.is_empty(),
