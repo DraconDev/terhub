@@ -239,6 +239,11 @@ enum Cmd {
         #[command(subcommand)]
         action: ZellijAction,
     },
+    /// GNU screen baseline backend (list/attach).
+    Screen {
+        #[command(subcommand)]
+        action: ScreenAction,
+    },
     /// Native terminal tabs (Konsole, kitty, WezTerm).
     Native {
         #[command(subcommand)]
@@ -326,6 +331,12 @@ enum FleetAction {
 
 #[derive(Subcommand)]
 enum ZellijAction {
+    List,
+    Attach { name: String },
+}
+
+#[derive(Subcommand)]
+enum ScreenAction {
     List,
     Attach { name: String },
 }
@@ -2021,6 +2032,39 @@ fn cmd_zellij(action: &ZellijAction) -> i32 {
     }
 }
 
+fn cmd_screen(action: &ScreenAction) -> i32 {
+    use terhub::screen as s;
+    match action {
+        ScreenAction::List => match s::list_sessions() {
+            Ok(sessions) => {
+                if sessions.is_empty() {
+                    print_out("no sessions");
+                    return 0;
+                }
+                for s in &sessions {
+                    if s.attached {
+                        print_out(&format!("{}\t(attached)", s.name));
+                    } else {
+                        print_out(&s.name);
+                    }
+                }
+                0
+            }
+            Err(e) => {
+                eprintln!("terhub: {e:?}");
+                1
+            }
+        },
+        ScreenAction::Attach { name } => match s::attach_here(name) {
+            Ok(()) => 0, // unreachable: exec replaces the process
+            Err(e) => {
+                eprintln!("terhub: {e:?}");
+                1
+            }
+        },
+    }
+}
+
 fn cmd_kill(name: &str) -> i32 {
     let tmux = match Tmux::new() {
         Ok(t) => t,
@@ -2493,6 +2537,7 @@ fn real_main() -> i32 {
         Some(Cmd::Host { action }) => cmd_host(&action),
         Some(Cmd::Fleet { action }) => cmd_fleet(&action),
         Some(Cmd::Zellij { action }) => cmd_zellij(&action),
+        Some(Cmd::Screen { action }) => cmd_screen(&action),
         Some(Cmd::Native { action }) => cmd_native(&action),
         Some(Cmd::Mcp) => match terhub::mcp::run() {
             Ok(()) => 0,
