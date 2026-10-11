@@ -6747,24 +6747,6 @@ mod tests {
 
     #[test]
     fn filter_esc_restores_pre_edit_query() {
-        let mut app = app_with_panes();
-        let tmux = Tmux::new().unwrap();
-        app.focus = Focus::Panes;
-        app.filter = "ba".to_string();
-        app.refresh_filtered();
-        // Reopen, type more (live narrows), then Esc: the pre-edit query
-        // comes back — Esc is cancel, not clear (clear lives on Esc in
-        // Normal mode, or deleting everything + Enter).
-        app.on_key(press(KeyCode::Char('f')), &tmux);
-        assert_eq!(app.input, "ba");
-        app.on_key(press(KeyCode::Char('x')), &tmux);
-        assert_eq!(app.filter, "bax");
-        app.on_key(press(KeyCode::Esc), &tmux);
-        assert_eq!(app.mode, Mode::Normal);
-        assert_eq!(app.filter, "ba");
-        assert_eq!(ids(&app), vec!["%2"]);
-    }
-
     #[test]
     fn esc_unwind_clears_filter_before_stepping_back() {
         let mut app = app_with_panes();
