@@ -83,8 +83,6 @@ fn default_keys() -> HashMap<String, String> {
     .collect()
 }
 
-#[derive(Debug, Clone)]
-#[derive(Debug, Clone)]
 /// A named saved filter: a label the user picks from the settings
 /// page (or cycles with the `saved_filter` key) plus the include query
 /// it applies to the table. Both are single-line; the query is stored
