@@ -2029,6 +2029,7 @@ impl App {
                     self.set_status("search already clear".to_string());
                 } else {
                     self.filter.clear();
+                    self.active_saved_filter = None;
                     self.refresh_filtered();
                     self.set_status("search cleared".to_string());
                 }
