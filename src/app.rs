@@ -804,7 +804,7 @@ impl App {
             hide_quiet_shells,
             hidden_quiet: 0,
             marked: std::collections::HashSet::new(),
-        attended: HashMap::new(),
+            attended: HashMap::new(),
             hover: None,
             own_pane: None,
             fleet_rows: Vec::new(),
@@ -1129,7 +1129,13 @@ impl App {
                 let screen = crate::native::capture(&tab.id, 60).unwrap_or_default();
                 let (screen_hash, quiet_since) = self.track_native_quiet(&tab.id, &screen, now);
                 self.sample_sparkline(&tab.id, &screen);
-                let classified = classify_screen(&compiled, &command, &screen, false, crate::proc::parked_in_tty_read(tab.pid));
+                let classified = classify_screen(
+                    &compiled,
+                    &command,
+                    &screen,
+                    false,
+                    crate::proc::parked_in_tty_read(tab.pid),
+                );
                 let (state, summary, source) = match classified {
                     Some(h) => (h.state, h.summary, Source::Screen),
                     None if editor_wait => (
@@ -1168,8 +1174,8 @@ impl App {
                     model: String::new(),
                     ctx_pct: None,
                     reg_pid: 0,
-                bell: false,
-                bell_reason: String::new(),
+                    bell: false,
+                    bell_reason: String::new(),
                 });
             }
         }
@@ -1386,11 +1392,9 @@ impl App {
         let now = crate::agent::now_unix();
         self.filtered
             .iter()
-            .filter(|p| {
-                match self.agents.get(&p.id) {
-                    Some(a) => a.state == crate::agent::AgentState::Idle,
-                    None => is_quiet_shell(None, p.activity, now),
-                }
+            .filter(|p| match self.agents.get(&p.id) {
+                Some(a) => a.state == crate::agent::AgentState::Idle,
+                None => is_quiet_shell(None, p.activity, now),
             })
             .count()
     }
@@ -1425,9 +1429,8 @@ impl App {
                 .collect();
             let token_refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
             let agents = &self.agents;
-            self.filtered.retain(|p| {
-                pane_matches_excludes(p, agents.get(&p.id), &token_refs)
-            });
+            self.filtered
+                .retain(|p| pane_matches_excludes(p, agents.get(&p.id), &token_refs));
         }
         if !self.filter.is_empty() {
             // Live find: single substring (the OLD model), with
@@ -2426,10 +2429,7 @@ impl App {
                     self.push_filter_history(q);
                     self.cancel_modal();
                     if !self.filter.is_empty() {
-                        self.set_status(format!(
-                            "search kept for this session: {}",
-                            self.filter
-                        ));
+                        self.set_status(format!("search kept for this session: {}", self.filter));
                     }
                 }
                 self.refresh_filtered();
@@ -2996,10 +2996,7 @@ impl App {
                     triangle: "–".to_string(),
                     color: HIDDEN_GREY.to_string(),
                     name: format!("{} hidden", hidden_by_exclude.len()),
-                    meaning: format!(
-                        "matching standing filter '{}'",
-                        self.exclude
-                    ),
+                    meaning: format!("matching standing filter '{}'", self.exclude),
                 });
                 for p in &hidden_by_exclude {
                     rows.push(hidden_row(p));
@@ -3010,10 +3007,7 @@ impl App {
                     triangle: "–".to_string(),
                     color: HIDDEN_GREY.to_string(),
                     name: format!("{} hidden", hidden_by_search.len()),
-                    meaning: format!(
-                        "matching search '{}'",
-                        self.filter
-                    ),
+                    meaning: format!("matching search '{}'", self.filter),
                 });
                 for p in &hidden_by_search {
                     rows.push(hidden_row(p));
@@ -3041,11 +3035,14 @@ impl App {
         let Some(row) = items.get(self.settings_selected).copied() else {
             return;
         };
-        let kind = match (&template, self.settings_rows().get(row).and_then(|r| match r {
-            SettingRow::Item { kind, .. } => Some(*kind),
-            _ => None,
-        })) {
- (SettingKind::RenameSavedFilter(_), Some(SettingKind::UseSavedFilter(i))) => {
+        let kind = match (
+            &template,
+            self.settings_rows().get(row).and_then(|r| match r {
+                SettingRow::Item { kind, .. } => Some(*kind),
+                _ => None,
+            }),
+        ) {
+            (SettingKind::RenameSavedFilter(_), Some(SettingKind::UseSavedFilter(i))) => {
                 SettingKind::RenameSavedFilter(i)
             }
             (SettingKind::DeleteSavedFilter(_), Some(SettingKind::UseSavedFilter(i))) => {
@@ -3232,7 +3229,10 @@ impl App {
         };
         // Renaming: carry the query over and move the header marker when
         // the renamed row was the active one.
-        let Some(old) = self.saved_filters.get(index).map(|f| (f.name.clone(), f.query.clone()))
+        let Some(old) = self
+            .saved_filters
+            .get(index)
+            .map(|f| (f.name.clone(), f.query.clone()))
         else {
             return;
         };
@@ -3329,7 +3329,10 @@ impl App {
                     theme = THEMES.get(*i).unwrap_or(&theme.as_str()).to_string();
                 }
                 SettingKind::Density(i) => {
-                    comfortable = DENSITIES.get(*i).map(|d| *d == "comfortable").unwrap_or(comfortable);
+                    comfortable = DENSITIES
+                        .get(*i)
+                        .map(|d| *d == "comfortable")
+                        .unwrap_or(comfortable);
                 }
                 _ => {}
             }
@@ -5263,10 +5266,7 @@ mod tests {
         app.agents.get_mut("%1").unwrap().cpu_ticks += 999;
         app.agents.get_mut("%1").unwrap().updated_at += 999;
         app.prune_attended();
-        assert!(
-            app.is_attended("%1"),
-            "a tick cleared the attended mark"
-        );
+        assert!(app.is_attended("%1"), "a tick cleared the attended mark");
     }
 
     #[test]
@@ -5510,7 +5510,10 @@ mod tests {
         assert!(!p.bell, "fresh Pane::test defaults to bell=false");
         let mut p2 = p;
         p2.bell = true;
-        assert!(p2.bell, "bell flag must be writable on the public Pane type");
+        assert!(
+            p2.bell,
+            "bell flag must be writable on the public Pane type"
+        );
     }
 
     #[test]
@@ -6355,7 +6358,6 @@ mod tests {
     /// Hands out distinct scratch config paths, one per `ScopedConfig`.
     static NEXT_CFG: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-
     #[test]
     fn settings_open_navigate_apply_persists() {
         let _scratch = ScopedConfig::new();
@@ -6464,8 +6466,8 @@ mod tests {
                 model: String::new(),
                 ctx_pct: None,
                 reg_pid: 0,
-            bell: false,
-            bell_reason: String::new(),
+                bell: false,
+                bell_reason: String::new(),
             },
         );
         let counts = app.session_counts();
@@ -6756,9 +6758,7 @@ mod tests {
     fn legend_texts(rows: &[SettingRow]) -> Vec<String> {
         rows.iter()
             .filter_map(|r| match r {
-                SettingRow::Legend { name, meaning, .. } => {
-                    Some(format!("{name} — {meaning}"))
-                }
+                SettingRow::Legend { name, meaning, .. } => Some(format!("{name} — {meaning}")),
                 _ => None,
             })
             .collect()
@@ -6776,7 +6776,9 @@ mod tests {
         app.filter = "nvim".to_string();
         let texts = legend_texts(&app.settings_rows());
         assert!(
-            texts.iter().any(|t| t.contains("1 hidden") && t.contains("bash")),
+            texts
+                .iter()
+                .any(|t| t.contains("1 hidden") && t.contains("bash")),
             "exclusion caption missing:\n{texts:?}"
         );
         assert!(
@@ -6815,10 +6817,7 @@ mod tests {
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
         // `/` is unbound: opens the filter with `/` already typed.
-        app.on_key(
-            KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
-            &tmux,
-        );
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE), &tmux);
         assert_eq!(app.mode, Mode::PromptFilter);
         assert_eq!(app.input, "/");
         // A query over no match narrows to nothing live.
@@ -6834,10 +6833,7 @@ mod tests {
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
         let tmux = Tmux::new().unwrap();
-        app.on_key(
-            KeyEvent::new(KeyCode::Char('.'), KeyModifiers::NONE),
-            &tmux,
-        );
+        app.on_key(KeyEvent::new(KeyCode::Char('.'), KeyModifiers::NONE), &tmux);
         assert_eq!(app.mode, Mode::PromptFilter);
         assert_eq!(app.input, ".");
     }
@@ -6848,10 +6844,7 @@ mod tests {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         // `q` quits; it must never detour into the filter prompt.
-        let ev = app.on_key(
-            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
-            &tmux,
-        );
+        let ev = app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE), &tmux);
         assert!(matches!(ev, Some(AppEvent::Quit)));
         assert_eq!(app.mode, Mode::Normal);
     }
@@ -6898,10 +6891,7 @@ mod tests {
         let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
         let saved = std::env::var("TERHUB_CONFIG").ok();
-        let dir = std::env::temp_dir().join(format!(
-            "terhub-viewclobber-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("terhub-viewclobber-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("cfg.toml");
         std::fs::write(
@@ -6973,7 +6963,10 @@ mod tests {
         // searches must never become standing exclusions by accident.
         assert_eq!(app.filter, "ba");
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(!text.contains("filter = "), "search leaked into config:\n{text}");
+        assert!(
+            !text.contains("filter = "),
+            "search leaked into config:\n{text}"
+        );
         unsafe {
             match saved {
                 Some(v) => std::env::set_var("TERHUB_CONFIG", v),
@@ -7007,7 +7000,10 @@ mod tests {
         let mut app = app_with(&["a"]);
         app.open_settings();
         let names: Vec<&str> = app.settings_sections().iter().map(|(n, _)| *n).collect();
-        assert_eq!(names, vec!["Theme", "Density", "Toggles", "Filters", "Tray icons"]);
+        assert_eq!(
+            names,
+            vec!["Theme", "Density", "Toggles", "Filters", "Tray icons"]
+        );
         // Right from Theme lands Density's first item (comfortable).
         app.goto_settings_section(1);
         assert_eq!(app.settings_section, 1);
@@ -7044,10 +7040,15 @@ mod tests {
         let items = app.settings_item_rows();
         let compact = items
             .iter()
-            .position(|&r| matches!(
-                app.settings_rows()[r],
-                SettingRow::Item { kind: SettingKind::Density(1), .. }
-            ))
+            .position(|&r| {
+                matches!(
+                    app.settings_rows()[r],
+                    SettingRow::Item {
+                        kind: SettingKind::Density(1),
+                        ..
+                    }
+                )
+            })
             .unwrap();
         app.settings_selected = compact;
         let (theme, comfy) = app.settings_preview_style();
@@ -7057,10 +7058,15 @@ mod tests {
         let items = app.settings_item_rows();
         let toggle = items
             .iter()
-            .position(|&r| matches!(
-                app.settings_rows()[r],
-                SettingRow::Item { kind: SettingKind::ToggleNotifications, .. }
-            ))
+            .position(|&r| {
+                matches!(
+                    app.settings_rows()[r],
+                    SettingRow::Item {
+                        kind: SettingKind::ToggleNotifications,
+                        ..
+                    }
+                )
+            })
             .unwrap();
         app.settings_selected = toggle;
         app.config.theme = "nord".to_string();
@@ -7142,8 +7148,7 @@ mod tests {
         let tmux = Tmux::new().unwrap();
         app.on_key(press(KeyCode::Char('o')), &tmux);
         assert_eq!(app.sort_key, SortKey::State);
-        let text =
-            std::fs::read_to_string(crate::config::config_path()).unwrap();
+        let text = std::fs::read_to_string(crate::config::config_path()).unwrap();
         assert!(text.contains("sort = \"State\""), "{text}");
         assert!(text.contains("sort_desc = false"), "{text}");
     }
@@ -7155,13 +7160,9 @@ mod tests {
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         // `h` is bound by default; the toggle flips and persists.
-        app.on_key(
-            KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE),
-            &tmux,
-        );
+        app.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE), &tmux);
         assert!(app.hide_quiet_shells);
-        let text =
-            std::fs::read_to_string(crate::config::config_path()).unwrap();
+        let text = std::fs::read_to_string(crate::config::config_path()).unwrap();
         assert!(text.contains("hide_shells = true"), "{text}");
     }
 
@@ -7661,7 +7662,6 @@ mod tests {
         fn load(&self) -> (AppConfig, Vec<String>) {
             crate::config::load_config_report(None)
         }
-
     }
 
     impl Drop for ScopedConfig {
@@ -7720,7 +7720,11 @@ mod tests {
         assert_eq!(cfg.saved_filters[0].name, "work");
         assert_eq!(cfg.saved_filters[0].query, "vim npm");
         // The standing exclude line is untouched by saved-filter writes.
-        assert!(cfg.filter.is_empty(), "filter line disturbed: {:?}", cfg.filter);
+        assert!(
+            cfg.filter.is_empty(),
+            "filter line disturbed: {:?}",
+            cfg.filter
+        );
 
         // The settings page renders the name.
         let labels: Vec<String> = app
@@ -7732,7 +7736,9 @@ mod tests {
             })
             .collect();
         assert!(
-            labels.iter().any(|l| l.contains("work") && l.contains("vim npm")),
+            labels
+                .iter()
+                .any(|l| l.contains("work") && l.contains("vim npm")),
             "saved filter missing from settings rows: {labels:?}"
         );
 
@@ -7805,7 +7811,10 @@ mod tests {
 
         // Delete via 'd' on the selected row.
         app.on_key(press(KeyCode::Char('d')), &tmux);
-        assert!(app.saved_filters.is_empty(), "delete did not remove the row");
+        assert!(
+            app.saved_filters.is_empty(),
+            "delete did not remove the row"
+        );
         assert_eq!(app.active_saved_filter, None, "marker survived its filter");
         // …and the file agrees.
         let (cfg, _p) = scratch.load();

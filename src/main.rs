@@ -20,7 +20,10 @@ use terhub::{
 };
 
 #[derive(Parser)]
-#[command(name = "terhub", about = "terhub — a terminal command center. Every session, pane, and agent (local tmux/zellij/screen + SSH hosts) in one TUI.")]
+#[command(
+    name = "terhub",
+    about = "terhub — a terminal command center. Every session, pane, and agent (local tmux/zellij/screen + SSH hosts) in one TUI."
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -2292,10 +2295,9 @@ fn run_tui() -> Result<Option<TuiExit>> {
                                 .position(|r| in_area(mouse.column, mouse.row, *r))
                             {
                                 app.goto_settings_section(sec);
-                            } else if in_area(mouse.column, mouse.row, areas.settings)
-                            {
-                                let row = app.settings_scroll
-                                    + (mouse.row - areas.settings.y) as usize;
+                            } else if in_area(mouse.column, mouse.row, areas.settings) {
+                                let row =
+                                    app.settings_scroll + (mouse.row - areas.settings.y) as usize;
                                 app.settings_apply_at_row(row);
                             }
                         }

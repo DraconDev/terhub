@@ -40,8 +40,7 @@ fn target_body(makefile: &str, name: &str) -> String {
 
 #[test]
 fn makefile_defines_build_target_that_installs() {
-    let body = std::fs::read_to_string(MAKEFILE)
-        .unwrap_or_else(|e| panic!("read {MAKEFILE}: {e}"));
+    let body = std::fs::read_to_string(MAKEFILE).unwrap_or_else(|e| panic!("read {MAKEFILE}: {e}"));
     let build_block = target_body(&body, "build");
     assert!(
         !build_block.is_empty(),
@@ -114,8 +113,7 @@ fn install_check_script_proves_install_by_mtime_not_sha() {
         // SHA can be a secondary check but cannot be the only
         // proof; the mtime assertion must be the gate.
         assert!(
-            body.contains("mtime") && body.contains("after_mtime")
-                && body.contains("before_mtime"),
+            body.contains("mtime") && body.contains("after_mtime") && body.contains("before_mtime"),
             "{SCRIPT} uses sha256sum but must also assert mtime advancement"
         );
     }

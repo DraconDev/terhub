@@ -50,10 +50,17 @@ pub fn parse_sessions(out: &str) -> Vec<SSession> {
         }
         // The session name is everything before the first whitespace, with
         // the leading PID dot stripped.
-        let Some(head) = l.split_whitespace().next() else { continue };
-        let Some((_pid, name)) = head.split_once('.') else { continue };
+        let Some(head) = l.split_whitespace().next() else {
+            continue;
+        };
+        let Some((_pid, name)) = head.split_once('.') else {
+            continue;
+        };
         let attached = l.contains("(Attached)");
-        out_v.push(SSession { name: name.to_string(), attached });
+        out_v.push(SSession {
+            name: name.to_string(),
+            attached,
+        });
     }
     out_v
 }
@@ -80,10 +87,7 @@ pub fn attach_here(name: &str) -> Result<()> {
     // -D -r: reattach even if detached; -x: multi-attach if it's already
     // attached. Covers the common "join your own session from a second
     // terminal" case without surprise.
-    Err(Command::new(&bin)
-        .args(["-xD", "-r", name])
-        .exec()
-        .into())
+    Err(Command::new(&bin).args(["-xD", "-r", name]).exec().into())
 }
 
 #[cfg(test)]

@@ -257,10 +257,7 @@ impl Tmux {
         if let Some(s) = &self.socket {
             cmd.args(socket_args(s));
         }
-        let out = cmd
-            .args(args)
-            .output()
-            .context("failed to run tmux")?;
+        let out = cmd.args(args).output().context("failed to run tmux")?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         } else {
@@ -472,10 +469,7 @@ impl Tmux {
     /// label resolution, so the daemon poll walks /proc once per cycle
     /// instead of twice. The snapshot must be the same one the poll
     /// will use to detect agents.
-    pub fn list_all_panes_with_snap(
-        &self,
-        snap: &crate::proc::Snapshot,
-    ) -> Result<Vec<Pane>> {
+    pub fn list_all_panes_with_snap(&self, snap: &crate::proc::Snapshot) -> Result<Vec<Pane>> {
         let out = self.run(&["list-panes", "-a", "-F", PANE_FORMAT])?;
         Ok(label_commands_with(parse_panes(&out), snap))
     }
@@ -591,7 +585,10 @@ mod tests {
     #[test]
     fn socket_args_uses_dash_s_for_paths() {
         // A value containing '/' is an explicit socket path.
-        assert_eq!(socket_args("/tmp/terhub-test.sock"), vec!["-S", "/tmp/terhub-test.sock"]);
+        assert_eq!(
+            socket_args("/tmp/terhub-test.sock"),
+            vec!["-S", "/tmp/terhub-test.sock"]
+        );
     }
 
     #[test]
@@ -625,9 +622,15 @@ mod tests {
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let isolated = Tmux::with_socket(bin.clone(), Some("terhub-test-7".to_string()));
-        assert_eq!(isolated.run(&["list-sessions"]).unwrap().trim(), "-L terhub-test-7 list-sessions");
+        assert_eq!(
+            isolated.run(&["list-sessions"]).unwrap().trim(),
+            "-L terhub-test-7 list-sessions"
+        );
         let default = Tmux::test(bin);
-        assert_eq!(default.run(&["list-sessions"]).unwrap().trim(), "list-sessions");
+        assert_eq!(
+            default.run(&["list-sessions"]).unwrap().trim(),
+            "list-sessions"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

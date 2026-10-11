@@ -218,9 +218,7 @@ fn qdbus_bin() -> &'static str {
         for bin in ["qdbus", "qdbus6"] {
             let mut probe = Command::new(bin);
             probe.arg("--version");
-            if run_timed(probe, &format!("{bin} --version"))
-                .is_ok_and(|o| o.status.success())
-            {
+            if run_timed(probe, &format!("{bin} --version")).is_ok_and(|o| o.status.success()) {
                 return bin;
             }
         }

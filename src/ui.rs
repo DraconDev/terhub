@@ -1,6 +1,6 @@
 //! ratatui rendering for the hub. `render` returns the screen areas occupied by
 //! the session rows and pane rows so the event loop can map mouse clicks.
-use crate::app::{is_quiet_shell, App, Focus, Mode, SortKey};
+use crate::app::{App, Focus, Mode, SortKey, is_quiet_shell};
 use crate::tmux::Pane;
 use ansi_to_tui::IntoText;
 use ratatui::{
@@ -45,8 +45,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x31, 0x74, 0x8F)),
             status: Style::default().fg(rgb(0xE0, 0xDE, 0xF4)),
             dim: Style::default().fg(rgb(0x90, 0x8C, 0xAA)),
-                        focus: Style::default().fg(rgb(0xEB, 0xBC, 0xBA)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xEB, 0xBC, 0xBA)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "everforest" => Palette {
             border: Style::default().fg(rgb(0x5D, 0x65, 0x5D)),
@@ -62,8 +62,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x7F, 0xBB, 0xB3)),
             status: Style::default().fg(rgb(0xD3, 0xC6, 0xAA)),
             dim: Style::default().fg(rgb(0x85, 0x92, 0x89)),
-                        focus: Style::default().fg(rgb(0xD6, 0x99, 0xB6)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xD6, 0x99, 0xB6)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "kanagawa" => Palette {
             border: Style::default().fg(rgb(0x54, 0x54, 0x46)),
@@ -79,8 +79,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x87, 0xA9, 0x87)),
             status: Style::default().fg(rgb(0xC5, 0xC9, 0xC5)),
             dim: Style::default().fg(rgb(0x62, 0x5E, 0x5A)),
-                        focus: Style::default().fg(rgb(0x95, 0x73, 0xA7)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0x95, 0x73, 0xA7)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "ayu" => Palette {
             border: Style::default().fg(rgb(0x33, 0x44, 0x59)),
@@ -96,8 +96,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xAA, 0xD9, 0x4C)),
             status: Style::default().fg(rgb(0xB3, 0xB1, 0xAD)),
             dim: Style::default().fg(rgb(0x3E, 0x4B, 0x59)),
-                        focus: Style::default().fg(rgb(0xD2, 0xA6, 0xFF)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xD2, 0xA6, 0xFF)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "nightfly" => Palette {
             border: Style::default().fg(rgb(0x1D, 0x3B, 0x53)),
@@ -113,8 +113,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA1, 0xCD, 0x76)),
             status: Style::default().fg(rgb(0xB2, 0xB2, 0xB2)),
             dim: Style::default().fg(rgb(0x5C, 0x66, 0x70)),
-                        focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "palenight" => Palette {
             border: Style::default().fg(rgb(0x3A, 0x3F, 0x5B)),
@@ -130,8 +130,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xC3, 0xE8, 0x8D)),
             status: Style::default().fg(rgb(0xBF, 0xCA, 0xE0)),
             dim: Style::default().fg(rgb(0x67, 0x6E, 0x95)),
-                        focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xC7, 0x92, 0xEA)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "github" => Palette {
             border: Style::default().fg(rgb(0x30, 0x35, 0x3D)),
@@ -147,8 +147,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x3F, 0xB9, 0x50)),
             status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
             dim: Style::default().fg(rgb(0x8B, 0x94, 0x9E)),
-                        focus: Style::default().fg(rgb(0xBC, 0x8C, 0xFF)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xBC, 0x8C, 0xFF)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "github-light" => Palette {
             border: Style::default().fg(rgb(0xE1, 0xE4, 0xE8)),
@@ -164,8 +164,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x28, 0xA7, 0x45)),
             status: Style::default().fg(rgb(0x24, 0x29, 0x2E)),
             dim: Style::default().fg(rgb(0x6A, 0x73, 0x7D)),
-                        focus: Style::default().fg(rgb(0x6F, 0x42, 0xC1)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0x6F, 0x42, 0xC1)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "onehalf" => Palette {
             border: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
@@ -181,8 +181,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
             status: Style::default().fg(rgb(0xDC, 0xDE, 0xE0)),
             dim: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
-                        focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "onehalf-light" => Palette {
             border: Style::default().fg(rgb(0xE0, 0xE0, 0xE0)),
@@ -198,8 +198,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
             status: Style::default().fg(rgb(0x38, 0x3A, 0x42)),
             dim: Style::default().fg(rgb(0xA3, 0xA3, 0xA3)),
-                        focus: Style::default().fg(rgb(0xA6, 0x26, 0xA4)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xA6, 0x26, 0xA4)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "light" => Palette {
             border: Style::default().fg(Color::Blue),
@@ -230,8 +230,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x50, 0xFA, 0x7B)),
             status: Style::default().fg(rgb(0xF8, 0xF8, 0xF2)),
             dim: Style::default().fg(rgb(0x62, 0x72, 0xA4)),
-                        focus: Style::default().fg(rgb(0xFF, 0x79, 0xC6)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xFF, 0x79, 0xC6)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "nord" => Palette {
             border: Style::default().fg(rgb(0x4C, 0x56, 0x6A)),
@@ -247,8 +247,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA3, 0xBE, 0x8C)),
             status: Style::default().fg(rgb(0xE5, 0xE9, 0xF0)),
             dim: Style::default().fg(rgb(0x4C, 0x56, 0x6A)),
-                        focus: Style::default().fg(rgb(0xD0, 0x87, 0x70)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xD0, 0x87, 0x70)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "gruvbox" => Palette {
             border: Style::default().fg(rgb(0x92, 0x83, 0x74)),
@@ -264,8 +264,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xB8, 0xBB, 0x26)),
             status: Style::default().fg(rgb(0xEB, 0xDB, 0xB2)),
             dim: Style::default().fg(rgb(0x92, 0x83, 0x74)),
-                        focus: Style::default().fg(rgb(0xFE, 0x80, 0x19)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xFE, 0x80, 0x19)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "solarized" => Palette {
             border: Style::default().fg(rgb(0x58, 0x6E, 0x75)),
@@ -281,8 +281,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x85, 0x99, 0x00)),
             status: Style::default().fg(rgb(0x83, 0x94, 0x96)),
             dim: Style::default().fg(rgb(0x58, 0x6E, 0x75)),
-                        focus: Style::default().fg(rgb(0xCB, 0x4B, 0x16)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xCB, 0x4B, 0x16)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "tokyonight" => Palette {
             border: Style::default().fg(rgb(0x56, 0x5F, 0x89)),
@@ -298,8 +298,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x9E, 0xCE, 0x6A)),
             status: Style::default().fg(rgb(0xC0, 0xCA, 0xF5)),
             dim: Style::default().fg(rgb(0x56, 0x5F, 0x89)),
-                        focus: Style::default().fg(rgb(0xBB, 0x9A, 0xF7)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xBB, 0x9A, 0xF7)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "catppuccin" => Palette {
             border: Style::default().fg(rgb(0x6C, 0x70, 0x86)),
@@ -315,8 +315,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA6, 0xE3, 0xA1)),
             status: Style::default().fg(rgb(0xCD, 0xD6, 0xF4)),
             dim: Style::default().fg(rgb(0x6C, 0x70, 0x86)),
-                        focus: Style::default().fg(rgb(0xCB, 0xA6, 0xF7)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xCB, 0xA6, 0xF7)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "onedark" => Palette {
             border: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
@@ -332,8 +332,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x98, 0xC3, 0x79)),
             status: Style::default().fg(rgb(0xAB, 0xB2, 0xBF)),
             dim: Style::default().fg(rgb(0x5C, 0x63, 0x70)),
-                        focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xC6, 0x78, 0xDD)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         "monokai" => Palette {
             border: Style::default().fg(rgb(0x75, 0x71, 0x5E)),
@@ -349,8 +349,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0xA6, 0xE2, 0x2E)),
             status: Style::default().fg(rgb(0xF8, 0xF8, 0xF2)),
             dim: Style::default().fg(rgb(0x75, 0x71, 0x5E)),
-                        focus: Style::default().fg(rgb(0xF9, 0x26, 0x72)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xF9, 0x26, 0x72)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
         _ => Palette {
             // The default dark style: explicit RGBs with one job each
@@ -374,8 +374,8 @@ pub fn palette(theme: &str) -> Palette {
             attached: Style::default().fg(rgb(0x7E, 0xE7, 0x87)),
             status: Style::default().fg(rgb(0xC9, 0xD1, 0xD9)),
             dim: Style::default().fg(rgb(0x9A, 0xA5, 0xB1)),
-                        focus: Style::default().fg(rgb(0xD2, 0xA8, 0xFF)),
-                        done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
+            focus: Style::default().fg(rgb(0xD2, 0xA8, 0xFF)),
+            done: Style::default().fg(rgb(0x9C, 0xC1, 0x9A)),
         },
     }
 }
@@ -1076,8 +1076,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     let inner_w = area.width.saturating_sub(2) as usize;
     // Room left on the title line: the border width minus the title text
     // minus the separator ratatui inserts between two titles.
-    let inline_room =
-        inner_w.saturating_sub(title.chars().count()).saturating_sub(2);
+    let inline_room = inner_w
+        .saturating_sub(title.chars().count())
+        .saturating_sub(2);
     let own_row = filter_chip_label(app).is_some_and(|label| {
         // block + space + label
         inline_room < label.chars().count() + 2
@@ -1161,9 +1162,7 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 // A zero timestamp means "never recorded", not the epoch:
                 // without the guard this renders as 20737d. (Same shape
                 // as the `turn` guard below.)
-                Some(r) if r.state_since > 0 => {
-                    crate::history::fmt_dur(r.waiting_secs(now))
-                }
+                Some(r) if r.state_since > 0 => crate::history::fmt_dur(r.waiting_secs(now)),
                 _ => "—".to_string(),
             };
             let turn = match rec {
@@ -1206,9 +1205,10 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             if show_session {
                 // Sessions are top-level categories: the title hue
                 // without its bold, so the family ties without shouting.
-                cells.push(Cell::from(truncate(&p.session, 18)).style(
-                    Style::default().fg(pal.title.fg.unwrap_or(Color::Reset)),
-                ));
+                cells.push(
+                    Cell::from(truncate(&p.session, 18))
+                        .style(Style::default().fg(pal.title.fg.unwrap_or(Color::Reset))),
+                );
             }
             cells.extend([
                 // Window is sub-structure: recede it so session/cmd read first.
@@ -1243,7 +1243,9 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
             // user opts in via `[ui] activity_sparkline = true` — a
             // wide-terminal feature, so default off.
             if app.config.activity_sparkline {
-                cells.push(Cell::from(sparkline_glyphs(&app.sparkline_buckets(&p.id))).style(pal.dim));
+                cells.push(
+                    Cell::from(sparkline_glyphs(&app.sparkline_buckets(&p.id))).style(pal.dim),
+                );
             }
             if !compact {
                 let summary = rec.map(|r| r.summary.as_str()).unwrap_or("");
@@ -1469,24 +1471,19 @@ fn settings_preview_lines(theme: &str, comfortable: bool) -> Vec<Line<'_>> {
             Span::raw("%2    "),
             Span::styled("claude  ", pal.attached),
             Span::raw("waiting  12m"),
-            Span::styled(
-                if comfortable {
-                    "  approve deploy?"
-                } else {
-                    ""
-                },
-                pal.dim,
-            ),
+            Span::styled(if comfortable { "  approve deploy?" } else { "" }, pal.dim),
         ]),
-        Line::from(Span::styled(
-            "%3    —       idle     2h",
-            pal.dim,
-        )),
+        Line::from(Span::styled("%3    —       idle     2h", pal.dim)),
     ];
     lines
 }
 
-fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) -> (Rect, Vec<Rect>) {
+fn render_settings(
+    frame: &mut Frame,
+    app: &mut App,
+    pal: &Palette,
+    area: Rect,
+) -> (Rect, Vec<Rect>) {
     use crate::app::SettingRow;
     let rows = app.settings_rows();
     let sections = app.settings_sections();
@@ -1519,8 +1516,7 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
         .max()
         .unwrap_or(8)
         + 4;
-    let cols = Layout::horizontal([Constraint::Length(side_w), Constraint::Min(0)])
-        .split(area);
+    let cols = Layout::horizontal([Constraint::Length(side_w), Constraint::Min(0)]).split(area);
     let visible = cols[1].height.saturating_sub(2) as usize;
     let mut offset = app.settings_scroll.saturating_sub(sec_start);
     if sel_here {
@@ -1535,9 +1531,7 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
     let max_off = sec_rows.len().saturating_sub(visible);
     offset = offset.min(max_off);
 
-    let mut title = format!(
-        " settings — {sec_name} — enter apply · esc close · ←/→ section "
-    );
+    let mut title = format!(" settings — {sec_name} — enter apply · esc close · ←/→ section ");
     if offset > 0 {
         title.push('▲');
     }
@@ -1596,8 +1590,7 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
     // width; narrow terminals skip the preview entirely.
     let want_preview = matches!(sec_name, "Theme" | "Density");
     let (opts, prev) = if want_preview && content.width >= 72 {
-        let parts = Layout::horizontal([Constraint::Length(38), Constraint::Min(0)])
-            .split(content);
+        let parts = Layout::horizontal([Constraint::Length(38), Constraint::Min(0)]).split(content);
         (parts[0], parts[1])
     } else {
         (content, Rect::default())
@@ -1610,45 +1603,53 @@ fn render_settings(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) 
         .map(|&i| {
             let r = &rows[i];
             match r {
-                SettingRow::Header(name) => Line::from(Span::styled(format!(" {name}"), pal.header)),
-            SettingRow::Item { label, active, .. } => {
-                let sel = i == sel_row;
-                let mut spans = vec![Span::styled(
-                    if sel { "› " } else { "  " },
-                    if sel { pal.focus } else { pal.dim },
-                )];
-                spans.push(Span::raw(label.clone()));
-                if *active {
-                    spans.push(Span::styled(" ●", pal.attached));
+                SettingRow::Header(name) => {
+                    Line::from(Span::styled(format!(" {name}"), pal.header))
                 }
-                let mut line = Line::from(spans);
-                if sel {
-                    line.style = pal.selected;
+                SettingRow::Item { label, active, .. } => {
+                    let sel = i == sel_row;
+                    let mut spans = vec![Span::styled(
+                        if sel { "› " } else { "  " },
+                        if sel { pal.focus } else { pal.dim },
+                    )];
+                    spans.push(Span::raw(label.clone()));
+                    if *active {
+                        spans.push(Span::styled(" ●", pal.attached));
+                    }
+                    let mut line = Line::from(spans);
+                    if sel {
+                        line.style = pal.selected;
+                    }
+                    line
                 }
-                line
+                SettingRow::Legend {
+                    triangle,
+                    color,
+                    name,
+                    meaning,
+                } => {
+                    // The legend mirrors the panel: a coloured ▼ in the
+                    // same fill the tray renders, then the state name in
+                    // bold, then a one-line meaning. Theme-driven, so what
+                    // you read here is what you see in the taskbar.
+                    let spans = vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            format!("{triangle} "),
+                            crate::config::parse_style_spec(color)
+                                .fg
+                                .unwrap_or(ratatui::style::Color::Reset),
+                        ),
+                        Span::styled(
+                            format!("{name} "),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(format!("— {meaning}"), pal.dim),
+                    ];
+                    Line::from(spans)
+                }
             }
-            SettingRow::Legend { triangle, color, name, meaning } => {
-                // The legend mirrors the panel: a coloured ▼ in the
-                // same fill the tray renders, then the state name in
-                // bold, then a one-line meaning. Theme-driven, so what
-                // you read here is what you see in the taskbar.
-                let spans = vec![
-                    Span::raw("  "),
-                    Span::styled(
-                        format!("{triangle} "),
-                        crate::config::parse_style_spec(color)
-                            .fg
-                            .unwrap_or(ratatui::style::Color::Reset),
-                    ),
-                    Span::styled(
-                        format!("{name} "),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(format!("— {meaning}"), pal.dim),
-                ];
-                Line::from(spans)
-            }
-        }})
+        })
         .collect();
     let shown = lines.len();
     frame.render_widget(Paragraph::new(lines), opts);
@@ -2239,23 +2240,11 @@ mod tests {
         use crate::app::QUIET_SHELL_SECS;
         let now = 10_000_u64;
         // Activity right at the threshold: qualifies (>=).
-        assert!(is_quiet_shell(
-            None,
-            now - QUIET_SHELL_SECS,
-            now
-        ));
+        assert!(is_quiet_shell(None, now - QUIET_SHELL_SECS, now));
         // Comfortably past the threshold: qualifies.
-        assert!(is_quiet_shell(
-            None,
-            now - QUIET_SHELL_SECS - 1,
-            now
-        ));
+        assert!(is_quiet_shell(None, now - QUIET_SHELL_SECS - 1, now));
         // One second short: does not qualify (the threshold is inclusive).
-        assert!(!is_quiet_shell(
-            None,
-            now - QUIET_SHELL_SECS + 1,
-            now
-        ));
+        assert!(!is_quiet_shell(None, now - QUIET_SHELL_SECS + 1, now));
         // Unknown activity (0): never qualifies — unknowns stay `—`.
         assert!(!is_quiet_shell(None, 0, now));
         // Activity from before unix epoch / weird clocks: saturates to 0

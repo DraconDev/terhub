@@ -73,21 +73,13 @@ fn parked_alone_does_not_promote() {
     // upgrades the verdict.
     let m = vec![make_manifest("all tasks passed")];
     let prompt = "loading 0.1\n❯ do you want to proceed?\n";
-    let with_prompt =
-        terhub::agent::classify_screen(&m, "x", prompt, false, true).unwrap();
+    let with_prompt = terhub::agent::classify_screen(&m, "x", prompt, false, true).unwrap();
     assert_eq!(
         with_prompt.state,
         AgentState::Waiting,
         "parked + prompt must read Waiting"
     );
-    let no_prompt = terhub::agent::classify_screen(
-        &m,
-        "x",
-        "loading 0.1\n",
-        false,
-        true,
-    )
-    .unwrap();
+    let no_prompt = terhub::agent::classify_screen(&m, "x", "loading 0.1\n", false, true).unwrap();
     assert_eq!(
         no_prompt.state,
         AgentState::Working,

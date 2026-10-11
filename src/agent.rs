@@ -1153,8 +1153,8 @@ mod tests {
                     model: String::new(),
                     ctx_pct: None,
                     reg_pid: 0,
-                bell: false,
-                bell_reason: String::new(),
+                    bell: false,
+                    bell_reason: String::new(),
                 },
             );
         }
@@ -1204,8 +1204,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         }];
         assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
         assert_eq!(resolve_handle(&recs, "@pi-other"), None);
@@ -1381,7 +1381,11 @@ mod tests {
         // With bell: same screen upgrades to Waiting, summary
         // carries the `🔔` reason so the chip can render it.
         let hit = classify_screen(&manifests, "x", quiet_screen, true, false).unwrap();
-        assert_eq!(hit.state, AgentState::Waiting, "bell didn't upgrade to Waiting");
+        assert_eq!(
+            hit.state,
+            AgentState::Waiting,
+            "bell didn't upgrade to Waiting"
+        );
         assert!(
             hit.summary.contains("🔔"),
             "summary missing bell reason: {hit:?}"
@@ -1414,7 +1418,11 @@ mod tests {
         // the park annotation is informational).
         let prompt_screen = "loading 0.1\n❯ do you want to proceed?\n";
         let hit = classify_screen(&manifests, "x", prompt_screen, false, true).unwrap();
-        assert_eq!(hit.state, AgentState::Waiting, "parked + prompt didn't promote");
+        assert_eq!(
+            hit.state,
+            AgentState::Waiting,
+            "parked + prompt didn't promote"
+        );
         assert!(
             hit.summary.contains("⏸ tty-read"),
             "summary missing park annotation: {hit:?}"
@@ -1448,7 +1456,9 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            m.classify("Summary\nall tasks passed · 0 failed\n").unwrap().0,
+            m.classify("Summary\nall tasks passed · 0 failed\n")
+                .unwrap()
+                .0,
             AgentState::Done
         );
     }
@@ -1506,7 +1516,9 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            m.classify("Summary\nall tasks passed · 0 failed\n").unwrap().0,
+            m.classify("Summary\nall tasks passed · 0 failed\n")
+                .unwrap()
+                .0,
             AgentState::Done,
             "legacy `idle:` list must still promote to Done — the bare rename would be silent breakage"
         );
@@ -1632,7 +1644,10 @@ mod tests {
         // classify_screen the unwrapped pane command (`pi`), so a
         // manifest that doesn't match it never runs.
         let m = pi_manifest();
-        assert!(m.matches_command("pi"), "pi manifest must match the pi command");
+        assert!(
+            m.matches_command("pi"),
+            "pi manifest must match the pi command"
+        );
         assert!(
             m.matches_command("PI"),
             "command matching is case-insensitive"
@@ -1778,7 +1793,13 @@ mod tests {
         );
         // … and a micro command bar is waiting-without-identity, not gemini.
         assert_eq!(
-            classify_screen(&m, "micro", "> command\nSave changes? confirm\n", false, false),
+            classify_screen(
+                &m,
+                "micro",
+                "> command\nSave changes? confirm\n",
+                false,
+                false
+            ),
             hit(None, AgentState::Waiting, "Save changes? confirm")
         );
     }
@@ -1827,7 +1848,10 @@ mod tests {
             screen.push_str(&format!("filler line {i}\n"));
         }
         screen.push_str("❯\n");
-        assert_eq!(classify_screen(&m, "muse-bin-1.4.2", &screen, false, false), None);
+        assert_eq!(
+            classify_screen(&m, "muse-bin-1.4.2", &screen, false, false),
+            None
+        );
     }
 
     #[test]
@@ -1895,7 +1919,10 @@ mod tests {
     #[test]
     fn plain_shell_screen_is_unknown() {
         let m = compiled();
-        assert_eq!(classify_screen(&m, "zsh", "$ ls\nfoo\n", false, false), None);
+        assert_eq!(
+            classify_screen(&m, "zsh", "$ ls\nfoo\n", false, false),
+            None
+        );
     }
 
     #[test]
@@ -2037,8 +2064,12 @@ mod tests {
         // minimax manifest's `idle:` list was migrated to `done:`.
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "✓ Goal complete · 31min38s · 352K tokens\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "✓ Goal complete · 31min38s · 352K tokens\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Done,
@@ -2046,7 +2077,13 @@ mod tests {
             )
         );
         assert_eq!(
-            classify_screen(&m, "minimax-code", "✓ Todo list 15/15 completed\n", false, false),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "✓ Todo list 15/15 completed\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Done,
@@ -2055,7 +2092,13 @@ mod tests {
         );
         // Done loses within-line ties: any hint of need or activity wins.
         assert_eq!(
-            classify_screen(&m, "minimax-code", "⠙ ✓ Goal complete · 31min38s\n", false, false),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "⠙ ✓ Goal complete · 31min38s\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Working,
@@ -2065,8 +2108,12 @@ mod tests {
         // A failed task run is an error (and beats the goal banner below it).
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "✓ Goal complete · 2h11min8s\n× Tasks · 1 failed · 5 results ready\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "✓ Goal complete · 2h11min8s\n× Tasks · 1 failed · 5 results ready\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Error,
@@ -2080,12 +2127,24 @@ mod tests {
         );
         // …prose failures are not task failures…
         assert_eq!(
-            classify_screen(&m, "minimax-code", "SPEC-200 failed when gates ran\n", false, false),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "SPEC-200 failed when gates ran\n",
+                false,
+                false
+            ),
             None
         );
         // …a zero count is not a failure…
         assert_eq!(
-            classify_screen(&m, "minimax-code", "Tasks · 0 failed · /tasks details\n", false, false),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "Tasks · 0 failed · /tasks details\n",
+                false,
+                false
+            ),
             None
         );
         // The input box only returns when the turn is over (live
@@ -2094,8 +2153,12 @@ mod tests {
         // live tasks and means nothing.
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "Message · Enter send · Ctrl+J newline\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "Message · Enter send · Ctrl+J newline\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Idle,
@@ -2103,22 +2166,36 @@ mod tests {
             )
         );
         assert_eq!(
-            classify_screen(&m, "minimax-code", "› Ask Mcode to do anything\n", false, false),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "› Ask Mcode to do anything\n",
+                false,
+                false
+            ),
             None
         );
         // A stale throughput rate on a Completed line must not pin
         // working: live inference always brings a spinner verb too.
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "└ Completed in 1min22s · ⚡ 6535 tok/s\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "└ Completed in 1min22s · ⚡ 6535 tok/s\n",
+                false,
+                false
+            ),
             None
         );
         // The box is bottom chrome: it never shadows need above it.
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "× Tasks · 1 failed\nMessage · Enter send · Ctrl+J newline\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "× Tasks · 1 failed\nMessage · Enter send · Ctrl+J newline\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Error,
@@ -2128,8 +2205,12 @@ mod tests {
         // …never shadows a banner (which also summarizes better)…
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "✓ Todo list 9/9 completed\nMessage · Enter send · Ctrl+J newline\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "✓ Todo list 9/9 completed\nMessage · Enter send · Ctrl+J newline\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Done,
@@ -2139,8 +2220,12 @@ mod tests {
         // …loses to live activity below it…
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "Message · Enter send · Ctrl+J newline\n⠙ Running 5min1s\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "Message · Enter send · Ctrl+J newline\n⠙ Running 5min1s\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Working,
@@ -2150,8 +2235,12 @@ mod tests {
         // …but beats stale activity above it.
         assert_eq!(
             classify_screen(
-                &m, "minimax-code", "⠙ Running 5min1s\nMessage · Enter send · Ctrl+J newline\n"
-            , false, false),
+                &m,
+                "minimax-code",
+                "⠙ Running 5min1s\nMessage · Enter send · Ctrl+J newline\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Idle,
@@ -2160,7 +2249,13 @@ mod tests {
         );
         // Live inference still reads working.
         assert_eq!(
-            classify_screen(&m, "minimax-code", "⠙ Running 13min40s · ⚡ 15092 tok/s\n", false, false),
+            classify_screen(
+                &m,
+                "minimax-code",
+                "⠙ Running 13min40s · ⚡ 15092 tok/s\n",
+                false,
+                false
+            ),
             hit(
                 Some("minimax-code"),
                 AgentState::Working,
@@ -2175,14 +2270,24 @@ mod tests {
         // A footer tip must never trip the classifier, even one whose
         // words would match ("quota" is a limited pattern).
         assert_eq!(
-            classify_screen(&m, "claude", "$ working\nTip: quota for free tier\n", false, false),
+            classify_screen(
+                &m,
+                "claude",
+                "$ working\nTip: quota for free tier\n",
+                false,
+                false
+            ),
             None
         );
         // …while real verdicts beside a tip still land, with real summaries.
         assert_eq!(
             classify_screen(
-                &m, "claude", "Tip: quota for free tier\nError: socket timeout\n"
-            , false, false),
+                &m,
+                "claude",
+                "Tip: quota for free tier\nError: socket timeout\n",
+                false,
+                false
+            ),
             hit(Some("claude"), AgentState::Error, "Error: socket timeout")
         );
         // Only the footer prefix strips: prose merely starting with Tip stays.

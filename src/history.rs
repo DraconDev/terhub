@@ -1024,7 +1024,10 @@ mod tests {
         let path = dir.join("activity.jsonl");
         let good = Entry::prompt(100, "%1", "pi", "keep me");
         append_entry(&path, &good).unwrap();
-        append_raw(&path, "{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"summ"); // torn
+        append_raw(
+            &path,
+            "{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"summ",
+        ); // torn
         // The torn line is NOT parsed by read_entries (filter_map ok),
         // so it does not appear in queries. corrupt_count is 0 because
         // it was never quarantined yet.
@@ -1036,10 +1039,17 @@ mod tests {
         let kept = prune(&path, 100 + 90 * 86400, 90);
         assert_eq!(kept, 1, "prune kept the good entry");
         let entries = read_entries(&path);
-        assert_eq!(entries.iter().filter(|e| e.kind != "__corrupt__").count(), 1);
+        assert_eq!(
+            entries.iter().filter(|e| e.kind != "__corrupt__").count(),
+            1
+        );
         assert_eq!(corrupt_count(&path), 1, "torn line quarantined");
         let q = entries.iter().find(|e| e.kind == "__corrupt__").unwrap();
-        assert!(q.summary.contains("summ"), "raw head preserved: {}", q.summary);
+        assert!(
+            q.summary.contains("summ"),
+            "raw head preserved: {}",
+            q.summary
+        );
         // build_spans / stats skip __corrupt__.
         let spans = build_spans(&entries, 100 + 90 * 86400);
         assert!(spans.is_empty(), "quarantines must not become spans");

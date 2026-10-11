@@ -750,22 +750,20 @@ pub fn focus_hub(s: &HubSession) -> bool {
     {
         let mut search = std::process::Command::new("xdotool");
         search.args(["search", "--tty", tty]).stdin(Stdio::null());
-        let ids: Vec<String> =
-            match crate::native::run_with_timeout(search, "xdotool search", 2) {
-                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .map(str::trim)
-                    .filter(|l| !l.is_empty())
-                    .map(str::to_string)
-                    .collect(),
-                _ => Vec::new(),
-            };
+        let ids: Vec<String> = match crate::native::run_with_timeout(search, "xdotool search", 2) {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect(),
+            _ => Vec::new(),
+        };
         for id in &ids {
             let mut act = std::process::Command::new("xdotool");
             act.args(["windowactivate", "--sync", id])
                 .stdin(Stdio::null());
-            if let Ok(o) =
-                crate::native::run_with_timeout(act, "xdotool windowactivate", 2)
+            if let Ok(o) = crate::native::run_with_timeout(act, "xdotool windowactivate", 2)
                 && o.status.success()
             {
                 return true;
@@ -803,10 +801,7 @@ impl Tray {
     }
 
     fn read_names(&self) -> HashMap<IconState, String> {
-        self.names
-            .lock()
-            .map(|n| n.clone())
-            .unwrap_or_default()
+        self.names.lock().map(|n| n.clone()).unwrap_or_default()
     }
 
     /// Primary click: open the hub in a terminal. `TERMHUB_TERMINAL`
@@ -847,13 +842,11 @@ impl Tray {
 /// and silently fails to spawn.
 fn which(bin: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join(bin))
-        .find(|p| {
-            p.metadata()
-                .map(|m| m.is_file() && (m.mode() & 0o111) != 0)
-                .unwrap_or(false)
-        })
+    std::env::split_paths(&path).map(|d| d.join(bin)).find(|p| {
+        p.metadata()
+            .map(|m| m.is_file() && (m.mode() & 0o111) != 0)
+            .unwrap_or(false)
+    })
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierItem")]
@@ -933,7 +926,8 @@ impl Tray {
 
     /// Same contract for the title line.
     #[zbus(signal)]
-    async fn new_title(signal_emitter: &zbus::object_server::SignalEmitter<'_>) -> zbus::Result<()>;
+    async fn new_title(signal_emitter: &zbus::object_server::SignalEmitter<'_>)
+    -> zbus::Result<()>;
 
     /// Same contract for the hover card.
     #[zbus(signal)]
@@ -966,7 +960,10 @@ impl Tray {
 /// service name, or the `service/path` form Plasma 6's watcher stores.
 pub fn item_is_listed(entries: &[String], unique: &str) -> bool {
     entries.iter().any(|entry| {
-        entry == unique || entry.strip_prefix(unique).is_some_and(|rest| rest.starts_with('/'))
+        entry == unique
+            || entry
+                .strip_prefix(unique)
+                .is_some_and(|rest| rest.starts_with('/'))
     })
 }
 
@@ -998,10 +995,9 @@ pub fn run() -> anyhow::Result<()> {
     // TUI's load_config() owns the theme, so we go through it rather
     // than parsing the TOML ourselves.
     let theme = crate::config::load_config(None).theme;
-    let names: std::sync::Arc<std::sync::Mutex<HashMap<IconState, String>>> =
-        std::sync::Arc::new(std::sync::Mutex::new(
-            install_icons(&theme).map_err(anyhow::Error::from)?,
-        ));
+    let names: std::sync::Arc<std::sync::Mutex<HashMap<IconState, String>>> = std::sync::Arc::new(
+        std::sync::Mutex::new(install_icons(&theme).map_err(anyhow::Error::from)?),
+    );
     refresh_icon_cache();
     let mut last_theme = theme;
     let conn = zbus::blocking::Connection::session()?;
@@ -1122,13 +1118,19 @@ mod tests {
         let unique = "org.kde.StatusNotifierItem-123-1";
         // Missing entirely is the orphaned-icon case: re-register.
         assert!(!item_is_listed(&[], unique));
-        assert!(!item_is_listed(&["org.kde.StatusNotifierItem-124-1".to_string()], unique));
+        assert!(!item_is_listed(
+            &["org.kde.StatusNotifierItem-124-1".to_string()],
+            unique
+        ));
         // A name that merely starts with ours is not us.
         assert!(!item_is_listed(&[format!("{unique}-suffix")], unique));
         // Both real forms: the bare name we register with, and the
         // service/path form Plasma 6's watcher stores.
         assert!(item_is_listed(&[unique.to_string()], unique));
-        assert!(item_is_listed(&[format!("{unique}/StatusNotifierItem")], unique));
+        assert!(item_is_listed(
+            &[format!("{unique}/StatusNotifierItem")],
+            unique
+        ));
         // Mixed lists: found next to unrelated items.
         assert!(item_is_listed(
             &[
@@ -1438,7 +1440,6 @@ mod tests {
 
     #[test]
     fn every_state_is_told_apart_by_colour_not_shape() {
-
         // The whole point of the redesign: one mark, distinguished by
         // colour. Every adjacent pair of states must differ, or two
         // states collapse into the same icon in the panel.
@@ -1481,7 +1482,10 @@ mod tests {
                 "{state:?} triangle count wrong: {svg}"
             );
             assert!(!svg.contains("linearGradient"), "{state:?} kept a gradient");
-            assert!(svg.contains("viewBox=\"0 0 24 24\""), "{state:?} grid drifted");
+            assert!(
+                svg.contains("viewBox=\"0 0 24 24\""),
+                "{state:?} grid drifted"
+            );
         }
     }
 

@@ -99,7 +99,10 @@ fn legacy_config_without_saved_filters_still_loads() {
     )
     .unwrap();
     let (cfg, problems) = terhub::config::load_config_report(Some(path.clone()));
-    assert!(problems.is_empty(), "legacy config reported problems: {problems:?}");
+    assert!(
+        problems.is_empty(),
+        "legacy config reported problems: {problems:?}"
+    );
     assert!(cfg.saved_filters.is_empty(), "stray saved filters");
     // The standing line survives verbatim; App strips one `!`.
     assert_eq!(cfg.filter, "!zsh");
@@ -132,7 +135,10 @@ fn saving_saved_filters_leaves_the_filter_line_alone() {
     let patch = cfg.ui_persist_changes(&changes);
     terhub::config::persist_ui_settings_at(&path, &patch).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("filter = \"!zsh\""), "filter line rewritten:\n{text}");
+    assert!(
+        text.contains("filter = \"!zsh\""),
+        "filter line rewritten:\n{text}"
+    );
     assert!(
         text.contains("saved_filters = [{name = \"work\", query = \"vim npm\"}]"),
         "saved filters missing:\n{text}"
@@ -157,8 +163,8 @@ fn combined_saved_filters_and_sort_patch_writes_both_lines() {
     const SF: &str = "saved_filters = [{name = \"work\", query = \"vim\"}]";
 
     fn persist(tag: &str, patch: &terhub::config::UiPersist<'_>, start: &str) -> String {
-        let path = std::env::temp_dir()
-            .join(format!("terhub-combined-{tag}-{}.toml", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("terhub-combined-{tag}-{}.toml", std::process::id()));
         std::fs::write(&path, start).unwrap();
         terhub::config::persist_ui_settings_at(&path, patch).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
@@ -221,8 +227,10 @@ fn combined_saved_filters_and_sort_patch_writes_both_lines() {
 
     // Every layout reparses with both halves intact.
     for (tag, text) in [("a", &a), ("b", &b), ("c", &c), ("d", &d)] {
-        let path = std::env::temp_dir()
-            .join(format!("terhub-combined-parse-{tag}-{}.toml", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "terhub-combined-parse-{tag}-{}.toml",
+            std::process::id()
+        ));
         std::fs::write(&path, text).unwrap();
         let (cfg, problems) = terhub::config::load_config_report(Some(path.clone()));
         assert!(problems.is_empty(), "{tag}: parse problems {problems:?}");

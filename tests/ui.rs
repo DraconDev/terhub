@@ -186,8 +186,8 @@ fn title_needy_counts_visible_rows_only() {
         model: String::new(),
         ctx_pct: None,
         reg_pid: 0,
-    bell: false,
-    bell_reason: String::new(),
+        bell: false,
+        bell_reason: String::new(),
     };
     app.agents.insert("%1".to_string(), rec("%1"));
     app.agents.insert("%2".to_string(), rec("%2"));
@@ -226,8 +226,8 @@ fn title_counts_idle_rows_scoped_to_the_filter() {
         model: String::new(),
         ctx_pct: None,
         reg_pid: 0,
-    bell: false,
-    bell_reason: String::new(),
+        bell: false,
+        bell_reason: String::new(),
     };
     // Both idle, but the filter (which matches the bash pane) hides one:
     // title must say 1, not 2.
@@ -281,8 +281,8 @@ fn proc_source_and_stuck_state_render() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -342,8 +342,8 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -382,8 +382,8 @@ fn waiting_record(pane: &str, session: &str, summary: &str) -> terhub::agent::Ag
         model: String::new(),
         ctx_pct: None,
         reg_pid: 0,
-    bell: false,
-    bell_reason: String::new(),
+        bell: false,
+        bell_reason: String::new(),
     }
 }
 
@@ -412,8 +412,8 @@ fn idle_record(pane: &str, session: &str, quiet_age: u64, now: u64) -> terhub::a
         model: String::new(),
         ctx_pct: None,
         reg_pid: 0,
-    bell: false,
-    bell_reason: String::new(),
+        bell: false,
+        bell_reason: String::new(),
     }
 }
 
@@ -512,8 +512,8 @@ fn agent_color_and_idle_warn_reach_cells() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let grid = render_grid(&mut app, 140, 20);
@@ -539,10 +539,8 @@ fn columns_carry_semantic_styles_not_terminal_default() {
     use terhub::agent::now_unix;
     let mut app = app_with_panes();
     app.config.theme = "dark".to_string();
-    app.agents.insert(
-        "%1".to_string(),
-        idle_record("%1", "alpha", 60, now_unix()),
-    );
+    app.agents
+        .insert("%1".to_string(), idle_record("%1", "alpha", 60, now_unix()));
     // Handles group with their agent (same hash colour, not dim).
     app.agents.get_mut("%1").unwrap().handle = "@pi-a".to_string();
     let grid = render_grid(&mut app, 140, 20);
@@ -604,8 +602,8 @@ fn done_state_renders_in_dim_green_check() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let grid = render_grid(&mut app, 140, 20);
@@ -619,7 +617,10 @@ fn done_state_renders_in_dim_green_check() {
     // itself is the bold modifier (a glanceable marker, not a row
     // tint that bleeds across the cells).
     assert_eq!(fg, terhub::ui::palette("dark").done.fg.unwrap());
-    assert!(mods.contains(Modifier::BOLD), "done state lost its check mark");
+    assert!(
+        mods.contains(Modifier::BOLD),
+        "done state lost its check mark"
+    );
     // `done` must never be the alarm red — that's reserved for
     // things actually needing the human.
     assert_ne!(fg, Color::Red, "done state misused the alarm colour");
@@ -865,8 +866,8 @@ fn preview_title_shows_agent_context() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     app.show_preview = true;
@@ -908,8 +909,8 @@ fn preview_title_shows_model_and_ctx_strip() {
             model: "opus-4.5".to_string(),
             ctx_pct: Some(72),
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     app.show_preview = true;
@@ -928,7 +929,8 @@ fn settings_selection_stays_visible() {
     // Fake tmux: the settings path never touches it.
     let tmux = Tmux::test("/nonexistent-tmux-binary".into());
     let down = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
-    for _ in 0..30 { // overshoot on purpose: 26 selectable items, land clamped at the standing row
+    for _ in 0..30 {
+        // overshoot on purpose: 26 selectable items, land clamped at the standing row
         app.on_key(down, &tmux);
     }
     // Short terminal: driving to the bottom lands on the standing
@@ -942,7 +944,8 @@ fn settings_selection_stays_visible() {
     // Back up: the selection marker must stay on a visible row (scroll
     // tracks in the renderer, like the table's ensure_visible).
     let up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
-    for _ in 0..30 { // overshoot on purpose: clamped at the first theme
+    for _ in 0..30 {
+        // overshoot on purpose: clamped at the first theme
         app.on_key(up, &tmux);
     }
     let text = render_lines(&mut app, 160, 12).join("\n");
@@ -1081,7 +1084,10 @@ fn saved_filter_prompt_is_single_line() {
     app.mode = Mode::PromptSavedFilter { index: Some(0) };
     app.input = "old".to_string();
     let text = render_lines(&mut app, 100, 12).join("\n");
-    assert!(text.contains("Rename: old"), "missing rename label:\n{text}");
+    assert!(
+        text.contains("Rename: old"),
+        "missing rename label:\n{text}"
+    );
 }
 
 #[test]
@@ -1105,7 +1111,6 @@ fn settings_filters_section_lists_saved_names() {
     assert!(text.contains("saved: work"), "missing saved name:\n{text}");
     assert!(text.contains("bash nvim"), "missing query text:\n{text}");
 }
-
 
 /// The filter chip: a coloured block plus a label, so an active filter
 /// is never silent. Four states — no filter, search only, exclusion
@@ -1269,7 +1274,9 @@ fn filter_active_indicator_uses_the_title_palette() {
         .expect("chip block glyph not rendered");
     // `find` returns a byte index; the grid is indexed by cell, and the
     // line holds multi-byte glyphs, so count characters.
-    let col = text[row][..text[row].find('\u{25fc}').unwrap()].chars().count();
+    let col = text[row][..text[row].find('\u{25fc}').unwrap()]
+        .chars()
+        .count();
     let (symbol, fg, _) = grid[row][col].clone();
     assert_eq!(symbol, "\u{25fc}", "off-by-one: not the chip glyph");
     assert_eq!(
@@ -1285,7 +1292,6 @@ fn filter_active_indicator_uses_the_title_palette() {
         "chip label left the title palette"
     );
 }
-
 
 /// The footer is the discoverability surface. With 40+ panes the filter
 /// key is the most valuable one on screen, so it must be named — and it
@@ -1363,10 +1369,8 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
         "%1".to_string(),
         idle_record("%1", "alpha", 60, terhub::agent::now_unix()),
     );
-    app.attended.insert(
-        "%1".to_string(),
-        ("idle".to_string(), "done".to_string()),
-    );
+    app.attended
+        .insert("%1".to_string(), ("idle".to_string(), "done".to_string()));
     // The fixture panes are all `active` in one window, which would read
     // `*` (focus disambiguation outranks the check by design); stand the
     // rows down and re-filter so the check itself is what renders.
@@ -1377,10 +1381,7 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
         .lines()
         .find(|l| l.contains("%1"))
         .expect("attended row missing");
-    assert!(
-        row.contains(SEEN),
-        "visited row wears no check:\n{row}"
-    );
+    assert!(row.contains(SEEN), "visited row wears no check:\n{row}");
 
     // A pane that still needs you keeps its `!` — the tray counts it,
     // so the table must not pretend it is handled.
@@ -1407,10 +1408,8 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
         "%1".to_string(),
         idle_record("%1", "alpha", 60, terhub::agent::now_unix()),
     );
-    app.attended.insert(
-        "%1".to_string(),
-        ("idle".to_string(), "done".to_string()),
-    );
+    app.attended
+        .insert("%1".to_string(), ("idle".to_string(), "done".to_string()));
     app.marked.insert("%1".to_string());
     let text = render_lines(&mut app, 120, 12).join("\n");
     let row = text
@@ -1420,7 +1419,6 @@ fn attended_marker_renders_and_yields_to_urgent_marks() {
     assert!(row.contains('+'), "manual mark lost to the check:\n{row}");
     assert!(!row.contains(SEEN), "check hid the manual mark:\n{row}");
 }
-
 
 #[test]
 fn confirm_modal_renders() {
@@ -1469,8 +1467,8 @@ fn agent_state_renders_in_table() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -1583,8 +1581,8 @@ fn src_and_dir_columns_render() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     app.agents.insert(
@@ -1612,8 +1610,8 @@ fn src_and_dir_columns_render() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -1668,8 +1666,15 @@ fn settings_theme_section_shows_live_preview_when_wide() {
     app.settings_selected = 2;
     let lines = render_lines(&mut app, 160, 30);
     let text = lines.join("\n");
-    assert!(text.contains("preview: dracula"), "preview did not follow hover:\n{text}");
-    assert_eq!(app.config.theme, AppConfig::default().theme, "hover applied the theme");
+    assert!(
+        text.contains("preview: dracula"),
+        "preview did not follow hover:\n{text}"
+    );
+    assert_eq!(
+        app.config.theme,
+        AppConfig::default().theme,
+        "hover applied the theme"
+    );
 }
 
 #[test]
@@ -1679,12 +1684,18 @@ fn settings_preview_hides_when_narrow_or_elsewhere() {
     // Narrow terminal: no room, options take the full content.
     let lines = render_lines(&mut app, 60, 30);
     let text = lines.join("\n");
-    assert!(!text.contains("preview:"), "preview leaked into narrow layout:\n{text}");
+    assert!(
+        !text.contains("preview:"),
+        "preview leaked into narrow layout:\n{text}"
+    );
     // Toggles section at full width: no preview there either.
     app.goto_settings_section(2);
     let lines = render_lines(&mut app, 160, 30);
     let text = lines.join("\n");
-    assert!(!text.contains("preview:"), "preview outside Theme/Density:\n{text}");
+    assert!(
+        !text.contains("preview:"),
+        "preview outside Theme/Density:\n{text}"
+    );
 }
 
 #[test]
@@ -1757,8 +1768,8 @@ fn wide_table_fits_long_commands_and_summaries() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let text = render_lines(&mut app, 195, 24).join("\n");
@@ -1795,8 +1806,8 @@ fn title_nudges_hookless_setups() {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -2046,8 +2057,8 @@ fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::a
         model: String::new(),
         ctx_pct: None,
         reg_pid: 0,
-    bell: false,
-    bell_reason: String::new(),
+        bell: false,
+        bell_reason: String::new(),
     }
 }
 

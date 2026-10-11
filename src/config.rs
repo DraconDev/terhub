@@ -1084,9 +1084,7 @@ impl AppConfig {
         UiPersist {
             theme: c.theme.then_some(&*self.theme),
             density: c.density.then_some(&*self.density),
-            notifications: c
-                .notifications
-                .then_some(self.notifications_enabled),
+            notifications: c.notifications.then_some(self.notifications_enabled),
             highlight: c.highlight.then_some(self.highlight_attached),
             mru_tabs: c.mru_tabs.then_some(self.mru_tabs),
             filter: c.filter.then_some(&*self.filter),
@@ -1229,7 +1227,10 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
         } else if section == "[ui]" && is_key_line(line, "highlight_attached") {
             match v.highlight {
                 Some(h) => {
-                    out.push(format!("highlight_attached = {h}{}", trailing_comment(line)));
+                    out.push(format!(
+                        "highlight_attached = {h}{}",
+                        trailing_comment(line)
+                    ));
                     seen[HIGHLIGHT] = true;
                 }
                 None => out.push(line.to_string()),
@@ -1306,33 +1307,51 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     // Insert whatever the file lacked directly under its section header
     // (appending at EOF would land it in the wrong section).
     let mut missing_ui = Vec::new();
-    if !seen[THEME] && let Some(t) = v.theme {
+    if !seen[THEME]
+        && let Some(t) = v.theme
+    {
         missing_ui.push(format!("theme = \"{t}\""));
     }
-    if !seen[DENSITY] && let Some(d) = v.density {
+    if !seen[DENSITY]
+        && let Some(d) = v.density
+    {
         missing_ui.push(format!("density = \"{d}\""));
     }
-    if !seen[HIGHLIGHT] && let Some(h) = v.highlight {
+    if !seen[HIGHLIGHT]
+        && let Some(h) = v.highlight
+    {
         missing_ui.push(format!("highlight_attached = {h}"));
     }
-    if !seen[MRU_TABS] && let Some(m) = v.mru_tabs {
+    if !seen[MRU_TABS]
+        && let Some(m) = v.mru_tabs
+    {
         missing_ui.push(format!("mru_tabs = {m}"));
     }
-    if !seen[FILTER] && let Some(f) = v.filter {
+    if !seen[FILTER]
+        && let Some(f) = v.filter
+    {
         let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("filter = \"{esc}\""));
     }
-    if !seen[SAVED_FILTERS] && let Some(f) = v.saved_filters {
+    if !seen[SAVED_FILTERS]
+        && let Some(f) = v.saved_filters
+    {
         missing_ui.push(format!("saved_filters = [{}]", encode_saved_filters(f)));
     }
-    if !seen[SORT] && let Some(s) = v.sort {
+    if !seen[SORT]
+        && let Some(s) = v.sort
+    {
         let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("sort = \"{esc}\""));
     }
-    if !seen[SORT_DESC] && let Some(d) = v.sort_desc {
+    if !seen[SORT_DESC]
+        && let Some(d) = v.sort_desc
+    {
         missing_ui.push(format!("sort_desc = {d}"));
     }
-    if !seen[HIDE_SHELLS] && let Some(h) = v.hide_shells {
+    if !seen[HIDE_SHELLS]
+        && let Some(h) = v.hide_shells
+    {
         missing_ui.push(format!("hide_shells = {h}"));
     }
     let mut ui_inserted = 0;
@@ -1350,7 +1369,9 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             }
         }
     }
-    if !seen[NOTIF_ENABLED] && let Some(e) = v.notifications {
+    if !seen[NOTIF_ENABLED]
+        && let Some(e) = v.notifications
+    {
         match notif_at {
             Some(i) => {
                 let shift = if ui_at.is_some_and(|u| u < i) {
@@ -1402,10 +1423,12 @@ use slot::*;
 /// future init/cleanup can prune it).
 pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
-    let parent = path.parent().ok_or_else(|| std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        "config path has no parent directory",
-    ))?;
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "config path has no parent directory",
+        )
+    })?;
     std::fs::create_dir_all(parent)?;
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2524,14 +2547,50 @@ mod tests {
     fn persist_survives_real_world_config_shapes() {
         // (name, original text, expected theme, expected filter, has keys section)
         let cases: &[(&str, &str, &str, &str, bool)] = &[
-            ("crlf", "[ui]\r\ntheme = \"dark\"\r\nfilter = \"!zsh\"\r\n\r\n[keys]\r\nnew = \"c\"\r\n", "dark", "!zsh", true),
-            ("commented header", "# lead\n[ui] # theme settings\ntheme = \"dark\"\n", "dark", "", false),
-            ("indented keys", "[ui]\n  theme = \"dark\"\n\t filter = \"!zsh\"\n", "dark", "!zsh", false),
-            ("no spaces around eq", "[ui]\ntheme=\"dark\"\n", "dark", "", false),
+            (
+                "crlf",
+                "[ui]\r\ntheme = \"dark\"\r\nfilter = \"!zsh\"\r\n\r\n[keys]\r\nnew = \"c\"\r\n",
+                "dark",
+                "!zsh",
+                true,
+            ),
+            (
+                "commented header",
+                "# lead\n[ui] # theme settings\ntheme = \"dark\"\n",
+                "dark",
+                "",
+                false,
+            ),
+            (
+                "indented keys",
+                "[ui]\n  theme = \"dark\"\n\t filter = \"!zsh\"\n",
+                "dark",
+                "!zsh",
+                false,
+            ),
+            (
+                "no spaces around eq",
+                "[ui]\ntheme=\"dark\"\n",
+                "dark",
+                "",
+                false,
+            ),
             ("single quotes", "[ui]\ntheme = 'dark'\n", "dark", "", false),
-            ("trailing whitespace", "[ui]\ntheme = \"dark\"   \n", "dark", "", false),
+            (
+                "trailing whitespace",
+                "[ui]\ntheme = \"dark\"   \n",
+                "dark",
+                "",
+                false,
+            ),
             ("no ui section", "[keys]\nnew = \"c\"\n", "dark", "", true),
-            ("empty ui section", "[ui]\n\n[style]\nidle_flag_secs = 300\n", "dark", "", false),
+            (
+                "empty ui section",
+                "[ui]\n\n[style]\nidle_flag_secs = 300\n",
+                "dark",
+                "",
+                false,
+            ),
             ("bom", "\u{feff}[ui]\ntheme = \"dark\"\n", "dark", "", false),
         ];
         for (name, original, want_theme, want_filter, has_keys) in cases {
@@ -2608,7 +2667,14 @@ mod tests {
             assert!(cfg.hide_shells, "{name}\n{text}");
             assert!(cfg.compact(), "{name}\n{text}");
             // No key may be duplicated by the write.
-            for key in ["theme", "filter", "sort", "sort_desc", "hide_shells", "density"] {
+            for key in [
+                "theme",
+                "filter",
+                "sort",
+                "sort_desc",
+                "hide_shells",
+                "density",
+            ] {
                 assert_eq!(
                     text.matches(&format!("{key} = ")).count(),
                     1,

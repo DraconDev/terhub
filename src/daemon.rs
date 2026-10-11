@@ -203,7 +203,10 @@ pub struct Server {
 fn ensure_runtime_dir(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => {
-            anyhow::bail!("runtime dir {} is a symlink; refusing to use it", path.display());
+            anyhow::bail!(
+                "runtime dir {} is a symlink; refusing to use it",
+                path.display()
+            );
         }
         Ok(m) if m.is_dir() => {
             let mut perms = std::fs::metadata(path)?.permissions();
@@ -212,7 +215,10 @@ fn ensure_runtime_dir(path: &Path) -> Result<()> {
             Ok(())
         }
         Ok(_) => {
-            anyhow::bail!("runtime dir {} exists but is not a directory", path.display())
+            anyhow::bail!(
+                "runtime dir {} exists but is not a directory",
+                path.display()
+            )
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             std::fs::DirBuilder::new()
@@ -367,15 +373,12 @@ async fn handle_conn(
         }
         Request::Event { event } => {
             // Mutation + save without holding the lock across disk IO.
-            let (transitions, now) = mutate_and_save(
-                &registry,
-                &runtime.join("registry.json"),
-                |reg| {
+            let (transitions, now) =
+                mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
                     let now = now_unix();
                     let t = apply_hook_event(reg, &event, now);
                     (t, now)
-                },
-            );
+                });
             emit_transitions(&transitions, now);
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
@@ -403,11 +406,9 @@ async fn handle_conn(
             Response::ok()
         }
         Request::Unregister { pane } => {
-            let dropped = mutate_and_save(
-                &registry,
-                &runtime.join("registry.json"),
-                |reg| apply_unregister(reg, &pane),
-            );
+            let dropped = mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
+                apply_unregister(reg, &pane)
+            });
             if dropped {
                 Response::ok()
             } else {
@@ -1273,9 +1274,15 @@ fn poll_sync_with(
         let screen_hit = if is_harness_command(&pane.command) {
             None
         } else {
-            screen
-                .as_deref()
-                .and_then(|s| classify_screen(manifests, &pane.command, s, pane.bell, crate::proc::parked_in_tty_read(pane.pid)))
+            screen.as_deref().and_then(|s| {
+                classify_screen(
+                    manifests,
+                    &pane.command,
+                    s,
+                    pane.bell,
+                    crate::proc::parked_in_tty_read(pane.pid),
+                )
+            })
         };
         let proc_pair = proc_hit
             .as_ref()
@@ -2360,8 +2367,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         }
     }
 
@@ -2553,8 +2560,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         }
     }
 

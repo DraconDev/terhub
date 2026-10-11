@@ -369,10 +369,7 @@ pub fn snapshot_rows(
 /// `status --json` snapshot, or from the user) must be single-quoted
 /// to keep `;` / `` ` `` / `$()` from executing remotely.
 pub fn remote_capture(target: &str, pane: &str, lines: u32) -> Result<String> {
-    let cmd = format!(
-        "tmux capture-pane -p -e -t {} -S -{lines}",
-        sh_quote(pane)
-    );
+    let cmd = format!("tmux capture-pane -p -e -t {} -S -{lines}", sh_quote(pane));
     ssh_run(target, &[&cmd], 10)
 }
 
@@ -389,7 +386,12 @@ pub fn attach_remote_argv(target: &str, session: Option<&str>) -> Vec<String> {
         Some(s) => format!("tmux attach-session -t {}", sh_quote(s)),
         None => "tmux attach-session".to_string(),
     };
-    vec!["-t".to_string(), "--".to_string(), target.to_string(), remote]
+    vec![
+        "-t".to_string(),
+        "--".to_string(),
+        target.to_string(),
+        remote,
+    ]
 }
 
 /// Replace this process with `ssh -t` into the remote session (the TUI
@@ -548,8 +550,8 @@ mod tests {
                 model: String::new(),
                 ctx_pct: None,
                 reg_pid: 0,
-            bell: false,
-            bell_reason: String::new(),
+                bell: false,
+                bell_reason: String::new(),
             }],
             updated_at: 1700,
         };
@@ -615,8 +617,8 @@ mod tests {
                 model: String::new(),
                 ctx_pct: None,
                 reg_pid: 0,
-            bell: false,
-            bell_reason: String::new(),
+                bell: false,
+                bell_reason: String::new(),
             }],
             updated_at: 1700,
         };
@@ -643,19 +645,11 @@ mod tests {
         let argv = attach_remote_argv("dev.example", Some("web"));
         assert_eq!(
             argv,
-            vec![
-                "-t",
-                "--",
-                "dev.example",
-                "tmux attach-session -t 'web'",
-            ]
+            vec!["-t", "--", "dev.example", "tmux attach-session -t 'web'",]
         );
         assert!(!argv.iter().any(|a| a.contains("BatchMode")));
         let argv = attach_remote_argv("dev.example", None);
-        assert_eq!(
-            argv,
-            vec!["-t", "--", "dev.example", "tmux attach-session"]
-        );
+        assert_eq!(argv, vec!["-t", "--", "dev.example", "tmux attach-session"]);
     }
 
     #[test]

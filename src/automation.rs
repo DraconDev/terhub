@@ -8,8 +8,8 @@ use crate::agent::{AgentRecord, AgentState};
 use crate::tmux::Tmux;
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use std::os::unix::process::CommandExt;
 use std::collections::HashMap;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -581,8 +581,8 @@ mod tests {
             model: String::new(),
             ctx_pct: None,
             reg_pid: 0,
-        bell: false,
-        bell_reason: String::new(),
+            bell: false,
+            bell_reason: String::new(),
         }
     }
 
@@ -773,10 +773,8 @@ mod tests {
         // the reader thread would block past the timeout. With
         // killpg, the whole process group dies and the reader
         // returns.
-        let marker = std::env::temp_dir().join(format!(
-            "terhub-test-gc-{}.pid",
-            std::process::id()
-        ));
+        let marker =
+            std::env::temp_dir().join(format!("terhub-test-gc-{}.pid", std::process::id()));
         let _ = std::fs::remove_file(&marker);
         let mut child = std::process::Command::new("sh")
             .arg("-c")
@@ -822,11 +820,8 @@ mod tests {
             found.unwrap()
         };
         let t0 = std::time::Instant::now();
-        let err = wait_drained_in_group(
-            &mut child,
-            std::time::Duration::from_millis(200),
-        )
-        .unwrap_err();
+        let err =
+            wait_drained_in_group(&mut child, std::time::Duration::from_millis(200)).unwrap_err();
         let elapsed = t0.elapsed();
         assert!(matches!(err, DrainError::Timeout));
         assert!(

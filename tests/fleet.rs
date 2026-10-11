@@ -162,7 +162,10 @@ fn fleet_and_zellij_against_fakes() {
     assert_eq!(argv[0], "-t");
     assert_eq!(argv[1], "--");
     assert_eq!(argv[2], "t");
-    assert!(last.contains("'s; rm'"), "session must be single-quoted: {last}");
+    assert!(
+        last.contains("'s; rm'"),
+        "session must be single-quoted: {last}"
+    );
     let argv = f::attach_remote_argv("t", None);
     assert_eq!(argv.last().unwrap(), "tmux attach-session");
 
