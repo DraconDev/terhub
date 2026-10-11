@@ -824,6 +824,11 @@ struct UiSection {
     /// one leading `!` so the in-memory field is bare tokens.
     #[serde(default)]
     filter: String,
+    /// Named saved filters (`[ui] saved_filters`). Additive and
+    /// defaulted, so a config written before this key existed still
+    /// loads (empty list) and keeps its `filter` line untouched.
+    #[serde(default)]
+    saved_filters: Vec<SavedFilter>,
     /// Table sort column name (`Idle` default; unknown names warn and
     /// fall back).
     #[serde(default = "default_sort")]
