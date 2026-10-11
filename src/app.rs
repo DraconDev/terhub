@@ -3016,7 +3016,7 @@ impl App {
     /// table header names it. The standing exclusion is untouched —
     /// a named filter and the standing filter compose.
     fn use_saved_filter(&mut self, i: usize) {
-        let Some(f) = self.saved_filters.get(i) else {
+        let Some(f) = self.saved_filters.get(i).cloned() else {
             return;
         };
         self.filter = f.query.clone();
