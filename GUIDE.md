@@ -1,10 +1,12 @@
 # terhub guide
 
-terhub is a terminal-first session hub over tmux: one fullscreen TUI (plus a
-plain CLI) to see every session and pane, know which agents need you, jump to
-them, and drive them — from scripts, rules, MCP clients, a loopback web
-dashboard, or other hosts over SSH. Full Rust, mouse-friendly, non-vim, and
-every key rebindable.
+terhub is a terminal command center: one fullscreen TUI (plus a plain CLI)
+that gathers every session, pane, and agent from every place you work
+(local tmux, local zellij, SSH hosts, agent processes) into one screen,
+names which ones need you, and lets you jump to them, mark them, and
+drive them — from scripts, rules, MCP clients, a loopback web dashboard,
+or other hosts over SSH. Full Rust, mouse-friendly, non-vim, and every
+key rebindable.
 
 If you only want the cheat-sheet, see [README.md](README.md). This guide
 explains how the pieces fit and how to set each one up.
