@@ -1061,6 +1061,14 @@ fn settings_filters_section_lists_saved_names() {
         query: "bash nvim".to_string(),
     }];
     app.mode = Mode::Settings;
+    // The popup opens on the first section; jump the sidebar cursor to
+    // the Filters section so its rows are the ones rendered.
+    let filters = app
+        .settings_sections()
+        .iter()
+        .position(|(name, _)| *name == "Filters")
+        .expect("a Filters section exists");
+    app.settings_section = filters;
     let text = render_lines(&mut app, 120, 30).join("\n");
     assert!(text.contains("Filters"), "missing section:\n{text}");
     assert!(text.contains("saved: work"), "missing saved name:\n{text}");
