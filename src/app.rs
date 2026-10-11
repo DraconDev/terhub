@@ -7638,7 +7638,7 @@ mod tests {
     /// entry and drops the marker.
     #[test]
     fn saved_filters_rename_and_delete() {
-        let _scratch = ScopedConfig::new();
+        let scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
         app.saved_filters = vec![crate::config::SavedFilter {
