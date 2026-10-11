@@ -38,6 +38,14 @@ terhub init       # config + agent hooks + daemon, one shot
 terhub            # opens the TUI
 ```
 
+For day-to-day development, prefer `make build` (or just `make`): it
+runs `cargo build` and then `cargo install --path . --offline --locked
+--force` so the binary on `$PATH` (`~/.cargo/bin/terhub`) stays in
+sync with the working tree. A stale `~/.cargo/bin/terhub` against a
+fresh `target/debug/terhub` is the most common "is it broken or is
+the binary old?" confusion; `make build` removes that footgun. Other
+targets: `make test`, `make clippy`, `make install` (install only).
+
 `terhub` with no arguments opens the TUI; every subcommand below also works
 from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
 `init --dry-run` prints the three steps without running them.
