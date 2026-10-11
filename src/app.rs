@@ -7551,7 +7551,6 @@ mod tests {
             let old = std::env::var("TERHUB_CONFIG").ok();
             // SAFETY: lock-held; no other lib test writes TERHUB_CONFIG.
             unsafe { std::env::set_var("TERHUB_CONFIG", &path) };
-            let _ = &path;
             ScopedConfig { _guard: guard, old }
         }
 
