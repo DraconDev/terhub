@@ -1274,6 +1274,17 @@ fn zz_probe_spacing() {
     println!("ROW|{}", lines[3]);
 }
 
+
+#[test]
+fn zz_probe_spacing() {
+    let mut app = app_with_panes();
+    app.exclude = "zsh".to_string();
+    app.refresh_filtered();
+    let lines = render_lines(&mut app, 150, 8);
+    println!("HDR|{}", lines[2]);
+    println!("ROW|{}", lines[3]);
+}
+
 #[test]
 fn footer_names_the_filter_key_and_follows_a_rebind() {
     let mut app = app_with(&["alpha"]);
