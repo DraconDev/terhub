@@ -39,5 +39,10 @@ check-lock:
 	cargo build --locked --offline
 	cargo install --path . --offline --locked --force --dry-run
 
+# Verifies that `make build` actually reinstalls the new binary
+# to ~/.cargo/bin/terhub. See scripts/check-install.sh.
+check-install:
+	./scripts/check-install.sh
+
 clean:
 	cargo clean
