@@ -3909,6 +3909,25 @@ impl App {
                 }
                 return None;
             }
+            // Saved-filter row actions. `r` renames, `d` deletes, `n`
+            // names the current search. All three are inert unless the
+            // selection is a row of that kind (see `selected_kind`).
+            KeyCode::Char('r') => {
+                self.settings_saved_filter_row(SettingKind::RenameSavedFilter(0));
+                return None;
+            }
+            KeyCode::Char('d') => {
+                self.settings_saved_filter_row(SettingKind::DeleteSavedFilter(0));
+                return None;
+            }
+            KeyCode::Char('n') => {
+                if !self.filter.trim().is_empty() {
+                    self.open_saved_filter_prompt(None);
+                } else {
+                    self.set_status("nothing to name (search is empty)".to_string());
+                }
+                return None;
+            }
             _ => {}
         }
         // The settings key toggles the popup closed.
