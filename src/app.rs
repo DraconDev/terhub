@@ -7570,7 +7570,7 @@ mod tests {
     /// survives a config round-trip. Covers add + switch + reload.
     #[test]
     fn saved_filters_add_switch_and_reload() {
-        let _scratch = ScopedConfig::new();
+        let scratch = ScopedConfig::new();
         let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
