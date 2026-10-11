@@ -178,7 +178,7 @@ fn combined_saved_filters_and_sort_patch_writes_both_lines() {
             name: "work".to_string(),
             query: "vim".to_string(),
         }],
-        sort: Some("Idle".to_string()),
+        sort: "Idle".to_string(),
         ..AppConfig::default()
     };
     let patch = cfg.ui_persist_changes(&changes);

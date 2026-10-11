@@ -1262,7 +1262,7 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
                         encode_saved_filters(f),
                         trailing_comment(line)
                     ));
-                    seen[SAVED_FILTERS] = true;
+                    seen[6] = true;
                 }
                 None => out.push(line.to_string()),
             }
@@ -1322,10 +1322,10 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
         let esc = f.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("filter = \"{esc}\""));
     }
-    if !seen[SAVED_FILTERS] && let Some(f) = v.saved_filters {
+    if !seen[6] && let Some(f) = v.saved_filters {
         missing_ui.push(format!("saved_filters = [{}]", encode_saved_filters(f)));
     }
-    if !seen[SORT] && let Some(s) = v.sort {
+    if !seen[6] && let Some(s) = v.sort {
         let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
         missing_ui.push(format!("sort = \"{esc}\""));
     }
@@ -1388,7 +1388,7 @@ mod slot {
     pub const MRU_TABS: usize = 4;
     pub const FILTER: usize = 5;
     pub const SAVED_FILTERS: usize = 6;
-    pub const SORT: usize = 7;
+    pub const SORT: usize = 6;
     pub const SORT_DESC: usize = 8;
     pub const HIDE_SHELLS: usize = 9;
     /// Highest `[ui]` slot; the array spans `0..=SLOT_UI`.
