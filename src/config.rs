@@ -1096,6 +1096,26 @@ impl AppConfig {
     }
 }
 
+/// Serialize saved filters as a TOML array of inline tables:
+/// `{name = "work", query = "npm cargo"}, …`. An empty list encodes
+/// as `[]`, which the loader reads back as no saved filters — the
+/// line is the single source of truth, so a delete of the last filter
+/// clears the key in the file instead of leaving a stale entry.
+fn encode_saved_filters(filters: &[SavedFilter]) -> String {
+    let mut out = String::new();
+    for (i, f) in filters.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!(
+            "{{name = \"{}\", query = \"{}\"}}",
+            toml_basic_string(&f.name),
+            toml_basic_string(&f.query)
+        ));
+    }
+    out
+}
+
 /// Persist UI settings back to the config file with surgical line edits:
 /// only the known `[ui]`/`[notifications]` keys are touched, everything
 /// else (comments, key bindings, manifests) is preserved byte-for-byte.
