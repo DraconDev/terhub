@@ -1,150 +1,97 @@
 # terhub
 
-Terminal-first session hub over tmux. Mouse-friendly, customizable, non-vim. Full Rust (ratatui).
+Terminal-first session hub over tmux. One fullscreen TUI (plus a plain CLI)
+to see every session and pane, know which agents need you, jump to them,
+and drive them — from scripts, rules, MCP clients, a loopback web dashboard,
+or other hosts over SSH. Full Rust, mouse-friendly, non-vim, and every key
+rebindable.
 
-## Run
+![terhub TUI: 33 panes, two waiting agents in red, filter chip active](assets/screenshot.png)
 
+## Install
+
+Requires tmux 3.x on PATH and Rust 1.88+.
+
+```sh
+cargo install --path .
+terhub init       # config + agent hooks + daemon, one shot
+terhub            # opens the TUI
 ```
-cargo build
-cargo run -- list
-cargo run          # TUI hub
+
+First run creates `~/.config/terhub/config.toml` with defaults.
+Full manual: [GUIDE.md](GUIDE.md).
+
+## The TUI
+
+One-line session bar on top, one huge pane table, one status bar — no modes
+except small popups:
+
+- **Session bar.** `All` plus one segment per session, with attached marker
+  (`●`/`○`), pane counts, and a worst-state dot (red = something needs you).
+  `←`/`→` filters the table immediately, `Enter` attaches, `Alt+1..8` jumps
+  to tabs.
+- **Pane table.** Every pane: attention mark (`!` needs you, `+` marked,
+  `*` focused, `✓` already seen), pane id, session, window, command, repo
+  dir, agent, state, source (`hook` = agent-reported fact, `proc` = binary
+  found, `scr` = screen guess), time in state, last turn, idle age, and a
+  summary carrying the prompt or error line that decided the state.
+- **States that matter are red.** Waiting, error, stuck, and quota-limited
+  rows shout; working/idle are quiet. The filter chip (`◼`) names every
+  filter hiding rows so one is never silently active.
+- **Preview on demand.** Right-click or `p`: fullscreen scrollable reader
+  over the pane's last 500 lines with its own ANSI colors, live CPU, and —
+  in git repos — branch plus diff shortstat.
+- **Filters.** `f` searches (or just start typing); `!` excludes. The
+  standing exclusion from `[ui] filter` is always on. Name multi-token
+  filters in settings (`s` → Filters) and cycle them with `ctrl+f`.
+- **Marks & bulk.** `Space` marks rows file-manager style; `x`/`a` act on
+  the whole marked set under one confirmation.
+- **Sorting.** Recency sort by default; click any header (or `o`) to sort.
+
+Keys (all rebindable in `[keys]`):
+
+`n` new · `r` rename · `x` kill · `d` detach · `a` attend · `p` preview ·
+`t` theme · `v` density · `s` settings · `o` sort · `f` filter ·
+`ctrl+f` saved filters · `space` mark · `u` unmark · `h` hide quiet shells ·
+`w` spawn agent · `e` restart · `z` freeze/thaw · `m` hosts · `b` bulk ·
+`F5` refresh · `q` quit · `?` help (twice for the legend)
+
+## Daemon + hooks
+
+`terhubd` holds the live agent registry. Hook events from agents are
+authoritative; identity comes from the process tree and states from screen
+patterns, re-polled every 2 seconds. Every transition lands in the ledger
+(`~/.local/share/terhub/activity.jsonl`), which powers stats, reports,
+timelines, and per-pane history.
+
+Agent states: `working`, `waiting` (needs you), `error` (needs you),
+`idle`, `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs you:
+quota/rate wall, paused until reset — never a crash), `unknown`.
+
+## Tray icon (KDE/Plasma)
+
+```sh
+terhub tray
 ```
 
-Install: `cargo install --path .`, then `terhub`.
-
-## Use (TUI)
-
-- One-line session bar + one huge pane table (state, source, agent, dir, age, activity, summary). Recency sort by default, click any header to sort. Waiting/error rows show the prompt or error line in Summary.
-- Left-click jumps, right-click toggles the fullscreen preview, ctrl+click a session attaches (a plain left-click only selects, so a second action on the same row is always intentional).
-- `n` new, `r` rename, `x` kill, `d` detach, `a` attend, `p` preview, `t` theme, `v` density, `s` settings, `o` sort, `f` filter, `space` mark, `u` unmark, `b` bulk (mark / kill / attend), `w` spawn with profile, `z` pause/resume, `m` hosts, `h` hide quiet shells, `F5` refresh, `q` quit, `?` help. Up/Down move, Left/Right filter, Tab switches lists.
-- Keys + theme + density in `~/.config/terhub/config.toml` (auto-created). Themes: dark, light, dracula, nord, gruvbox, solarized, tokyonight, catppuccin, onedark, monokai.
+A StatusNotifierItem until killed: red when something needs you, teal when
+agents are done, gray + strikethrough when the daemon is down. Counts live
+in the hover tooltip; clicking focuses the open hub or starts one.
 
 ## CLI
 
 ```
-# Session / pane
-terhub list [--plain]
-terhub new <name> [--dir DIR] [--window NAME]
-terhub attach <name>
-terhub kill <name>
-terhub panes <session]
-terhub capture <pane> [--lines N]
-terhub focus <pane>
-terhub kill-pane <pane>
-terhub swap-pane <a> <b>
-terhub send <pane> <text> [--no-submit]
-terhub native list|focus|capture|send-text|launch
-
-# Daemon + agent awareness
-terhub daemon start|stop|status
-terhub status [--json]
-terhub hook --agent <name> --pane %1 --state waiting --summary "..."
-terhub register --agent <name> --pane %1 [--pid N] [--state <s>]
-terhub unregister --pane %1
-terhub hooks install|status|uninstall [claude|pi|all]
-terhub init [--dry-run]
-
-# Attention
-terhub attend [--cycle] [--list]
-terhub peek [--plain]
-terhub status-line [--pane %N]
-
-# History
-terhub stats [--since today] [--group-by day|agent|session]
-terhub report [--since week] [--json] [--markdown]
-terhub activity [--since 24h] [--kind agent|session|rule|human|all] [--json]
-terhub timeline [--since today] [--session S] [--agent A]
-terhub recap [--pane %N] [--limit N] [--since 24h]
-
-# Automation + MCP
-terhub automation list
-terhub automation test <name>
-terhub mcp          # stdio JSON-RPC server (status/capture/send/wait/attend)
-
-# Web dashboard
-terhub serve --port 8080   # loopback-only; --port 0 picks an ephemeral port
-
-# Fleet + zellij
-terhub host add <name> <ssh-target> [--mode observe|control] [--label L]
-terhub host list|doctor <name>|remove <name>|label <name> [L]
-terhub fleet status [--json]
-terhub fleet send <host> <pane> <text>
-terhub zellij list|attach <name>
-
-# Config
-terhub config --show|--path|--init|--check
+terhub list|peek            # panes as text / overlay
+terhub status-line          # one line for tmux status-right
+terhub stats|report|activity|recap|timeline
+terhub automation list|test # rules with delay + cooldown + cap
+terhub mcp                  # MCP stdio server
+terhub serve --port 8080    # loopback web dashboard
+terhub host|fleet ...       # agents across hosts over SSH
+terhub send <pane> <text>   # drive a pane from scripts
 ```
 
-TUI: Tab switches between the session bar (filters the table) and the
-pane table; Enter on a pane jumps to it, `x` kills it (with confirm),
-`p`/right-click opens the preview fullscreen. Agent columns appear when the daemon runs.
-
-## Daemon (agent awareness)
-
-```
-terhub daemon start|stop|status
-terhub status [--json]     # which agents need you (waiting/error/stuck/limited)
-terhub hook --agent claude --pane %1 --state waiting --summary "..."
-```
-
-`terhubd` watches every pane: hook events are authoritative, and
-hook-less panes are classified from screen patterns (built in for
-claude/codex/gemini, extend via `~/.config/terhub/manifests/*.toml`).
-
-## Attention
-
-```
-terhub attend [--cycle] [--list]   # jump to longest-waiting agent
-terhub peek [--plain]              # this window's panes as an overlay
-terhub status-line [--pane %N]     # for tmux status-right
-```
-
-State changes fire desktop notifications (`notify-send`; disable with
-`[notifications] enabled = false`). In the TUI, `a` attends.
-
-## History
-
-The daemon logs every agent transition and session open/close to
-`~/.local/share/terhub/activity.jsonl` (days are UTC).
-
-```
-terhub stats [--since today] [--group-by day|agent|session]
-terhub report [--since week]
-terhub activity [--since 24h] [--kind agent|session|rule|human|all] [--json]
-terhub timeline [--since today] [--session S] [--agent A]
-```
-
-## Automation + MCP
-
-```
-terhub automation list          # rules in ~/.config/terhub/automation.toml
-terhub automation test <name>   # dry-run against live state
-terhub mcp                      # MCP stdio server (status/capture/send/wait/attend)
-```
-
-Rules fire on agent state with mandatory delay, per-pane cooldown, and
-hourly cap; every firing is logged to the ledger.
-
-## Web dashboard
-
-```
-terhub serve --port 8080   # then open http://127.0.0.1:8080/ in a browser
-```
-
-Loopback-only (never binds anything else): live agent table, per-pane
-capture, prompt + interrupt actions, today's stats, timeline. `--port 0`
-picks an ephemeral port and prints the URL.
-
-## Fleet + zellij
-
-```
-terhub host add <name> <ssh-target> [--mode observe|control]
-terhub host list|doctor <name>|remove <name>
-terhub fleet status [--json]       # agents across hosts over ssh stdio
-terhub fleet send <host> <pane> <text>   # control-mode hosts only
-terhub send <pane> <text> [--no-submit]
-terhub zellij list|attach <name>   # baseline backend (no pane observation)
-```
+See `terhub --help` and [GUIDE.md](GUIDE.md) for the rest.
 
 ## Dev
 
@@ -153,5 +100,3 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
-
-Requires tmux 3.x on PATH. Rust 1.88+.
