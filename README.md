@@ -14,6 +14,29 @@ zellij locally, and reaches across SSH to other hosts.
 
 ![terhub TUI: every pane, two red rows that need you, filter chip, footer of keys](assets/screenshot.png)
 
+## Backend parity
+
+Every backend is the same TUI; what differs is which CLI verbs terhub has
+implemented for it. A `-` in the table means the verb is not wired yet,
+so a row in that backend will be visible but its `p`/`x`/`r` keys won't
+do anything (you can still attach and read).
+
+| Capability           | tmux | zellij | screen | SSH fleet | native tabs |
+|----------------------|:----:|:------:|:------:|:---------:|:-----------:|
+| List sessions        |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
+| Attach               |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
+| List panes           |  ✓   |   –    |   –    |     ✓     |      –      |
+| Capture last lines   |  ✓   |   –    |   –    |     ✓     |      –      |
+| Kill / swap / focus  |  ✓   |   –    |   –    |     ✓     |      –      |
+| Agent hook events    |  ✓   |   –    |   –    |     –     |      –      |
+| Activity sparkline   |  ✓   |   –    |   –    |     ✓     |      –      |
+| Freezing / thawing   |  ✓   |   –    |   –    |     ✓     |      –      |
+
+Native tabs are Konsole, kitty, and WezTerm — the TUI lists them so you
+can `Enter` into them; it does not drive their panes. SSH fleet goes
+through the `terhub` binary on the remote, so anything the remote's
+backend supports is supported there too.
+
 ## Install
 
 Requires tmux 3.x on PATH and Rust 1.88+.

@@ -2,9 +2,9 @@
 //!
 //! A fullscreen TUI plus a plain CLI that gathers every session, every
 //! pane, and every agent from every place you work — local tmux, local
-//! zellij, SSH hosts — into one screen, names which ones need you, and
-//! lets you jump to them, mark them, and drive them. Think of it as the
-//! overview that the terminal never had.
+//! zellij, GNU screen, SSH hosts — into one screen, names which ones
+//! need you, and lets you jump to them, mark them, and drive them.
+//! Think of it as the overview that the terminal never had.
 
 /// FNV-1a 64-bit: deterministic hash for change detection and stable
 /// name coloring. SipHash is randomly keyed per process, which would
@@ -30,6 +30,7 @@ pub mod hooks;
 pub mod mcp;
 pub mod native;
 pub mod proc;
+pub mod screen;
 pub mod tmux;
 pub mod tray;
 pub mod ui;

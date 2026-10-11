@@ -770,6 +770,29 @@ Lists and attaches to zellij sessions when `zellij` is on PATH. This is a
 listing baseline only — pane observation, agent awareness, and automation
 are tmux-backed.
 
+## Backend parity
+
+The same TUI runs against every backend, but only tmux is fully wired
+through. The matrix below is the honest state of v0.1.0; anything marked
+"–" is on the roadmap and tracked in the project notes, not silently
+broken.
+
+| Capability           | tmux | zellij | screen | SSH fleet | native tabs |
+|----------------------|:----:|:------:|:------:|:---------:|:-----------:|
+| List sessions        |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
+| Attach               |  ✓   |   ✓    |   –    |     ✓     |      ✓      |
+| List panes           |  ✓   |   –    |   –    |     ✓     |      –      |
+| Capture last lines   |  ✓   |   –    |   –    |     ✓     |      –      |
+| Kill / swap / focus  |  ✓   |   –    |   –    |     ✓     |      –      |
+| Agent hook events    |  ✓   |   –    |   –    |     –     |      –      |
+| Activity sparkline   |  ✓   |   –    |   –    |     ✓     |      –      |
+| Freezing / thawing   |  ✓   |   –    |   –    |     ✓     |      –      |
+
+Native tabs are Konsole, kitty, and WezTerm — the TUI lists them so you
+can `Enter` into them; it does not drive their panes. SSH fleet goes
+through the `terhub` binary on the remote, so anything the remote's
+backend supports is supported there too.
+
 ## Command reference
 
 | Command | What it does |
