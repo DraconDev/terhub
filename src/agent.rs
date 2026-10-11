@@ -2373,4 +2373,3 @@ mod sparkline_tests {
         }
     }
 }
-// check-install sentinel: 1791684682 3105446
