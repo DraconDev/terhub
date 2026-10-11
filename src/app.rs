@@ -634,6 +634,15 @@ pub struct App {
     /// Query as it was when the filter prompt opened: live typing edits
     /// `filter` in place, and Esc restores this instead of clearing.
     filter_before_edit: String,
+    /// Named saved filters, mirrored from `config.saved_filters` and
+    /// persisted on add / rename / delete. Live copy: the table reads
+    /// this, the config holds the on-disk form.
+    pub saved_filters: Vec<crate::config::SavedFilter>,
+    /// Name of the saved filter currently driving the table (`None`
+    /// when the query was typed by hand, cleared, or the standing
+    /// filter is in play). Rendered in the table title so an active
+    /// filter is never invisible.
+    pub active_saved_filter: Option<String>,
     /// In-memory history of committed filter queries (live `/` and
     /// standing editor share this list, FIFO, capped at
     /// `FILTER_HISTORY_CAP`). Resets on app restart — a fresh
