@@ -69,6 +69,9 @@ fn default_keys() -> HashMap<String, String> {
         // pre-edit query, so this only matters when a user wants a
         // dedicated "wipe the filter" key. Bind e.g. to "ctrl+backspace".
         ("filter_clear", ""),
+        // Cycle through saved (named) filters; wraps past the last one
+        // back to the first. Empty list is a no-op with a status hint.
+        ("saved_filter", "ctrl+f"),
         ("mark", "space"),
         ("unmark", "u"),
         ("hide_shells", "h"),
