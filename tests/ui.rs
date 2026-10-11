@@ -1262,14 +1262,6 @@ fn filter_active_indicator_uses_the_title_palette() {
 
 
 #[test]
-fn zz_probe_spacing() {
-    let mut app = app_with_panes();
-    let lines = render_lines(&mut app, 150, 8);
-    println!("HDR|{}", lines[2]);
-    println!("ROW|{}", lines[3]);
-}
-
-#[test]
 fn footer_names_the_filter_key_and_follows_a_rebind() {
     let mut app = app_with(&["alpha"]);
     let text = render_lines(&mut app, 200, 8).join("\n");
