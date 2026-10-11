@@ -564,7 +564,7 @@ fn pane_matches_excludes(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str]) -
 /// shorthands the table itself never explains. Ordered so the marks
 /// come first — a narrow terminal truncates the tail, never the
 /// characters the user asked about.
-const LEGEND: &str = "legend: !=needs you · +=marked · *=active pane (multi-pane window) · ✓=seen via jump/attend · ●/○=attached (top bar) · Src hook/proc/scr · For/Turn/Idle timers · Activity=output/tick";
+const LEGEND: &str = "legend: !=needs you · +=marked · *=active pane (multi-pane window) · ✓=seen via jump/attend · ●/○=attached (top bar) · Src hook/proc/scr · For=in this state · Turn=last finished turn · Idle=since screen changed · Activity=output/tick";
 
 pub struct App {
     pub config: AppConfig,

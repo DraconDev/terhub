@@ -1158,8 +1158,13 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
                 None => ("—".to_string(), pal.dim),
             };
             let age = match rec {
-                Some(r) => crate::history::fmt_dur(r.waiting_secs(now)),
-                None => "—".to_string(),
+                // A zero timestamp means "never recorded", not the epoch:
+                // without the guard this renders as 20737d. (Same shape
+                // as the `turn` guard below.)
+                Some(r) if r.state_since > 0 => {
+                    crate::history::fmt_dur(r.waiting_secs(now))
+                }
+                _ => "—".to_string(),
             };
             let turn = match rec {
                 Some(r) if r.last_turn_secs > 0 => crate::history::fmt_dur(r.last_turn_secs),
