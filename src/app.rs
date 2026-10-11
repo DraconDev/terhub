@@ -6222,35 +6222,6 @@ mod tests {
     static NEXT_CFG: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 
-    struct ScratchConfig {
-        old: Option<String>,
-        _guard: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl ScratchConfig {
-        fn new() -> Self {
-            let guard = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let dir = std::env::temp_dir().join(format!("terhub-test-{}", std::process::id()));
-            std::fs::create_dir_all(dir.join("terhub")).unwrap();
-            let old = std::env::var("XDG_CONFIG_HOME").ok();
-            // SAFETY: lock-held and no other lib test reads XDG_CONFIG_HOME.
-            unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
-            ScratchConfig { old, _guard: guard }
-        }
-    }
-
-    impl Drop for ScratchConfig {
-        fn drop(&mut self) {
-            // SAFETY: same confined var, restored before any other reader.
-            unsafe {
-                match &self.old {
-                    Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
-                    None => std::env::remove_var("XDG_CONFIG_HOME"),
-                }
-            }
-        }
-    }
-
     #[test]
     fn settings_open_navigate_apply_persists() {
         let _scratch = ScopedConfig::new();
@@ -7029,10 +7000,9 @@ mod tests {
 
     #[test]
     fn sort_key_change_persists_view() {
-        // ScratchConfig's guard serializes us against every other
+        // ScopedConfig's guard serializes us against every other
         // env-mutating test (a concurrent TERHUB_CONFIG setter would
-        // hijack config_path()); no second lock — std mutexes deadlock
-        // on re-entry.
+        // hijack config_path()).
         let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
@@ -7046,7 +7016,7 @@ mod tests {
 
     #[test]
     fn hide_shells_toggle_persists_view() {
-        // Same serialization as above; ScratchConfig already holds it.
+        // Same serialization as above; ScopedConfig already holds it.
         let _scratch = ScopedConfig::new();
         let mut app = app_with_panes();
         let tmux = Tmux::new().unwrap();
