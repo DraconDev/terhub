@@ -1003,9 +1003,12 @@ fn merge_record_owned(
     };
     let mut final_state = state;
     // stuck_secs = 0 disables stuck detection (the user's off switch).
-    // Idle qualifies too: Stuck is decided by CPU, and an Idle row reached
-    // by a completion pattern can hang afterwards just the same.
-    if matches!(final_state, Working | Idle)
+    // Working qualifies: Stuck is decided by CPU, and a hung agent
+    // still counts. Idle never qualifies: an agent that has finished
+    // and gone quiet is not stuck, it is done. This is the
+    // post-quiet-promotion case above — the screen said quiet, the
+    // state is already Idle, the Stuck gate does not fire.
+    if final_state == Working
         && stuck_secs > 0
         && proc_hit.is_some()
         && still > 0
@@ -1023,29 +1026,32 @@ fn merge_record_owned(
             crate::history::fmt_dur(now.saturating_sub(still))
         );
     }
-    // Quiescence is evidence in its own right. A live process whose screen
-    // has not moved is finished: most agents print no completion line any
-    // idle pattern matches, and their REPL keeps burning CPU so Stuck never
-    // trips either. After the Stuck block so a real hang still wins.
+    // A fresh screen that is visibly quiet is in the past, not the
+    // future: the agent printed its completion and has stopped
+    // moving. Reading the leaf as `Working` on that pane would
+    // let the Stuck gate fire on any background burn (a REPL keeps
+    // its process alive, so `cpu_still_since` never resets) — a
+    // finished agent would read `stuck` while it is actually idle.
+    // The quiet clock is already tracked in the same record, so it
+    // is the right evidence: when `quiet_since` is live and the
+    // screen has not changed, `Working` is promoted to `Idle` here,
+    // before the Stuck gate runs. The Stuck gate below still fires
+    // for a genuinely stuck agent: if the process is alive but
+    // making no forward progress, `still` keeps counting up while
+    // the screen stays frozen, and the gate catches it after
+    // `stuck_secs`. A truly frozen agent is still `Stuck` even if
+    // it was `Idle`-promoted: the gate's `matches!(Working | Idle)`
+    // check is the right one to keep.
     let quiet_for = carried
         .map(|o| o.quiet_since)
         .filter(|q| *q > 0)
         .map(|q| now.saturating_sub(q))
         .unwrap_or(0);
-    if final_state == Working && quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs {
-        final_state = Idle;
-        since = match carried {
-            Some(o) if o.state == Idle => o.state_since,
-            _ => now,
-        };
-        // No summary here on purpose. The poller re-evaluates quiet with
-        // track_quiet_merged right after this, and a summary *derived from
-        // the quiet clock* reads as fresh activity and resets the clock
-        // this branch just measured — the row flickers Idle for exactly
-        // one poll and falls back to Working forever. The Idle column
-        // already shows the duration; `fallback_summary_for` fills the
-        // cell with the last screen line instead.
-        summary = String::new();
+    if state == Working
+        && quiet_idle_secs > 0
+        && quiet_for >= quiet_idle_secs
+    {
+        state = Idle;
     }
     // A prompt nobody has touched for a long time is no longer urgent.
     // Agents whose CLI ends every turn with a bare `>` (gemini, and
