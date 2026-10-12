@@ -2298,7 +2298,11 @@ mod tests {
             WAITING_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Stuck, "a recently-frozen pane is a real hang: {rec:?}");
+        assert_eq!(
+            rec.state,
+            AgentState::Stuck,
+            "a recently-frozen pane is a real hang: {rec:?}"
+        );
         // A pane already on Idle that froze *recently* still escalates:
         // a finished-looking row whose spinner just died is a hang
         // that finished, not a clean finish.
@@ -2317,7 +2321,11 @@ mod tests {
             WAITING_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Stuck, "idle masked a recent hang: {rec:?}");
+        assert_eq!(
+            rec.state,
+            AgentState::Stuck,
+            "idle masked a recent hang: {rec:?}"
+        );
         // … but one that has been frozen for a long time stays Idle:
         // that is a finished pane, not a hang (the samai case).
         let mut idle_long = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
@@ -2335,7 +2343,11 @@ mod tests {
             WAITING_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Idle, "long-quiet idle must stay idle: {rec:?}");
+        assert_eq!(
+            rec.state,
+            AgentState::Idle,
+            "long-quiet idle must stay idle: {rec:?}"
+        );
     }
 
     #[test]
