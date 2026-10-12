@@ -1842,15 +1842,18 @@ mod tests {
         // process tree names Muse — the replacement must win immediately
         // instead of the pane reading `pi · idle · session ended` while
         // Muse is visibly thinking on screen.
-        let dir =
-            std::env::temp_dir().join(format!("terhub-poll-replaced-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-poll-replaced-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let muse_bin = dir.join("muse-bin-1.4.6-R6000.1");
-        let sleep = ["/usr/bin/sleep", "/bin/sleep", "/run/current-system/sw/bin/sleep"]
-            .into_iter()
-            .find(|p| std::path::Path::new(p).exists())
-            .expect("sleep binary");
+        let sleep = [
+            "/usr/bin/sleep",
+            "/bin/sleep",
+            "/run/current-system/sw/bin/sleep",
+        ]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .expect("sleep binary");
         std::os::unix::fs::symlink(sleep, &muse_bin).unwrap();
         let mut muse = std::process::Command::new(&muse_bin)
             .arg("30")
@@ -1875,7 +1878,8 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), pi);
 
-        let (next, _, _, outage) = poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
+        let (next, _, _, outage) =
+            poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
 
         assert!(!outage);
         let rec = next.get("%50").expect("live muse record");
