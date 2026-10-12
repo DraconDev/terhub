@@ -26,6 +26,7 @@ explains how the pieces fit and how to set each one up.
 - [Web dashboard](#web-dashboard)
 - [Fleet (multiple hosts)](#fleet-multiple-hosts)
 - [Zellij baseline](#zellij-baseline)
+- [GNU screen baseline](#gnu-screen-baseline)
 - [Command reference](#command-reference)
 - [Files and locations](#files-and-locations)
 - [Troubleshooting](#troubleshooting)
@@ -444,7 +445,7 @@ list is present; new manifests should use `done`.) `idle_fallback` holds done
 nothing else matched — need anywhere in the tail beats it, banners
 summarize better, and live activity below it wins (stale activity above
 it loses, since scrolled-past output is history). A transition into
-`idle` from a live state fires one desktop "done" note (same toggle as
+`done` from a live state fires one desktop "done" note (same toggle as
 the needs-you notes).
 `waiting_unless` vetoes a waiting verdict when any of its patterns match
 the tail (an input prompt under a live task is an input box, not a plea),
@@ -861,6 +862,7 @@ backend supports is supported there too.
 | `native list [--json]` | Tabs across Konsole/kitty/WezTerm |
 | `native spawn <backend>` | Open a fresh native tab |
 | `zellij list\|attach` | Zellij baseline |
+| `screen list\|attach` | GNU screen baseline |
 | `config --show\|--path\|--init\|--check` | Config file |
 
 ## Files and locations

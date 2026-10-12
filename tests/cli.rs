@@ -229,6 +229,24 @@ fn zellij_list_without_binary_exits_1() {
     assert_eq!(out.status.code(), Some(1));
 }
 
+#[test]
+fn screen_list_without_binary_exits_1() {
+    let out = run_isolated("slist", &["screen", "list"]);
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn version_flag_reports_crate_version() {
+    // The binary must be able to identify itself (the stale-binary
+    // support question): --version prints the Cargo.toml version.
+    let out = run_isolated("version", &["--version"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        stdout(&out).trim(),
+        format!("terhub {}", env!("CARGO_PKG_VERSION"))
+    );
+}
+
 fn run_with_ledger(tag: &str, args: &[&str], ledger: &str) -> Output {
     let rt = runtime_dir(tag);
     let _ = std::fs::remove_dir_all(&rt);
