@@ -201,7 +201,14 @@ status bar, no modes except small popups:
   config file. Next to the Theme and Density lists, a preview box
   renders sample rows in the hovered style — browse themes and
   densities with live feedback before applying, even on an empty
-  setup.
+  setup. **Toggles** also include *blur columns* (record/share mode):
+  fills the Session, Window, Cmd, Dir, Agent, Handle, and Summary
+  cells — plus the session-bar tab names — with a solid `█` of the same
+  width, so a recording or shared shot shows which agents need you and
+  how many are idle without revealing the repos, commands, or prompts
+  being worked on. State, source, counts, and the marks stay readable.
+  No keybind by design: it is obvious when the toggle is on, and it
+  would be easy to forget a privacy-off switch is armed.
 - **Popups.** `n`/`r`/`w` open a text prompt with a real cursor
   (`←`/`→`, `Home`/`End`, `Backspace`/`Delete`, `Enter` confirms, `Esc`
   cancels); the spawn prompt also cycles agent profiles on `Tab`.
@@ -242,6 +249,9 @@ theme = "dark"       # dark | light | dracula | nord | gruvbox | solarized | tok
 density = "comfortable"  # comfortable | compact
 highlight_attached = true
 mru_tabs = false     # order session tabs by recent activity
+blur_cols = false    # record/share mode: fill Session/Window/Cmd/Dir/Agent/Handle/Summary with █
+                     # so a recording or shared screenshot hides what you're working on
+                     # while state, src, counts, and the marks stay readable (s → Toggles)
 
 [keys]
 new = "n"
@@ -852,11 +862,12 @@ backend supports is supported there too.
 (empty values are ignored). The registry cache is rebuilt from tmux on every
 daemon start; only the ledger is long-term memory.
 
-The TUI remembers its view in `[ui]`: `theme`, `density`, toggles,
-`filter` (standing exclusion), `sort` + `sort_desc` (column and
-direction), and `hide_shells`. Every change writes back surgically —
-change the sort with `o` or a header click, hide shells with `h`, quit,
-relaunch, and the table looks exactly as you left it.
+The TUI remembers its view in `[ui]`: `theme`, `density`, toggles, `filter`
+(standing exclusion), `sort` + `sort_desc` (column and direction),
+`hide_shells`, and `blur_cols` (record/share mode). Every change writes
+back surgically — change the sort with `o` or a header click, hide
+shells with `h`, flip blur columns for a recording, quit, relaunch, and
+the table looks exactly as you left it.
 
 `TERHUB_TMUX_SOCKET` selects a private tmux socket: a bare name is
 `tmux -L <name>` (socket under `$TMUX_TMPDIR`), a value with a `/` is

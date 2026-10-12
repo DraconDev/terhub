@@ -77,6 +77,13 @@ except small popups:
   filters in settings (`s` → Filters) and cycle them with `ctrl+f`.
 - **Marks & bulk.** `Space` marks rows file-manager style; `x`/`a` act on
   the whole marked set under one confirmation.
+- **Record/share mode.** Settings (`s` → Toggles → *blur columns*) fills
+  the identity-revealing columns — Session, Window, Cmd, Dir, Agent,
+  Handle, Summary, plus the session-bar tab names — with a solid `█` of
+  the same width, so a recording or shared screenshot shows which agents
+  need you and how many are idle without revealing the repos, commands,
+  or prompts. State, source, counts, and the marks stay readable; no
+  keybind, so it's obvious when it's armed.
 - **Sorting.** Recency sort by default; click any header (or `o`) to sort.
 
 Keys (all rebindable in `[keys]`):
