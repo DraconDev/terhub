@@ -1206,6 +1206,10 @@ fn acquire_daemon_lock(runtime: &std::path::Path) -> Result<std::fs::File> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
+        // Never truncate: the lock file only ever holds an flock, and
+        // its contents are irrelevant (a previous holder may still
+        // have written a pid).
+        .truncate(false)
         .open(&lock_path)
         .with_context(|| format!("open lock {}", lock_path.display()))?;
     // SAFETY: flock on a live fd; LOCK_NB so a second daemon fails
