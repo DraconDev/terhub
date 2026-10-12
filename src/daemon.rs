@@ -1002,18 +1002,33 @@ fn merge_record_owned(
         None => (0, 0, 0),
     };
     let mut final_state = state;
-    // Stuck is decided by CPU + a live process, not by the screen: a
-    // hung agent is the one case where a live leaf is not making
-    // forward progress. It fires on `Working` rows, and `stuck_secs
-    // = 0` disables the gate entirely. A pane already on `Idle` at
-    // gate time is finished, not hung, so it does not qualify here;
-    // the quiescence promotion below is what moves a finished
-    // `Working` pane to `Idle` after the gate has had its chance.
+    // How long the screen has been frozen — the one signal that
+    // separates a *hung* agent from a *finished* one. A hung agent's
+    // UI loop dies with its spinner: the screen freezes *recently* and
+    // the process stops burning CPU. A finished agent's screen has
+    // been quiet for a long time (its REPL sits idle). Both read
+    // "no CPU" — only the quiescence clock tells them apart. 0 means
+    // "not tracked yet" (first poll), which the gate treats as
+    // recently-active so a real hang is caught on the first tick.
+    let quiet_for = carried
+        .map(|o| o.quiet_since)
+        .filter(|q| *q > 0)
+        .map(|q| now.saturating_sub(q))
+        .unwrap_or(0);
+    // Stuck is decided by CPU stillness on a live process: a leaf that
+    // stopped making forward progress. It fires on Working rows, and
+    // `stuck_secs = 0` disables the gate entirely. The quiescence
+    // guard is the discriminator: a screen that has been frozen past
+    // `quiet_idle_secs` is finished, not hung, so it must not be
+    // re-flagged stuck — this is the `samai` fix. A screen that
+    // froze *recently* (spinner just stopped) with no CPU is the
+    // genuine hang, and the gate still catches it.
     if final_state == Working
         && stuck_secs > 0
         && proc_hit.is_some()
         && still > 0
         && now.saturating_sub(still) >= stuck_secs
+        && quiet_idle_secs == 0 || quiet_for < quiet_idle_secs
     {
         final_state = AgentState::Stuck;
         since = match carried {
@@ -1028,17 +1043,11 @@ fn merge_record_owned(
         );
     }
     // Quiescence is evidence in its own right: a live process whose
-    // screen has not moved is finished. A truly hung agent is caught
-    // by the Stuck gate above *before* this promotion runs — that is
-    // the deliberate order, and it is what keeps `stuck_outranks_quiescent_idle`
-    // honest. A finished-and-quiet pane that has not yet tripped the
-    // Stuck gate (its `still` clock is short, or the pane was already
-    // `Idle` at gate time) lands here as `Idle`, not re-flagged.
-    let quiet_for = carried
-        .map(|o| o.quiet_since)
-        .filter(|q| *q > 0)
-        .map(|q| now.saturating_sub(q))
-        .unwrap_or(0);
+    // screen has not moved is finished. The Stuck gate above already
+    // declined to fire on a long-quiet screen, so this promotion is
+    // what lands a finished pane on `Idle`. The order is deliberate:
+    // gate first (so a recently-frozen hang escalates before the
+    // demotion can mask it), then promotion.
     if final_state == Working && quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs {
         final_state = Idle;
         since = match carried {
@@ -2233,13 +2242,11 @@ mod tests {
         // longer than `quiet_idle_secs` (300s) and whose process has
         // not burned CPU for longer than `stuck_secs` (600s). The
         // agent's REPL is still alive, so `still` keeps counting —
-        // without the quiet promotion running *before* the Stuck gate,
-        // the gate would fire on the live process and read a finished
-        // pane as `stuck`. The fix: the promotion moves the pane to
-        // `Idle` first, and the gate's `matches!(Working | Idle)`
-        // check then correctly identifies a *truly hung* idle, not a
-        // finished one. This test pins the finished case: it must
-        // read `Idle`, not `Stuck`.
+        // but the long-quiet screen is the stronger signal: the pane
+        // is *finished*, not hung. The Stuck gate's quiescence guard
+        // declines to fire, and the promotion below lands it on
+        // `Idle`. Without that guard, a finished pane reads `stuck`
+        // forever — the misclassification the user saw on `samai`.
         let now = 100_000;
         let mut old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
         old.quiet_since = now - 900;
@@ -2264,12 +2271,18 @@ mod tests {
     }
 
     #[test]
-    fn stuck_outranks_quiescent_idle() {
+    fn recently_frozen_pane_reads_stuck() {
+        // The genuine hang the Stuck gate exists for: the spinner
+        // stopped *recently* (screen froze 30s ago — well inside
+        // `quiet_idle_secs`), and the process has not burned CPU for
+        // past `stuck_secs`. No quiescence promotion applies (the
+        // screen was not long-quiet), so Stuck wins. This is the
+        // case the old `stuck_outranks_quiescent_idle` described, but
+        // with the screen freeze recent: a long-frozen screen is
+        // finished, not hung.
         let now = 100_000;
-        // Hung, not finished: no CPU either. Stuck is the actionable
-        // signal, so it must win over the quiet flip.
         let mut old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
-        old.quiet_since = now - 900;
+        old.quiet_since = now - 30;
         let rec = merge_record_owned(
             Some(&old),
             false,
@@ -2283,10 +2296,12 @@ mod tests {
             WAITING_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Stuck);
-        // A row already flipped to Idle can still escalate to Stuck later.
+        assert_eq!(rec.state, AgentState::Stuck, "a recently-frozen pane is a real hang: {rec:?}");
+        // A pane already on Idle that froze *recently* still escalates:
+        // a finished-looking row whose spinner just died is a hang
+        // that finished, not a clean finish.
         let mut idle = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
-        idle.quiet_since = now - 900;
+        idle.quiet_since = now - 30;
         let rec = merge_record_owned(
             Some(&idle),
             false,
@@ -2300,7 +2315,25 @@ mod tests {
             WAITING_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Stuck, "idle masked a real hang");
+        assert_eq!(rec.state, AgentState::Stuck, "idle masked a recent hang: {rec:?}");
+        // … but one that has been frozen for a long time stays Idle:
+        // that is a finished pane, not a hang (the samai case).
+        let mut idle_long = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
+        idle_long.quiet_since = now - 900;
+        let rec = merge_record_owned(
+            Some(&idle_long),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Idle, "long-quiet idle must stay idle: {rec:?}");
     }
 
     #[test]
