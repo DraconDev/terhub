@@ -1847,7 +1847,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let muse_bin = dir.join("muse-bin-1.4.6-R6000.1");
-        std::os::unix::fs::symlink("/usr/bin/sleep", &muse_bin).unwrap();
+        let sleep = ["/usr/bin/sleep", "/bin/sleep", "/run/current-system/sw/bin/sleep"]
+            .into_iter()
+            .find(|p| std::path::Path::new(p).exists())
+            .expect("sleep binary");
+        std::os::unix::fs::symlink(sleep, &muse_bin).unwrap();
         let mut muse = std::process::Command::new(&muse_bin)
             .arg("30")
             .stdin(std::process::Stdio::null())
