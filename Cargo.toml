@@ -5,6 +5,27 @@ edition = "2024"
 rust-version = "1.88"
 description = "A terminal command center: every session, pane, and agent (local tmux/zellij/screen + SSH hosts) in one TUI, with which ones need you made obvious and one keystroke to jump to them."
 license = "MIT"
+repository = "https://github.com/DraconDev/terhub"
+homepage = "https://github.com/DraconDev/terhub"
+documentation = "https://github.com/DraconDev/terhub#readme"
+# Local scratch/notes must never ship to crates.io: git-tracked files
+# are bundled by default, so exclude each one explicitly.
+exclude = [
+    ".dracon/",
+    "conversation-*.txt",
+    "RESEARCH.md",
+    "note.md",
+    "Cargo.toml.orig",
+    "examples/",
+    "Makefile",
+    "scripts/",
+    "deny.toml",
+    "assets/",
+    ".gitattributes",
+    ".github/",
+    ".gitignore",
+]
+
 default-run = "terhub"
 keywords = ["tmux", "tui", "agent", "session", "zellij"]
 categories = ["command-line-utilities"]
