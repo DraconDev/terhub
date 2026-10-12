@@ -1,6 +1,6 @@
 [package]
 name = "terhub"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 rust-version = "1.88"
 description = "A terminal command center: every session, pane, and agent (local tmux/zellij/screen + SSH hosts) in one TUI, with which ones need you made obvious and one keystroke to jump to them."
@@ -20,7 +20,6 @@ exclude = [
     "Makefile",
     "scripts/",
     "deny.toml",
-    "assets/",
     ".gitattributes",
     ".github/",
     ".gitignore",
