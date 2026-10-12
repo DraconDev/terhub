@@ -2229,6 +2229,42 @@ mod tests {
     }
 
     #[test]
+    fn finished_quiet_pane_reads_idle_not_stuck() {
+        // The `samai` report: a pane whose screen has been quiet for
+        // longer than `quiet_idle_secs` (300s) and whose process has
+        // not burned CPU for longer than `stuck_secs` (600s). The
+        // agent's REPL is still alive, so `still` keeps counting —
+        // without the quiet promotion running *before* the Stuck gate,
+        // the gate would fire on the live process and read a finished
+        // pane as `stuck`. The fix: the promotion moves the pane to
+        // `Idle` first, and the gate's `matches!(Working | Idle)`
+        // check then correctly identifies a *truly hung* idle, not a
+        // finished one. This test pins the finished case: it must
+        // read `Idle`, not `Stuck`.
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Working, 500, now - 900, now - 900);
+        old.quiet_since = now - 900;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(
+            rec.state,
+            AgentState::Idle,
+            "a finished-and-quiet pane must read idle, not stuck: {rec:?}"
+        );
+    }
+
+    #[test]
     fn stuck_outranks_quiescent_idle() {
         let now = 100_000;
         // Hung, not finished: no CPU either. Stuck is the actionable
