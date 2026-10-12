@@ -937,7 +937,7 @@ fn merge_record_owned(
     waiting_idle_secs: u64,
 ) -> Option<AgentRecord> {
     use AgentState::{Error, Idle, Limited, Waiting, Working};
-    let (agent, state, source) = match (proc_hit, screen.as_ref()) {
+    let (agent, mut state, source) = match (proc_hit, screen.as_ref()) {
         // A done screen beats a live process: finished agents keep their
         // REPL open. (Stale banners can't pin this: freshest-line-wins
         // means live footer chrome below them classifies first.)
