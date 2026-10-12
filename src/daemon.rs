@@ -1016,19 +1016,21 @@ fn merge_record_owned(
         .map(|q| now.saturating_sub(q))
         .unwrap_or(0);
     // Stuck is decided by CPU stillness on a live process: a leaf that
-    // stopped making forward progress. It fires on Working rows, and
-    // `stuck_secs = 0` disables the gate entirely. The quiescence
-    // guard is the discriminator: a screen that has been frozen past
-    // `quiet_idle_secs` is finished, not hung, so it must not be
-    // re-flagged stuck — this is the `samai` fix. A screen that
-    // froze *recently* (spinner just stopped) with no CPU is the
-    // genuine hang, and the gate still catches it.
-    if final_state == Working
+    // stopped making forward progress. It fires on Working and Idle
+    // rows (a finished-looking idle row whose spinner just died is a
+    // hang that finished), and `stuck_secs = 0` disables the gate
+    // entirely. The quiescence guard is the discriminator: a screen
+    // that has been frozen past `quiet_idle_secs` is finished, not
+    // hung, so it must not be re-flagged stuck — this is the `samai`
+    // fix. A screen that froze *recently* (spinner just stopped) with
+    // no CPU is the genuine hang, and the gate still catches it.
+    let quiescent = quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs;
+    if matches!(final_state, Working | Idle)
         && stuck_secs > 0
         && proc_hit.is_some()
         && still > 0
         && now.saturating_sub(still) >= stuck_secs
-        && quiet_idle_secs == 0 || quiet_for < quiet_idle_secs
+        && !quiescent
     {
         final_state = AgentState::Stuck;
         since = match carried {
