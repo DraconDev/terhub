@@ -58,8 +58,9 @@ from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
   them; pane ids look like `%69`.
 - **Agent** is anything running in a pane that behaves like a coding agent
   (claude, codex, gemini, pi, …). terhub tracks each agent pane in one of
-  seven states: `working`, `waiting` (needs you), `error` (needs you),
-  `idle`, `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
+  eight states: `working`, `waiting` (needs you), `error` (needs you),
+  `idle`, `done` (finished — a completion banner was seen; never needs
+  you), `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
   you: quota/rate wall, paused until reset — never a crash), `unknown`.
 - **Daemon (`terhubd`)** holds the live agent registry. Hook events from
   agents are authoritative; agent identity comes from the process tree and
@@ -425,18 +426,20 @@ working = ["Thinking", "⠋|⠙|⠹"]
 waiting = ["confirm", "\\[y/n\\]"]
 error = ["\\berror\\b", "traceback"]
 limited = ["quota", "rate limit", "\\b429\\b"]
-idle = ["task complete", "all done"]
+done = ["task complete", "all done"]
 idle_fallback = ["enter send"]
 waiting_unless = ["esc to interrupt"]
 ```
 
 Patterns are case-insensitive regexes; within one line the most specific
-signal wins (limited beats error beats waiting beats working beats idle),
+signal wins (limited beats error beats waiting beats working beats done),
 and the freshest matching line wins across lines. A `limited` list holds
-quota/rate-limit language so a quota wall never reads as a crash. An
-`idle` list holds done language (completion banners, all-tasks verdicts)
-so a finished agent reads `idle` instead of badging as `waiting` — and
-only `waiting` means "blocked on you". `idle_fallback` holds done
+quota/rate-limit language so a quota wall never reads as a crash. A
+`done` list holds completion language (completion banners, all-tasks
+verdicts) so a finished agent reads `done` instead of badging as
+`waiting` — and only `waiting` means "blocked on you". (The legacy
+`idle` list is still accepted as an alias for `done` when no `done`
+list is present; new manifests should use `done`.) `idle_fallback` holds done
 *chrome* (input boxes, idle footers): it reads as `idle` only when
 nothing else matched — need anywhere in the tail beats it, banners
 summarize better, and live activity below it wins (stale activity above
@@ -783,10 +786,20 @@ Lists and attaches to zellij sessions when `zellij` is on PATH. This is a
 listing baseline only — pane observation, agent awareness, and automation
 are tmux-backed.
 
+## GNU screen baseline
+
+```sh
+terhub screen list|attach <name>
+```
+
+Lists and attaches to GNU screen sessions when `screen` is on PATH. Same
+listing-baseline scope as zellij: pane observation, agent awareness, and
+automation are tmux-backed.
+
 ## Backend parity
 
 The same TUI runs against every backend, but only tmux is fully wired
-through. The matrix below is the honest state of v0.1.0; anything marked
+through. The matrix below is the honest state of v0.2.3; anything marked
 "–" is on the roadmap and tracked in the project notes, not silently
 broken.
 

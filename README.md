@@ -103,8 +103,9 @@ patterns, re-polled every 2 seconds. Every transition lands in the ledger
 timelines, and per-pane history.
 
 Agent states: `working`, `waiting` (needs you), `error` (needs you),
-`idle`, `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs you:
-quota/rate wall, paused until reset — never a crash), `unknown`.
+`idle`, `done` (finished — never needs you), `stuck` (needs you: no CPU
+for 10+ minutes), `limited` (needs you: quota/rate wall, paused until
+reset — never a crash), `unknown`.
 
 ## Tray icon (KDE/Plasma)
 

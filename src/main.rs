@@ -22,6 +22,7 @@ use terhub::{
 #[derive(Parser)]
 #[command(
     name = "terhub",
+    version,
     about = "terhub — a terminal command center. Every session, pane, and agent (local tmux/zellij/screen + SSH hosts) in one TUI."
 )]
 struct Cli {

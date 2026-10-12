@@ -18,10 +18,13 @@ build:
 	cargo build
 	cargo install --path . --offline --locked --force
 
-# Same, but release.
+# Same, but release. Honours CARGO_HOME like the other targets:
+# a hardcoded ~/.cargo root would install beside a CARGO_HOME on
+# PATH and leave the stale binary running (see check-install.sh,
+# which resolves the binary as ${CARGO_HOME:-$HOME/.cargo}/bin).
 build-release:
 	cargo build --release
-	cargo install --path . --offline --locked --force --root ~/.cargo
+	cargo install --path . --offline --locked --force --root "$${CARGO_HOME:-$$HOME/.cargo}"
 
 test:
 	cargo test --lib --tests
