@@ -1366,10 +1366,20 @@ impl App {
         }
     }
 
+    /// Total needy panes for the "All" sidebar count. Iterates over
+    /// [`Self::panes`] (not [`Self::agents`]) so orphan agent records —
+    /// daemon snapshots that still carry a pane id the live pane list
+    /// no longer knows about — can never push the count past
+    /// `panes.len()`. Mirrors `session_counts` / `visible_needy`: every
+    /// other needy count in the UI is bounded by a row we render.
     pub fn attention_count(&self) -> usize {
-        self.agents
-            .values()
-            .filter(|a| a.state.needs_attention())
+        self.panes
+            .iter()
+            .filter(|p| {
+                self.agents
+                    .get(&p.id)
+                    .is_some_and(|a| a.state.needs_attention())
+            })
             .count()
     }
 
