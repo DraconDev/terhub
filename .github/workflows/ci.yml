@@ -12,6 +12,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # The tmux-dependent suites fail loudly without a tmux binary
+      # (see tests/backend.rs), so CI must provide one.
+      - name: install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      # Cold runners have an empty cargo registry: fetch first, or
+      # every --offline gate dies at dependency resolution before
+      # linting or testing anything.
+      - name: fetch dependencies
+        run: cargo fetch --locked
       - name: fmt
         run: cargo fmt --check
       - name: clippy
@@ -21,3 +30,10 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+      # The stale-binary behavioural gate (scripts/check-install.sh):
+      # install once so the script has a pre-existing binary, then let
+      # it prove `make build` reinstalls. See tests/install_target.rs.
+      - name: install binary
+        run: cargo install --path . --offline --locked --force
+      - name: check-install
+        run: make check-install

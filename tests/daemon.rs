@@ -53,9 +53,13 @@ impl Drop for TestDaemon {
 
 #[test]
 fn daemon_hook_snapshot_expire_shutdown() {
-    if !terhub::tmux::Tmux::available() {
-        return;
-    }
+    // Fail loudly without tmux (the backend.rs house rule): a silent
+    // early return reports "passed" with zero assertions executed.
+    // CI installs tmux; see .github/workflows/ci.yml.
+    assert!(
+        terhub::tmux::Tmux::available(),
+        "tmux is required for this suite (CI installs it)"
+    );
     let runtime = std::env::temp_dir().join(format!("terhubd-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&runtime);
     std::fs::create_dir_all(&runtime).unwrap();
