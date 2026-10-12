@@ -1017,9 +1017,7 @@ fn merge_record_owned(
     {
         final_state = AgentState::Stuck;
         since = match carried {
-            Some(o)
-                if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) =>
-            {
+            Some(o) if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) => {
                 o.state_since
             }
             _ => now,
