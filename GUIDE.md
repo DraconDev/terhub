@@ -355,7 +355,10 @@ and MCP. One daemon per runtime dir (a second `daemon start` prints
    A hook record with no new event for `stale_secs` (default 30 minutes)
    lapses back to automatic classification, keeping its clock if the state
    didn't change (no renotify for a pane that sat still) but dropping its
-   stale summary.
+   stale summary. A hook is authoritative for the agent it names, not for
+   the pane forever: if the process tree identifies a different live agent,
+   the pane has been reused (exit one agent, start another in it) and the
+   live agent replaces the ended agent's hook immediately.
 2. **Process tree** — the pane's descendants are matched against the agent
    catalog (claude, codex, gemini, pi, muse, aider, crush, opencode, …),
    seeing
