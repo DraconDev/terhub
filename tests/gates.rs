@@ -62,7 +62,9 @@ fn ci_workflow_runs_gates() {
     // Cold-runner wiring: dependencies are fetched before any
     // --offline gate, and tmux exists for the suites that need it.
     let fetch_at = text.find("cargo fetch").expect("CI must fetch deps");
-    let clippy_at = text.find("clippy").expect("CI must run clippy");
+    // NB: search for the step's run command — "clippy" alone also
+    // matches the toolchain's `components:` line, which precedes it.
+    let clippy_at = text.find("cargo clippy").expect("CI must run clippy");
     assert!(
         fetch_at < clippy_at,
         "cargo fetch must precede the offline clippy gate"
