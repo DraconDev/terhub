@@ -2565,9 +2565,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let first = acquire_daemon_lock(&dir).expect("first lock");
-        assert!(acquire_daemon_lock(&dir).is_err(), "second daemon locked too");
+        assert!(
+            acquire_daemon_lock(&dir).is_err(),
+            "second daemon locked too"
+        );
         drop(first);
-        assert!(acquire_daemon_lock(&dir).is_ok(), "lock not released on drop");
+        assert!(
+            acquire_daemon_lock(&dir).is_ok(),
+            "lock not released on drop"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

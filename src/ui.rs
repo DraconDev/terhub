@@ -2336,7 +2336,10 @@ mod tests {
         let panes = [a, b];
         let counts = window_pane_counts(&panes);
         assert!(counts.is_empty(), "{counts:?}");
-        assert_eq!(window_label("w", 0, counts.get("").copied().unwrap_or(1)), "w");
+        assert_eq!(
+            window_label("w", 0, counts.get("").copied().unwrap_or(1)),
+            "w"
+        );
     }
 
     #[test]

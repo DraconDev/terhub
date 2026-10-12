@@ -5089,7 +5089,10 @@ mod tests {
         assert!(app.config.blur_cols);
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("blur_cols = true"), "{text}");
-        assert!(text.contains("density = \"compact\""), "density clobbered:\n{text}");
+        assert!(
+            text.contains("density = \"compact\""),
+            "density clobbered:\n{text}"
+        );
     }
 
     #[test]

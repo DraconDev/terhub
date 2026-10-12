@@ -2158,10 +2158,7 @@ mod tests {
         let g = parse_key("G");
         assert!(g.matches(&KeyCode::Char('G'), KeyModifiers::SHIFT));
         assert!(!g.matches(&KeyCode::Char('G'), KeyModifiers::CONTROL));
-        assert!(!g.matches(
-            &KeyCode::Char('G'),
-            KeyModifiers::SHIFT | KeyModifiers::ALT
-        ));
+        assert!(!g.matches(&KeyCode::Char('G'), KeyModifiers::SHIFT | KeyModifiers::ALT));
         // A bare lowercase binding stays unshifted-only.
         assert!(!parse_key("g").matches(&KeyCode::Char('G'), KeyModifiers::SHIFT));
     }

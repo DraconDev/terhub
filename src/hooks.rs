@@ -723,7 +723,12 @@ mod tests {
             assert_eq!(arr[0]["matcher"], "resume");
             assert_eq!(arr[0]["hooks"].as_array().unwrap().len(), 1);
             // Ours lives in a matcher-less entry that always fires.
-            assert!(arr[1].get("matcher").is_none(), "{}: {:?}", def.event, arr[1]);
+            assert!(
+                arr[1].get("matcher").is_none(),
+                "{}: {:?}",
+                def.event,
+                arr[1]
+            );
         }
         assert_eq!(claude_status(&path).len(), CLAUDE_HOOKS.len());
         let _ = std::fs::remove_dir_all(&dir);
