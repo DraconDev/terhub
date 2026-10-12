@@ -6503,6 +6503,26 @@ mod tests {
         assert_eq!(counts.get("a"), Some(&(2, 1)));
     }
 
+    #[test]
+    fn attention_count_ignores_orphan_agents() {
+        use crate::agent::AgentState;
+        // Two panes in session "a"; one needy record on %1, plus a
+        // stale needy record for %99 (a pane the live list doesn't
+        // know about). The "All" sidebar must show 1, not 2 — orphan
+        // records can never push needy past panes.len().
+        let mut app = app_with_panes();
+        app.agents.insert(
+            "%1".to_string(),
+            record("%1", "pi", AgentState::Waiting, 1),
+        );
+        app.agents.insert(
+            "%99".to_string(),
+            record("%99", "pi", AgentState::Waiting, 1),
+        );
+        assert_eq!(app.attention_count(), 1);
+        assert!(app.attention_count() <= app.panes.len());
+    }
+
     fn record(
         pane: &str,
         agent: &str,
