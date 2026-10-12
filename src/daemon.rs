@@ -1001,6 +1001,34 @@ fn merge_record_owned(
             .unwrap_or((t, now, s)),
         None => (0, 0, 0),
     };
+    let mut final_state = state;
+    // Stuck is decided by CPU + a live process, not by the screen: a
+    // hung agent is the one case where a live leaf is not making
+    // forward progress. It fires on `Working` rows, and `stuck_secs
+    // = 0` disables the gate entirely. A pane already on `Idle` at
+    // gate time is finished, not hung, so it does not qualify here;
+    // the quiescence promotion below is what moves a finished
+    // `Working` pane to `Idle` after the gate has had its chance.
+    if final_state == Working
+        && stuck_secs > 0
+        && proc_hit.is_some()
+        && still > 0
+        && now.saturating_sub(still) >= stuck_secs
+    {
+        final_state = AgentState::Stuck;
+        since = match carried {
+            Some(o)
+                if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) =>
+            {
+                o.state_since
+            }
+            _ => now,
+        };
+        summary = format!(
+            "no cpu for {}",
+            crate::history::fmt_dur(now.saturating_sub(still))
+        );
+    }
     // Quiescence is evidence in its own right: a live process whose
     // screen has not moved is finished. A truly hung agent is caught
     // by the Stuck gate above *before* this promotion runs — that is
