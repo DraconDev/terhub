@@ -1243,13 +1243,26 @@ fn poll_sync_with(
         let screen = tmux.capture_pane(&pane.id, 30).ok();
         let hash = screen.as_ref().map(|s| screen_hash(s));
         // Hook and manual records stay authoritative; poll only refreshes
-        // their metadata.
+        // their metadata. The one exception is a hook whose agent is no
+        // longer the pane's live agent: a process tree that names a
+        // *different* agent is not a hint, it is the replacement (the
+        // exit-pi/start-muse pane reuse). Letting the ended agent's last
+        // hook claim the pane anyway would mask the live agent until the
+        // hook stale window ran out. Manual pins are exempt: a human
+        // named that agent precisely because detection missed it.
         // NOTE: updated_at is deliberately NOT bumped here: it measures hook
         // freshness (time since the last event), and refreshing it every poll
         // would make stale hooks live forever instead of lapsing. Manual
         // pins never lapse (split_prev keeps them), so the same hold applies.
+        let replaced_by_live_agent = old.is_some_and(|rec| {
+            rec.source == Source::Hook
+                && proc_hit
+                    .as_ref()
+                    .is_some_and(|hit| !hit.agent.eq_ignore_ascii_case(&rec.agent))
+        });
         if let Some(rec) = old
             && matches!(rec.source, Source::Hook | Source::Manual)
+            && !replaced_by_live_agent
         {
             let mut r = rec.clone();
             r.session.clone_from(&pane.session);
@@ -1818,6 +1831,55 @@ mod tests {
         assert!(rec.agent_start > 0, "reg_pid ticks not tracked");
         let _ = child.kill();
         let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn live_muse_replaces_fresh_pi_hook_after_pane_reuse() {
+        // Pane reuse, as seen live: Pi emitted its final `session ended`
+        // hook, exited, and Muse started in the same pane seconds later.
+        // The Pi hook is still inside its freshness window, but the live
+        // process tree names Muse — the replacement must win immediately
+        // instead of the pane reading `pi · idle · session ended` while
+        // Muse is visibly thinking on screen.
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-replaced-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let muse_bin = dir.join("muse-bin-1.4.6-R6000.1");
+        std::os::unix::fs::symlink("/usr/bin/sleep", &muse_bin).unwrap();
+        let mut muse = std::process::Command::new(&muse_bin)
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn fake muse");
+        fake_tmux_file_screen(&dir, muse.id(), "muse-bin-1.4.6-R6000.1");
+        std::fs::write(
+            dir.join("screen.txt"),
+            "◇ Thinking (3m 48s · esc to interrupt)\n\n❯ \n  muse-wonder-1.0 · xhigh\n",
+        )
+        .unwrap();
+        let tmux = crate::tmux::Tmux::test(dir.join("tmux"));
+        let now = now_unix();
+        let mut pi = hook_record(now);
+        pi.pane = "%50".to_string();
+        pi.agent = "pi".to_string();
+        pi.state = AgentState::Idle;
+        pi.summary = "session ended".to_string();
+        pi.command = "pi".to_string();
+        let mut prev = HashMap::new();
+        prev.insert("%50".to_string(), pi);
+
+        let (next, _, _, outage) = poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
+
+        assert!(!outage);
+        let rec = next.get("%50").expect("live muse record");
+        assert_eq!(rec.agent, "muse");
+        assert_eq!(rec.source, Source::Proc);
+        assert_eq!(rec.state, AgentState::Working);
+        let _ = muse.kill();
+        let _ = muse.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
