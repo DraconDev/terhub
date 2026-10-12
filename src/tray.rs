@@ -115,7 +115,7 @@ impl TrayView {
 /// 88px shrinks the mark to an unreadable dot at the 16px trays
 /// actually use. The mark carries the whole 24px grid instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TrayPalette {
+pub(crate) struct TrayPalette {
     /// The everyday triangle: calm — no hub open, no agents registered.
     mark: &'static str,
     /// The "needs you" triangle. Themes contribute their own red/pink so
@@ -141,8 +141,11 @@ struct TrayPalette {
 /// stay in lockstep. Each of the six states gets its own distinct hue
 /// drawn from the theme's natural accent set — not a dimmed version of
 /// another state — so the legend reads at a glance.
-fn palette_for_theme(theme: &str) -> TrayPalette {
-    match theme {
+pub(crate) fn palette_for_theme(theme: &str) -> TrayPalette {
+    // Case-insensitive like the TUI's palette(): `theme = "Dark"` is
+    // a config --check accepts, and the tray must not fall back to a
+    // different theme's colours for it.
+    match theme.to_lowercase().as_str() {
         "gruvbox" => TrayPalette {
             mark: "#fabd2f",
             alarm: "#fb4934",

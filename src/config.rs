@@ -390,9 +390,18 @@ impl KeyBinding {
         // A bare binding never wants modifier keys: the press's modifier
         // set must be empty (the dispatch guard guarantees this is the
         // only path bare bindings are reached through anyway, but the
-        // check keeps this method total and unit-testable).
+        // check keeps this method total and unit-testable). One
+        // exception: a bare *uppercase* letter binding (the shipped
+        // template's `key = "G"`) is physically pressed as
+        // Char('G') + SHIFT — shift is how the letter is typed, not a
+        // chord modifier. Only the exact shifted char qualifies, so a
+        // bare lowercase binding stays unshifted-only.
         if self.mods == KeyModifiers::NONE && mods != KeyModifiers::NONE {
-            return false;
+            let shifted_letter = mods == KeyModifiers::SHIFT
+                && matches!(&self.spec, KeySpec::Char(c) if c.is_ascii_uppercase());
+            if !shifted_letter {
+                return false;
+            }
         }
         match (&self.spec, code) {
             (KeySpec::None, _) => false,
@@ -1166,8 +1175,9 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
         text.lines()
             .filter(|line| {
                 let t = line.trim_start();
-                let header = t.strip_prefix('#').unwrap_or(t).trim_start();
-                if let Some(rest) = header.strip_prefix('[')
+                // Comment-only lines are never headers (see the main
+                // pass below): `# [ui]` must not open the ui section.
+                if let Some(rest) = t.strip_prefix('[')
                     && let Some(end) = rest.find(']')
                 {
                     let next = format!("[{}]", &rest[..end]);
@@ -1207,13 +1217,13 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
             continue;
         }
         // A section header is `[name]` possibly followed by a `# comment`;
-        // a comment-only line that happens to start with `[` (e.g.
-        // `# [old section]`) must not be treated as a header. We locate
-        // the first `[` and the first `]` after it, then ignore the rest.
+        // a comment-only line that happens to contain `[` (e.g.
+        // `# [old section]`) must not be treated as a header — so the
+        // `[` test runs on the trimmed line itself, with no `#`
+        // stripping. We locate the first `[` and the first `]` after
+        // it, then ignore the rest.
         let t = line.trim_start();
-        let header = t.strip_prefix('#').unwrap_or(t);
-        let header = header.trim_start();
-        if let Some(rest) = header.strip_prefix('[')
+        if let Some(rest) = t.strip_prefix('[')
             && let Some(end) = rest.find(']')
         {
             let name = &rest[..end];
@@ -2140,6 +2150,23 @@ mod tests {
     }
 
     #[test]
+    fn bare_uppercase_binding_fires_on_shifted_press() {
+        use crossterm::event::KeyModifiers;
+        // The shipped template recommends `key = "G"`: a real press
+        // arrives as Char('G') + SHIFT, so the bare binding must
+        // accept that (and only that) modifier set.
+        let g = parse_key("G");
+        assert!(g.matches(&KeyCode::Char('G'), KeyModifiers::SHIFT));
+        assert!(!g.matches(&KeyCode::Char('G'), KeyModifiers::CONTROL));
+        assert!(!g.matches(
+            &KeyCode::Char('G'),
+            KeyModifiers::SHIFT | KeyModifiers::ALT
+        ));
+        // A bare lowercase binding stays unshifted-only.
+        assert!(!parse_key("g").matches(&KeyCode::Char('G'), KeyModifiers::SHIFT));
+    }
+
+    #[test]
     fn key_binding_label() {
         use crossterm::event::KeyModifiers;
         assert_eq!(parse_key("n").label(), "n");
@@ -2727,6 +2754,43 @@ mod tests {
             );
             std::fs::remove_file(path).ok();
         }
+    }
+
+    #[test]
+    fn persist_ignores_commented_out_section_header() {
+        // `# [ui]` is a comment, not a header: the theme line below
+        // it is top-level in real TOML. Persist must create/use a
+        // real [ui] section instead of rewriting the top-level line
+        // in place and reporting success while loads ignore it.
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("commented-header.toml");
+        std::fs::write(&path, "# [ui]\ntheme = \"nord\"\n").unwrap();
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: Some("gruvbox"),
+                ..UiPersist::default()
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let (cfg, problems) = load_config_report(Some(path.clone()));
+        // The pre-existing top-level line is (correctly) reported as
+        // misplaced, but the persisted value must land in [ui].
+        assert!(
+            problems.iter().all(|p| p.contains("'theme'")),
+            "{problems:?}\n{text}"
+        );
+        assert_eq!(cfg.theme, "gruvbox", "{text}");
+        // Exactly one real [ui] header, and the comment line survives.
+        assert_eq!(
+            text.lines().filter(|l| l.trim() == "[ui]").count(),
+            1,
+            "{text}"
+        );
+        assert!(text.contains("# [ui]"), "{text}");
+        std::fs::remove_file(path).ok();
     }
 
     #[test]

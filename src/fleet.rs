@@ -79,9 +79,20 @@ pub fn load_hosts() -> Result<Vec<Host>> {
     // A corrupt file errors loudly: callers must refuse to overwrite it.
     // (Flattening a parse error to empty here once let add_host wipe
     // every host in the file.)
-    toml::from_str::<FleetFile>(&text)
+    let hosts = toml::from_str::<FleetFile>(&text)
         .map(|f| f.host)
-        .with_context(|| format!("parse {}", path.display()))
+        .with_context(|| format!("parse {}", path.display()))?;
+    // Host name is the routing identity (rows are `{name}:{pane}`,
+    // send/attach look up by name): duplicates in a hand-edited file
+    // are the identity equivalent of corruption, and add_host already
+    // rejects them — so must the load path.
+    let mut seen = std::collections::HashSet::new();
+    for h in &hosts {
+        if !seen.insert(&h.name) {
+            anyhow::bail!("duplicate host name '{}' in {}", h.name, path.display());
+        }
+    }
+    Ok(hosts)
 }
 
 pub fn save_hosts(hosts: &[Host]) -> Result<()> {

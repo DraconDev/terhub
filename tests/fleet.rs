@@ -100,6 +100,20 @@ fn fleet_and_zellij_against_fakes() {
         "corrupt file must survive, byte-identical"
     );
 
+    // Duplicate host names in a hand-edited file: name is the
+    // routing identity, so the load must fail loudly (mirroring
+    // add_host) instead of shadowing the second target.
+    std::fs::write(
+        &fleet_file,
+        "[[host]]\nname = \"dev\"\ntarget = \"a\"\n\n[[host]]\nname = \"dev\"\ntarget = \"b\"\n",
+    )
+    .unwrap();
+    let err = f::load_hosts().unwrap_err();
+    assert!(
+        format!("{err}").contains("duplicate host name 'dev'"),
+        "{err}"
+    );
+
     // Zellij baseline parses the fake list.
     assert!(terhub::zellij::available());
     let sessions = terhub::zellij::list_sessions().unwrap();

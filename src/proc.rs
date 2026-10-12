@@ -187,6 +187,9 @@ fn argv0_base(cmdline: &str) -> &str {
 struct ProcInfo {
     pid: u32,
     ppid: u32,
+    /// stat state letter (`R`, `S`, `Z`, …): zombies keep their comm
+    /// but are not live processes and must never match as agents.
+    state: char,
     comm: String,
     cmdline: String,
     /// utime + stime in clock ticks.
@@ -259,7 +262,12 @@ impl Snapshot {
         let mut seen = std::collections::HashSet::from([root]);
         while let Some(pid) = queue.pop_front() {
             let info = &self.procs[&pid];
-            if let Some(agent) = match_proc(&info.comm, &info.cmdline) {
+            // A zombie is a corpse, not a live agent: skip the match
+            // (its comm/cmdline would otherwise claim the pane) but
+            // still walk through it to any live descendants.
+            if !matches!(info.state, 'Z' | 'X' | 'x')
+                && let Some(agent) = match_proc(&info.comm, &info.cmdline)
+            {
                 return Some(AgentHit {
                     agent: agent.to_string(),
                     pid,
@@ -552,6 +560,20 @@ fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
         return Some(agent);
     }
     let rest: Vec<&str> = tokens.collect();
+    // `python -m aider`: the token after `-m` is the program identity
+    // (a module path like `aider.chat` names the same program). This
+    // does not revive bare-word matching — `grep pi file` has no `-m`.
+    for (i, tok) in rest.iter().enumerate() {
+        if *tok == "-m"
+            && let Some(next) = rest.get(i + 1)
+        {
+            let module = proc_base(next);
+            let stem = module.split('.').next().unwrap_or(&module);
+            if let Some(agent) = find_bin(stem).or_else(|| find_bin(&module)) {
+                return Some(agent);
+            }
+        }
+    }
     for tok in &rest {
         if !tok.contains('/') {
             continue;
@@ -603,6 +625,7 @@ fn read_proc(dir: &Path, pid: u32) -> Option<ProcInfo> {
     Some(ProcInfo {
         pid,
         ppid: num(1) as u32,
+        state: f.first().and_then(|s| s.chars().next()).unwrap_or('?'),
         comm,
         cmdline,
         ticks,
@@ -740,6 +763,42 @@ mod tests {
         );
         let snap = Snapshot::capture_from(&dir);
         assert_eq!(snap.detect_agent(400), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn python_dash_m_module_matches_agent() {
+        // Documented contract (module header): `python -m aider`
+        // resolves through its interpreter wrapper.
+        assert_eq!(match_proc("python", "python -m aider"), Some("aider"));
+        assert_eq!(
+            match_proc("python3", "/usr/bin/python3 -m aider.chat"),
+            Some("aider")
+        );
+        // A non-agent module still matches nothing.
+        assert_eq!(match_proc("python", "python -m http.server 8000"), None);
+    }
+
+    #[test]
+    fn zombie_process_is_not_a_live_agent() {
+        // A defunct agent whose parent never reaps it keeps its comm
+        // but must not claim the pane (it would read Working → Stuck
+        // forever, and could mask a live replacement agent).
+        let dir = fake_proc(
+            "zombie",
+            &[
+                ("500", "1", "zsh", "-zsh", 0, 0, 5000),
+                ("501", "500", "pi", "pi --approve", 10, 5, 5001),
+            ],
+        );
+        // Rewrite pid 501's stat with state Z (same field layout).
+        fs::write(
+            dir.join("501/stat"),
+            "501 (pi) Z 500 0 0 0 0 0 0 0 0 0 10 5 0 0 0 0 0 0 5001",
+        )
+        .unwrap();
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(snap.detect_agent(500), None);
         let _ = fs::remove_dir_all(&dir);
     }
 

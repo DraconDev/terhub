@@ -414,6 +414,27 @@ impl Tmux {
         self.run(&["rename-session", "-t", old, new]).map(|_| ())
     }
 
+    /// Open a popup running `command` (a shell string, quoted by the
+    /// caller) on *this client's* server. Goes through the same
+    /// socket selection as every other call: spawning a bare `tmux`
+    /// here would open the popup on the ambient default server even
+    /// when the rest of the command read a private one.
+    pub fn display_popup(&self, command: &str) -> Result<()> {
+        let mut cmd = Command::new(&self.bin);
+        if let Some(s) = &self.socket {
+            cmd.args(socket_args(s));
+        }
+        let status = cmd
+            .args(["display-popup", "-E", "-w", "80%", "-h", "80%", command])
+            .status()
+            .context("failed to run tmux")?;
+        if status.success() {
+            Ok(())
+        } else {
+            bail!("tmux display-popup failed")
+        }
+    }
+
     /// Attach arguments (without argv[0]), honoring inside-vs-outside tmux
     /// and this client's private socket (when one is selected).
     pub fn attach_args(&self, name: &str) -> Vec<String> {
@@ -572,6 +593,36 @@ mod tests {
                 None => env::remove_var("TMUX"),
             }
         }
+    }
+
+    #[test]
+    fn display_popup_prepends_socket_flag() {
+        // peek's popup must open on the same (possibly private)
+        // server the rest of the command read — a bare `tmux` spawn
+        // would land on the operator's ambient server.
+        let dir = std::env::temp_dir().join(format!("terhub-tmux-popup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tmux");
+        let log = dir.join("argv.txt");
+        std::fs::write(
+            &bin,
+            format!("#!/bin/sh\necho \"$@\" > {}\n", log.display()),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let t = Tmux::with_socket(bin, Some("sock9".to_string()));
+        assert!(t.display_popup("'/tmp/ter hub/terhub' peek --pick").is_ok());
+        let argv = std::fs::read_to_string(&log).unwrap();
+        assert_eq!(
+            argv.trim(),
+            "-L sock9 display-popup -E -w 80% -h 80% '/tmp/ter hub/terhub' peek --pick",
+            "{argv}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

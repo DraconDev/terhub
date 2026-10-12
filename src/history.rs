@@ -162,12 +162,30 @@ pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
     Ok(())
 }
 
+/// Ledger lines, decoded per line. A line torn mid–UTF-8 character
+/// (crash/ENOSPC inside `append_entry`'s one write, splitting a
+/// multi-byte char in a summary) must not void the whole file:
+/// `read_to_string` fails on *any* invalid byte, which used to make
+/// every query report "no activity" and — worse — emptied
+/// `read_rule_fires`, resetting automation cooldowns/caps. Lossy
+/// per-line decoding turns the torn line into an unparseable line,
+/// which the existing paths already skip (reads) or quarantine
+/// (prune), leaving every valid line intact.
+fn read_lines_lossy(path: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let bytes = std::fs::read(path)?;
+    Ok(bytes
+        .split(|b| *b == b'\n')
+        .map(|l| String::from_utf8_lossy(l).into_owned())
+        .collect())
+}
+
 pub fn read_entries(path: &std::path::Path) -> Vec<Entry> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(t) => t,
+    let lines = match read_lines_lossy(path) {
+        Ok(l) => l,
         Err(_) => return Vec::new(),
     };
-    text.lines()
+    lines
+        .iter()
         .filter_map(|l| serde_json::from_str(l.trim()).ok())
         .collect()
 }
@@ -199,13 +217,15 @@ pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Ve
 
 pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> usize {
     let cutoff = now.saturating_sub(keep_days * 86400);
-    let text = match std::fs::read_to_string(path) {
-        Ok(t) => t,
+    // Per-line lossy decode (see read_lines_lossy): a UTF-8-torn line
+    // reaches the quarantine arm below instead of voiding the file.
+    let lines = match read_lines_lossy(path) {
+        Ok(l) => l,
         Err(_) => return 0,
     };
     let mut kept: Vec<Entry> = Vec::new();
     let mut quarantined: Vec<Entry> = Vec::new();
-    for line in text.lines() {
+    for line in &lines {
         let l = line.trim();
         if l.is_empty() {
             continue;
@@ -1056,6 +1076,45 @@ mod tests {
         // A second prune keeps the quarantine (it doesn't re-drop it).
         let _ = prune(&path, 100 + 90 * 86400 + 86400, 90);
         assert_eq!(corrupt_count(&path), 1, "quarantine survives a re-prune");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn utf8_torn_line_does_not_void_the_ledger() {
+        // A crash mid-append that splits a multi-byte character used
+        // to make read_to_string fail for the *whole file*: valid
+        // entries vanished from every query and rule-fire history
+        // (automation cooldowns/caps) reset. Per-line lossy decoding
+        // must keep the valid line and let prune quarantine the
+        // torn one like any other corrupt line.
+        let dir = std::env::temp_dir().join(format!("terhub-prune-utf8-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        let good = Entry::prompt(100, "%1", "pi", "keep me ▸ done");
+        append_entry(&path, &good).unwrap();
+        // Second line torn inside a 3-byte sequence (\xe2\x82 is a
+        // truncated \xe2\x82\xac).
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .unwrap();
+            f.write_all(b"{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"summary\":\"\xe2\x82")
+                .unwrap();
+        }
+        // The valid entry still reads; the torn line is skipped.
+        let entries = read_entries(&path);
+        assert_eq!(entries.len(), 1, "valid entry lost: {entries:?}");
+        assert_eq!(entries[0].pane, "%1");
+        // Rule-fire history rides read_entries too: it must not reset.
+        assert_eq!(read_rule_fires(&path).len(), 0);
+        // Prune quarantines the torn line instead of returning 0.
+        let kept = prune(&path, 100 + 90 * 86400, 90);
+        assert_eq!(kept, 1, "prune kept the good entry");
+        assert_eq!(corrupt_count(&path), 1, "torn line quarantined");
+        assert_eq!(read_entries(&path).len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

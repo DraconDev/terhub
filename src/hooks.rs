@@ -210,12 +210,20 @@ pub fn claude_install(path: &Path) -> Result<Vec<(&'static str, bool)>> {
             *entry = serde_json::json!([]);
         }
         let arr = entry.as_array_mut().unwrap();
-        // Merge into the first matcher when it already holds hooks (keeps
-        // one matcher per event); else append a fresh matcher.
+        // Merge into the first *unrestricted* matcher that already
+        // holds hooks (keeps one matcher per event); else append a
+        // fresh matcher-less entry. A matcher carrying a `matcher`
+        // filter (e.g. SessionStart "resume") only fires for that
+        // subset — merging there would silently restrict our hook
+        // while status still reported it installed.
         let slot = arr.iter_mut().find(|m| {
-            m.get("hooks")
-                .and_then(|h| h.as_array())
-                .is_some_and(|h| !h.is_empty())
+            let unrestricted = m
+                .get("matcher")
+                .is_none_or(|v| v.is_null() || v.as_str().is_some_and(|s| s.trim().is_empty()));
+            unrestricted
+                && m.get("hooks")
+                    .and_then(|h| h.as_array())
+                    .is_some_and(|h| !h.is_empty())
         });
         let hook = serde_json::json!({"type": "command", "command": hook_command("claude", def)});
         match slot {
@@ -230,7 +238,9 @@ pub fn claude_install(path: &Path) -> Result<Vec<(&'static str, bool)>> {
         }
         let mut text = serde_json::to_string_pretty(&doc)?;
         text.push('\n');
-        std::fs::write(path, text)?;
+        // Atomic: this is the user's whole Claude config, not ours —
+        // a torn in-place write would corrupt every setting in it.
+        crate::config::atomic_write(path, &text)?;
     }
     Ok(report)
 }
@@ -277,7 +287,7 @@ pub fn claude_uninstall(path: &Path) -> Result<Vec<&'static str>> {
         ensure_backup(path)?;
         let mut text = serde_json::to_string_pretty(&doc)?;
         text.push('\n');
-        std::fs::write(path, text)?;
+        crate::config::atomic_write(path, &text)?;
     }
     Ok(cleaned)
 }
@@ -417,7 +427,7 @@ pub fn pi_install(path: &Path) -> Result<bool> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, PI_EXTENSION)?;
+    crate::config::atomic_write(path, PI_EXTENSION)?;
     Ok(true)
 }
 
@@ -685,6 +695,38 @@ mod tests {
             CLAUDE_HOOKS.len(),
             "second install duplicated: {after}"
         );
+    }
+
+    #[test]
+    fn claude_install_does_not_merge_into_restricted_matcher() {
+        // The first matcher is restricted (`matcher: "resume"`): our
+        // hook merged there would only fire on resume, while status
+        // reported the event installed. Install must add its own
+        // matcher-less entry instead.
+        let dir = scratch("restricted-matcher");
+        let path = dir.join("settings.json");
+        let mut doc = serde_json::json!({"hooks": {}});
+        for def in CLAUDE_HOOKS {
+            doc["hooks"][def.event] = serde_json::json!([
+                {"matcher": "resume", "hooks": [{"type": "command", "command": "echo user"}]},
+            ]);
+        }
+        std::fs::write(&path, serde_json::to_string_pretty(&doc).unwrap()).unwrap();
+        let report = claude_install(&path).unwrap();
+        assert!(report.iter().all(|(_, added)| *added), "{report:?}");
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        for def in CLAUDE_HOOKS {
+            let arr = after["hooks"][def.event].as_array().unwrap();
+            assert_eq!(arr.len(), 2, "{}: {arr:?}", def.event);
+            // The restricted matcher is untouched and hookless-of-ours.
+            assert_eq!(arr[0]["matcher"], "resume");
+            assert_eq!(arr[0]["hooks"].as_array().unwrap().len(), 1);
+            // Ours lives in a matcher-less entry that always fires.
+            assert!(arr[1].get("matcher").is_none(), "{}: {:?}", def.event, arr[1]);
+        }
+        assert_eq!(claude_status(&path).len(), CLAUDE_HOOKS.len());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

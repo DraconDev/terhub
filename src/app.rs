@@ -1937,9 +1937,15 @@ impl App {
     /// Dispatch a modifier-qualified binding. Custom commands run
     /// against the selected row; standard actions call the same handler
     /// the bare-key path uses, exactly as if the user had pressed the
-    /// bound key without modifiers. Returns `true` when the binding
-    /// fired (the caller swallows the key event).
-    fn dispatch_binding(&mut self, binding: &crate::config::KeyBinding, tmux: &Tmux) -> bool {
+    /// bound key without modifiers. Returns `Some(event)` when the
+    /// binding fired (the caller swallows the key event and honours
+    /// the event, exactly as the bare-key path would); `None` when no
+    /// action claimed the binding.
+    fn dispatch_binding(
+        &mut self,
+        binding: &crate::config::KeyBinding,
+        tmux: &Tmux,
+    ) -> Option<Option<AppEvent>> {
         // Custom commands carry their own KeyBinding and are matched by
         // exact value (same modifier set + same key).
         let cmd = self
@@ -1950,13 +1956,13 @@ impl App {
             .cloned();
         if let Some(cmd) = cmd {
             self.run_custom(&cmd);
-            return true;
+            return Some(None);
         }
         match self.binding_action(binding).as_str() {
-            "" => false, // no standard action claimed this binding
+            "" => None, // no standard action claimed this binding
             "new" => {
                 self.do_new_session();
-                true
+                Some(None)
             }
             "kill" => {
                 if self.focus == Focus::Panes {
@@ -1980,79 +1986,83 @@ impl App {
                         }
                     }
                 }
-                true
+                Some(None)
             }
             "rename" => {
                 self.do_rename_session();
-                true
+                Some(None)
             }
             "attach" => {
                 if self.focus == Focus::Panes || self.show_preview {
                     if let Some(p) = self.selected_pane() {
                         let id = p.id.clone();
-                        self.jump_event(&id);
+                        // Forward the event: discarding it made a
+                        // modifier-bound attach a silent no-op.
+                        Some(self.jump_event(&id))
                     } else {
                         self.set_status("no pane selected".to_string());
+                        Some(None)
                     }
                 } else if let Some(s) = self.side_session() {
                     self.do_nav(tmux, AppEvent::Attach(s.name.clone()));
+                    Some(None)
                 } else {
                     self.set_status("pick a session row (All doesn't count)".to_string());
+                    Some(None)
                 }
-                true
             }
             "detach" => {
                 self.do_detach(tmux);
-                true
+                Some(None)
             }
             "quit" => {
                 // Only reachable through a modifier binding; the bare q
-                // path handles plain quit. Returning false lets the
+                // path handles plain quit. Returning None lets the
                 // caller swallow the event without a second AppEvent.
-                false
+                None
             }
             "help" => {
                 self.set_status(LEGEND.to_string());
-                true
+                Some(None)
             }
             "refresh" => {
                 self.refresh(tmux);
                 self.fetch_native();
-                true
+                Some(None)
             }
             "attend" => {
-                self.do_attend();
-                true
+                // Forward the event, like attach above.
+                Some(self.do_attend())
             }
             "preview" => {
                 self.toggle_preview(tmux);
-                true
+                Some(None)
             }
             "theme" => {
                 self.cycle_theme();
-                true
+                Some(None)
             }
             "density" => {
                 self.cycle_density();
-                true
+                Some(None)
             }
             "settings" => {
                 self.open_settings();
-                true
+                Some(None)
             }
             "sort" => {
                 self.resort_next();
                 self.follow_preview(tmux);
-                true
+                Some(None)
             }
             "filter" => {
                 self.open_filter();
-                true
+                Some(None)
             }
             "saved_filter" => {
                 self.next_saved_filter();
                 self.follow_preview(tmux);
-                true
+                Some(None)
             }
             "filter_clear" => {
                 if self.filter.is_empty() {
@@ -2063,15 +2073,15 @@ impl App {
                     self.refresh_filtered();
                     self.set_status("search cleared".to_string());
                 }
-                true
+                Some(None)
             }
             "hide_shells" => {
                 self.toggle_hide_quiet_shells();
-                true
+                Some(None)
             }
             "spawn" => {
                 self.do_spawn();
-                true
+                Some(None)
             }
             "restart" => {
                 match self.selected_pane() {
@@ -2097,23 +2107,23 @@ impl App {
                     }
                     None => self.set_status("no pane selected".to_string()),
                 }
-                true
+                Some(None)
             }
             "pause" => {
                 self.do_pause();
-                true
+                Some(None)
             }
             "hosts" => {
                 self.open_hosts();
-                true
+                Some(None)
             }
             "bulk" => {
                 self.do_bulk();
-                true
+                Some(None)
             }
             "mark" => {
                 self.toggle_mark();
-                true
+                Some(None)
             }
             "unmark" => {
                 let n = self.marked.len();
@@ -2123,9 +2133,9 @@ impl App {
                 } else {
                     format!("cleared {n} mark(s)")
                 });
-                true
+                Some(None)
             }
-            _ => false,
+            _ => None,
         }
     }
 
@@ -2247,9 +2257,9 @@ impl App {
                     continue;
                 }
                 if crate::config::key_matches(&binding, &key.code, key.modifiers)
-                    && self.dispatch_binding(&binding, tmux)
+                    && let Some(ev) = self.dispatch_binding(&binding, tmux)
                 {
-                    return None;
+                    return ev;
                 }
             }
             return None;
@@ -2875,7 +2885,12 @@ impl App {
     /// Rotate the theme live (session-only; the config file is untouched).
     pub fn cycle_theme(&mut self) {
         use crate::config::THEMES;
-        let cur = THEMES.iter().position(|t| *t == self.config.theme);
+        // Case-insensitive like is_known_theme/palette(): a config
+        // with `theme = "Dark"` loads fine, and cycling must advance
+        // from it instead of "cycling" back to dark itself.
+        let cur = THEMES
+            .iter()
+            .position(|t| t.eq_ignore_ascii_case(&self.config.theme));
         let next = cur.map(|i| (i + 1) % THEMES.len()).unwrap_or(0);
         self.config.theme = THEMES[next].to_string();
         self.set_status(format!(
@@ -2982,7 +2997,16 @@ impl App {
         // double-counting: rows failing the standing test list under
         // it; rows passing that but failing the search list under the
         // search. Read-only rows (never selectable, never actionable).
-        let q_ex = self.exclude.to_lowercase();
+        // Same tokenization as refresh_filtered: the standing filter
+        // is multi-token NOT-OR, so passing the whole string as one
+        // token here made this page disagree with the table about
+        // which rows the standing filter hides.
+        let ex_tokens: Vec<String> = self
+            .exclude
+            .split_whitespace()
+            .map(|t| t.to_lowercase())
+            .collect();
+        let ex_refs: Vec<&str> = ex_tokens.iter().map(String::as_str).collect();
         let q_find = self.filter.to_lowercase();
         let mut hidden_by_exclude: Vec<&Pane> = Vec::new();
         let mut hidden_by_search: Vec<&Pane> = Vec::new();
@@ -2993,7 +3017,7 @@ impl App {
             // combined predicate would double-count when both
             // fire. The exclude clause is multi-token (NOT-OR);
             // the search clause is the OLD single-substring form.
-            if !self.exclude.is_empty() && !pane_matches_excludes(p, rec, &[q_ex.as_str()]) {
+            if !self.exclude.is_empty() && !pane_matches_excludes(p, rec, &ex_refs) {
                 hidden_by_exclude.push(p);
             } else if !self.filter.is_empty() && !pane_matches(p, rec, &q_find) {
                 hidden_by_search.push(p);
@@ -3888,8 +3912,10 @@ impl App {
             }
             SettingKind::ToggleBlurCols => {
                 self.config.blur_cols = !self.config.blur_cols;
+                // Only the blur key changed: flagging density too made
+                // a stale second instance rewrite its stale density
+                // over a newer instance's saved value.
                 self.view_changes.blur_cols = true;
-                self.view_changes.density = true;
                 format!("blur columns: {}", Self::onoff(self.config.blur_cols))
             }
             SettingKind::EditStandingFilter => {
@@ -4994,6 +5020,76 @@ mod tests {
             .insert("%2".to_string(), record("%2", "pi", AgentState::Waiting, 1));
         assert_eq!(app.session_worst(Some("a")), Some(AgentState::Waiting));
         assert_eq!(app.session_worst(None), Some(AgentState::Waiting));
+    }
+
+    #[test]
+    fn cycle_theme_advances_from_mixed_case_theme() {
+        // `theme = "Dark"` loads fine (case-insensitive validation);
+        // cycling used to exact-match, miss, and land on dark again.
+        let mut app = app_with(&["a"]);
+        app.config.theme = "Dark".to_string();
+        app.cycle_theme();
+        assert_ne!(app.config.theme, "dark", "cycled back to dark itself");
+        // The tray palette resolves case-insensitively too.
+        assert_eq!(
+            crate::tray::palette_for_theme("Dark"),
+            crate::tray::palette_for_theme("dark")
+        );
+    }
+
+    #[test]
+    fn modifier_bound_attach_forwards_the_jump_event() {
+        // `attach = "ctrl+enter"` must behave exactly like bare Enter:
+        // dispatch_binding used to discard jump_event's AppEvent, so
+        // the chord silently did nothing.
+        let mut app = app_with_panes();
+        app.config
+            .keys
+            .insert("attach".to_string(), "ctrl+enter".to_string());
+        let chord = KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL);
+        let via_chord = app.on_key(chord, &fake_tmux().0);
+        let mut bare = app_with_panes();
+        let via_bare = bare.on_key(press(KeyCode::Enter), &fake_tmux().0);
+        assert!(via_bare.is_some(), "bare Enter should jump");
+        assert_eq!(via_chord, via_bare);
+    }
+
+    #[test]
+    fn settings_hidden_rows_use_multi_token_exclude() {
+        // Standing filter "nvim bash" hides both rows in the table
+        // (multi-token NOT-OR); the settings page used to pass the
+        // whole string as one token and report them as not hidden
+        // by the standing filter.
+        let mut app = app_with_panes();
+        app.exclude = "nvim bash".to_string();
+        let rows = app.settings_rows();
+        let legend = rows.iter().find_map(|r| match r {
+            SettingRow::Legend { name, meaning, .. } if name.ends_with("hidden") => {
+                Some((name.clone(), meaning.clone()))
+            }
+            _ => None,
+        });
+        let (name, meaning) = legend.expect("hidden legend row");
+        assert_eq!(name, "2 hidden", "{meaning}");
+        assert!(meaning.contains("standing filter"), "{meaning}");
+    }
+
+    #[test]
+    fn blur_toggle_persists_only_blur() {
+        // ToggleBlurCols used to also flag density as changed, so a
+        // stale instance (in-memory density "comfortable") rewrote
+        // its stale density over the file's newer "compact" on a
+        // blur toggle. Only the blur key may be written.
+        let _scratch = ScopedConfig::new();
+        let path = crate::config::config_path();
+        std::fs::write(&path, "[ui]\ndensity = \"compact\"\nblur_cols = false\n").unwrap();
+        let mut app = app_with(&["a"]);
+        assert_eq!(app.config.density, "comfortable"); // the stale copy
+        app.apply_setting(SettingKind::ToggleBlurCols);
+        assert!(app.config.blur_cols);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("blur_cols = true"), "{text}");
+        assert!(text.contains("density = \"compact\""), "density clobbered:\n{text}");
     }
 
     #[test]

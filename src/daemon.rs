@@ -258,6 +258,14 @@ impl Server {
     pub async fn run(&self) -> Result<()> {
         let sock = self.runtime.join("terhubd.sock");
         let pid_file = self.runtime.join("terhubd.pid");
+        // Single-instance lock, held for the daemon's whole life. The
+        // connect-probe/remove/bind sequence below is a TOCTOU: two
+        // daemons started together can both pass the probe, and the
+        // loser's remove_file would unlink the *winner's* live socket
+        // (both would then poll, notify, and fire automation twice).
+        // The lock file is never renamed or deleted while held, so the
+        // flock outlives the pid file's atomic replace.
+        let _lock_file = acquire_daemon_lock(&self.runtime)?;
         if std::os::unix::net::UnixStream::connect(&sock).is_ok() {
             anyhow::bail!("a daemon is already listening on {}", sock.display());
         }
@@ -1094,15 +1102,17 @@ fn merge_record_owned(
         Some(o) if o.agent == agent => o.handle.clone(),
         _ => String::new(),
     };
-    // Model/ctx ride every carry (polls never report them); the pinned
-    // pid follows the agent like the handle (a new agent owns a new pid).
+    // Model/ctx ride a same-agent carry (polls never report them); on
+    // an agent change they belong to the *old* agent and are dropped,
+    // like the handle and the pinned pid (a new agent owns new ones).
     let (model, ctx_pct, reg_pid) = match carried {
-        Some(o) => (
-            o.model.clone(),
-            o.ctx_pct,
-            if o.agent == agent { o.reg_pid } else { 0 },
-        ),
-        None => (String::new(), None, 0),
+        Some(o) if o.agent == agent => (o.model.clone(), o.ctx_pct, o.reg_pid),
+        _ => (String::new(), None, 0),
+    };
+    // Same rule for the last prompt (computed before `agent` moves).
+    let (last_prompt_at, last_prompt) = match carried {
+        Some(o) if o.agent == agent => (o.last_prompt_at, o.last_prompt.clone()),
+        _ => (0, String::new()),
     };
     Some(AgentRecord {
         pane: pane.id.clone(),
@@ -1126,9 +1136,10 @@ fn merge_record_owned(
         // Quiet is set by the poller post-merge (it owns the capture).
         screen_hash: 0,
         quiet_since: 0,
-        // Polls never wipe hook prompts: carry the old cut forward.
-        last_prompt_at: carried.map(|o| o.last_prompt_at).unwrap_or(0),
-        last_prompt: carried.map(|o| o.last_prompt.clone()).unwrap_or_default(),
+        // Polls never wipe hook prompts: carry the old cut forward —
+        // but only for the same agent (see `last_prompt` above).
+        last_prompt_at,
+        last_prompt,
         bell: carried.map(|o| o.bell).unwrap_or(false),
         bell_reason: carried.map(|o| o.bell_reason.clone()).unwrap_or_default(),
     })
@@ -1184,6 +1195,29 @@ fn outage_result(
     bool,
 ) {
     (prev, Vec::new(), None, true)
+}
+
+/// Take the single-instance flock for `runtime` (non-blocking). The
+/// returned file must be kept alive for the daemon's whole run; the
+/// lock releases when it drops (exit, crash, or shutdown alike).
+fn acquire_daemon_lock(runtime: &std::path::Path) -> Result<std::fs::File> {
+    use std::os::unix::io::AsRawFd;
+    let lock_path = runtime.join("terhubd.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&lock_path)
+        .with_context(|| format!("open lock {}", lock_path.display()))?;
+    // SAFETY: flock on a live fd; LOCK_NB so a second daemon fails
+    // fast instead of queueing behind the first one's lifetime.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc != 0 {
+        anyhow::bail!(
+            "another terhub daemon already holds {}",
+            lock_path.display()
+        );
+    }
+    Ok(file)
 }
 
 /// Returns the new registry, the live session list for open/close
@@ -1254,11 +1288,32 @@ fn poll_sync_with(
         // freshness (time since the last event), and refreshing it every poll
         // would make stale hooks live forever instead of lapsing. Manual
         // pins never lapse (split_prev keeps them), so the same hold applies.
+        // Screen classification runs before the hook branch: a screen
+        // that names a *different* agent is replacement evidence too
+        // (custom/interpreter-launched agents the proc matcher cannot
+        // see), not just a live process tree.
+        let screen_hit = if is_harness_command(&pane.command) {
+            None
+        } else {
+            screen.as_deref().and_then(|s| {
+                classify_screen(
+                    manifests,
+                    &pane.command,
+                    s,
+                    pane.bell,
+                    crate::proc::parked_in_tty_read(pane.pid),
+                )
+            })
+        };
         let replaced_by_live_agent = old.is_some_and(|rec| {
             rec.source == Source::Hook
-                && proc_hit
+                && (proc_hit
                     .as_ref()
                     .is_some_and(|hit| !hit.agent.eq_ignore_ascii_case(&rec.agent))
+                    || screen_hit
+                        .as_ref()
+                        .and_then(|hit| hit.agent.as_ref())
+                        .is_some_and(|agent| !agent.eq_ignore_ascii_case(&rec.agent)))
         });
         if let Some(rec) = old
             && matches!(rec.source, Source::Hook | Source::Manual)
@@ -1302,19 +1357,6 @@ fn poll_sync_with(
             next.insert(pane.id.clone(), r);
             continue;
         }
-        let screen_hit = if is_harness_command(&pane.command) {
-            None
-        } else {
-            screen.as_deref().and_then(|s| {
-                classify_screen(
-                    manifests,
-                    &pane.command,
-                    s,
-                    pane.bell,
-                    crate::proc::parked_in_tty_read(pane.pid),
-                )
-            })
-        };
         let proc_pair = proc_hit
             .as_ref()
             .map(|h| (h.agent.as_str(), snap.subtree_ticks(h.pid), h.start));
@@ -1845,16 +1887,17 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("terhub-poll-replaced-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        // A *live* fake muse: a script named like the real binary,
+        // alive for the poll. (A symlink to coreutils `sleep` exits
+        // instantly — argv0 is foreign — leaving a zombie whose comm
+        // used to match as a "live" agent; detection now skips
+        // zombies, so the fake must actually run.)
         let muse_bin = dir.join("muse-bin-1.4.6-R6000.1");
-        let sleep = [
-            "/usr/bin/sleep",
-            "/bin/sleep",
-            "/run/current-system/sw/bin/sleep",
-        ]
-        .into_iter()
-        .find(|p| std::path::Path::new(p).exists())
-        .expect("sleep binary");
-        std::os::unix::fs::symlink(sleep, &muse_bin).unwrap();
+        std::fs::write(&muse_bin, "#!/bin/sh\nsleep 30\n").unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&muse_bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let mut muse = std::process::Command::new(&muse_bin)
             .arg("30")
             .stdin(std::process::Stdio::null())
@@ -1889,6 +1932,83 @@ mod tests {
         let _ = muse.kill();
         let _ = muse.wait();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn screen_only_replacement_supersedes_fresh_hook() {
+        // Same pane-reuse shape, but the replacement is invisible to
+        // the process matcher (here the pane pid is a plain `sleep`):
+        // the screen names muse, so the dead pi hook must still lose
+        // instead of masking the pane for the 30-minute stale window.
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-screenreplaced-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut sleeper = std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        fake_tmux_file_screen(&dir, sleeper.id(), "muse");
+        std::fs::write(
+            dir.join("screen.txt"),
+            "◇ Thinking (3m 48s · esc to interrupt)\n\n❯ \n  muse-wonder-1.0 · xhigh\n",
+        )
+        .unwrap();
+        let tmux = crate::tmux::Tmux::test(dir.join("tmux"));
+        let now = now_unix();
+        let mut pi = hook_record(now);
+        pi.pane = "%50".to_string();
+        pi.agent = "pi".to_string();
+        pi.state = AgentState::Idle;
+        pi.summary = "session ended".to_string();
+        pi.command = "pi".to_string();
+        let mut prev = HashMap::new();
+        prev.insert("%50".to_string(), pi);
+
+        let (next, _, _, outage) =
+            poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
+
+        assert!(!outage);
+        let rec = next.get("%50").expect("live muse record");
+        assert_eq!(rec.agent, "muse");
+        let _ = sleeper.kill();
+        let _ = sleeper.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replacement_does_not_inherit_predecessor_metadata() {
+        // On an agent change the new record must not display the old
+        // agent's model, context percentage, or last prompt.
+        let now = 100_000;
+        let mut old = carried("pi", AgentState::Idle, 0, 0, now - 60);
+        old.model = "pi-model-1".to_string();
+        old.ctx_pct = Some(42);
+        old.last_prompt = "the pi prompt".to_string();
+        old.last_prompt_at = now - 30;
+        old.handle = "pi-handle".to_string();
+        old.reg_pid = 4242;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            None,
+            Some(("muse", 10, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.agent, "muse");
+        assert!(rec.model.is_empty(), "model leaked: {}", rec.model);
+        assert_eq!(rec.ctx_pct, None);
+        assert!(rec.last_prompt.is_empty());
+        assert_eq!(rec.last_prompt_at, 0);
+        assert_eq!(rec.reg_pid, 0);
     }
 
     #[test]
@@ -2432,6 +2552,22 @@ mod tests {
         ensure_runtime_dir(&dir).unwrap();
         let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn daemon_lock_excludes_second_holder() {
+        // Two daemons started together must not both pass: the second
+        // flock attempt fails while the first holder lives, and
+        // succeeds once it drops (flock is per open-file-description,
+        // so this holds within one process too).
+        let dir = std::env::temp_dir().join(format!("terhub-lock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = acquire_daemon_lock(&dir).expect("first lock");
+        assert!(acquire_daemon_lock(&dir).is_err(), "second daemon locked too");
+        drop(first);
+        assert!(acquire_daemon_lock(&dir).is_ok(), "lock not released on drop");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

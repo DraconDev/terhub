@@ -706,6 +706,13 @@ fn hover_style() -> Style {
 fn window_pane_counts(panes: &[Pane]) -> HashMap<&str, usize> {
     let mut counts = HashMap::new();
     for p in panes {
+        // Native/fleet rows carry no window id: each is its own
+        // terminal tab, not a pane of a shared window. Counting the
+        // empty key would give every such tab a bogus `:[0]` suffix
+        // and multi-pane `*` mark.
+        if p.window_id.is_empty() {
+            continue;
+        }
         *counts.entry(p.window_id.as_str()).or_insert(0) += 1;
     }
     counts
@@ -2316,6 +2323,20 @@ mod tests {
         assert_eq!(strip_ansi("\u{1b}[?25lhide"), "hide");
         assert_eq!(strip_ansi("\u{1b}(Bplain"), "plain");
         assert_eq!(strip_ansi("no escapes"), "no escapes");
+    }
+
+    #[test]
+    fn empty_window_ids_are_not_a_shared_window() {
+        // Native/fleet rows have no window id: two of them must not
+        // count as two panes of one window (no `:[0]`, no `*`).
+        let mut a = Pane::test("konsole:1:2", "w", "pi");
+        a.window_id = String::new();
+        let mut b = Pane::test("dev:%3", "w", "pi");
+        b.window_id = String::new();
+        let panes = [a, b];
+        let counts = window_pane_counts(&panes);
+        assert!(counts.is_empty(), "{counts:?}");
+        assert_eq!(window_label("w", 0, counts.get("").copied().unwrap_or(1)), "w");
     }
 
     #[test]

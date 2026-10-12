@@ -1166,20 +1166,14 @@ fn cmd_peek(plain: bool, pick: bool) -> i32 {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "terhub".to_string());
-    match std::process::Command::new("tmux")
-        .args([
-            "display-popup",
-            "-E",
-            "-w",
-            "80%",
-            "-h",
-            "80%",
-            &format!("{exe} peek --pick"),
-        ])
-        .status()
-    {
-        Ok(status) if status.success() => 0,
-        _ => {
+    // Through the socket-aware client (a bare `tmux` spawn would open
+    // the popup on the ambient server, not the one we just read), and
+    // shell-quoted: the popup's last argument is a shell string, so an
+    // exe path with spaces/metacharacters must not split it.
+    let popup_cmd = format!("{} peek --pick", terhub::fleet::sh_quote(&exe));
+    match tmux.display_popup(&popup_cmd) {
+        Ok(()) => 0,
+        Err(_) => {
             println!("{report}");
             0
         }
@@ -1628,6 +1622,24 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
                 }
                 return 1;
             }
+            // `test` is the safe preview path: it must work *before*
+            // the rule is armed, so a disabled rule is evaluated as
+            // if enabled (and says so). dry_run itself still honours
+            // `enabled` for the daemon's real evaluation.
+            let enabled_clone;
+            let rule = if rule.enabled {
+                rule
+            } else {
+                enabled_clone = {
+                    let mut r = rule.clone();
+                    r.enabled = true;
+                    r
+                };
+                print_out(&format!(
+                    "note: rule '{name}' is disabled; testing as if enabled"
+                ));
+                &enabled_clone
+            };
             let snapshot = match daemon::fetch_snapshot(Duration::from_secs(2)) {
                 Ok(s) => s,
                 Err(_) => {
