@@ -16,11 +16,31 @@
 //!
 //! One process, no sibling forks: a re-acquire after `drop` here is proof
 //! of drop semantics and nothing else.
+//!
+//! The two tests share one process and the harness runs them on parallel
+//! threads, and threads share one fd table — so a fork in either test
+//! duplicates the *other* test's lock fd. flock is per
+//! open-file-description, so the forked child holds the lock until it
+//! execve's (O_CLOEXEC or not), which makes a concurrent drop assertion
+//! read EAGAIN for reasons unrelated to drop semantics. `FORK_GUARD`
+//! below keeps them from overlapping.
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+/// Held for the whole body of every test that takes the daemon lock, and
+/// around every fork+exec, so a child is never forked while another
+/// thread holds the lock. A forked child duplicates the open-file
+/// description and keeps the lock alive until its execve completes.
+static FORK_GUARD: Mutex<()> = Mutex::new(());
+
+fn fork_guard() -> std::sync::MutexGuard<'static, ()> {
+    // Poison-tolerant: a panicking test must not wedge the other one.
+    FORK_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Both tests in this binary share one process id, so a pid-derived
-/// scratch dir makes them collide when the harness runs them on parallel
-/// threads. The tag keeps each test's lock file private.
+/// scratch dir makes them collide even when serialised — the tag keeps
+/// each test's lock file private.
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("terhub-lock-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -30,6 +50,7 @@ fn scratch(tag: &str) -> PathBuf {
 
 #[test]
 fn lock_is_released_when_the_holder_drops_it() {
+    let _guard = fork_guard();
     let dir = scratch("drop");
     let first = terhub::daemon::acquire_daemon_lock(&dir).expect("first lock");
     // Still held: a second open-file-description in this same process is
@@ -40,7 +61,8 @@ fn lock_is_released_when_the_holder_drops_it() {
     );
     drop(first);
     // Released: a fresh attempt now succeeds. No fork happens anywhere in
-    // this binary, so nothing else can be holding a duplicate OFD.
+    // this binary while this test holds the lock, so nothing else can be
+    // holding a duplicate open-file-description.
     assert!(
         terhub::daemon::acquire_daemon_lock(&dir).is_ok(),
         "lock not released on drop"
