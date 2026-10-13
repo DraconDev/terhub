@@ -2723,9 +2723,8 @@ mod tests {
         // "Released on drop" is deliberately NOT asserted here: no
         // in-process assertion can distinguish "the parent dropped the
         // lock" from "some sibling's child is between fork and execve".
-        // That arm lives in `daemon_lock_releases_on_drop`, which runs in
-        // a forked child that holds no inherited lock fd, so its answer
-        // means exactly what it says.
+        // That arm lives in tests/daemon_lock.rs, its own test binary
+        // where no sibling forks anything.
         let _guard = fork_guard();
         let dir = std::env::temp_dir().join(format!("terhub-lock-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
