@@ -7854,18 +7854,6 @@ mod tests {
         }
     }
 
-    impl Drop for ScopedConfig {
-        fn drop(&mut self) {
-            // SAFETY: same confined var, restored before any other reader.
-            unsafe {
-                match &self.old {
-                    Some(v) => std::env::set_var("TERHUB_CONFIG", v),
-                    None => std::env::remove_var("TERHUB_CONFIG"),
-                }
-            }
-        }
-    }
-
     // ---- saved (named) filters ------------------------------------
 
     /// A saved filter drives the table, names itself in the title, and
