@@ -351,7 +351,20 @@ terhub status [--json]
 
 `terhubd` keeps the registry that powers `status`, `attend`, badges, rules,
 and MCP. One daemon per runtime dir (a second `daemon start` prints
-`already running` and exits 0). Per pane it merges three signals:
+`already running` and exits 0).
+
+Nothing supervises the daemon, and it can still die: a terminal's SIGHUP,
+or the OOM killer picking the process that used to sit under a heavy
+parent. A dead daemon used to stay dead — every TUI then showed `daemon
+down` with the agent columns empty for the rest of the session, until
+someone thought to run `terhub daemon start` by hand. The TUI now
+self-heals: the first refresh that cannot reach the daemon starts it
+(own process group, stderr to `terhubd.log`), rate-limited to one attempt
+per 2s so an unbootable daemon is retried instead of fork-storming. The
+title keeps saying `daemon down` until the next good snapshot, so the
+error is never hidden — it is just repaired too.
+
+Per pane it merges three signals:
 
 1. **Hook events** (`terhub hook …`, see below) — authoritative while fresh.
    A hook record with no new event for `stale_secs` (default 30 minutes)
