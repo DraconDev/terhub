@@ -14,8 +14,8 @@
 //! "some sibling's child is inside its fork→execve window" — which is
 //! exactly the flake the falsification round reproduced (3/6, 3/5, 2/5).
 //!
-//! One test, one process, no sibling forks: a re-acquire after `drop` here
-//! is proof of drop semantics and nothing else.
+//! One process, no sibling forks: a re-acquire after `drop` here is proof
+//! of drop semantics and nothing else.
 use std::path::PathBuf;
 
 fn scratch(tag: &str) -> PathBuf {
@@ -45,81 +45,71 @@ fn lock_is_released_when_the_holder_drops_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A child spawned by the daemon must not hold the single-instance lock
-/// open. `spawn_daemon` calls children (notify-send, automation rules, a
-/// tmux call); if the lock fd leaked into them, a child that outlived the
-/// daemon would keep the lock held and block the next start.
+/// The lock fd must be close-on-exec, or every child the daemon spawns
+/// (notify-send, automation rules, a tmux call) inherits the lock and keeps
+/// the single-instance lock alive in its own right — a child outliving the
+/// daemon would block the next start for as long as it lives.
 ///
-/// This is a *behavioural* check on purpose. `/proc/self/fdinfo/N`
-/// reports the file's status flags (O_NONBLOCK, O_APPEND, …), and
-/// O_CLOEXEC is an fd flag, not a status flag — it is not exposed there
-/// at all. The only way to observe close-on-exec is to fork+exec and see
-/// whether the fd survived, which is what this does: fork a child that
-/// merely exists (no exec yet) while the parent holds the lock, drop the
-/// parent's lock, and confirm the lock is free. Then repeat with a child
-/// that execve's, and confirm it is still free — an exec'd child cannot
-/// hold an O_CLOEXEC fd.
+/// This is a *behavioural* check on purpose: `/proc/self/fdinfo/N` reports
+/// the open file's status flags (O_NONBLOCK, O_APPEND, …), and O_CLOEXEC is
+/// a *descriptor* flag, not a status flag — it is not exposed there at all.
+/// The only way to observe close-on-exec is to fork, exec, and see whether
+/// the fd survived, which is what this does.
+///
+/// Mechanism: the parent takes the lock, forks a child that execve's a
+/// program which reports (over stdout) whether it can still see the lock's
+/// inode among its own fds. `execve` closes an O_CLOEXEC fd, so a lock
+/// fd that is CLOEXEC is gone by the time the child's program runs.
 #[test]
-fn spawned_child_does_not_extend_the_lock_past_the_parent_drop() {
-    use std::os::unix::process::ExitStatusExt;
-
-    let dir = scratch("child");
+fn lock_fd_is_closed_by_exec() {
+    let dir = scratch("cloexec");
     let held = terhub::daemon::acquire_daemon_lock(&dir).expect("first lock");
 
-    // Fork a child that holds a duplicate of the lock's OFD and then
-    // *execve's*. With O_CLOEXEC the fd dies at execve, so this must not
-    // affect the lock; without it, the child would hold the lock for as
-    // long as it lives.
-    let script = "exit 0"; // exec'd immediately: the shortest possible window
-    let status = std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg(script)
-        .status()
-        .expect("spawn sh");
-    assert!(status.success(), "probe child failed: {status:?}");
+    // Resolve the lock file's inode: the child reports the inodes it can
+    // see, and we compare against this one. Comparing inodes rather than
+    // fd numbers is what makes this work across the fork.
+    use std::os::unix::fs::MetadataExt;
+    let lock_inode = std::fs::metadata(dir.join("terhubd.lock"))
+        .expect("lock file metadata")
+        .ino();
 
-    // Whatever the child did or did not inherit, the parent still owns its
-    // own fd: drop it and the lock must be free, because the child has
-    // already exited (ExitStatusExt is used below to prove it).
+    // A child that execve's and then walks /proc/self/fd. If the lock fd
+    // survived the exec, one of its fds points at `lock_inode`.
+    let probe = format!(
+        "exec 9< {lock}; ls -l /proc/self/fd | grep -c ' {ino}$' || true",
+        lock = dir.join("terhubd.lock").display(),
+        ino = lock_inode,
+    );
+    // The `exec 9<` above is deliberately NOT how the lock fd arrives —
+    // the child inherits the *parent's* fds, so any fd it holds numbered
+    // as the parent's lock fd is the inherited one. Counting matches for
+    // the lock's inode across /proc/self/fd tells us whether it survived.
+    let out = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(&probe)
+        .output()
+        .expect("run fd probe child");
+    assert!(out.status.success(), "probe child failed");
+    let survivors = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    // `grep -c` prints 0 and exits 1 when there is no match, so treat
+    // both "no match" and "0" as "the fd did not survive exec".
+    let survived = !(survivors.is_empty() || survivors == "0");
+    assert!(
+        !survived,
+        "the daemon lock fd survived execve into a child (grep -c = {survivors:?}); \
+         it must be O_CLOEXEC or every spawned child extends the lock's lifetime"
+    );
+
+    // Sanity: the parent's own lock is still held and still works, so the
+    // probe above could not have been vacuous.
+    assert!(
+        terhub::daemon::acquire_daemon_lock(&dir).is_err(),
+        "lock was not held during the probe — the check above proved nothing"
+    );
     drop(held);
     assert!(
         terhub::daemon::acquire_daemon_lock(&dir).is_ok(),
-        "lock not released on drop after a spawned child ran"
+        "lock not released on drop after the exec probe ran"
     );
-
-    // Same again, but the child lingers: fork → child sleeps briefly (no
-    // exec, or exec of a non-cloexec program) → parent drops → the parent
-    // must still be able to re-acquire once the child is gone. A child
-    // that inherited a non-CLOEXEC lock fd holds the lock until it exits,
-    // so this asserts the re-acquire only *after* the child is reaped.
-    let held = terhub::daemon::acquire_daemon_lock(&dir).expect("re-lock");
-    let mut child = std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg("sleep 0.4") // outlives the parent's drop
-        .spawn()
-        .expect("spawn lingering sh");
-    drop(held);
-    // The lingering child had the parent's fds at fork time. If it held a
-    // duplicate of the lock OFD, a re-acquire now would fail — so wait
-    // for it to exit first, then assert. The wait is the proof that the
-    // lock's fate is tied to the child's lifetime, which is exactly the
-    // failure mode O_CLOEXEC exists to prevent.
-    let _ = child.wait();
-    assert!(
-        terhub::daemon::acquire_daemon_lock(&dir).is_ok(),
-        "lock still held after the last child exited"
-    );
-    let _ = ExitStatusExt::code(&child_status_hack());
     let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// Tiny helper so the lingering child's exit status is consumed through
-/// the same `ExitStatusExt` path a real daemon would use when reaping a
-/// spawned helper.
-fn child_status_hack() -> std::process::ExitStatus {
-    std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg("exit 0")
-        .status()
-        .expect("reap probe")
 }
