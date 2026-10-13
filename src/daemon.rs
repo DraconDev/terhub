@@ -1309,6 +1309,12 @@ fn acquire_daemon_lock(runtime: &std::path::Path) -> Result<std::fs::File> {
         // its contents are irrelevant (a previous holder may still
         // have written a pid).
         .truncate(false)
+        // Close-on-exec: without it every process the daemon spawns
+        // (notify-send, an automation rule, a tmux call) inherits the
+        // lock fd and keeps the single-instance lock alive in its own
+        // right — a child that outlives the daemon would block the next
+        // start for as long as it lives.
+        .custom_flags(libc::O_CLOEXEC)
         .open(&lock_path)
         .with_context(|| format!("open lock {}", lock_path.display()))?;
     // SAFETY: flock on a live fd; LOCK_NB so a second daemon fails
