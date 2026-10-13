@@ -2006,12 +2006,18 @@ mod tests {
         // A live reg_pid feeds the CPU/stuck clocks like a proc hit; the
         // nonzero agent_start proves the pin path ran (the generic carry
         // leaves it zero).
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .expect("spawn sleep");
+        let mut child = {
+            // Guarded: a forked child inherits every fd this process holds,
+            // including a sibling test's daemon-lock fd (threads share one
+            // fd table), and would hold that lock until its execve.
+            let _guard = fork_guard();
+            std::process::Command::new("sleep")
+                .arg("30")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .expect("spawn sleep")
+        };
         let pid = child.id();
         let dir =
             std::env::temp_dir().join(format!("terhub-poll-manualpid-{}", std::process::id()));
@@ -2105,12 +2111,18 @@ mod tests {
             std::env::temp_dir().join(format!("terhub-poll-screenreplaced-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let mut sleeper = std::process::Command::new("sleep")
-            .arg("30")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .expect("spawn sleep");
+        let mut sleeper = {
+            // Guarded: see `manual_pin_tracks_reg_pid_cpu` — a forked child
+            // inherits the process's fds, so it must not land while a
+            // sibling holds the daemon lock.
+            let _guard = fork_guard();
+            std::process::Command::new("sleep")
+                .arg("30")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .expect("spawn sleep")
+        };
         fake_tmux_file_screen(&dir, sleeper.id(), "muse");
         std::fs::write(
             dir.join("screen.txt"),
