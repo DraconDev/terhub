@@ -58,10 +58,13 @@ fn lock_file_is_opened_close_on_exec() {
     let fd = held.as_raw_fd();
     let flags_path = format!("/proc/self/fdinfo/{fd}");
     let info = std::fs::read_to_string(&flags_path).expect("fdinfo for lock fd");
+    // /proc/self/fdinfo/N reports `flags:` in octal; mask off the low bits
+    // (access mode, creat, etc.) and test the O_CLOEXEC bit. libc constants
+    // are i32 on this platform, so widen once rather than per-comparison.
     let cloexec = info
         .lines()
         .find_map(|l| l.strip_prefix("flags:"))
-        .and_then(|f| u32::from_str_radix(f.trim().trim_start_matches("0"), 8).ok())
+        .and_then(|f| i32::from_str_radix(f.trim(), 8).ok())
         .map(|flags| flags & libc::O_CLOEXEC != 0);
     assert_eq!(
         cloexec,
