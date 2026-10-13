@@ -2708,17 +2708,18 @@ mod tests {
     #[test]
     fn daemon_lock_excludes_second_holder() {
         // Two daemons started together must not both pass: the second
-        // flock attempt fails while the first holder lives. Released-on-drop
-        // is asserted in a *freshly forked child* rather than in-process:
-        // flock is per open-file-description, and a forked child duplicates
-        // the parent's OFD, so a sibling test's child (the fake tmux script,
-        // the fake muse binary) could hold a duplicate past `drop(first)`
-        // and make the in-process arm read EAGAIN for reasons that have
-        // nothing to do with this test.
+        // flock attempt fails while the first holder lives, and
+        // succeeds once it drops (flock is per open-file-description,
+        // so this holds within one process too).
         //
-        // Held under FORK_GUARD so no sibling forks a child while the lock
-        // is open: the child would inherit the lock fd and keep it alive
-        // past the drop we are about to assert.
+        // The whole body runs under FORK_GUARD. flock is per
+        // open-file-description: a forked child *duplicates* the OFD, so
+        // a child forked while this test holds the lock keeps the lock
+        // alive past `drop(first)` — a sibling test's fast script child
+        // (fake tmux, fake muse) used to make the third assertion read
+        // EAGAIN for reasons unrelated to drop semantics. Every fork
+        // site in this test module takes the same guard, so no fork can
+        // land inside the window where the lock is open.
         let _guard = fork_guard();
         let dir = std::env::temp_dir().join(format!("terhub-lock-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -2729,37 +2730,11 @@ mod tests {
             "second daemon locked too"
         );
         drop(first);
-        // Lock-exclusivity re-acquired after drop, verified from a child:
-        // a child that inherits the fd by accident fails the same way the
-        // parent would, so this arm is fork-safe by construction.
-        let child_dir = dir.clone();
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .arg("--exact")
-            .arg("daemon::tests::lock_reacquire_after_drop_helper")
-            .env("TERHUB_LOCK_DIR", &child_dir)
-            .output()
-            .expect("spawn lock probe child");
-        assert!(
-            status.status.success(),
-            "re-acquire after drop failed in child: {}",
-            String::from_utf8_lossy(&status.stderr)
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// Fork-safety probe for `daemon_lock_excludes_second_holder`. Rust's
-    /// test harness filters it out of normal runs (it is not a `#[test]`),
-    /// so it is spawned explicitly by the parent with TERHUB_LOCK_DIR set.
-    /// A child that inherits the daemon lock fd by mistake gets EAGAIN and
-    /// exits non-zero, which the parent reports as a failure.
-    fn lock_reacquire_after_drop_helper() {
-        let dir = std::path::PathBuf::from(
-            std::env::var("TERHUB_LOCK_DIR").expect("TERHUB_LOCK_DIR set by parent"),
-        );
         assert!(
             acquire_daemon_lock(&dir).is_ok(),
             "lock not released on drop"
         );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
