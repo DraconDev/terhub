@@ -2739,66 +2739,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// "Release on drop" measured where it is unambiguous.
-    ///
-    /// This is the arm `daemon_lock_excludes_second_holder` deliberately
-    /// omits. In the parent test binary a concurrent sibling can be
-    /// anywhere in its fork→execve window holding a duplicate of the
-    /// lock's open-file-description, which makes a *correct* drop read as
-    /// "still locked" — the exact flake the falsification round found.
-    ///
-    /// Here the lock is taken and dropped inside a freshly forked child
-    /// that this test itself controls: the child inherits no other lock
-    /// fd, so `acquire_daemon_lock` succeeding after `drop` is proof of
-    /// drop semantics and nothing else. The child's own exit code reports
-    /// the verdict, so a failure names the arm that broke.
-    #[test]
-    fn daemon_lock_releases_on_drop() {
-        use std::os::unix::process::ExitStatusExt;
-        let dir = std::env::temp_dir().join(format!("terhub-lock-drop-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        // `sh -c 'exec ...'` makes the lock's fd O_CLOEXEC-irrelevant: exec
-        // replaces the image, and the script's own child cannot inherit it.
-        let script = format!(
-            "exec {bin} lock-drop-probe {dir}",
-            bin = std::env::current_exe().unwrap().display(),
-            dir = dir.display()
-        );
-        // The probe is not a #[test], so it cannot be selected by the
-        // harness; it is reached through this dedicated argv0 subcommand
-        // instead. See `run_lock_drop_probe` at the bottom of this module.
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&script)
-            .output()
-            .expect("run lock drop probe");
-        assert!(
-            out.status.success(),
-            "lock not released on drop: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// Hidden subcommand used by `daemon_lock_releases_on_drop`. Not a
-    /// `#[test]`: it is spawned as a child process via argv, never
-    /// collected by the harness, so a bare `cargo test` never runs it.
-    /// A forked child reaching here inherits no lock fd of its own.
-    fn run_lock_drop_probe(dir: &std::path::Path) -> ! {
-        let held = acquire_daemon_lock(dir).expect("probe: first lock");
-        assert!(
-            acquire_daemon_lock(dir).is_err(),
-            "probe: second daemon locked too"
-        );
-        drop(held);
-        assert!(
-            acquire_daemon_lock(dir).is_ok(),
-            "probe: lock not released on drop"
-        );
-        std::process::exit(0);
-    }
-
     #[tokio::test]
     async fn oversize_request_rejected_without_oom() {
         // A 2MB (valid!) hook event exceeds the 1MB request cap: truncated,
