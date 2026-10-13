@@ -1754,6 +1754,15 @@ mod tests {
     use super::*;
     use crate::agent::AgentState;
 
+    /// Process-wide counter for fake-tmux temp dirs. `std::process::id()`
+    /// alone made concurrent sibling tests share a dir, so a `screen.txt`
+    /// rewrite in one test could leak into another. The counter is the
+    /// established pattern (`NEXT_CFG` in `src/app.rs`); kept local to
+    /// this module so a cross-crate helper isn't introduced for a
+    /// test-only concern.
+    static NEXT_TEST_DIR: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+
     #[test]
     fn respawn_backoff_gates_repeated_attempts() {
         // A daemon that cannot come up must not be re-forked every tick:
@@ -2043,7 +2052,18 @@ mod tests {
         // process tree names Muse — the replacement must win immediately
         // instead of the pane reading `pi · idle · session ended` while
         // Muse is visibly thinking on screen.
-        let dir = std::env::temp_dir().join(format!("terhub-poll-replaced-{}", std::process::id()));
+        //
+        // Per-test unique dir: a process-wide counter (see `NEXT_TEST_DIR`)
+        // plus the pid — `std::process::id()` alone made concurrent
+        // sibling tests share a dir, so a `screen.txt` rewrite in one
+        // could leak into this test's `fake_tmux_file_screen` / `screen.txt`
+        // reads. The audit's "1/25" flake was this class.
+        let n = NEXT_TEST_DIR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "terhub-poll-replaced-{}-{}",
+            std::process::id(),
+            n
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // A *live* fake muse: a script named like the real binary,
