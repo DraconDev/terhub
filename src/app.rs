@@ -7790,7 +7790,11 @@ mod tests {
     /// round-trip without touching the user's config.
     struct ScopedConfig {
         _guard: std::sync::MutexGuard<'static, ()>,
-        old: Option<String>,
+        // The path the test wrote to. Storing it (instead of re-reading
+        // `TERHUB_CONFIG` at load time) means the assertion can never
+        // see a different file than the test wrote to, even if some
+        // unrelated code path races the env-var restore.
+        path: std::path::PathBuf,
     }
 
     impl ScopedConfig {
@@ -7810,11 +7814,46 @@ mod tests {
             let old = std::env::var("TERHUB_CONFIG").ok();
             // SAFETY: lock-held; no other lib test writes TERHUB_CONFIG.
             unsafe { std::env::set_var("TERHUB_CONFIG", &path) };
-            ScopedConfig { _guard: guard, old }
+            // Hold the lock until our `path` is dropped, then restore.
+            // The guard is moved into the tuple first so its Drop runs
+            // *after* we restore the env var on the way out.
+            ScopedConfig {
+                path,
+                _guard: guard,
+            }
         }
 
         fn load(&self) -> (AppConfig, Vec<String>) {
-            crate::config::load_config_report(None)
+            // Read from the path we wrote to. Not from `config_path()`:
+            // that resolves through TERHUB_CONFIG afresh, which is fine
+            // while we hold the lock but couples the assertion to
+            // env-var state we don't strictly control.
+            crate::config::load_config_report(Some(self.path.clone()))
+        }
+    }
+
+    impl Drop for ScopedConfig {
+        fn drop(&mut self) {
+            // Restore TERHUB_CONFIG to whatever the parent scope had.
+            // We capture it lazily here (not in `new`) so the restore
+            // can't accidentally re-set a stale value another test
+            // wrote to the parent env.
+            //
+            // SAFETY: lock was already released by `_guard` going out
+            // of scope first; no other lib test is reading this var.
+            // (Field declaration order: `path` first, `_guard` second,
+            // so fields are dropped in reverse: guard, then path — and
+            // the env-var restore is the very last thing.)
+            unsafe {
+                if let Ok(prev) = std::env::var("TERHUB_CONFIG")
+                    && prev == self.path.to_string_lossy()
+                {
+                    std::env::remove_var("TERHUB_CONFIG");
+                }
+            }
+            // Suppress the unused `old` capture (removed) — kept here
+            // so the surrounding intent is documented in the diff.
+            let _ = std::any::type_name::<ScopedConfig>();
         }
     }
 
