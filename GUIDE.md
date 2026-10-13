@@ -238,7 +238,9 @@ Everything except arrows/mouse/Tab/Esc/Alt+digits is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
 bindings (press `?` again for the legend: marks, `Src`, `For`/`Turn`/`Idle`).
 Footer confirmations fade after a few seconds; the title names a dead
-daemon instead of silently emptying the agent columns.
+daemon instead of silently emptying the agent columns — and that same
+refresh starts the daemon again (see [The daemon and agent
+awareness](#the-daemon-and-agent-awareness)).
 
 ## Configuration
 
