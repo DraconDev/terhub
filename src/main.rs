@@ -958,18 +958,6 @@ fn cmd_hooks(action: &HooksAction) -> i32 {
     }
 }
 
-fn daemon_bin() -> std::path::PathBuf {
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        let sibling = dir.join("terhubd");
-        if sibling.is_file() {
-            return sibling;
-        }
-    }
-    std::path::PathBuf::from("terhubd")
-}
-
 fn cmd_daemon(action: &DaemonAction) -> i32 {
     match action {
         DaemonAction::Status => {
