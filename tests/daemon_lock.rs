@@ -109,11 +109,17 @@ fn lock_fd_is_closed_by_exec() {
     // the child inherits the *parent's* fds, so any fd it holds numbered
     // as the parent's lock fd is the inherited one. Counting matches for
     // the lock's inode across /proc/self/fd tells us whether it survived.
-    let out = std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg(&probe)
-        .output()
-        .expect("run fd probe child");
+    let out = {
+        // Held so no other thread's lock fd is mid-drop while this fork
+        // duplicates it: the child would keep that lock alive until its
+        // execve completes and turn a correct drop into EAGAIN.
+        let _guard = fork_guard();
+        std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&probe)
+            .output()
+            .expect("run fd probe child")
+    };
     assert!(out.status.success(), "probe child failed");
     let survivors = String::from_utf8_lossy(&out.stdout).trim().to_string();
     // `grep -c` prints 0 and exits 1 when there is no match, so treat
