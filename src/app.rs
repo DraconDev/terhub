@@ -1338,6 +1338,14 @@ impl App {
                 self.agents_live = true;
             }
             Err(_) => {
+                // Self-heal before declaring the daemon down: a daemon
+                // nobody supervises dies silently (terminal SIGHUP, the
+                // OOM killer), and the only symptom is every pane losing
+                // its badges for the rest of the session. Rate-limited,
+                // so a genuinely unbootable daemon is not re-forked per
+                // tick. The title still says "daemon down" until the
+                // next good fetch.
+                daemon::ensure_running();
                 self.agents.clear();
                 self.agents_live = false;
             }
