@@ -987,50 +987,23 @@ fn cmd_daemon(action: &DaemonAction) -> i32 {
                 return 0;
             }
             let _ = std::fs::remove_file(daemon::socket_path()); // stale socket
-            let log_file = std::fs::File::create(daemon::log_path());
-            let mut cmd = std::process::Command::new(daemon_bin());
-            // Own process group: `terhub daemon start` runs from an
-            // interactive shell, and a child sharing the caller's group
-            // dies with that terminal's SIGHUP — leaving the tray and
-            // every TUI showing "daemon down" minutes later. New group,
-            // detached from the launcher's lifetime.
-            {
-                use std::os::unix::process::CommandExt;
-                cmd.process_group(0);
-            }
-            cmd.stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null());
-            match log_file {
-                Ok(f) => {
-                    cmd.stderr(f);
-                }
-                Err(_) => {
-                    cmd.stderr(std::process::Stdio::null());
-                }
-            }
-            match cmd.spawn() {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("terhub: failed to start terhubd: {e}");
-                    return 1;
-                }
-            }
-            for _ in 0..50 {
-                if daemon::daemon_alive() {
+            match daemon::spawn_daemon() {
+                Ok(()) => {
                     println!("started ({})", daemon::socket_path().display());
-                    return 0;
+                    0
                 }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            eprintln!("terhub: daemon did not come up");
-            if let Ok(text) = std::fs::read_to_string(daemon::log_path()) {
-                let tail: Vec<&str> = text.lines().collect();
-                let start = tail.len().saturating_sub(5);
-                for line in &tail[start..] {
-                    eprintln!("terhubd: {line}");
+                Err(e) => {
+                    eprintln!("terhub: {e}");
+                    if let Ok(text) = std::fs::read_to_string(daemon::log_path()) {
+                        let tail: Vec<&str> = text.lines().collect();
+                        let start = tail.len().saturating_sub(5);
+                        for line in &tail[start..] {
+                            eprintln!("terhubd: {line}");
+                        }
+                    }
+                    1
                 }
             }
-            1
         }
         DaemonAction::Stop => {
             if !daemon::daemon_alive() {
