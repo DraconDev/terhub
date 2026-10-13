@@ -1727,6 +1727,25 @@ mod tests {
     use crate::agent::AgentState;
 
     #[test]
+    fn respawn_backoff_gates_repeated_attempts() {
+        // A daemon that cannot come up must not be re-forked every tick:
+        // only the first attempt after a quiet period is due.
+        let backoff = RESPAWN_BACKOFF.as_millis() as u64;
+        assert!(respawn_due(1_000, 0), "never tried: first attempt is due");
+        assert!(
+            respawn_due(1_000 + backoff - 1, 1_000),
+            "inside the backoff: no re-fork"
+        );
+        assert!(
+            respawn_due(1_000 + backoff, 1_000),
+            "backoff elapsed: retry is due"
+        );
+        // A clock that jumped backwards (NTP, suspend) must not wedge
+        // the self-heal off forever.
+        assert!(respawn_due(500, 1_000), "backwards clock: retry is due");
+    }
+
+    #[test]
     fn hook_event_applies_without_side_effects() {
         // The lock-held half of hook handling: mutate the registry and
         // report transitions. Ledger + notify emission is the caller's job
