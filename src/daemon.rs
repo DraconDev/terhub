@@ -195,10 +195,7 @@ pub fn spawn_daemon() -> Result<()> {
         std::thread::sleep(STARTUP_WAIT);
         waited += STARTUP_WAIT;
     }
-    anyhow::bail!(
-        "daemon did not come up (see {})",
-        log_path().display()
-    )
+    anyhow::bail!("daemon did not come up (see {})", log_path().display())
 }
 
 /// Self-heal: start the daemon if it is not running. Cheap when the
