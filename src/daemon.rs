@@ -1760,8 +1760,7 @@ mod tests {
     /// established pattern (`NEXT_CFG` in `src/app.rs`); kept local to
     /// this module so a cross-crate helper isn't introduced for a
     /// test-only concern.
-    static NEXT_TEST_DIR: std::sync::atomic::AtomicUsize =
-        std::sync::atomic::AtomicUsize::new(0);
+    static NEXT_TEST_DIR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     #[test]
     fn respawn_backoff_gates_repeated_attempts() {
@@ -2059,11 +2058,8 @@ mod tests {
         // could leak into this test's `fake_tmux_file_screen` / `screen.txt`
         // reads. The audit's "1/25" flake was this class.
         let n = NEXT_TEST_DIR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "terhub-poll-replaced-{}-{}",
-            std::process::id(),
-            n
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("terhub-poll-replaced-{}-{}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // A *live* fake muse: a script named like the real binary,
