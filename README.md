@@ -117,6 +117,10 @@ A StatusNotifierItem until killed: red when something needs you, teal when
 agents are done, gray + strikethrough when the daemon is down. Counts live
 in the hover tooltip; clicking focuses the open hub or starts one.
 
+Nothing supervises `terhubd`, so it can die (terminal SIGHUP, the OOM
+killer). The hub notices on the next refresh and starts it again — the
+`daemon down` banner is diagnostic, not a tombstone.
+
 ## CLI
 
 ```
