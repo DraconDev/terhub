@@ -1730,7 +1730,7 @@ mod tests {
         let backoff = RESPAWN_BACKOFF.as_millis() as u64;
         assert!(respawn_due(1_000, 0), "never tried: first attempt is due");
         assert!(
-            respawn_due(1_000 + backoff - 1, 1_000),
+            !respawn_due(1_000 + backoff - 1, 1_000),
             "inside the backoff: no re-fork"
         );
         assert!(
