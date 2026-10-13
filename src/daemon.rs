@@ -214,8 +214,7 @@ pub fn ensure_running() -> bool {
     // Record the attempt before spawning so a slow spawn cannot be
     // re-entered by a concurrent caller.
     LAST_RESPAWN_MS.store(now, std::sync::atomic::Ordering::Relaxed);
-    let _ = spawn_daemon;
-    false
+    spawn_daemon().is_ok()
 }
 
 /// Lock the registry, recovering the data when a panicked holder poisoned it.
