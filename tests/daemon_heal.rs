@@ -45,7 +45,10 @@ fn a_dead_daemon_revives_itself() {
     // build directory that really holds terhubd (it sits beside the
     // `terhub` binary).
     let terhub_bin = PathBuf::from(env!("CARGO_BIN_EXE_terhub"));
-    let bin_dir = terhub_bin.parent().expect("terhub binary dir").to_path_buf();
+    let bin_dir = terhub_bin
+        .parent()
+        .expect("terhub binary dir")
+        .to_path_buf();
     let path = std::env::var("PATH").unwrap_or_default();
     let joined = format!("{}:{path}", bin_dir.display());
 
@@ -55,10 +58,7 @@ fn a_dead_daemon_revives_itself() {
         std::env::set_var("TERHUB_RUNTIME_DIR", &runtime);
         std::env::set_var("TERHUB_DATA_DIR", &data);
         std::env::set_var("TERHUB_CONFIG", &config);
-        std::env::set_var(
-            terhub::tmux::SOCKET_ENV,
-            format!("terhub-heal-{stamp}"),
-        );
+        std::env::set_var(terhub::tmux::SOCKET_ENV, format!("terhub-heal-{stamp}"));
         std::env::set_var("PATH", &joined);
     }
 
@@ -73,7 +73,10 @@ fn a_dead_daemon_revives_itself() {
     let out = client(&["daemon", "start"]);
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(out.status.success(), "start failed: {stdout}");
-    assert!(stdout.contains("started"), "unexpected start output: {stdout}");
+    assert!(
+        stdout.contains("started"),
+        "unexpected start output: {stdout}"
+    );
     assert!(
         wait_for(terhub::daemon::daemon_alive, 100),
         "daemon never came up"
