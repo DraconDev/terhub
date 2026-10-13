@@ -1351,6 +1351,25 @@ fn poll_sync(
     }
 }
 
+/// Serialises every test that forks a child, and the flock test below.
+///
+/// `flock` is per open-file-description, and `fork` duplicates the
+/// description rather than the lock: a child forked while a test holds the
+/// daemon lock keeps that lock alive until the child exits, even after the
+/// parent has dropped its own fd. Taking the lock test's whole body and
+/// every fork site under one guard keeps the two from interleaving, so the
+/// "released on drop" arm measures drop semantics instead of whatever
+/// sibling happened to fork next. (Rust opens files O_CLOEXEC, so the fd
+/// is closed at execve — the window is fork→exec, but that window is
+/// exactly where a fast script child still holds it.)
+static FORK_GUARD: Mutex<()> = Mutex::new(());
+
+fn fork_guard() -> std::sync::MutexGuard<'static, ()> {
+    // Poison-tolerant on purpose: a panicking test must not wedge every
+    // other test in the binary behind a lock nobody can take.
+    FORK_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn poll_sync_with(
     tmux: &Tmux,
     prev: HashMap<String, AgentRecord>,
@@ -1362,6 +1381,9 @@ fn poll_sync_with(
     Option<String>,
     bool,
 ) {
+    // Guarded: the fake tmux is a script this calls exec, and every fork
+    // must not land inside a concurrent flock assertion.
+    let _guard = fork_guard();
     let now = now_unix();
     // One process view shared by every pane: /proc is walked once per
     // poll, and the snapshot is reused for label resolution so we don't
