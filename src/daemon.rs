@@ -118,6 +118,108 @@ pub fn log_path() -> PathBuf {
     runtime_dir().join("terhubd.log")
 }
 
+/// The daemon binary: beside this executable when it is there (the
+/// normal installed/cargo layout), else a PATH lookup.
+pub fn daemon_bin() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let sibling = dir.join("terhubd");
+        if sibling.is_file() {
+            return sibling;
+        }
+    }
+    PathBuf::from("terhubd")
+}
+
+/// How long the spawn waits for the new daemon to answer Ping.
+const STARTUP_WAIT: Duration = Duration::from_millis(500);
+
+/// Minimum gap between self-heal spawn attempts. A daemon that cannot
+/// come up (no terhubd binary, unwritable runtime dir) would otherwise
+/// be re-forked on every TUI tick, turning one dead daemon into a fork
+/// storm.
+const RESPAWN_BACKOFF: Duration = Duration::from_secs(2);
+
+/// Epoch millis of the last self-heal attempt, or 0 when there was none.
+static LAST_RESPAWN_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Pure gate for [`ensure_running`]: an attempt is due only once the
+/// backoff since the last one has elapsed.
+fn respawn_due(now_ms: u64, last_ms: u64) -> bool {
+    if last_ms == 0 || now_ms < last_ms {
+        return true; // never tried, or the clock jumped backwards
+    }
+    now_ms - last_ms >= RESPAWN_BACKOFF.as_millis() as u64
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Fork a detached daemon and wait for it to answer Ping. Detaching is
+/// what keeps it alive past its launcher: a child in the caller's
+/// process group dies with the terminal's SIGHUP, which is how the tray
+/// and every TUI end up showing "daemon down" minutes later.
+pub fn spawn_daemon() -> Result<()> {
+    let log_file = std::fs::File::create(log_path());
+    let mut cmd = std::process::Command::new(daemon_bin());
+    // Own process group: never share the launcher's SIGHUP fate.
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null());
+    match log_file {
+        Ok(f) => {
+            cmd.stderr(f);
+        }
+        Err(_) => {
+            cmd.stderr(std::process::Stdio::null());
+        }
+    }
+    cmd.spawn()
+        .with_context(|| format!("spawn {}", daemon_bin().display()))?;
+    // The pid file is written by the daemon after a successful bind, so
+    // Ping (not pid liveness) is the readiness signal.
+    let deadline = STARTUP_WAIT * 10;
+    let mut waited = Duration::ZERO;
+    while waited < deadline {
+        if daemon_alive() {
+            return Ok(());
+        }
+        std::thread::sleep(STARTUP_WAIT);
+        waited += STARTUP_WAIT;
+    }
+    anyhow::bail!(
+        "daemon did not come up (see {})",
+        log_path().display()
+    )
+}
+
+/// Self-heal: start the daemon if it is not running. Cheap when the
+/// daemon is healthy (one Ping), and rate-limited when it is not so a
+/// permanently broken daemon is retried at most once per
+/// [`RESPAWN_BACKOFF`] instead of once per tick.
+pub fn ensure_running() -> bool {
+    if daemon_alive() {
+        return true;
+    }
+    let now = now_ms();
+    let last = LAST_RESPAWN_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if !respawn_due(now, last) {
+        return false;
+    }
+    // Record the attempt before spawning so a slow spawn cannot be
+    // re-entered by a concurrent caller.
+    LAST_RESPAWN_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+    spawn_daemon().is_ok()
+}
+
 /// Lock the registry, recovering the data when a panicked holder poisoned it.
 fn lock_registry(
     registry: &Mutex<HashMap<String, AgentRecord>>,
