@@ -2051,12 +2051,20 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&muse_bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let mut muse = std::process::Command::new(&muse_bin)
-            .arg("30")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .expect("spawn fake muse");
+        let mut muse = {
+            // Guarded: this child inherits every fd the process currently
+            // holds open, including any sibling test's daemon-lock fd.
+            // Threads share one fd table, so an unguarded fork here would
+            // duplicate a lock the sibling is mid-drop on and hold it until
+            // this child execve's.
+            let _guard = fork_guard();
+            std::process::Command::new(&muse_bin)
+                .arg("30")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .expect("spawn fake muse")
+        };
         fake_tmux_file_screen(&dir, muse.id(), "muse-bin-1.4.6-R6000.1");
         std::fs::write(
             dir.join("screen.txt"),
