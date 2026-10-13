@@ -18,6 +18,9 @@
 //! of drop semantics and nothing else.
 use std::path::PathBuf;
 
+/// Both tests in this binary share one process id, so a pid-derived
+/// scratch dir makes them collide when the harness runs them on parallel
+/// threads. The tag keeps each test's lock file private.
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("terhub-lock-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
