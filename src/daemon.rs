@@ -203,9 +203,9 @@ pub fn spawn_daemon() -> Result<()> {
 /// permanently broken daemon is retried at most once per
 /// [`RESPAWN_BACKOFF`] instead of once per tick.
 pub fn ensure_running() -> bool {
-    return daemon_alive();
-    #[allow(unreachable_code)]
-    {
+    if daemon_alive() {
+        return true;
+    }
     let now = now_ms();
     let last = LAST_RESPAWN_MS.load(std::sync::atomic::Ordering::Relaxed);
     if !respawn_due(now, last) {
