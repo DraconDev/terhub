@@ -2010,6 +2010,7 @@ mod tests {
             .spawn()
             .expect("spawn sleep");
         let pid = child.id();
+        let _spawn_guard = fork_guard();
         let dir =
             std::env::temp_dir().join(format!("terhub-poll-manualpid-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
