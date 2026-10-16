@@ -687,6 +687,11 @@ fn apply_register(
                 Some(o) if o.agent == agent => o.handle.clone(),
                 _ => String::new(),
             };
+            // Entering Working (or a new agent taking the pane) is
+            // activity in itself, pixels or not: restart the
+            // visible-quiet clock (same rule as hook events).
+            let fresh_work = state == AgentState::Working
+                || old.map(|r| r.agent != agent).unwrap_or(true);
             reg.insert(
                 pane.to_string(),
                 AgentRecord {
@@ -705,7 +710,11 @@ fn apply_register(
                     agent_start: 0,
                     last_turn_secs: old.map(|r| r.last_turn_secs).unwrap_or(0),
                     screen_hash: old.map(|r| r.screen_hash).unwrap_or(0),
-                    quiet_since: old.map(|r| r.quiet_since).unwrap_or(0),
+                    quiet_since: if fresh_work {
+                        now
+                    } else {
+                        old.map(|r| r.quiet_since).unwrap_or(0)
+                    },
                     last_prompt_at: old.map(|r| r.last_prompt_at).unwrap_or(0),
                     last_prompt: old.map(|r| r.last_prompt.clone()).unwrap_or_default(),
                     handle,
@@ -987,6 +996,36 @@ fn track_quiet_merged(
     } else {
         (h, q)
     }
+}
+
+/// Post-merge quiet update: the poller's verbatim step. A screen change
+/// restarts the clock (via [`track_quiet_merged`]), and so does entering
+/// Working — the state flip itself is activity, and spinner frames are
+/// denoised out of the hash, so without this a pane that just started
+/// working keeps showing the previous stillness in the Idle column until
+/// its pixels visibly move. Demotions into Idle keep the old clock —
+/// that stillness is the point.
+fn refresh_quiet(
+    carried: Option<&AgentRecord>,
+    hash: Option<u64>,
+    rec: &AgentRecord,
+    now: u64,
+) -> (u64, u64) {
+    let prev_quiet = carried
+        .map(|r| (r.screen_hash, r.quiet_since))
+        .unwrap_or((0, 0));
+    // Pre-fallback summaries: the fill below derives from the same
+    // screen the hash already judged, so only merge verdicts count.
+    let carried_summary = carried.map(|r| r.summary.as_str()).unwrap_or("");
+    let (h, mut q) =
+        track_quiet_merged(prev_quiet, hash, carried_summary, &rec.summary, rec.state, now);
+    let fresh_work = carried
+        .map(|r| r.state != AgentState::Working || r.agent != rec.agent)
+        .unwrap_or(true);
+    if rec.state == AgentState::Working && fresh_work {
+        q = now;
+    }
+    (h, q)
 }
 
 /// Merge one poll's evidence into a record, legacy entry: no snapshot in
@@ -1514,20 +1553,7 @@ fn poll_sync_with(
             tune.quiet_idle_secs,
             tune.waiting_idle_secs,
         ) {
-            let prev_quiet = carried
-                .map(|r| (r.screen_hash, r.quiet_since))
-                .unwrap_or((0, 0));
-            // Pre-fallback summaries: the fill below derives from the same
-            // screen the hash already judged, so only merge verdicts count.
-            let carried_summary = carried.map(|r| r.summary.as_str()).unwrap_or("");
-            (rec.screen_hash, rec.quiet_since) = track_quiet_merged(
-                prev_quiet,
-                hash,
-                carried_summary,
-                &rec.summary,
-                rec.state,
-                now,
-            );
+            (rec.screen_hash, rec.quiet_since) = refresh_quiet(carried, hash, &rec, now);
             if rec.summary.is_empty() {
                 rec.summary = fallback_summary_for(rec.state, screen.as_deref());
             }
@@ -2388,13 +2414,14 @@ mod tests {
     #[test]
     fn quiet_idle_survives_the_poll_loop() {
         // The merge alone is not the feature: the poller re-evaluates quiet
-        // with track_quiet_merged right after, and a summary the flip itself
+        // with refresh_quiet right after, and a summary the flip itself
         // invented reads as fresh activity and resets the clock the flip
         // just measured. Drive three polls to prove Idle survives.
         let now = 100_000;
         let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
         old.quiet_since = now - 600;
         let h = 0xABCD_1234_u64; // screen has not moved across all polls
+        old.screen_hash = h;
 
         let rec = merge_record_owned(
             Some(&old),
@@ -2412,15 +2439,7 @@ mod tests {
         assert_eq!(rec.state, AgentState::Idle);
 
         // What the poller does next, verbatim.
-        let carried_summary = old.summary.as_str();
-        let (nh, nq) = track_quiet_merged(
-            (h, old.quiet_since),
-            Some(h),
-            carried_summary,
-            &rec.summary,
-            rec.state,
-            now,
-        );
+        let (nh, nq) = refresh_quiet(Some(&old), Some(h), &rec, now);
         assert_eq!(
             nq,
             now - 600,
@@ -2469,6 +2488,74 @@ mod tests {
         )
         .expect("no record");
         assert_eq!(rec3.state, AgentState::Idle);
+    }
+
+    #[test]
+    fn resumed_work_restarts_the_idle_clock() {
+        // The reported bug: a pane that just started working again kept
+        // showing the previous stillness in the Idle column until its
+        // pixels visibly moved (spinner frames are denoised out of the
+        // hash, so a busy screen can hash unchanged for minutes). The
+        // state flip itself is activity: entering Working restarts the
+        // visible-quiet clock the same poll.
+        let now = 100_000;
+        let h = 0xABCD_1234_u64; // unchanged screen, still hash
+        let mut old = carried("pi", AgentState::Idle, 500, now - 900, now - 900);
+        old.quiet_since = now - 900;
+        old.screen_hash = h;
+        // Merge alone flips on a recently-quiet screen (fresh CPU ticks
+        // keep Stuck out of it) ...
+        let mut fresh = old.clone();
+        fresh.quiet_since = now - 2;
+        let rec = merge_record_owned(
+            Some(&fresh),
+            false,
+            None,
+            Some(("pi", 900, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        // ... and the poller's verbatim step restarts the clock even
+        // when the screen did not move this poll. (`old` still carries
+        // the stale clock here on purpose: the restart must not depend
+        // on the screen having moved first.)
+        let (nh, nq) = refresh_quiet(Some(&old), Some(h), &rec, now);
+        assert_eq!(nh, h);
+        assert_eq!(nq, now, "resumed work kept showing the old stillness");
+        // Steady working keeps the screen clock (no whitewash): the
+        // stuck smell still accumulates on a frozen screen.
+        let mut steady = rec.clone();
+        steady.screen_hash = h;
+        steady.quiet_since = now - 60;
+        let (sh, sq) = refresh_quiet(Some(&steady), Some(h), &steady, now + 60);
+        assert_eq!((sh, sq), (h, now - 60));
+        // A demotion into Idle keeps the old clock — that stillness is
+        // the whole reason it demoted.
+        let mut working = carried("pi", AgentState::Working, 500, now - 4, now - 900);
+        working.quiet_since = now - 600;
+        working.screen_hash = h;
+        let demoted = merge_record_owned(
+            Some(&working),
+            false,
+            None,
+            Some(("pi", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(demoted.state, AgentState::Idle);
+        let (_, dq) = refresh_quiet(Some(&working), Some(h), &demoted, now);
+        assert_eq!(dq, now - 600, "demotion must not whitewash stillness");
     }
 
     #[test]

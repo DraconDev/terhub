@@ -1010,6 +1010,12 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                 Some(o) if o.agent == agent => o.handle.clone(),
                 _ => String::new(),
             };
+            // Entering Working (or a new agent taking the pane) is
+            // activity in itself, pixels or not: restart the
+            // visible-quiet clock so the Idle column reads fresh
+            // instead of the previous stillness.
+            let fresh_work = ev.state == AgentState::Working
+                || old.map(|r| r.agent != agent).unwrap_or(true);
             registry.insert(
                 ev.pane.clone(),
                 AgentRecord {
@@ -1038,9 +1044,16 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     cpu_still_since: 0,
                     agent_start: 0,
                     last_turn_secs,
-                    // A hook event is not a screen change: carry the clock.
+                    // A hook event is not a screen change: carry the hash.
+                    // Fresh work restarts the visible-quiet clock (see
+                    // `fresh_work` above); demotions into Idle keep the
+                    // old clock — that stillness is the point.
                     screen_hash: old.map(|r| r.screen_hash).unwrap_or(0),
-                    quiet_since: old.map(|r| r.quiet_since).unwrap_or(0),
+                    quiet_since: if fresh_work {
+                        now
+                    } else {
+                        old.map(|r| r.quiet_since).unwrap_or(0)
+                    },
                     // A prompt-less event keeps the old prompt, not a blank.
                     last_prompt_at: if ev.prompt.is_empty() {
                         old.map(|r| r.last_prompt_at).unwrap_or(0)
@@ -1240,6 +1253,77 @@ mod tests {
         apply_event_to(&mut reg, &ev2, 200);
         assert_eq!(reg["%1"].last_prompt, "fix it");
         assert_eq!(reg["%1"].last_prompt_at, 100);
+    }
+
+    #[test]
+    fn hook_idle_to_working_restarts_quiet_clock() {
+        // Reported bug: starting work in an idle pane flipped State to
+        // working but the Idle column kept showing the old stillness
+        // until the pixels visibly moved. Entering Working is activity
+        // in itself, so the hook restarts the visible-quiet clock.
+        let now = 100_000;
+        let mut reg = HashMap::new();
+        let idle = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Idle,
+            summary: "session ended".to_string(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &idle, now - 900);
+        // Long-still screen behind the idle record.
+        reg.get_mut("%1").unwrap().quiet_since = now - 900;
+        let work = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+            prompt: "fix it".to_string(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &work, now);
+        assert_eq!(reg["%1"].state, AgentState::Working);
+        assert_eq!(reg["%1"].state_since, now);
+        assert_eq!(
+            reg["%1"].quiet_since,
+            now,
+            "resumed work kept showing the old stillness"
+        );
+        // A demotion back into Idle keeps the clock — that stillness
+        // is the whole reason it demoted.
+        let idle2 = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Idle,
+            summary: "response finished".to_string(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &idle2, now + 10);
+        assert_eq!(reg["%1"].state, AgentState::Idle);
+        assert_eq!(
+            reg["%1"].quiet_since,
+            now,
+            "demotion must not whitewash stillness"
+        );
+        // A new agent taking the pane restarts the clock whatever it
+        // reports: the predecessor's stillness is not its own.
+        let takeover = HookEvent {
+            pane: "%1".to_string(),
+            agent: "muse".to_string(),
+            state: AgentState::Waiting,
+            summary: "approve?".to_string(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &takeover, now + 20);
+        assert_eq!(reg["%1"].agent, "muse");
+        assert_eq!(reg["%1"].quiet_since, now + 20);
     }
 
     #[test]
