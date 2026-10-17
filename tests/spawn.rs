@@ -89,7 +89,7 @@ fn phase_pause_resume() {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            let _ = terhub::proc::resume_group(self.0.id());
+            let _ = terhub::proc::resume_group(self.0.id(), None);
             let _ = self.0.kill();
             for _ in 0..20 {
                 if matches!(self.0.try_wait(), Ok(Some(_))) {
@@ -107,12 +107,18 @@ fn phase_pause_resume() {
     let guard = Guard(child);
     let pid = guard.0.id();
     assert!(!terhub::proc::is_stopped(pid));
-    terhub::proc::pause_group(pid).unwrap();
+    // Identity-verified path: the live child's listed starttime.
+    let expect = terhub::proc::proc_starttime(pid);
+    assert!(expect.is_some(), "live child must have a starttime");
+    terhub::proc::pause_group(pid, expect).unwrap();
     assert!(wait_stopped(pid, true), "sleep must show T after STOP");
-    terhub::proc::resume_group(pid).unwrap();
+    terhub::proc::resume_group(pid, expect).unwrap();
     assert!(wait_stopped(pid, false), "sleep must run after CONT");
-    assert!(terhub::proc::pause_group(0).is_err());
-    assert!(terhub::proc::pause_group(1).is_err());
+    // A stale starttime is refused without signalling.
+    terhub::proc::pause_group(pid, Some(expect.unwrap().wrapping_add(1))).unwrap_err();
+    assert!(!terhub::proc::is_stopped(pid), "refused pause must not stop");
+    assert!(terhub::proc::pause_group(0, None).is_err());
+    assert!(terhub::proc::pause_group(1, None).is_err());
 }
 
 fn phase_respawn() {

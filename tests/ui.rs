@@ -1998,7 +1998,7 @@ fn pause_key_toggles_live_process_tree() {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            let _ = terhub::proc::resume_group(self.0.id());
+            let _ = terhub::proc::resume_group(self.0.id(), None);
             let _ = self.0.kill();
             for _ in 0..20 {
                 if matches!(self.0.try_wait(), Ok(Some(_))) {

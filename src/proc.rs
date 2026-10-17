@@ -740,6 +740,33 @@ mod tests {
     }
 
     #[test]
+    fn live_starttime_matches_snapshot() {
+        // The signalling identity anchor must agree with the poll's
+        // snapshot for the same process; an impossible pid has none.
+        let me = std::process::id();
+        let live = proc_starttime(me);
+        assert!(live.is_some_and(|s| s > 0));
+        assert_eq!(live, Snapshot::capture().proc_start(me));
+        assert_eq!(proc_starttime(999_999_999), None);
+    }
+
+    #[test]
+    fn signal_tree_refuses_stale_identity() {
+        // SIGCONT on self is a harmless no-op, which makes it the safe
+        // probe: matching identity passes, a stale starttime is refused
+        // before kill() is reached, and None keeps the legacy path.
+        let me = std::process::id();
+        let start = proc_starttime(me).expect("own starttime");
+        signal_tree(me, libc::SIGCONT, "probe", Some(start)).unwrap();
+        signal_tree(me, libc::SIGCONT, "probe", None).unwrap();
+        let err = signal_tree(me, libc::SIGCONT, "probe", Some(start.wrapping_add(1)))
+            .unwrap_err();
+        assert!(err.to_string().contains("recycled"), "unexpected: {err:#}");
+        assert!(signal_tree(0, libc::SIGCONT, "probe", None).is_err());
+        assert!(signal_tree(1, libc::SIGCONT, "probe", None).is_err());
+    }
+
+    #[test]
     fn direct_binary_matches() {
         let dir = fake_proc(
             "direct",
