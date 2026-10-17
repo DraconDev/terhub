@@ -647,8 +647,7 @@ mod tests {
         // Fake tmux logs every invocation's argv: submit=false must
         // produce exactly one call (the text), submit=true the text
         // plus Enter.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-auto-submit-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-auto-submit-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("calls.log");
