@@ -588,6 +588,25 @@ mod tests {
     }
 
     #[test]
+    fn send_keys_rule_accepts_submit_flag() {
+        // A rule must be able to type without executing: submit = false
+        // has to parse (deny_unknown_fields rejects unknown keys, so an
+        // undeclared flag fails here, not silently).
+        let dir = std::env::temp_dir().join(format!("terhub-rules-submit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("automation.toml");
+        std::fs::write(
+            &path,
+            "[[rule]]\nname = \"t\"\nenabled = true\non = \"waiting\"\naction = \"send-keys\"\ntext = \"hi\"\nsubmit = false\n",
+        )
+        .unwrap();
+        let rules = load_rules_from(&path).expect("submit flag must parse");
+        assert_eq!(rules.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn corrupt_rules_file_errors_instead_of_empty() {
         let dir = std::env::temp_dir().join(format!("terhub-rules-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
