@@ -1841,6 +1841,19 @@ impl App {
         self.filtered.get(self.pane_selected)
     }
 
+    /// Name of the tmux session hosting this TUI, if known (resolved
+    /// from `own_pane` via the pane list). Session-kill refuses this
+    /// session: killing it would kill the hub itself. Unknown (no
+    /// own pane, or a stale list) means no refusal — same positive-
+    /// identification rule as the own-pane guards.
+    fn own_session(&self) -> Option<&str> {
+        let own = self.own_pane.as_deref()?;
+        self.panes
+            .iter()
+            .find(|p| p.id == own)
+            .map(|p| p.session.as_str())
+    }
+
     pub fn select_pane(&mut self, idx: usize) {
         self.pane_selected = idx;
         self.clamp_pane_selection();
@@ -2629,12 +2642,19 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => self.cancel_modal(),
             KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
-                match tmux.kill_session(&name) {
-                    Ok(_) => {
-                        self.set_status(format!("killed {name}"));
-                        self.refresh(tmux);
+                // Never kill the session hosting this TUI: it would
+                // kill the hub out from under itself (mirrors the
+                // own-pane guards on the pane paths).
+                if self.own_session() == Some(name.as_str()) {
+                    self.set_status(format!("won't kill own session {name} (detach first)"));
+                } else {
+                    match tmux.kill_session(&name) {
+                        Ok(_) => {
+                            self.set_status(format!("killed {name}"));
+                            self.refresh(tmux);
+                        }
+                        Err(e) => self.set_status(format!("kill failed: {e}")),
                     }
-                    Err(e) => self.set_status(format!("kill failed: {e}")),
                 }
                 self.cancel_modal();
             }
@@ -4924,16 +4944,9 @@ mod tests {
         app.refresh_filtered();
         app.own_pane = Some("%1".to_string());
         let (tmux, dir) = fake_tmux();
-        // Another session still dies on confirm.
-        app.mode = Mode::ConfirmKill("b".to_string());
-        app.on_key(press(KeyCode::Enter), &tmux);
-        assert_eq!(
-            app.status.as_deref(),
-            Some("killed b"),
-            "foreign session kill broke: {:?}",
-            app.status
-        );
-        // Own session is refused, never attempted.
+        // Own session is refused, never attempted. (Refuse first: a
+        // confirm triggers refresh(), and the fake tmux lists no
+        // panes, which would wipe the own-pane evidence.)
         app.mode = Mode::ConfirmKill("a".to_string());
         app.on_key(press(KeyCode::Enter), &tmux);
         assert!(
@@ -4941,6 +4954,15 @@ mod tests {
                 .as_deref()
                 .is_some_and(|s| s.contains("own session")),
             "own session kill not refused: {:?}",
+            app.status
+        );
+        // Another session still dies on confirm.
+        app.mode = Mode::ConfirmKill("b".to_string());
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(
+            app.status.as_deref(),
+            Some("killed b"),
+            "foreign session kill broke: {:?}",
             app.status
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -4982,7 +5004,12 @@ mod tests {
 
     /// Fake tmux: listings succeed empty, kills fail. No real tmux needed.
     fn fake_tmux() -> (Tmux, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!("terhub-faketmux-{}", std::process::id()));
+        // Unique per call, not just per process: parallel tests share
+        // the pid, and one test's cleanup used to delete a sibling's
+        // fake binary mid-run (the bulk_kill flake).
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("terhub-faketmux-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("tmux");
