@@ -1271,7 +1271,7 @@ fn merge_record(
 
 /// Merge one poll's evidence into a record. Identity priority: process tree
 /// beats screen guess (a `pi` binary is a fact; screen text is a hint).
-/// State priority: screen waiting/error/limited beats everything here (fresh hooks
+/// State priority: screen waiting/error/limited/done beats everything here (fresh hooks
 /// never reach this function); a live agent with an unreadable screen is
 /// working; a working agent with a long-still CPU sum is stuck. Anonymous
 /// screen states (patterns, no name) only survive paired with a process
@@ -1294,7 +1294,7 @@ fn merge_record_owned(
     quiet_idle_secs: u64,
     waiting_idle_secs: u64,
 ) -> Option<AgentRecord> {
-    use AgentState::{Error, Idle, Limited, Waiting, Working};
+    use AgentState::{Done, Error, Idle, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
         // A done screen beats a live process: finished agents keep their
         // REPL open. (Stale banners can't pin this: freshest-line-wins
@@ -1303,7 +1303,8 @@ fn merge_record_owned(
             if hit.state == Waiting
                 || hit.state == Error
                 || hit.state == Limited
-                || hit.state == Idle =>
+                || hit.state == Idle
+                || hit.state == Done =>
         {
             (pa.to_string(), hit.state, Source::Proc)
         }
@@ -1334,11 +1335,11 @@ fn merge_record_owned(
         _ => (now, String::new()),
     };
     // Waiting/error/limited rows show the prompt (or error) line that
-    // tripped the classifier — the text you must read to act. Idle rows
-    // show the completion line, for the same reason. Refreshed every poll;
-    // the clock above still decides notifications. Working rows stay
-    // summary-free: spinner text is noise, not information.
-    if matches!(state, Waiting | Error | Limited | Idle)
+    // tripped the classifier — the text you must read to act. Idle and
+    // Done rows show the completion line, for the same reason. Refreshed
+    // every poll; the clock above still decides notifications. Working
+    // rows stay summary-free: spinner text is noise, not information.
+    if matches!(state, Waiting | Error | Limited | Idle | Done)
         && let Some(hit) = screen.as_ref()
         && !hit.summary.is_empty()
     {
@@ -1519,13 +1520,17 @@ fn screen_fallback_summary(screen: Option<&str>) -> String {
 }
 
 /// Screen-line fallback gated to states whose screen names actionable text
-/// (a prompt or error line). Working rows stay summary-free — spinner text
-/// is noise, not information — and Stuck carries its own explanation from
-/// [`merge_record`], so neither borrows a screen line here.
+/// (a prompt, error, or completion line). Working rows stay summary-free —
+/// spinner text is noise, not information — and Stuck carries its own
+/// explanation from [`merge_record`], so neither borrows a screen line here.
 fn fallback_summary_for(state: AgentState, screen: Option<&str>) -> String {
     if matches!(
         state,
-        AgentState::Waiting | AgentState::Error | AgentState::Limited | AgentState::Idle
+        AgentState::Waiting
+            | AgentState::Error
+            | AgentState::Limited
+            | AgentState::Idle
+            | AgentState::Done
     ) {
         screen_fallback_summary(screen)
     } else {

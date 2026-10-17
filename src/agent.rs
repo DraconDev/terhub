@@ -257,11 +257,18 @@ pub fn resolve_handle(records: &[AgentRecord], target: &str) -> Option<String> {
 }
 
 /// A working turn completed: Working moved to a terminal-ish state.
+/// Done counts: a finished agent's turn duration is real time worked,
+/// not zero — omitting it recorded last_turn_secs = 0 on every
+/// Working→Done transition.
 pub fn turn_ended(from: AgentState, to: AgentState) -> bool {
     from == AgentState::Working
         && matches!(
             to,
-            AgentState::Waiting | AgentState::Error | AgentState::Limited | AgentState::Idle
+            AgentState::Waiting
+                | AgentState::Error
+                | AgentState::Limited
+                | AgentState::Idle
+                | AgentState::Done
         )
 }
 
