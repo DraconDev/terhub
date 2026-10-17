@@ -113,43 +113,21 @@ mod tests {
     #[test]
     fn wedged_server_times_out_instead_of_blocking() {
         // Same contract as the tmux backend: a wedged zellij server
-        // must time out, never block the caller. The fake binary is
-        // injected via PATH (save/restore: no other lib test resolves
-        // the zellij binary, and PATH is restored before any assert
-        // can panic).
+        // must time out, never block the caller. The fake binary goes
+        // through the test seam, so PATH stays untouched.
         let dir = std::env::temp_dir().join(format!("terhub-zellij-wedge-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("zellij"), "#!/bin/sh\nsleep 30\n").unwrap();
+        let bin = dir.join("zellij");
+        std::fs::write(&bin, "#!/bin/sh\nsleep 30\n").unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&dir.join("zellij"), std::fs::Permissions::from_mode(0o755))
-                .unwrap();
-        }
-        // Prepend (never replace): the fake script itself needs `sleep`
-        // from the real PATH.
-        let old_path = std::env::var_os("PATH");
-        let mut prepended = dir.as_os_str().as_encoded_bytes().to_vec();
-        prepended.push(b':');
-        if let Some(ref p) = old_path {
-            prepended.extend_from_slice(p.as_encoded_bytes());
-        }
-        use std::os::unix::ffi::OsStrExt;
-        let prepended_path = OsStrExt::from_bytes(&prepended).to_os_string();
-        unsafe {
-            std::env::set_var("PATH", prepended_path);
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let start = std::time::Instant::now();
-        let err = run(&["list-sessions", "--short"]).expect_err("wedged zellij must time out");
+        let err = run_with_bin(&bin, &["list-sessions", "--short"])
+            .expect_err("wedged zellij must time out");
         let elapsed = start.elapsed();
-        match old_path {
-            Some(p) => unsafe {
-                std::env::set_var("PATH", p);
-            },
-            None => unsafe {
-                std::env::remove_var("PATH");
-            },
-        }
         assert!(
             format!("{err:#}").contains("timed out"),
             "unexpected error: {err:#}"
