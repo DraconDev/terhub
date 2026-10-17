@@ -1314,6 +1314,14 @@ mod tests {
         let v = TrayView::disconnected();
         assert_eq!(v.icon_name(), "terhub-disconnected");
         assert!(!v.needs_attention());
+        // The tooltip must say the daemon is down, never a
+        // misleading zero-agents headline.
+        assert_eq!(v.title(), "terhub — daemon down");
+        assert!(
+            v.description().contains("terhub daemon start"),
+            "{}",
+            v.description()
+        );
         // A hub being open while the daemon is down still reads as
         // disconnected: the live badge would be a lie (we can't reach
         // the hub's pane).

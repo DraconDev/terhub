@@ -247,7 +247,7 @@ pub fn dry_run(
                 .filter(|(r, _, t)| r == &rule.name && now.saturating_sub(*t) < 3600)
                 .count() as u32
                 + pass_fires.get(rule.name.as_str()).copied().unwrap_or(0);
-            if false { // PROBE
+            if recent >= rule.hourly_cap {
                 out.push((rule.name.clone(), rec.pane.clone(), Verdict::Capped));
                 continue;
             }
@@ -736,6 +736,25 @@ mod tests {
             matches!(&out[1].2, Verdict::Fire(f) if f.pane == "%2"),
             "{out:?}"
         );
+    }
+
+    #[test]
+    fn evaluate_returns_fires_with_live_records() {
+        // evaluate() is what the daemon calls to fire rules: it must
+        // return (Fire, record) pairs for firing panes and nothing else.
+        let rules = vec![rule()];
+        let reg = registry();
+        let out = evaluate(&rules, &reg, &[], 1400);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0.pane, "%1");
+        assert_eq!(out[0].1.pane, "%1");
+        assert_eq!(out[0].1.state, AgentState::Waiting);
+        // Capped: no pairs at all.
+        let fires = vec![("resume".to_string(), "%1".to_string(), 1300)];
+        let mut capped = rule();
+        capped.cooldown_secs = 60;
+        let out = evaluate(&[capped], &reg, &fires, 1400);
+        assert!(out.is_empty(), "{out:?}");
     }
 
     #[test]
