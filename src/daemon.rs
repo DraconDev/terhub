@@ -4215,8 +4215,10 @@ mod tests {
     fn repeated_saves_leave_no_tmp_litter() {
         // Back-to-back saves can share a nanos tick: the attempt counter
         // keeps every tmp name unique, and each rename consumes its tmp.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-reg-sweep-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "terhub-reg-nolitter-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("registry.json");
@@ -4241,8 +4243,10 @@ mod tests {
     fn stale_save_tmps_swept_but_live_ones_kept() {
         // The sweep is mtime-vs-start: drive it directly with explicit
         // starts so the test never depends on wall-clock ordering.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-reg-sweep-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "terhub-reg-sweep-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("registry.json");
