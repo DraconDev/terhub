@@ -204,7 +204,10 @@ const STARTUP_WAIT: Duration = Duration::from_millis(500);
 /// storm.
 const RESPAWN_BACKOFF: Duration = Duration::from_secs(2);
 
-/// Epoch millis of the last self-heal attempt, or 0 when there was none.
+/// Epoch millis of the last *failed* self-heal attempt, or 0 when none is
+/// outstanding (never tried, or the last attempt succeeded). A success
+/// clears it so the next death heals immediately instead of waiting out
+/// the previous attempt's backoff.
 static LAST_RESPAWN_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Pure gate for [`ensure_running`]: an attempt is due only once the
@@ -284,9 +287,17 @@ pub fn ensure_running() -> bool {
         return false;
     }
     // Record the attempt before spawning so a slow spawn cannot be
-    // re-entered by a concurrent caller.
+    // re-entered by a concurrent caller. A success clears the stamp:
+    // the next death is a new incident, not a continuation, so it
+    // heals immediately instead of waiting out this attempt's backoff.
+    // A failure keeps it, so a permanently broken daemon is still
+    // retried at most once per backoff.
     LAST_RESPAWN_MS.store(now, std::sync::atomic::Ordering::Relaxed);
-    spawn_daemon().is_ok()
+    let healed = spawn_daemon().is_ok();
+    if healed {
+        LAST_RESPAWN_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+    healed
 }
 
 /// Lock the registry, recovering the data when a panicked holder poisoned it.

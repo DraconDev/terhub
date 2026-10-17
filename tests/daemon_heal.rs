@@ -107,7 +107,26 @@ fn a_dead_daemon_revives_itself() {
         "ensure_running reported a healthy daemon as dead"
     );
 
-    // 5. Leave the machine as we found it.
+    // 5. Backoff resets on success: a daemon dying right after a heal
+    //    is re-healed immediately, not after the 2s respawn backoff.
+    //    (Regression: the attempt stamp was never cleared, so this
+    //    second ensure_running fell inside the first heal's backoff.)
+    let out = client(&["daemon", "stop"]);
+    assert!(out.status.success(), "second stop failed");
+    assert!(
+        wait_for(|| !terhub::daemon::daemon_alive(), 100),
+        "daemon still alive after second stop"
+    );
+    assert!(
+        terhub::daemon::ensure_running(),
+        "re-heal after a fresh death waited out the old backoff"
+    );
+    assert!(
+        wait_for(terhub::daemon::daemon_alive, 100),
+        "daemon never came back from the second heal"
+    );
+
+    // 6. Leave the machine as we found it.
     let _ = client(&["daemon", "stop"]);
     let _ = std::fs::remove_dir_all(&runtime);
     let _ = std::fs::remove_dir_all(&data);
