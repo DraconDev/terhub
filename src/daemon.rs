@@ -1796,16 +1796,7 @@ fn poll_sync(
     prev: HashMap<String, AgentRecord>,
     manifests: &[CompiledManifest],
     tune: Tunables,
-) -> (
-    HashMap<String, AgentRecord>,
-    Vec<String>,
-    Option<String>,
-    bool,
-    // Panes tmux listed this poll: the mid-poll hook merge admits
-    // fresh Hook records only for these, so events for dead panes
-    // cannot resurrect as ghosts. None when the listing failed.
-    Option<std::collections::HashSet<String>>,
-) {
+) -> PollOutput {
     match Tmux::new() {
         // tmux gone: keep stale rather than wipe
         Ok(t) => poll_sync_with(&t, prev, manifests, tune),
@@ -1837,13 +1828,7 @@ fn poll_sync_with(
     prev: HashMap<String, AgentRecord>,
     manifests: &[CompiledManifest],
     tune: Tunables,
-) -> (
-    HashMap<String, AgentRecord>,
-    Vec<String>,
-    Option<String>,
-    bool,
-    Option<std::collections::HashSet<String>>,
-) {
+) -> PollOutput {
     // Guarded: the fake tmux is a script this calls exec, and every fork
     // must not land inside a concurrent flock assertion.
     let _guard = fork_guard();
