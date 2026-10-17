@@ -107,10 +107,8 @@ fn ci_actions_pin_shas_not_floating_tags() {
                 continue;
             };
             let after = code[at..].split('@').nth(1).unwrap_or("");
-            let sha: String =
-                after.chars().take_while(|c| !c.is_whitespace()).collect();
-            let pinned =
-                sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
+            let sha: String = after.chars().take_while(|c| !c.is_whitespace()).collect();
+            let pinned = sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
             if !pinned {
                 unpinned.push(format!("{file}: {code}"));
             }
@@ -159,10 +157,7 @@ fn ci_gate_steps_cannot_be_neutralized() {
 #[test]
 fn release_workflow_guards_tags() {
     let text = release_yml();
-    assert!(
-        text.contains("tags:"),
-        "release.yml must trigger on tags"
-    );
+    assert!(text.contains("tags:"), "release.yml must trigger on tags");
     assert!(
         text.contains("\"v*\"") || text.contains("'v*'"),
         "release.yml must trigger on v* tags"
