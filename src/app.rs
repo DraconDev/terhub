@@ -8212,6 +8212,26 @@ mod tests {
         assert_eq!(app.active_saved_filter.as_deref(), Some("work"));
     }
 
+    #[test]
+    fn startup_names_no_saved_filter_from_the_exclusion() {
+        // `[ui] filter` persists the STANDING exclusion (`!zsh`);
+        // saved queries are live includes applied to an empty live
+        // filter at startup. Matching one domain against the other
+        // named a filter that was never applied.
+        let mut cfg = AppConfig::default();
+        cfg.filter = "!zsh".to_string();
+        cfg.saved_filters = vec![crate::config::SavedFilter {
+            name: "w".to_string(),
+            query: "!zsh".to_string(),
+        }];
+        let app = App::new(cfg);
+        assert_eq!(app.filter, "");
+        assert_eq!(
+            app.active_saved_filter, None,
+            "the exclusion named an unapplied saved filter"
+        );
+    }
+
     /// Rename moves the entry and the header marker; delete removes the
     /// entry and drops the marker.
     #[test]
