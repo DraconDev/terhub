@@ -1161,8 +1161,9 @@ mod tests {
         append_entry(&path, &Entry::prompt(100, "%1", "pi", "one")).unwrap();
         append_entry(&path, &Entry::prompt(200, "%1", "pi", "two")).unwrap();
         append_entry(&path, &Entry::prompt(300, "%1", "pi", "three")).unwrap();
-        // now keeps the last two within 90 days, drops the first.
-        let kept = prune(&path, 300 + 89 * 86400, 90).unwrap();
+        // now is just past 90 days after the first entry: the last
+        // two stay, the first drops.
+        let kept = prune(&path, 100 + 90 * 86400 + 1, 90).unwrap();
         assert_eq!(kept, 2);
         let back = read_entries(&path);
         assert_eq!(
