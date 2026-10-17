@@ -247,7 +247,7 @@ pub fn dry_run(
                 .filter(|(r, _, t)| r == &rule.name && now.saturating_sub(*t) < 3600)
                 .count() as u32
                 + pass_fires.get(rule.name.as_str()).copied().unwrap_or(0);
-            if recent >= rule.hourly_cap {
+            if false { // PROBE
                 out.push((rule.name.clone(), rec.pane.clone(), Verdict::Capped));
                 continue;
             }
