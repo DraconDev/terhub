@@ -2067,6 +2067,53 @@ where
     result
 }
 
+/// Attempt counter, folded into save-tmp names: two saves on one pid
+/// can share a nanos tick, so pid + nanos alone does not uniquely name
+/// an attempt. With the counter every attempt name is unique, which
+/// means a retry never abandons a name a later attempt will reuse —
+/// the AlreadyExists path below can only be somebody else's file.
+static SAVE_ATTEMPT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Process start (epoch secs), pinned on first save: tmp leftovers
+/// older than this predate us, so the stale sweep can never touch a
+/// live peer's in-flight tmp.
+static PROCESS_START_SECS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+
+/// Best-effort removal of our own stale save tmps: crash leftovers no
+/// future save will ever collide with, so without a sweep they
+/// accumulate one per crash. Only our pid, only predating our start —
+/// a live peer (a concurrent save on this process, or a second daemon
+/// on this runtime dir) always has a newer mtime or a different pid,
+/// so the sweep can never eat an in-flight save.
+fn sweep_stale_tmps(final_path: &Path, pid: u32, start_secs: u64) {
+    let Some(dir) = final_path.parent() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let needle = format!("tmp.{pid}.");
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.contains(&needle) {
+            continue;
+        }
+        // Unreadable mtime: conservative, leave it alone.
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
+        if stale.is_some_and(|mtime| mtime < start_secs) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
     let agents: Vec<&AgentRecord> = registry.values().collect();
     let text = match serde_json::to_string_pretty(&agents) {
@@ -2077,13 +2124,15 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
         }
     };
     // Tmp + rename: a crash mid-write never leaves a half file behind.
-    // The tmp name includes pid + nanos so two daemons pointed at the
-    // same runtime dir (or a leftover tmp from a prior run) interleave
-    // instead of clobbering each other. `create_new(true)` is the
-    // same-pid same-nanos guard: if another save on the same pid
-    // collides (sub-nanosecond race), retry with a fresh nonce rather
-    // than truncating a tmp the first save still needs.
+    // The tmp name includes pid + nanos + a per-process attempt counter
+    // so two daemons pointed at the same runtime dir (or two saves on
+    // one pid sharing a nanos tick) interleave instead of clobbering
+    // each other. `create_new(true)` is the last-resort guard: a hit
+    // means somebody else's live file, so retry with a fresh name
+    // rather than truncating a tmp another save still needs.
     let pid = std::process::id();
+    let start = *PROCESS_START_SECS.get_or_init(now_unix);
+    sweep_stale_tmps(path, pid, start);
     let mut attempt = 0;
     let result: std::io::Result<()> = (|| loop {
         attempt += 1;
@@ -2097,7 +2146,8 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let tmp = path.with_extension(format!("tmp.{pid}.{nonce}"));
+        let tag = SAVE_ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = path.with_extension(format!("tmp.{pid}.{nonce}.{tag}"));
         match std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
