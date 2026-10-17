@@ -132,6 +132,18 @@ fn web_dashboard_and_apis() {
     assert_eq!(code, 200);
     assert!(body.contains("<title>terhub</title>"), "no dashboard");
     assert!(body.contains("api/status"), "no api wiring");
+    // Stored-XSS guard on the served bytes (not just the const): the
+    // dashboard renders untrusted fleet snapshot strings with
+    // innerHTML, so the esc() sink must encode quotes as well as
+    // angle brackets — a `" onmouseover="...` pane needs no `<`.
+    assert!(
+        body.contains("replace(/\"/g,\"&quot;\")"),
+        "served dashboard esc() must encode double quotes"
+    );
+    assert!(
+        body.contains("replace(/'/g,\"&#39;\")"),
+        "served dashboard esc() must encode single quotes"
+    );
 
     // No daemon yet: live status degrades to 503, not 500 — while
     // stats/timeline keep serving ledger history (frozen, not stale).

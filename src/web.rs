@@ -377,7 +377,7 @@ button:hover { filter: brightness(1.2); }
 let sel = null;
 async function jget(u) { const r = await fetch(u); if (!r.ok) throw new Error(u + " " + r.status); return r.json(); }
 function age(s) { if (s < 60) return s + "s"; if (s < 3600) return Math.floor(s/60) + "m"; return Math.floor(s/3600) + "h" + Math.floor(s%3600/60) + "m"; }
-function esc(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function esc(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 async function refresh() {
   try {
     const st = await jget("/api/status");
