@@ -4941,6 +4941,36 @@ mod tests {
     }
 
     #[test]
+    fn live_search_is_multi_token_or() {
+        // The field contract is multi-token OR-combined; the old
+        // single-substring form hid every row here (no column
+        // contains "nvim bash" contiguously).
+        let mut app = app_with_panes();
+        app.filter = "nvim bash".to_string();
+        app.refresh_filtered();
+        assert_eq!(
+            app.filtered.len(),
+            2,
+            "multi-token query should OR-match both rows"
+        );
+        // A `!`-prefixed token excludes within the same query.
+        app.filter = "editor !nvim".to_string();
+        app.refresh_filtered();
+        assert_eq!(
+            app.filtered.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["%2"],
+            "!-token should hide only its rows"
+        );
+        // Single tokens behave exactly as before.
+        app.filter = "nvim".to_string();
+        app.refresh_filtered();
+        assert_eq!(
+            app.filtered.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["%1"],
+        );
+    }
+
+    #[test]
     fn refresh_keeps_selection_by_name() {
         let mut app = app_with(&["a", "b"]);
         app.select(2); // "b"
