@@ -31,7 +31,7 @@ fn list_sessions_returns_vec() {
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
     }
-    let _ = tmux; // PROBE: no session created
+    tmux.new_session(&name, None, None).unwrap();
     let sessions = tmux.list_sessions().unwrap();
     // Non-vacuous: the session just created must be present (`.all()`
     // over an empty vec is true and would prove nothing).
@@ -64,7 +64,7 @@ fn pane_discovery_capture_and_kill() {
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
     }
-    let _ = tmux; // PROBE: no session created
+    tmux.new_session(&name, None, None).unwrap();
     // window 0: split into 2 panes; window 1: single pane.
     tmux.split_window(&name).unwrap();
     tmux.new_window(&name, "second", None, None).unwrap();
@@ -91,7 +91,7 @@ fn sidebar_filter_tracks_selection() {
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
     }
-    let _ = tmux; // PROBE: no session created
+    tmux.new_session(&name, None, None).unwrap();
     let mut app = App::new(AppConfig::default());
     app.refresh(&tmux);
     let idx = app
@@ -118,7 +118,7 @@ fn swap_panes_flips_positions() {
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
     }
-    let _ = tmux; // PROBE: no session created
+    tmux.new_session(&name, None, None).unwrap();
     tmux.split_window(&name).unwrap();
     let before = tmux.list_panes(&name).unwrap();
     assert_eq!(before.len(), 2);
@@ -141,7 +141,7 @@ fn window_of_pane_resolves() {
     if tmux.session_exists(&name) {
         tmux.kill_session(&name).unwrap();
     }
-    let _ = tmux; // PROBE: no session created
+    tmux.new_session(&name, None, None).unwrap();
     let panes = tmux.list_panes(&name).unwrap();
     assert_eq!(panes.len(), 1);
     let window = window_of_pane(&tmux, &panes[0].id).unwrap();
