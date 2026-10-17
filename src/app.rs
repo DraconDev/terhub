@@ -2834,6 +2834,29 @@ impl App {
             self.fetch_native();
             return None;
         }
+        // Pane actions work from the Sessions table too (they operate
+        // on the selected pane, which exists under either focus) —
+        // otherwise these bare keys fall into type-to-filter below.
+        if key_matches(&cfg.spec("mark"), &code, mods) {
+            self.toggle_mark();
+            return None;
+        }
+        if key_matches(&cfg.spec("unmark"), &code, mods) {
+            self.do_unmark();
+            return None;
+        }
+        if key_matches(&cfg.spec("bulk"), &code, mods) {
+            self.do_bulk();
+            return None;
+        }
+        if key_matches(&cfg.spec("restart"), &code, mods) {
+            self.do_restart();
+            return None;
+        }
+        if key_matches(&cfg.spec("pause"), &code, mods) {
+            self.do_pause();
+            return None;
+        }
         // Custom commands run against the selected pane from either focus
         // (mirrors the Panes branch below).
         let custom = cfg
@@ -2855,7 +2878,7 @@ impl App {
                 self.set_status(LEGEND.to_string());
             } else {
                 self.set_status(format!(
-                    "sessions: {}=new {}=spawn {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hosts {}=hide alt+1..8=tabs {}=quit",
+                    "sessions: {}=new {}=spawn {}=rename {}=kill {}=attach {}=preview {}=theme {}=settings {}=hosts {}=hide {}=mark {}=unmark {}=bulk {}=restart {}=pause alt+1..8=tabs {}=quit",
                     cfg.key_label("new"),
                     cfg.key_label("spawn"),
                     cfg.key_label("rename"),
@@ -2866,6 +2889,11 @@ impl App {
                     cfg.key_label("settings"),
                     cfg.key_label("hosts"),
                     cfg.key_label("hide_shells"),
+                    cfg.key_label("mark"),
+                    cfg.key_label("unmark"),
+                    cfg.key_label("bulk"),
+                    cfg.key_label("restart"),
+                    cfg.key_label("pause"),
                     cfg.key_label("quit"),
                 ));
             }
@@ -4370,6 +4398,47 @@ impl App {
         }
     }
 
+    /// Clear all marks, reporting the count. Shared by both foci:
+    /// pane actions work from the Sessions table too (they operate on
+    /// the selected pane, which exists under either focus).
+    fn do_unmark(&mut self) {
+        let n = self.marked.len();
+        self.marked.clear();
+        self.set_status(if n == 0 {
+            "nothing marked".to_string()
+        } else {
+            format!("cleared {n} mark(s)")
+        });
+    }
+
+    /// Offer to re-run the selected pane's command. Shared by both
+    /// foci for the same reason as [`Self::do_unmark`].
+    fn do_restart(&mut self) {
+        match self.selected_pane() {
+            Some(p) if is_native_pane(&p.id) => self.set_status(format!(
+                "can't restart native tab {} (re-run inside the tab)",
+                p.id
+            )),
+            Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
+                "can't restart remote row {} (jump in to manage it)",
+                p.id
+            )),
+            Some(p) if self.own_pane.as_deref() == Some(p.id.as_str()) => {
+                self.set_status("won't restart own pane (q then reopen)".to_string())
+            }
+            Some(p) if p.command.trim().is_empty() => {
+                self.set_status(format!("nothing to re-run in {}", p.id))
+            }
+            Some(p) => {
+                self.mode = Mode::ConfirmRestartPane {
+                    id: p.id.clone(),
+                    command: p.command.clone(),
+                }
+            }
+            None => self.set_status("no pane selected".to_string()),
+        }
+    }
+
     /// Session actions with no pane meaning (`new`/`rename`/`detach`), shared
     /// by both foci so they work from the table too — otherwise the
     /// empty-state hint names a dead key in the default focus.
@@ -4525,13 +4594,7 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("unmark"), &code, mods) {
-            let n = self.marked.len();
-            self.marked.clear();
-            self.set_status(if n == 0 {
-                "nothing marked".to_string()
-            } else {
-                format!("cleared {n} mark(s)")
-            });
+            self.do_unmark();
             return None;
         }
         if key_matches(&cfg.spec("attend"), &code, mods) {
@@ -4559,29 +4622,7 @@ impl App {
             return None;
         }
         if key_matches(&cfg.spec("restart"), &code, mods) {
-            match self.selected_pane() {
-                Some(p) if is_native_pane(&p.id) => self.set_status(format!(
-                    "can't restart native tab {} (re-run inside the tab)",
-                    p.id
-                )),
-                Some(p) if is_remote_pane(&p.id) => self.set_status(format!(
-                    "can't restart remote row {} (jump in to manage it)",
-                    p.id
-                )),
-                Some(p) if self.own_pane.as_deref() == Some(p.id.as_str()) => {
-                    self.set_status("won't restart own pane (q then reopen)".to_string())
-                }
-                Some(p) if p.command.trim().is_empty() => {
-                    self.set_status(format!("nothing to re-run in {}", p.id))
-                }
-                Some(p) => {
-                    self.mode = Mode::ConfirmRestartPane {
-                        id: p.id.clone(),
-                        command: p.command.clone(),
-                    }
-                }
-                None => self.set_status("no pane selected".to_string()),
-            }
+            self.do_restart();
             return None;
         }
         if key_matches(&cfg.spec("pause"), &code, mods) {
@@ -4986,6 +5027,38 @@ mod tests {
             None
         );
         assert_eq!(app.mode, Mode::Settings);
+    }
+
+    #[test]
+    fn pane_action_keys_fire_under_sessions_focus() {
+        // Bare mark/unmark/bulk/restart/pause must fire under
+        // Sessions focus — not fall into type-to-filter, which
+        // shadows them in the Sessions-fallback branch.
+        let mut app = app_with_panes();
+        app.focus = Focus::Sessions;
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char(' ')), &tmux); // mark
+        assert!(app.marked.contains("%1"), "mark dead: {:?}", app.status);
+        assert_eq!(app.mode, Mode::Normal, "mark opened the filter");
+        app.on_key(press(KeyCode::Char('u')), &tmux); // unmark
+        assert!(app.marked.is_empty(), "unmark dead: {:?}", app.status);
+        app.on_key(press(KeyCode::Char('b')), &tmux); // bulk
+        assert!(
+            !matches!(app.mode, Mode::PromptFilter),
+            "bulk fell into type-to-filter"
+        );
+        app.on_key(press(KeyCode::Char('z')), &tmux); // pause
+        assert!(
+            !matches!(app.mode, Mode::PromptFilter),
+            "pause fell into type-to-filter"
+        );
+        app.on_key(press(KeyCode::Char('e')), &tmux); // restart
+        assert!(
+            matches!(app.mode, Mode::ConfirmRestartPane { .. }),
+            "restart dead: {:?} / {:?}",
+            app.mode,
+            app.status
+        );
     }
 
     #[test]
