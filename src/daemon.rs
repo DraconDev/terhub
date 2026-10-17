@@ -840,7 +840,7 @@ async fn poll_loop(
                 // every concurrent snapshot/automation reader.
                 let transitions = {
                     let mut reg = lock_registry(&registry);
-                    merge_mid_poll_hooks(&mut next, &reg, poll_start);
+                    merge_mid_poll_hooks(&mut next, &reg, poll_start, live_panes.as_ref());
                     let t = detect_all_transitions(&reg, &next);
                     *reg = next;
                     crate::agent::ensure_handles(&mut reg);
