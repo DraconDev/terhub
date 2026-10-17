@@ -59,10 +59,7 @@ pub fn parse_sessions(out: &str) -> Vec<SSession> {
         let Some((pid, name)) = head.split_once('.') else {
             continue;
         };
-        if pid.is_empty()
-            || !pid.bytes().all(|b| b.is_ascii_digit())
-            || name.is_empty()
-        {
+        if pid.is_empty() || !pid.bytes().all(|b| b.is_ascii_digit()) || name.is_empty() {
             continue;
         }
         let attached = l.contains("(Attached)");
