@@ -584,6 +584,11 @@ impl Server {
             .await
         });
 
+        // Bounded connection tasks: each accepted stream spawns a task
+        // that can linger up to the 10s read timeout, so an uncapped
+        // accept loop lets a peer holding many connections open pile up
+        // registry-Arc-holding tasks without bound.
+        let permits = Arc::new(tokio::sync::Semaphore::new(MAX_CONN_TASKS));
         loop {
             if self.shutdown.load(Ordering::SeqCst) {
                 break;
@@ -608,9 +613,7 @@ impl Server {
             let runtime = self.runtime.clone();
             let runtime_guard = self.runtime_guard.clone();
             let shutdown = self.shutdown.clone();
-            tokio::spawn(async move {
-                handle_conn(stream, reg, runtime, runtime_guard, shutdown).await
-            });
+            admit_conn(stream, reg, runtime, runtime_guard, shutdown, permits.clone());
         }
 
         // Graceful drain: the flag is set, so the poll loop breaks within
@@ -626,6 +629,33 @@ impl Server {
 /// Max request line the daemon accepts: hook events are small JSON, so
 /// 1MB is vast headroom — anything bigger truncates into "bad request".
 const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
+
+/// Max concurrent connection-handler tasks. Hook bursts and TUI polls
+/// are single-digit concurrent; 64 is vast headroom while bounding the
+/// pile-up to 64 task stacks instead of one per open fd.
+const MAX_CONN_TASKS: usize = 64;
+
+/// Admit one accepted stream under the connection-task cap: a free
+/// permit spawns the handler (held for the task's whole life, including
+/// the 10s read wait); at capacity the stream is dropped unhandled so
+/// the peer sees EOF and can retry. Shedding beats queueing: a queue
+/// would just move the pile-up behind a semaphore.
+fn admit_conn(
+    stream: TokioUnixStream,
+    registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
+    runtime: PathBuf,
+    runtime_guard: RuntimeDirGuard,
+    shutdown: Arc<AtomicBool>,
+    permits: Arc<tokio::sync::Semaphore>,
+) {
+    let Ok(permit) = permits.try_acquire_owned() else {
+        return;
+    };
+    tokio::spawn(async move {
+        let _permit = permit;
+        handle_conn(stream, registry, runtime, runtime_guard, shutdown).await;
+    });
+}
 
 async fn handle_conn(
     stream: TokioUnixStream,
