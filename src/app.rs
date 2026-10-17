@@ -4911,6 +4911,25 @@ mod tests {
     }
 
     #[test]
+    fn modifier_quit_binding_quits() {
+        // Quit rebound to a modifier combo must quit: the dispatch
+        // "quit" arm returned None ("unclaimed"), so the caller
+        // skipped it and the press died with no quit and no status.
+        let mut app = app_with(&["a"]);
+        app.config
+            .keys
+            .insert("quit".to_string(), "ctrl+q".to_string());
+        let tmux = Tmux::new().unwrap();
+        assert_eq!(
+            app.on_key(
+                KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL),
+                &tmux
+            ),
+            Some(AppEvent::Quit)
+        );
+    }
+
+    #[test]
     fn quit_and_esc_exit() {
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
