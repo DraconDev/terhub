@@ -1732,15 +1732,19 @@ fn fallback_summary_for(state: AgentState, screen: Option<&str>) -> String {
 /// Outage result: the registry carries over untouched, and `outage` tells
 /// the poll loop to skip session/foreground diffing — unknown is not
 /// empty, and diffing it would log phantom open/close/focus events.
-fn outage_result(
-    prev: HashMap<String, AgentRecord>,
-) -> (
+/// One poll pass: the next registry, session names, foreground pane,
+/// outage flag, and the panes tmux listed (None when the listing
+/// failed, so mid-poll ghost filtering stays off rather than dropping
+/// a real event mid-outage).
+type PollOutput = (
     HashMap<String, AgentRecord>,
     Vec<String>,
     Option<String>,
     bool,
     Option<std::collections::HashSet<String>>,
-) {
+);
+
+fn outage_result(prev: HashMap<String, AgentRecord>) -> PollOutput {
     // Outage: the pane listing failed, so the live set is unknown —
     // ghost filtering stays off rather than risk dropping a real event
     // mid-outage.
