@@ -78,6 +78,34 @@ fn ci_workflow_runs_gates() {
     );
 }
 
+/// Third-party actions must pin an immutable commit SHA, not a
+/// floating major tag: a moved `v4`/`v2`/`stable` tag silently swaps
+/// the code CI executes. The human-readable tag stays as a trailing
+/// comment; the SHA governs. Every `uses:` line must therefore carry
+/// a 40-hex SHA after the `@`.
+#[test]
+fn ci_actions_pin_shas_not_floating_tags() {
+    let text = ci_yml();
+    let mut unpinned = Vec::new();
+    for line in text.lines() {
+        let code = line.split('#').next().unwrap_or("").trim();
+        let Some(at) = code.find("uses:") else {
+            continue;
+        };
+        let after = code[at..].split('@').nth(1).unwrap_or("");
+        let sha: String = after.chars().take_while(|c| !c.is_whitespace()).collect();
+        let pinned =
+            sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
+        if !pinned {
+            unpinned.push(code.to_string());
+        }
+    }
+    assert!(
+        unpinned.is_empty(),
+        "CI actions must pin a 40-hex SHA, floating tags found: {unpinned:?}"
+    );
+}
+
 /// Substring pins stay green when a gate step is semantically
 /// neutralized: `continue-on-error: true` swallows its failure and
 /// `if: false` skips it entirely, while `fmt --check`, `clippy`,

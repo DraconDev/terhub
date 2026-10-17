@@ -8,8 +8,10 @@ jobs:
   gates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Third-party actions pin immutable SHAs (tag in the comment
+      # only): a moved major tag would silently swap the code CI runs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
       # The tmux-dependent suites fail loudly without a tmux binary
@@ -27,7 +29,7 @@ jobs:
         run: cargo clippy --offline --all-targets -- -D warnings
       - name: test
         run: cargo test --offline
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check
       # The stale-binary behavioural gate (scripts/check-install.sh):
