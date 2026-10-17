@@ -147,9 +147,15 @@ fn blocking_failed() -> axum::response::Response {
 }
 
 async fn api_status() -> impl IntoResponse {
-    match crate::daemon::fetch_snapshot(Duration::from_secs(2)) {
-        Ok(snap) => ok_json(&snap),
-        Err(_) => daemon_unavailable().into_response(),
+    // Daemon IPC blocks up to its deadline: off the workers.
+    let snap = tokio::task::spawn_blocking(|| {
+        crate::daemon::fetch_snapshot(Duration::from_secs(2))
+    })
+    .await;
+    match snap {
+        Ok(Ok(s)) => ok_json(&s),
+        Ok(Err(_)) => daemon_unavailable().into_response(),
+        Err(_) => blocking_failed(),
     }
 }
 
@@ -250,27 +256,27 @@ async fn api_capture(Query(q): Query<HashMap<String, String>>) -> impl IntoRespo
         .and_then(|l| l.parse::<u32>().ok())
         .unwrap_or(60)
         .min(500);
-    let tmux = match crate::tmux::Tmux::new() {
-        Ok(t) => t,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("{e:?}")})),
-            )
-                .into_response();
-        }
-    };
-    match tmux.capture_pane(pane, lines) {
-        Ok(text) => (
+    let pane = pane.clone();
+    // tmux probe is blocking subprocess work: off the workers. Both
+    // failure sites (no tmux binary, failed capture) already share one
+    // response shape, so the closure merges them unchanged.
+    let out = tokio::task::spawn_blocking(move || {
+        let tmux = crate::tmux::Tmux::new()?;
+        tmux.capture_pane(&pane, lines)
+    })
+    .await;
+    match out {
+        Ok(Ok(text)) => (
             StatusCode::OK,
             Json(serde_json::json!({"pane": pane, "text": text})),
         )
             .into_response(),
-        Err(e) => (
+        Ok(Err(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("{e:?}")})),
         )
             .into_response(),
+        Err(_) => blocking_failed(),
     }
 }
 
@@ -282,13 +288,18 @@ struct SendBody {
 }
 
 async fn api_send(Json(body): Json<SendBody>) -> impl IntoResponse {
-    let tmux = match crate::tmux::Tmux::new() {
-        Ok(t) => t,
-        Err(e) => return fail(e),
-    };
-    match tmux.send_keys(&body.pane, &body.text, body.submit.unwrap_or(true)) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
-        Err(e) => fail(e),
+    let SendBody { pane, text, submit } = body;
+    let submit = submit.unwrap_or(true);
+    // send-keys is blocking subprocess work: off the workers.
+    let out = tokio::task::spawn_blocking(move || {
+        let tmux = crate::tmux::Tmux::new()?;
+        tmux.send_keys(&pane, &text, submit)
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
+        Ok(Err(e)) => fail(e),
+        Err(_) => blocking_failed(),
     }
 }
 
@@ -298,13 +309,17 @@ struct InterruptBody {
 }
 
 async fn api_interrupt(Json(body): Json<InterruptBody>) -> impl IntoResponse {
-    let tmux = match crate::tmux::Tmux::new() {
-        Ok(t) => t,
-        Err(e) => return fail(e),
-    };
-    match tmux.interrupt(&body.pane) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
-        Err(e) => fail(e),
+    let pane = body.pane;
+    // Ctrl-C delivery is blocking subprocess work: off the workers.
+    let out = tokio::task::spawn_blocking(move || {
+        let tmux = crate::tmux::Tmux::new()?;
+        tmux.interrupt(&pane)
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
+        Ok(Err(e)) => fail(e),
+        Err(_) => blocking_failed(),
     }
 }
 
