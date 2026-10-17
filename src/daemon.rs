@@ -339,6 +339,40 @@ fn ensure_runtime_dir(path: &Path) -> Result<()> {
     }
 }
 
+/// Tighten an already-created runtime file (socket, pid, log) to
+/// owner-only (0600). Creation inherits the umask, so this is the
+/// explicit chmod that covers a permissive umask or a runtime dir
+/// shared with other users.
+fn set_owner_only(path: &Path) -> Result<()> {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("chmod 0600 {}", path.display()))
+}
+
+/// Write the pid file atomically (tmp + rename) with owner-only
+/// (0600) creation mode. Rename preserves the tmp mode, so the final
+/// pid file is 0600 regardless of umask.
+fn write_pid_file(pid_file: &Path, pid: &str) -> Result<()> {
+    let proc = std::process::id();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = pid_file.with_extension(format!("tmp.{proc}.{nonce}"));
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(pid.as_bytes())
+        })
+        .with_context(|| format!("write {}", tmp.display()))?;
+    std::fs::rename(&tmp, pid_file)?;
+    Ok(())
+}
+
 impl Server {
     pub fn load(runtime: PathBuf) -> Result<Self> {
         ensure_runtime_dir(&runtime)?;
@@ -382,34 +416,14 @@ impl Server {
         // Owner-only socket (0600): the bind inherits the umask, so
         // tighten it explicitly. The runtime dir is already 0700; this
         // covers TERHUB_RUNTIME_DIR pointed at a shared dir.
-        std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("chmod 0600 {}", sock.display()))?;
+        set_owner_only(&sock)?;
         // Pid file only after a successful bind: a concurrent-start loser
         // fails above without clobbering the winner's pid with dead data.
         // Atomic (tmp + rename): a torn write would leave a partial pid
         // for the next start to read.
         {
             let pid = std::process::id().to_string();
-            let nonce = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0);
-            let tmp = pid_file.with_extension(format!("tmp.{pid}.{nonce}"));
-            // Owner-only pid tmp (0600, rename preserves the mode): the
-            // pid file must not leak existence details under a
-            // permissive umask or a shared runtime dir.
-            std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)
-                .and_then(|mut f| {
-                    use std::io::Write;
-                    f.write_all(pid.as_bytes())
-                })
-                .with_context(|| format!("write {}", tmp.display()))?;
-            std::fs::rename(&tmp, &pid_file)?;
+            write_pid_file(&pid_file, &pid)?;
         }
 
         let reg = self.registry.clone();
@@ -2854,6 +2868,31 @@ mod tests {
         ensure_runtime_dir(&dir).unwrap();
         let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn runtime_files_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("terhub-fileperms-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Socket: simulate a umask-permissive bind, then tighten.
+        let sock = dir.join("terhubd.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let mut p = std::fs::metadata(&sock).unwrap().permissions();
+        p.set_mode(0o777);
+        std::fs::set_permissions(&sock, p).unwrap();
+        set_owner_only(&sock).unwrap();
+        let mode = std::fs::metadata(&sock).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "socket must be owner-only");
+        drop(listener);
+        // Pid file: atomic write must land 0600 straight away.
+        let pid_file = dir.join("terhubd.pid");
+        write_pid_file(&pid_file, "12345").unwrap();
+        let mode = std::fs::metadata(&pid_file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "pid file must be owner-only");
+        assert_eq!(std::fs::read_to_string(&pid_file).unwrap(), "12345");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
