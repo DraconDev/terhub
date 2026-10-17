@@ -674,12 +674,45 @@ fn scan_for_tui() -> Option<HubSession> {
     None
 }
 
+/// Delay before re-reading an unparseable advertisement: a torn
+/// concurrent write heals in microseconds, so 50ms separates transient
+/// tears (old-version plain writes, same-host races) from genuine rot.
+const HUB_SESSION_RETRY_DELAY: Duration = Duration::from_millis(50);
+
 /// The advertisement file alone: no /proc fallback, so this is pure and
 /// testable without depending on what else is running on the machine.
 fn read_session_file() -> Option<HubSession> {
-    let raw = std::fs::read_to_string(hub_session_path()).ok()?;
-    let s: HubSession = serde_json::from_str(&raw).ok()?;
-    process_alive(s.pid).then_some(s)
+    read_session_file_at(&hub_session_path())
+}
+
+fn read_session_file_at(path: &Path) -> Option<HubSession> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    if let Ok(s) = serde_json::from_str::<HubSession>(&raw) {
+        return process_alive(s.pid).then_some(s);
+    }
+    // Unparseable: possibly a torn concurrent write, not rot. Re-read
+    // once after a beat; only still-unparseable input reads as absent.
+    // (The caller deletes on absence, so a single glance must never
+    // condemn a file that heals.)
+    std::thread::sleep(HUB_SESSION_RETRY_DELAY);
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<HubSession>(&raw)
+        .ok()
+        .filter(|s| process_alive(s.pid))
+}
+
+/// Atomic advertisement publish: write temp + rename in the same
+/// directory, so concurrent readers see the old file or the new file,
+/// never torn bytes. A failed rename removes the temp; a crash between
+/// the two leaves a stray `hub-session.tmp-<pid>` that no reader ever
+/// opens (readers only open the exact hub path).
+fn write_session_file(path: &Path, json: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    if let Err(e) = std::fs::write(&tmp, json).and_then(|()| std::fs::rename(&tmp, path)) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Read the advertised hub, ignoring one whose process is gone. A TUI
@@ -692,7 +725,9 @@ pub fn read_hub_session() -> Option<HubSession> {
     if let Some(s) = read_session_file() {
         return Some(s);
     }
-    // Missing, unparseable, or dead: clear it so it cannot mislead.
+    // Missing, still-unparseable-after-retry, or dead: clear it so it
+    // cannot mislead. Deletion is safe here precisely because the read
+    // above already retried — a merely torn write would have healed.
     let _ = std::fs::remove_file(hub_session_path());
     scan_for_tui()
 }
@@ -715,7 +750,7 @@ impl HubSessionGuard {
             }),
         };
         if let Ok(json) = serde_json::to_string(&session) {
-            let _ = std::fs::write(hub_session_path(), json);
+            let _ = write_session_file(&hub_session_path(), &json);
         }
         HubSessionGuard
     }
