@@ -204,11 +204,24 @@ fn label_commands_with(mut panes: Vec<Pane>, snap: &crate::proc::Snapshot) -> Ve
     panes
 }
 
+/// An executable regular file: a non-executable `tmux` shadow earlier
+/// on PATH must be skipped, not selected and then failed at spawn
+/// with a confusing permission error.
+fn is_executable(p: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    p.is_file()
+        && p.metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+}
+
+fn find_tmux_in(dirs: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
+    dirs.map(|dir| dir.join("tmux")).find(|p| is_executable(p))
+}
+
 fn find_tmux() -> Option<PathBuf> {
     let path = env::var_os("PATH")?;
-    env::split_paths(&path)
-        .map(|dir| dir.join("tmux"))
-        .find(|p| p.is_file())
+    find_tmux_in(env::split_paths(&path))
 }
 
 /// Environment variable selecting a private tmux socket for this client.
