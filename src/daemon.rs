@@ -4142,6 +4142,66 @@ mod tests {
     }
 
     #[test]
+    fn hook_carry_trips_stuck_and_recovers() {
+        // The Hook|Manual carry branch runs the shared stuck gate: a hung
+        // hook-claimed pane trips Stuck (saving the hook's verdict), keeps
+        // its clock while still, and restores the verdict when CPU
+        // recovers — instead of reading Working until the 30-minute lapse
+        // or latching Stuck forever.
+        let now = 100_000;
+        let mut r = hook_record(now - 1800);
+        r.state = AgentState::Working;
+        r.cpu_ticks = 500;
+        r.cpu_still_since = now - 601;
+        r.quiet_since = now; // screen fresh: a hang, not finished
+        apply_hook_stuck_gate(&mut r, true, now, STUCK_SECS, 3600);
+        assert_eq!(r.state, AgentState::Stuck);
+        assert_eq!(r.stuck_base, Some(AgentState::Working));
+        assert_eq!(r.state_since, now);
+        assert_eq!(r.summary, "no cpu for 10m");
+        // Still still: clock kept, no renotify.
+        let mut r2 = r.clone();
+        apply_hook_stuck_gate(&mut r2, true, now + 60, STUCK_SECS, 3600);
+        assert_eq!(r2.state, AgentState::Stuck);
+        assert_eq!(r2.state_since, now);
+        // CPU recovered: hook's verdict restored, flip clocked, trip
+        // summary blanked for the screen fallback.
+        r2.cpu_still_since = now + 60;
+        apply_hook_stuck_gate(&mut r2, true, now + 60, STUCK_SECS, 3600);
+        assert_eq!(r2.state, AgentState::Working);
+        assert_eq!(r2.stuck_base, None);
+        assert_eq!(r2.state_since, now + 60);
+        assert!(r2.summary.is_empty());
+    }
+
+    #[test]
+    fn hook_carry_stuck_gate_respects_exemptions() {
+        let now = 100_000;
+        let mut hung = hook_record(now - 1800);
+        hung.state = AgentState::Working;
+        hung.cpu_ticks = 500;
+        hung.cpu_still_since = now - 601;
+        // Long-quiet screen: finished, not hung.
+        hung.quiet_since = now - 7200;
+        apply_hook_stuck_gate(&mut hung, true, now, STUCK_SECS, 3600);
+        assert_eq!(hung.state, AgentState::Working);
+        // Disabled gate: never trips.
+        hung.quiet_since = now;
+        apply_hook_stuck_gate(&mut hung, true, now, 0, 3600);
+        assert_eq!(hung.state, AgentState::Working);
+        // No live process: never trips.
+        apply_hook_stuck_gate(&mut hung, false, now, STUCK_SECS, 3600);
+        assert_eq!(hung.state, AgentState::Working);
+        // A hook-claimed Stuck (no trip base) is never touched.
+        let mut claimed = hook_record(now - 100);
+        claimed.state = AgentState::Stuck;
+        claimed.cpu_still_since = now - 601;
+        apply_hook_stuck_gate(&mut claimed, true, now, STUCK_SECS, 3600);
+        assert_eq!(claimed.state, AgentState::Stuck);
+        assert_eq!(claimed.stuck_base, None);
+    }
+
+    #[test]
     fn custom_stuck_threshold_honored() {
         // 601s of stillness trips at 600 but not at 3600.
         let now = 100_000;
