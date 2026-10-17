@@ -590,16 +590,21 @@ fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
     }
     let rest: Vec<&str> = tokens.collect();
     // `python -m aider`: the token after `-m` is the program identity
-    // (a module path like `aider.chat` names the same program). This
-    // does not revive bare-word matching — `grep pi file` has no `-m`.
-    for (i, tok) in rest.iter().enumerate() {
-        if *tok == "-m"
-            && let Some(next) = rest.get(i + 1)
-        {
-            let module = proc_base(next);
-            let stem = module.split('.').next().unwrap_or(&module);
-            if let Some(agent) = find_bin(stem).or_else(|| find_bin(&module)) {
-                return Some(agent);
+    // (a module path like `aider.chat` names the same program) — but
+    // ONLY under a Python interpreter. Any other program's `-m` is its
+    // own flag (`--model`, grep's max-count, …), never a module, so an
+    // interpreter-agnostic scan would revive bare-word matching through
+    // the back door (`grep -m aider file` is not aider).
+    if is_python_argv0(argv0) {
+        for (i, tok) in rest.iter().enumerate() {
+            if *tok == "-m"
+                && let Some(next) = rest.get(i + 1)
+            {
+                let module = proc_base(next);
+                let stem = module.split('.').next().unwrap_or(&module);
+                if let Some(agent) = find_bin(stem).or_else(|| find_bin(&module)) {
+                    return Some(agent);
+                }
             }
         }
     }
@@ -833,6 +838,20 @@ mod tests {
         );
         // A non-agent module still matches nothing.
         assert_eq!(match_proc("python", "python -m http.server 8000"), None);
+        // A versioned interpreter is still an interpreter.
+        assert_eq!(
+            match_proc("python3.11", "/usr/bin/python3.11 -m aider"),
+            Some("aider")
+        );
+    }
+
+    #[test]
+    fn dash_m_is_python_only() {
+        // `-m <agent>` on a non-Python argv is that program's own flag
+        // (`--model`, grep's max-count, …), never a module identity.
+        assert_eq!(match_proc("grep", "grep -m aider pattern"), None);
+        assert_eq!(match_proc("mytool", "mytool -m claude --fast"), None);
+        assert_eq!(match_proc("node", "node -m pi"), None);
     }
 
     #[test]
