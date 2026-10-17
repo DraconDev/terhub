@@ -26,7 +26,7 @@ fn runtime_dir_flag_wins_over_env() {
     let bin = env!("CARGO_BIN_EXE_terhubd");
     let mut child = std::process::Command::new(bin)
         .arg("--runtime-dir")
-        .arg(&env_dir)
+        .arg(&flag_dir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
