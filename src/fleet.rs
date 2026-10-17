@@ -355,13 +355,18 @@ pub fn snapshot_rows(
 
 /// Styled scrollback from a remote pane (the preview path for remote rows).
 ///
+/// Routed through the remote `terhub capture` CLI — never raw `tmux
+/// capture-pane`, which only sees the remote default server and misses
+/// panes on a private (`TERHUB_TMUX_SOCKET`) socket. The remote CLI
+/// honors the remote's own socket config (and native backends).
+///
 /// One remote shell command string, not an argv vector: ssh joins its
 /// post-`--` arguments with spaces and runs them via the remote
 /// shell, so the pane id (which can come from an untrusted remote
 /// `status --json` snapshot, or from the user) must be single-quoted
 /// to keep `;` / `` ` `` / `$()` from executing remotely.
 pub fn remote_capture(target: &str, pane: &str, lines: u32) -> Result<String> {
-    let cmd = format!("tmux capture-pane -p -e -t {} -S -{lines}", sh_quote(pane));
+    let cmd = format!("terhub capture {} --lines {lines}", sh_quote(pane));
     ssh_run(target, &[&cmd], 10)
 }
 
