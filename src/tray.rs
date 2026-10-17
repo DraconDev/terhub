@@ -443,9 +443,10 @@ pub fn install_icons(theme: &str) -> std::io::Result<HashMap<IconState, String>>
         keep.insert(format!("{name}.svg"));
         names.insert(*state, name);
     }
-    // Prune any terhub-*.svg from a previous install whose name isn't
-    // in the current set, so the icons dir doesn't accumulate the
-    // full history of every redesign.
+    // Prune stale versioned names from a previous install so the icons
+    // dir doesn't accumulate the full history of every redesign. Only
+    // files this installer owns (`{base}-{8 hex}.svg`) are candidates:
+    // a user's own terhub*.svg is never ours to delete.
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for entry in rd.flatten() {
             let p = entry.path();
@@ -455,12 +456,34 @@ pub fn install_icons(theme: &str) -> std::io::Result<HashMap<IconState, String>>
             let Some(f) = p.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if f.starts_with("terhub") && f.ends_with(".svg") && !keep.contains(f) {
+            if is_stale_icon(f, &keep) {
                 let _ = std::fs::remove_file(&p);
             }
         }
     }
     Ok(names)
+}
+
+/// True for filenames this installer owns — `{base}-{8 lowercase hex}
+/// .svg` for a known [`ICON_STATES`] base — outside the current set.
+/// Anything else (`terhub-logo.svg`, `terhubnotes.svg`, wrong-length
+/// or non-hex suffixes) belongs to the user or another program and
+/// must survive the prune.
+fn is_stale_icon(name: &str, keep: &HashSet<String>) -> bool {
+    if keep.contains(name) {
+        return false;
+    }
+    let Some(stem) = name.strip_suffix(".svg") else {
+        return false;
+    };
+    let Some(dash) = stem.rfind('-') else {
+        return false;
+    };
+    let (base, hash) = (&stem[..dash], &stem[dash + 1..]);
+    if hash.len() != 8 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return false;
+    }
+    ICON_STATES.iter().any(|(_, b)| *b == base)
 }
 
 /// What the tray shows, derived from one daemon snapshot.
@@ -1212,8 +1235,7 @@ mod tests {
     fn install_icons_prune_spares_user_files() {
         // The prune must only drop stale OUR versioned names: a
         // user's own terhub*.svg in the icons dir must survive.
-        let base =
-            std::env::temp_dir().join(format!("terhub-icons-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("terhub-icons-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let dir = base.join("icons/hicolor/scalable/apps");
         std::fs::create_dir_all(&dir).unwrap();
@@ -1243,6 +1265,32 @@ mod tests {
             "prune kept a stale versioned file"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn icon_prune_only_deletes_our_versioned_names() {
+        let keep: HashSet<String> = ["terhub-12345678.svg".to_string()].into_iter().collect();
+        // Old generations of our own names: prunable.
+        assert!(is_stale_icon("terhub-abcdef01.svg", &keep));
+        assert!(is_stale_icon("terhub-attention-abcdef01.svg", &keep));
+        assert!(is_stale_icon("terhub-live-idle-ABCDEF01.svg", &keep));
+        // Current set: kept.
+        assert!(!is_stale_icon("terhub-12345678.svg", &keep));
+        // Not ours: user files and lookalikes survive.
+        for name in [
+            "terhub-logo.svg",
+            "terhubnotes.svg",
+            "terhubby-12345678.svg",
+            "terhub-.svg",
+            "terhub.svg",
+            "terhub-xyz.svg",
+            "terhub-1234567.svg",
+            "terhub-123456789.svg",
+            "terhub-1234567g.svg",
+            "other.svg",
+        ] {
+            assert!(!is_stale_icon(name, &keep), "{name} must survive");
+        }
     }
 
     #[test]
