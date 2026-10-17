@@ -578,6 +578,18 @@ pub fn canonical_agent(name: &str) -> String {
         .unwrap_or_else(|| name.trim().to_lowercase())
 }
 
+/// argv0 names a Python interpreter (`python`, `python3`, `python3.11`):
+/// only then does `-m <module>` name the program. Anything else is
+/// matched by its own binary name, never by a `-m` flag it happens
+/// to carry.
+fn is_python_argv0(argv0: &str) -> bool {
+    let base = proc_base(argv0);
+    base == "python"
+        || base
+            .strip_prefix("python")
+            .is_some_and(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.'))
+}
+
 fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
     let find_bin = |name: &str| AGENT_BINS.iter().find(|b| **b == name).copied();
     if let Some(agent) = find_bin(&proc_base(comm)) {
