@@ -741,7 +741,15 @@ async fn poll_loop(
                     crate::agent::ensure_handles(&mut reg);
                     let snap = (*reg).clone();
                     drop(reg);
-                    save_registry(&runtime.join("registry.json"), &snap);
+                    // Fail-closed like mutate_and_save: the tick check above
+                    // ran before the long poll_sync, so a dir→symlink swap
+                    // mid-poll must not land this write-back in an
+                    // attacker-chosen dir. Skip (and log) on failure; the
+                    // next tick check trips shutdown right after.
+                    match runtime_guard.verify() {
+                        Ok(()) => save_registry(&runtime.join("registry.json"), &snap),
+                        Err(e) => eprintln!("terhubd: refusing registry save: {e:#}"),
+                    }
                     t
                 };
                 let now = now_unix();
