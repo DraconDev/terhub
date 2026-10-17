@@ -51,6 +51,10 @@ pub struct Pane {
     pub bell: bool,
     /// Root process id of the pane (0 when unknown).
     pub pid: u32,
+    /// starttime (stat field 22) of `pid` when it was listed (0 =
+    /// unknown). Passed to pause/resume_group so a recycled pid is
+    /// refused instead of stopping an unrelated process group.
+    pub pid_start: u64,
 }
 
 impl Pane {
@@ -71,6 +75,7 @@ impl Pane {
             activity: 0,
             bell: false,
             pid: 0,
+            pid_start: 0,
         }
     }
 }
@@ -135,6 +140,17 @@ fn parse_panes(out: &str) -> Vec<Pane> {
             activity: num(11),
             pid: num(12) as u32,
             bell: flag(13),
+            pid_start: 0,
+        });
+    }
+    // Identity pass: stamp each listed root pid with its current
+    // starttime, so pause/resume can refuse a pid recycled between
+    // this listing and the user's keypress. A second /proc walk is
+    // cheaper than signalling the wrong process group.
+    for pane in &mut panes {
+        if pane.pid > 1 {
+            pane.pid_start = crate::proc::proc_starttime(pane.pid).unwrap_or(0);
+        }
         });
     }
     panes

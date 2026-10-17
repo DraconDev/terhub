@@ -450,6 +450,18 @@ pub fn pid_alive(pid: u32) -> bool {
     std::path::Path::new(&format!("/proc/{pid}")).exists()
 }
 
+/// starttime (stat field 22) from live `/proc/<pid>/stat` (None when
+/// unreadable/gone). The pid-identity anchor for signalling: callers
+/// pass a previously observed value and `signal_tree` refuses when the
+/// current one differs, so a recycled pid never inherits signals meant
+/// for its predecessor.
+pub fn proc_starttime(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let tail = stat.rsplit_once(')')?.1;
+    // Same layout as `read_proc`: starttime is index 19 after comm.
+    tail.split_whitespace().nth(19)?.parse().ok()
+}
+
 /// State letter from `/proc/<pid>/stat` (None when unreadable/gone).
 pub fn proc_state(pid: u32) -> Option<char> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -504,19 +516,34 @@ fn proc_pgrp(pid: u32) -> Option<u32> {
     tail.split_whitespace().nth(2)?.parse().ok()
 }
 
-fn signal_tree(pid: u32, sig: libc::c_int, name: &str) -> anyhow::Result<()> {
+fn signal_tree(
+    pid: u32,
+    sig: libc::c_int,
+    name: &str,
+    expected_start: Option<u64>,
+) -> anyhow::Result<()> {
     if pid <= 1 {
         anyhow::bail!("refusing to signal pid {pid}");
     }
-    // Narrow the TOCTOU window between `proc_pgrp` and `kill`: re-check
-    // /proc right before the signal so a pid that exited and was
-    // recycled as an unrelated process group leader is not signalled.
-    // The window is still non-zero, but goes from "an entire poll
-    // cycle" to "microseconds"; a full identity check (start time)
-    // would need callers to pass a snapshot token, which is a larger
-    // refactor for the same low-probability race.
+    // Identity before signal: the pane pid may be a poll stale, and a
+    // recycled pid that is now an unrelated group leader must not take
+    // a kill(-pid) meant for its predecessor. `expected_start` is the
+    // starttime observed when the pid was listed; a mismatch (or a
+    // vanished /proc) refuses the signal outright. The residual window
+    // between this check and kill() is microseconds, down from an
+    // entire poll cycle — and only a same-starttime collision, which
+    // the kernel makes a fresh boot, could slip it.
     if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
         anyhow::bail!("{name} {pid}: process gone");
+    }
+    if let Some(expected) = expected_start {
+        match proc_starttime(pid) {
+            Some(actual) if actual == expected => {}
+            Some(actual) => anyhow::bail!(
+                "{name} {pid}: refusing to signal recycled process (starttime {actual} != listed {expected})"
+            ),
+            None => anyhow::bail!("{name} {pid}: process gone"),
+        }
     }
     // tmux puts each pane root in its own process group, so a negative
     // pid stops the whole tree; a non-leader falls back to the lone pid
@@ -534,13 +561,15 @@ fn signal_tree(pid: u32, sig: libc::c_int, name: &str) -> anyhow::Result<()> {
 }
 
 /// Freeze a pane's process tree (SIGSTOP); reversible via resume_group.
-pub fn pause_group(pid: u32) -> anyhow::Result<()> {
-    signal_tree(pid, libc::SIGSTOP, "pause")
+/// `expected_start` is the pane-root starttime from when the pid was
+/// listed (`None` skips the identity check); a recycled pid is refused.
+pub fn pause_group(pid: u32, expected_start: Option<u64>) -> anyhow::Result<()> {
+    signal_tree(pid, libc::SIGSTOP, "pause", expected_start)
 }
 
 /// Thaw a tree frozen by pause_group (SIGCONT).
-pub fn resume_group(pid: u32) -> anyhow::Result<()> {
-    signal_tree(pid, libc::SIGCONT, "resume")
+pub fn resume_group(pid: u32, expected_start: Option<u64>) -> anyhow::Result<()> {
+    signal_tree(pid, libc::SIGCONT, "resume", expected_start)
 }
 
 pub fn canonical_agent(name: &str) -> String {
