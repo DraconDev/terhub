@@ -692,8 +692,7 @@ mod tests {
         // freeze the caller: the TUI and the daemon poll run these
         // calls on their hot paths. Two-sided timing around the
         // deadline (load only stretches elapsed, so neither flakes).
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-tmux-wedge-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-tmux-wedge-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("tmux");
         std::fs::write(&bin, "#!/bin/sh\nsleep 30\n").unwrap();

@@ -111,20 +111,14 @@ mod tests {
         // injected via PATH (save/restore: no other lib test resolves
         // the zellij binary, and PATH is restored before any assert
         // can panic).
-        let dir = std::env::temp_dir().join(format!(
-            "terhub-zellij-wedge-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("terhub-zellij-wedge-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("zellij"), "#!/bin/sh\nsleep 30\n").unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(
-                &dir.join("zellij"),
-                std::fs::Permissions::from_mode(0o755),
-            )
-            .unwrap();
+            std::fs::set_permissions(&dir.join("zellij"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
         }
         let old_path = std::env::var_os("PATH");
         unsafe {
