@@ -13,10 +13,10 @@
 
 .PHONY: build build-release test clippy install clean check-lock check-install
 
-# Recommended dev workflow: build + install to ~/.cargo/bin.
+# Recommended dev workflow: build + install to ${CARGO_HOME:-~/.cargo}/bin.
 build:
 	cargo build
-	cargo install --path . --offline --locked --force
+	cargo install --path . --offline --locked --force --root "$${CARGO_HOME:-$$HOME/.cargo}"
 
 # Same, but release. Honours CARGO_HOME like the other targets:
 # a hardcoded ~/.cargo root would install beside a CARGO_HOME on
@@ -33,9 +33,10 @@ test:
 clippy:
 	cargo clippy --lib --tests -- -D warnings
 
-# Install the working tree's binary to ~/.cargo/bin without rebuilding.
+# Install the working tree's binary to ${CARGO_HOME:-~/.cargo}/bin
+# without rebuilding.
 install:
-	cargo install --path . --offline --locked --force
+	cargo install --path . --offline --locked --force --root "$${CARGO_HOME:-$$HOME/.cargo}"
 
 # Lint that the auto-install is actually doing what we say.
 check-lock:
@@ -43,7 +44,7 @@ check-lock:
 	cargo install --path . --offline --locked --force --dry-run
 
 # Verifies that `make build` actually reinstalls the new binary
-# to ~/.cargo/bin/terhub. See scripts/check-install.sh.
+# to ${CARGO_HOME:-~/.cargo}/bin/terhub. See scripts/check-install.sh.
 check-install:
 	./scripts/check-install.sh
 

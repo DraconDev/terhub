@@ -32,8 +32,11 @@ jobs:
           command: check
       # The stale-binary behavioural gate (scripts/check-install.sh):
       # install once so the script has a pre-existing binary, then let
-      # it prove `make build` reinstalls. See tests/install_target.rs.
+      # it prove `make build` reinstalls. The explicit --root keeps
+      # this step on the same ${CARGO_HOME:-~/.cargo}/bin the script
+      # checks, exactly like the Makefile install recipes.
+      # See tests/install_target.rs.
       - name: install binary
-        run: cargo install --path . --offline --locked --force
+        run: cargo install --path . --offline --locked --force --root "${CARGO_HOME:-$HOME/.cargo}"
       - name: check-install
         run: make check-install
