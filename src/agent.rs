@@ -154,6 +154,14 @@ pub struct AgentRecord {
     /// in lockstep with `bell`; cleared together.
     #[serde(default)]
     pub bell_reason: String,
+    /// Pre-trip state saved when the stuck gate fires on a Hook|Manual
+    /// carry (None = gate never tripped). The hook branch carries state
+    /// forward instead of re-deriving it, so without this the trip would
+    /// latch Stuck until the 30-minute hook lapse; the saved verdict is
+    /// restored when CPU recovers. Merge re-derives every poll and always
+    /// resets this to None.
+    #[serde(default)]
+    pub stuck_base: Option<AgentState>,
 }
 
 /// Prompt text kept on the record (the ledger keeps the longer cut).

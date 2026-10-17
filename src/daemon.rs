@@ -1382,26 +1382,28 @@ fn merge_record_owned(
     // that has been frozen past `quiet_idle_secs` is finished, not
     // hung, so it must not be re-flagged stuck — this is the `samai`
     // fix. A screen that froze *recently* (spinner just stopped) with
-    // no CPU is the genuine hang, and the gate still catches it.
-    let quiescent = quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs;
-    if matches!(final_state, Working | Idle)
-        && stuck_secs > 0
-        && proc_hit.is_some()
-        && still > 0
-        && now.saturating_sub(still) >= stuck_secs
-        && !quiescent
-    {
+    // no CPU is the genuine hang, and the gate still catches it. The
+    // same gate (shared helper) runs on Hook|Manual carries, which
+    // otherwise never evaluate Stuck.
+    let prev_stuck_since = match carried {
+        Some(o) if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) => {
+            Some(o.state_since)
+        }
+        _ => None,
+    };
+    if let Some((stuck_since, stuck_summary)) = stuck_gate_trip(
+        final_state,
+        proc_hit.is_some(),
+        still,
+        quiet_for,
+        now,
+        stuck_secs,
+        quiet_idle_secs,
+        prev_stuck_since,
+    ) {
         final_state = AgentState::Stuck;
-        since = match carried {
-            Some(o) if o.state == AgentState::Stuck && o.agent.eq_ignore_ascii_case(&agent) => {
-                o.state_since
-            }
-            _ => now,
-        };
-        summary = format!(
-            "no cpu for {}",
-            crate::history::fmt_dur(now.saturating_sub(still))
-        );
+        since = stuck_since;
+        summary = stuck_summary;
     }
     // Quiescence is evidence in its own right: a live process whose
     // screen has not moved is finished. The Stuck gate above already
