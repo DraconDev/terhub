@@ -522,7 +522,10 @@ pub fn execute_with_timeout(
                 .env("TERHUB_WINDOW", &rec.window)
                 .env("TERHUB_STATE", rec.state.label())
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
+                // Piped, not null: the drain already reads both
+                // pipes, and the stderr head lands in the ledger
+                // line so rule failures stay debuggable.
+                .stderr(std::process::Stdio::piped())
                 .process_group(0)
                 .spawn()?;
             let drained = match wait_drained_in_group(&mut child, timeout) {
@@ -535,15 +538,25 @@ pub fn execute_with_timeout(
             let out = std::process::Output {
                 status: drained.status,
                 stdout: drained.stdout,
-                stderr: Vec::new(),
+                stderr: drained.stderr,
             };
             let stdout_text = String::from_utf8_lossy(&out.stdout);
-            let text = if stdout_text.trim().is_empty() {
-                if out.status.success() {
+            let stderr_text = String::from_utf8_lossy(&out.stderr);
+            let stderr_head = stderr_text.trim().lines().next().unwrap_or("").trim();
+            let text = if out.status.success() {
+                if stdout_text.trim().is_empty() {
                     "ok".to_string()
                 } else {
-                    out.status.to_string()
+                    truncate(stdout_text.trim(), 80)
                 }
+            } else if !stderr_head.is_empty() {
+                // A bare exit code is undebuggable: lead with the
+                // failure's own first line (stderr beats stdout here
+                // — it carries the diagnostic, stdout the program's
+                // normal chatter).
+                format!("{}: {}", out.status, truncate(stderr_head, 80))
+            } else if stdout_text.trim().is_empty() {
+                out.status.to_string()
             } else {
                 truncate(stdout_text.trim(), 80)
             };
@@ -1013,8 +1026,11 @@ mod tests {
         let rec = rec("%1", AgentState::Waiting, 0, "");
         let out = execute_with_timeout(None, &fire, &rec, std::time::Duration::from_secs(10))
             .expect("a shell failure is a ledger line, not an error");
-        assert!(out.contains("boom"), "stderr head missing: {out}");
-        assert!(out.contains('3'), "exit status missing: {out}");
+        // The description echoes the command (`shell '<cmd>': <text>`),
+        // so only the text after the echo proves stderr survived.
+        let body = out.rsplit("': ").next().unwrap_or("");
+        assert!(body.contains("boom"), "stderr head missing: {out}");
+        assert!(body.contains('3'), "exit status missing: {out}");
     }
 
     #[test]
