@@ -258,9 +258,10 @@ async fn api_capture(Query(q): Query<HashMap<String, String>>) -> impl IntoRespo
     // tmux probe is blocking subprocess work: off the workers. Both
     // failure sites (no tmux binary, failed capture) already share one
     // response shape, so the closure merges them unchanged.
+    let probe_pane = pane.clone();
     let out = tokio::task::spawn_blocking(move || {
         let tmux = crate::tmux::Tmux::new()?;
-        tmux.capture_pane(&pane, lines)
+        tmux.capture_pane(&probe_pane, lines)
     })
     .await;
     match out {
