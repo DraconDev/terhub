@@ -3438,6 +3438,55 @@ mod tests {
         handle.await.unwrap();
     }
 
+    #[tokio::test]
+    async fn conn_tasks_shed_load_past_the_cap() {
+        // One permit: the first idle connection holds it for its whole
+        // 10s read wait; the second is shed (peer sees EOF) instead of
+        // piling up another registry-holding task. The permit moves in
+        // admit_conn itself, so there is no race with task startup.
+        use tokio::io::AsyncBufReadExt;
+        let registry = Arc::new(Mutex::new(HashMap::new()));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let dir =
+            std::env::temp_dir().join(format!("terhub-shed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let permits = Arc::new(tokio::sync::Semaphore::new(1));
+        let admit = |stream| {
+            admit_conn(
+                stream,
+                registry.clone(),
+                dir.clone(),
+                ensure_runtime_dir(&dir).unwrap(),
+                shutdown.clone(),
+                permits.clone(),
+            )
+        };
+        let (s1, c1) = tokio::net::UnixStream::pair().unwrap();
+        admit(s1);
+        let (s2, c2) = tokio::net::UnixStream::pair().unwrap();
+        admit(s2); // shed: server side dropped
+        let (rd2, _w2) = c2.into_split();
+        let mut lines2 = tokio::io::BufReader::new(rd2).lines();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(5), lines2.next_line())
+                .await
+                .expect("shed peer hung")
+                .expect("shed peer errored"),
+            None,
+            "over-cap connection was not shed"
+        );
+        // The admitted connection is still held, not shed.
+        let (rd1, _w1) = c1.into_split();
+        let mut lines1 = tokio::io::BufReader::new(rd1).lines();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(300), lines1.next_line())
+                .await
+                .is_err(),
+            "admitted connection closed early"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn capped_line_reader_refuses_flood() {
         use std::io::Cursor;
