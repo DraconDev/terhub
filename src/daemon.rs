@@ -3555,6 +3555,27 @@ mod tests {
     }
 
     #[test]
+    fn backward_clock_jump_lapses_hooks_and_drops_carries() {
+        // NTP step / suspend / VM restore: pre-jump stamps sit ahead of
+        // `now`. Expiry fails toward fresh evidence instead of wedging
+        // blind until the clock catches up.
+        let now = 10_000;
+        let rec = hook_record(now + 3_600); // stamped an hour "ahead"
+        let (old, stale) = split_prev(Some(&rec), now, HOOK_STALE_SECS);
+        assert!(old.is_none(), "future-stamped hook must lapse");
+        assert!(stale.is_some());
+        let mut screen = hook_record(now + 3_600);
+        screen.source = Source::Screen;
+        assert!(
+            !carry_record(&screen, &test_pane(), now, HOOK_STALE_SECS),
+            "future-stamped carry must drop"
+        );
+        // Ordinary stamps are untouched by the helper.
+        assert_eq!(elapsed_for_expiry(now, now - 60), 60);
+        assert_eq!(elapsed_for_expiry(now, now), 0);
+    }
+
+    #[test]
     fn screen_records_pass_through() {
         let now = 10_000;
         let mut rec = hook_record(0);
