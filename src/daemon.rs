@@ -518,7 +518,9 @@ impl Server {
             eprintln!("terhubd: broken manifest skipped ({w})");
         }
         let registry = load_registry(&runtime.join("registry.json"));
-        history::prune(&history::ledger_path(), now_unix(), 90);
+        if let Err(e) = history::prune(&history::ledger_path(), now_unix(), 90) {
+            eprintln!("terhubd: history prune failed ({e})");
+        }
         let tunables = Tunables::from_config(&config::load_config(None));
         Ok(Server {
             runtime,
@@ -815,7 +817,9 @@ async fn poll_loop(
             _ = tick.tick() => {},
             _ = prune_tick.tick() => {
                 let _ = tokio::task::spawn_blocking(|| {
-                    history::prune(&history::ledger_path(), now_unix(), 90);
+                    if let Err(e) = history::prune(&history::ledger_path(), now_unix(), 90) {
+                        eprintln!("terhubd: history prune failed ({e})");
+                    }
                 }).await;
                 continue;
             },

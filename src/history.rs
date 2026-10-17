@@ -225,7 +225,9 @@ pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> Result<usize, 
     // reaches the quarantine arm below instead of voiding the file.
     let lines = match read_lines_lossy(path) {
         Ok(l) => l,
-        Err(_) => return 0,
+        // Unchanged behavior (a read failure still reports an empty
+        // prune); only serialization failure is newly propagated.
+        Err(_) => return Ok(0),
     };
     let mut kept: Vec<Entry> = Vec::new();
     let mut quarantined: Vec<Entry> = Vec::new();
@@ -1060,7 +1062,7 @@ mod tests {
         // Prune quarantines the torn line (tag __corrupt__), keeps the
         // good one (t=100 within 90d of now=200+90*86400), and survives
         // a second prune.
-        let kept = prune(&path, 100 + 90 * 86400, 90);
+        let kept = prune(&path, 100 + 90 * 86400, 90).unwrap();
         assert_eq!(kept, 1, "prune kept the good entry");
         let entries = read_entries(&path);
         assert_eq!(
@@ -1078,7 +1080,7 @@ mod tests {
         let spans = build_spans(&entries, 100 + 90 * 86400);
         assert!(spans.is_empty(), "quarantines must not become spans");
         // A second prune keeps the quarantine (it doesn't re-drop it).
-        let _ = prune(&path, 100 + 90 * 86400 + 86400, 90);
+        prune(&path, 100 + 90 * 86400 + 86400, 90).unwrap();
         assert_eq!(corrupt_count(&path), 1, "quarantine survives a re-prune");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1115,7 +1117,7 @@ mod tests {
         // Rule-fire history rides read_entries too: it must not reset.
         assert_eq!(read_rule_fires(&path).len(), 0);
         // Prune quarantines the torn line instead of returning 0.
-        let kept = prune(&path, 100 + 90 * 86400, 90);
+        let kept = prune(&path, 100 + 90 * 86400, 90).unwrap();
         assert_eq!(kept, 1, "prune kept the good entry");
         assert_eq!(corrupt_count(&path), 1, "torn line quarantined");
         assert_eq!(read_entries(&path).len(), 2);
@@ -1143,8 +1145,31 @@ mod tests {
         assert_eq!(back.len(), 2);
         assert_eq!(back[1].event.as_deref(), Some("open"));
         // Prune keeps only recent.
-        assert_eq!(prune(&path, 100 + 91 * 86400, 90), 0);
+        assert_eq!(prune(&path, 100 + 91 * 86400, 90).unwrap(), 0);
         assert!(read_entries(&path).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_reported_count_matches_disk() {
+        // The count prune reports must describe what is on disk, not
+        // just what was in memory: a swallowed serialization failure
+        // used to return the kept count while the old ledger stayed.
+        let dir = std::env::temp_dir().join(format!("terhub-prune-count-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        append_entry(&path, &Entry::prompt(100, "%1", "pi", "one")).unwrap();
+        append_entry(&path, &Entry::prompt(200, "%1", "pi", "two")).unwrap();
+        append_entry(&path, &Entry::prompt(300, "%1", "pi", "three")).unwrap();
+        // now keeps the last two within 90 days, drops the first.
+        let kept = prune(&path, 300 + 89 * 86400, 90).unwrap();
+        assert_eq!(kept, 2);
+        let back = read_entries(&path);
+        assert_eq!(
+            back.iter().filter(|e| e.kind != "__corrupt__").count(),
+            kept,
+            "disk disagrees with the reported count"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
