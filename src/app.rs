@@ -2070,19 +2070,11 @@ impl App {
                 Some(None)
             }
             "saved_filter" => {
-                self.next_saved_filter();
-                self.follow_preview(tmux);
+                self.cycle_saved_filter(tmux);
                 Some(None)
             }
             "filter_clear" => {
-                if self.filter.is_empty() {
-                    self.set_status("search already clear".to_string());
-                } else {
-                    self.filter.clear();
-                    self.active_saved_filter = None;
-                    self.refresh_filtered();
-                    self.set_status("search cleared".to_string());
-                }
+                self.clear_filter();
                 Some(None)
             }
             "hide_shells" => {
@@ -2778,6 +2770,18 @@ impl App {
             self.toggle_hide_quiet_shells();
             return None;
         }
+        // Saved-filter cycling and clearing work from either focus:
+        // without these, bare bindings can never fire in Normal mode
+        // (the modifier-qualified dispatch path is the only other
+        // handler, so F seeds the filter and X vanishes).
+        if key_matches(&self.config.spec("saved_filter"), &code, mods) {
+            self.cycle_saved_filter(tmux);
+            return None;
+        }
+        if key_matches(&self.config.spec("filter_clear"), &code, mods) {
+            self.clear_filter();
+            return None;
+        }
         // Fullscreen preview owns the screen: Enter jumps to the previewed
         // pane from either focus (like left-click), instead of attaching to
         // a session bar the preview covers up.
@@ -3247,6 +3251,26 @@ impl App {
                 .unwrap_or(0),
         };
         self.use_saved_filter(next);
+    }
+
+    /// Cycle to the next named saved filter. Shared by bare presses
+    /// (either focus) and the modifier-qualified dispatch path so both
+    /// spellings behave identically.
+    fn cycle_saved_filter(&mut self, tmux: &Tmux) {
+        self.next_saved_filter();
+        self.follow_preview(tmux);
+    }
+
+    /// Clear the search query. Shared like [`Self::cycle_saved_filter`].
+    fn clear_filter(&mut self) {
+        if self.filter.is_empty() {
+            self.set_status("search already clear".to_string());
+        } else {
+            self.filter.clear();
+            self.active_saved_filter = None;
+            self.refresh_filtered();
+            self.set_status("search cleared".to_string());
+        }
     }
 
     /// Open the naming prompt: `None` names the current search as a new
@@ -5057,6 +5081,46 @@ mod tests {
             matches!(app.mode, Mode::ConfirmRestartPane { .. }),
             "restart dead: {:?} / {:?}",
             app.mode,
+            app.status
+        );
+    }
+
+    #[test]
+    fn bare_saved_filter_and_clear_fire_in_normal() {
+        // Bare saved_filter/filter_clear bindings must fire in
+        // Normal mode — not fall into type-to-filter (F) or vanish
+        // (X). Handled pre-split so both foci are covered.
+        let mut app = app_with(&["a"]);
+        app.config
+            .keys
+            .insert("saved_filter".to_string(), "F".to_string());
+        app.config
+            .keys
+            .insert("filter_clear".to_string(), "X".to_string());
+        let tmux = Tmux::new().unwrap();
+        app.on_key(press(KeyCode::Char('F')), &tmux);
+        assert_eq!(
+            app.mode,
+            Mode::Normal,
+            "bare saved_filter fell into type-to-filter"
+        );
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.contains("no saved filters")),
+            "saved_filter did not cycle: {:?}",
+            app.status
+        );
+        app.focus = Focus::Sessions;
+        app.filter = "abc".to_string();
+        app.on_key(press(KeyCode::Char('X')), &tmux);
+        assert_eq!(app.mode, Mode::Normal, "bare filter_clear opened the filter");
+        assert!(app.filter.is_empty(), "filter_clear did not clear");
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.contains("search cleared")),
+            "clear status missing: {:?}",
             app.status
         );
     }
