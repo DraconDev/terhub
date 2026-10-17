@@ -2063,12 +2063,14 @@ mod tests {
         let registry = Arc::new(Mutex::new(HashMap::new()));
         let shutdown = Arc::new(AtomicBool::new(true));
         let dir = std::env::temp_dir().join(format!("terhub-poll-shutdown-{}", std::process::id()));
+        let guard = ensure_runtime_dir(&dir).unwrap();
         tokio::time::timeout(
             Duration::from_secs(5),
             poll_loop(
                 registry,
                 Arc::new(vec![]),
                 dir,
+                guard,
                 Tunables::default(),
                 shutdown,
             ),
@@ -2091,6 +2093,7 @@ mod tests {
         std::fs::create_dir_all(&runtime).unwrap();
         let server = Server {
             runtime: runtime.clone(),
+            runtime_guard: ensure_runtime_dir(&runtime).unwrap(),
             registry: Arc::new(Mutex::new(HashMap::new())),
             manifests: Arc::new(vec![]),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -2997,6 +3000,39 @@ mod tests {
     }
 
     #[test]
+    fn runtime_symlink_swap_detected() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::temp_dir().join(format!("terhub-symlink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = base.join("rt");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        // Symlink at check time is refused outright.
+        assert!(ensure_runtime_dir(&link).is_err());
+        // A checked dir verifies clean ...
+        let guard = ensure_runtime_dir(&real).unwrap();
+        guard.verify().unwrap();
+        // ... but swapping the guarded path for a symlink afterwards
+        // is detected: rename dir away, link the name at an attacker dir.
+        let moved = base.join("real-moved");
+        std::fs::rename(&real, &moved).unwrap();
+        let evil = base.join("evil");
+        std::fs::create_dir_all(&evil).unwrap();
+        std::os::unix::fs::symlink(&evil, &real).unwrap();
+        assert!(guard.verify().is_err(), "dir->symlink swap went undetected");
+        // Same for a plain dir replacement (rename swap).
+        std::fs::remove_file(&real).unwrap();
+        std::fs::create_dir_all(&real).unwrap();
+        let mut p = std::fs::metadata(&real).unwrap().permissions();
+        p.set_mode(0o700);
+        std::fs::set_permissions(&real, p).unwrap();
+        assert!(guard.verify().is_err(), "dir replacement went undetected");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn daemon_lock_excludes_second_holder() {
         // Two daemons started together must not both pass: the second
         // flock attempt fails while the first holder lives.
@@ -3036,7 +3072,9 @@ mod tests {
         let (server, client) = tokio::net::UnixStream::pair().unwrap();
         let reg = registry.clone();
         let rt = dir.clone();
-        let handle = tokio::spawn(async move { handle_conn(server, reg, rt, shutdown).await });
+        let guard = ensure_runtime_dir(&dir).unwrap();
+        let handle =
+            tokio::spawn(async move { handle_conn(server, reg, rt, guard, shutdown).await });
         let big = serde_json::to_string(&Request::Event {
             event: crate::agent::HookEvent {
                 pane: "%1".to_string(),
