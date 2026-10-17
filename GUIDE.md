@@ -672,7 +672,7 @@ after_secs = 300           # entry delay: hold the state this long first
 cooldown_secs = 3600       # per-pane quiet period after a firing
 hourly_cap = 3             # max firings per rule per hour (0 = invalid)
 action = "send-keys"       # or "shell"
-text = "continue"          # send-keys payload (submitted with Enter)
+text = "continue"          # send-keys payload (submit = false types without Enter)
 # command = "notify-me"    # shell payload instead; TERHUB_* env set
 ```
 

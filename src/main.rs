@@ -1629,7 +1629,10 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
                 match verdict {
                     a::Verdict::Fire(f) => {
                         let what = match &f.action {
-                            a::Action::SendKeys { text } => format!("send-keys '{text}'"),
+                            a::Action::SendKeys { text, submit } => format!(
+                                "send-keys '{text}'{}",
+                                if *submit { "" } else { " (no submit)" }
+                            ),
                             a::Action::Shell { command } => format!("shell '{command}'"),
                         };
                         print_out(&format!("FIRE {pane}: {what}"));

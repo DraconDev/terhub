@@ -39,6 +39,11 @@ pub struct Rule {
     /// Text to type (send-keys).
     #[serde(default)]
     pub text: Option<String>,
+    /// Submit typed text with Enter (send-keys). Defaults to true so
+    /// existing rules keep executing; set false to type without
+    /// submitting.
+    #[serde(default = "default_true")]
+    pub submit: bool,
     /// Command to run (shell).
     #[serde(default)]
     pub command: Option<String>,
@@ -85,6 +90,7 @@ cooldown_secs = 3600
 hourly_cap = 3
 action = "send-keys"
 text = "continue"
+# submit = true   # set false to type without pressing Enter
 "#
     .to_string()
 }
@@ -144,7 +150,7 @@ pub fn validate(rule: &Rule) -> Vec<String> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    SendKeys { text: String },
+    SendKeys { text: String, submit: bool },
     Shell { command: String },
 }
 
@@ -189,6 +195,7 @@ pub fn dry_run(
         let action = match rule.action.as_str() {
             "send-keys" => Action::SendKeys {
                 text: rule.text.clone().unwrap_or_default(),
+                submit: rule.submit,
             },
             "shell" => Action::Shell {
                 command: rule.command.clone().unwrap_or_default(),
@@ -495,13 +502,14 @@ pub fn execute_with_timeout(
     timeout: std::time::Duration,
 ) -> Result<String> {
     match &fire.action {
-        Action::SendKeys { text } => {
+        Action::SendKeys { text, submit } => {
             let tmux = tmux.context("no tmux")?;
-            tmux.send_keys(&fire.pane, text, true)?;
+            tmux.send_keys(&fire.pane, text, *submit)?;
             Ok(format!(
-                "send-keys to {}: '{}'",
+                "send-keys to {}: '{}'{}",
                 fire.pane,
-                truncate(text, 60)
+                truncate(text, 60),
+                if *submit { "" } else { " (no submit)" }
             ))
         }
         Action::Shell { command } => {
