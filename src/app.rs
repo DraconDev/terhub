@@ -5642,6 +5642,30 @@ mod tests {
     }
 
     #[test]
+    fn attended_survives_tick_for_remote_rows() {
+        // The tick pruned attended against the tmux-only live set
+        // (and against the daemon-only agent map) before the
+        // fleet/native caches merged back, so a visited remote row
+        // lost its checkmark every 3s.
+        use crate::agent::AgentState;
+        let mut app = app_with_remote();
+        let rec = record("dev:%1", "pi", AgentState::Waiting, 10);
+        app.fleet_agents = vec![rec.clone()];
+        app.agents.insert("dev:%1".to_string(), rec);
+        app.mark_attended("dev:%1");
+        assert!(app.is_attended("dev:%1"), "setup: remote row not attended");
+        // A full tick: fake tmux lists no remote rows; the daemon may
+        // or may not answer — the fleet cache is what must keep the mark.
+        let (tmux, dir) = fake_tmux();
+        app.refresh(&tmux);
+        assert!(
+            app.is_attended("dev:%1"),
+            "tick wiped the remote checkmark"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn attended_clears_on_new_state_or_new_summary() {
         use crate::agent::AgentState;
         let mut app = app_with_panes();
