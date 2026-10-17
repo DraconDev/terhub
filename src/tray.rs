@@ -1589,45 +1589,69 @@ mod tests {
     }
 
     #[test]
-    fn transiently_torn_advertisement_survives_the_read() {
-        // A torn concurrent read (publish mid-write) must not delete a
-        // live hub's advertisement: the reader must see the healed file.
-        // Deleting it makes the tray think no hub is open and spawn a
-        // duplicate TUI. The fixer heals the file 10ms in, well inside
-        // any sane retry window; the pid assert keeps a /proc-scan hit
-        // (different pid) from faking a pass.
+    fn torn_file_heals_within_the_retry_window() {
+        // A torn concurrent write must read as the healed file, not as
+        // absent (absent is what the caller deletes — deleting a live
+        // hub's advertisement spawns a duplicate TUI). Hermetic: the
+        // path-level helper has no env or /proc-scan dependencies. The
+        // fixer heals at 10ms and keeps rewriting, so even a delayed
+        // thread start lands inside the 50ms retry window.
         let dir = std::env::temp_dir()
             .join(format!("terhub-hub-torn-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let saved = std::env::var("TERHUB_RUNTIME_DIR").ok();
-        // SAFETY: test-only env mutation, restored below.
-        unsafe {
-            std::env::set_var("TERHUB_RUNTIME_DIR", &dir);
-        }
-        let path = hub_session_path();
+        let path = dir.join(crate::tray::HUB_SESSION_FILE);
         std::fs::write(&path, "{torn").unwrap();
         let me = std::process::id();
+        let heal = path.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(10));
-            let _ = std::fs::write(
-                &path,
-                serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
-            );
-        });
-        let found = read_hub_session();
-        // SAFETY: restoring what we borrowed.
-        unsafe {
-            match saved {
-                Some(v) => std::env::set_var("TERHUB_RUNTIME_DIR", v),
-                None => std::env::remove_var("TERHUB_RUNTIME_DIR"),
+            for _ in 0..400 {
+                let _ = std::fs::write(
+                    &heal,
+                    serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
             }
-        }
-        // pid == me can only come from the file (the /proc scan skips
-        // self), so this proves the healed advertisement survived.
+        });
+        let found = super::read_session_file_at(&path);
         assert!(
             found.as_ref().is_some_and(|s| s.pid == me),
             "torn read lost the live advertisement: {found:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn retry_delay_only_fires_on_parse_failure() {
+        // The 50ms beat must not tax the happy path: a valid file
+        // returns fast, a torn one pays exactly one beat. (A single
+        // glance with no retry would return None for the torn file —
+        // the old delete-on-first-sight behavior.)
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-hub-beat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(crate::tray::HUB_SESSION_FILE);
+        let me = std::process::id();
+        std::fs::write(
+            &path,
+            serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
+        )
+        .unwrap();
+        let start = std::time::Instant::now();
+        let found = super::read_session_file_at(&path);
+        assert!(found.as_ref().is_some_and(|s| s.pid == me));
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(40),
+            "valid file must not pay the retry beat"
+        );
+        std::fs::write(&path, "{torn").unwrap();
+        let start = std::time::Instant::now();
+        assert!(super::read_session_file_at(&path).is_none());
+        assert!(
+            start.elapsed() >= super::HUB_SESSION_RETRY_DELAY,
+            "torn file must wait out one beat before reading absent"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
