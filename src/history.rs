@@ -620,15 +620,16 @@ pub fn report_markdown(data: &ReportData, since_label: &str) -> String {
         ("by agent", &data.by_agent),
         ("by session", &data.by_session),
     ] {
-        md.push_str(&format!("\n## {name}\n\n| key | work | wait | err | idle | total |\n| --- | --- | --- | --- | --- | --- |\n"));
+        md.push_str(&format!("\n## {name}\n\n| key | work | wait | err | idle | done | total |\n| --- | --- | --- | --- | --- | --- | --- |\n"));
         for r in rows {
             md.push_str(&format!(
-                "| {} | {} | {} | {} | {} | {} |\n",
+                "| {} | {} | {} | {} | {} | {} | {} |\n",
                 r.key,
                 fmt_dur(r.work),
                 fmt_dur(r.wait),
                 fmt_dur(r.err),
                 fmt_dur(r.idle),
+                fmt_dur(r.done),
                 fmt_dur(r.total()),
             ));
         }
