@@ -165,7 +165,15 @@ fn now_ms() -> u64 {
 /// process group dies with the terminal's SIGHUP, which is how the tray
 /// and every TUI end up showing "daemon down" minutes later.
 pub fn spawn_daemon() -> Result<()> {
-    let log_file = std::fs::File::create(log_path());
+    // Owner-only log file (0600): daemon stderr may contain prompt
+    // text. File::create would inherit a permissive umask, so set
+    // the mode explicitly at creation.
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(log_path());
     let mut cmd = std::process::Command::new(daemon_bin());
     // Own process group: never share the launcher's SIGHUP fate.
     {
@@ -371,6 +379,11 @@ impl Server {
         let _ = std::fs::remove_file(&sock); // stale socket from a crash
         let listener =
             UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
+        // Owner-only socket (0600): the bind inherits the umask, so
+        // tighten it explicitly. The runtime dir is already 0700; this
+        // covers TERHUB_RUNTIME_DIR pointed at a shared dir.
+        std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("chmod 0600 {}", sock.display()))?;
         // Pid file only after a successful bind: a concurrent-start loser
         // fails above without clobbering the winner's pid with dead data.
         // Atomic (tmp + rename): a torn write would leave a partial pid
@@ -382,7 +395,20 @@ impl Server {
                 .map(|d| d.as_nanos())
                 .unwrap_or(0);
             let tmp = pid_file.with_extension(format!("tmp.{pid}.{nonce}"));
-            std::fs::write(&tmp, &pid)?;
+            // Owner-only pid tmp (0600, rename preserves the mode): the
+            // pid file must not leak existence details under a
+            // permissive umask or a shared runtime dir.
+            std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&tmp)
+                .and_then(|mut f| {
+                    use std::io::Write;
+                    f.write_all(pid.as_bytes())
+                })
+                .with_context(|| format!("write {}", tmp.display()))?;
             std::fs::rename(&tmp, &pid_file)?;
         }
 
