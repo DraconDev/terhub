@@ -41,9 +41,7 @@ fn fleet_status_spawns_bounded_threads() {
             label: String::new(),
         })
         .collect();
-    eprintln!("CKPT hosts-built");
     let floor = task_count();
-    eprintln!("CKPT floor");
     let peak = std::sync::Arc::new(std::sync::Mutex::new(floor));
     let done = std::sync::Arc::new(AtomicBool::new(false));
     let sampler = {
@@ -52,14 +50,13 @@ fn fleet_status_spawns_bounded_threads() {
         std::thread::spawn(move || {
             while !done.load(Ordering::Relaxed) {
                 let n = task_count();
-                *peak.lock().unwrap() = (*peak.lock().unwrap()).max(n);
+                let mut p = peak.lock().unwrap();
+                *p = (*p).max(n);
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
         })
     };
-    eprintln!("CKPT sampler-up");
     let statuses = f::fleet_status(&hosts);
-    eprintln!("CKPT status-done");
     done.store(true, Ordering::Relaxed);
     sampler.join().unwrap();
     assert_eq!(statuses.len(), HOSTS);
