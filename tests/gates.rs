@@ -78,6 +78,36 @@ fn ci_workflow_runs_gates() {
     );
 }
 
+/// Substring pins stay green when a gate step is semantically
+/// neutralized: `continue-on-error: true` swallows its failure and
+/// `if: false` skips it entirely, while `fmt --check`, `clippy`,
+/// `cargo test` and `cargo-deny-action` all still appear in the file.
+/// The gates job must therefore carry neither knob — if a conditional
+/// or best-effort step is ever genuinely needed, this test forces the
+/// conversation instead of silently blessing it.
+#[test]
+fn ci_gate_steps_cannot_be_neutralized() {
+    let text = ci_yml();
+    // Even `continue-on-error: false` is banned: it is a one-word
+    // flip from silencing a gate, and the gates job has no step
+    // whose failure is acceptable.
+    assert!(
+        !text.contains("continue-on-error"),
+        "CI must not use continue-on-error (a failing gate must fail the job)"
+    );
+    // Step/job-level `if:` skips the step with every substring pin
+    // intact. Scan code lines only — comments may discuss `if:` freely.
+    let conditional: Vec<&str> = text
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|code| code.starts_with("if:") || code.starts_with("if :"))
+        .collect();
+    assert!(
+        conditional.is_empty(),
+        "CI gate steps must be unconditional, found: {conditional:?}"
+    );
+}
+
 /// `make test` / `make clippy` must run the same scope as the CI
 /// gates they stand in for locally: a `--lib --tests` subset lets a
 /// local green pass while CI (all-targets, everything) fails. Pin
