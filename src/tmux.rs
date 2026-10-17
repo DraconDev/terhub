@@ -151,7 +151,6 @@ fn parse_panes(out: &str) -> Vec<Pane> {
         if pane.pid > 1 {
             pane.pid_start = crate::proc::proc_starttime(pane.pid).unwrap_or(0);
         }
-        });
     }
     panes
 }
