@@ -81,7 +81,7 @@ pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Outpu
         }
         buf
     });
-    let deadline = Instant::now() + Duration::from_secs(secs);
+    let deadline = Instant::now() + Duration::from_secs(0); // NEGCONTROL
     let status = loop {
         match child.try_wait()? {
             Some(s) => break s,
@@ -947,24 +947,37 @@ mod tests {
     fn run_timed_returns_output_and_kills_wedges() {
         let out = run_timed(Command::new("echo"), "echo").unwrap();
         assert!(out.status.success());
-        // A wedged child is killed at the timeout, not awaited.
+        // A wedged child is killed at the timeout, not awaited. A
+        // 1s caller-supplied deadline keeps this fast; the production
+        // 5s default is proven by the kitty integration test instead.
+        // Two-sided timing: the lower bound proves the full deadline
+        // was waited (an upper bound alone passes even if the timeout
+        // fires instantly for the wrong reason), the upper bound is
+        // hang protection. Load can only stretch elapsed, never
+        // shrink it, so the lower bound cannot flake.
         let start = std::time::Instant::now();
-        let err = run_timed(
+        let err = run_with_timeout(
             {
                 let mut c = Command::new("sleep");
                 c.arg("30");
                 c
             },
             "sleep",
+            1,
         )
         .expect_err("sleep 30 should time out");
         assert!(
             format!("{err:#}").contains("timed out"),
             "unexpected error: {err:#}"
         );
+        let elapsed = start.elapsed();
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(20),
-            "timeout not enforced"
+            elapsed >= std::time::Duration::from_secs(1),
+            "returned before the 1s deadline: timeout path not taken ({elapsed:?})"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "timeout not enforced ({elapsed:?})"
         );
     }
 

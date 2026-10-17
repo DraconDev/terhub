@@ -125,7 +125,19 @@ fn fleet_and_zellij_against_fakes() {
     let start = std::time::Instant::now();
     let err = f::ssh_run("fake-target", &["terhub", "status"], 1).unwrap_err();
     assert!(format!("{err:?}").contains("timed out"), "{err:?}");
-    assert!(start.elapsed() < std::time::Duration::from_secs(10));
+    // Two-sided timing around the 1s deadline: the lower bound proves
+    // the timeout path waited (an instant "timed out" for the wrong
+    // reason still passes the error assert above), the upper bound is
+    // hang protection. Load only stretches elapsed, so neither flakes.
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed >= std::time::Duration::from_secs(1),
+        "ssh timeout returned before its 1s deadline ({elapsed:?})"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "ssh timeout overran ({elapsed:?})"
+    );
 
     // Batch G (finding 46): a dash-leading target must reach ssh as the
     // hostname behind a `--` separator, never as an ssh option.

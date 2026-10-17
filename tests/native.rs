@@ -177,9 +177,18 @@ fn native_backends_against_fakes() {
     write_exe(&bin.join("kitty"), "#!/bin/sh\nsleep 30\n");
     let start = std::time::Instant::now();
     let reports = n::list_all();
+    // Two-sided timing around the 5s production probe deadline: the
+    // lower bound proves list_all waited out the wedged probe (not a
+    // fail-fast for the wrong reason), the upper bound is hang
+    // protection. Load only stretches elapsed, so neither flakes.
+    let elapsed = start.elapsed();
     assert!(
-        start.elapsed() < std::time::Duration::from_secs(20),
-        "wedged kitty stalled list_all"
+        elapsed >= std::time::Duration::from_secs(5),
+        "wedged kitty probe returned before its deadline ({elapsed:?})"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(20),
+        "wedged kitty stalled list_all ({elapsed:?})"
     );
     let kitty = reports.iter().find(|r| r.backend == "kitty").unwrap();
     assert!(kitty.tabs.is_empty());
