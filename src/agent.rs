@@ -1029,8 +1029,8 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
             // activity in itself, pixels or not: restart the
             // visible-quiet clock so the Idle column reads fresh
             // instead of the previous stillness.
-            let fresh_work = ev.state == AgentState::Working
-                || old.map(|r| r.agent != agent).unwrap_or(true);
+            let fresh_work =
+                ev.state == AgentState::Working || old.map(|r| r.agent != agent).unwrap_or(true);
             registry.insert(
                 ev.pane.clone(),
                 AgentRecord {
@@ -1306,8 +1306,7 @@ mod tests {
         assert_eq!(reg["%1"].state, AgentState::Working);
         assert_eq!(reg["%1"].state_since, now);
         assert_eq!(
-            reg["%1"].quiet_since,
-            now,
+            reg["%1"].quiet_since, now,
             "resumed work kept showing the old stillness"
         );
         // A demotion back into Idle keeps the clock — that stillness
@@ -1324,8 +1323,7 @@ mod tests {
         apply_event_to(&mut reg, &idle2, now + 10);
         assert_eq!(reg["%1"].state, AgentState::Idle);
         assert_eq!(
-            reg["%1"].quiet_since,
-            now,
+            reg["%1"].quiet_since, now,
             "demotion must not whitewash stillness"
         );
         // A new agent taking the pane restarts the clock whatever it

@@ -116,7 +116,10 @@ fn phase_pause_resume() {
     assert!(wait_stopped(pid, false), "sleep must run after CONT");
     // A stale starttime is refused without signalling.
     terhub::proc::pause_group(pid, Some(expect.unwrap().wrapping_add(1))).unwrap_err();
-    assert!(!terhub::proc::is_stopped(pid), "refused pause must not stop");
+    assert!(
+        !terhub::proc::is_stopped(pid),
+        "refused pause must not stop"
+    );
     assert!(terhub::proc::pause_group(0, None).is_err());
     assert!(terhub::proc::pause_group(1, None).is_err());
 }

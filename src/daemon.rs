@@ -124,8 +124,7 @@ pub fn log_path() -> PathBuf {
 /// the binary we then spawn detached and re-spawn on every self-heal
 /// tick, so every PATH-resolved candidate must pass this check.
 fn safe_to_exec(path: &Path) -> Result<()> {
-    let meta = std::fs::metadata(path)
-        .with_context(|| format!("stat {}", path.display()))?;
+    let meta = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
     if !meta.file_type().is_file() {
         anyhow::bail!("{} is not a regular file", path.display());
     }
@@ -613,7 +612,14 @@ impl Server {
             let runtime = self.runtime.clone();
             let runtime_guard = self.runtime_guard.clone();
             let shutdown = self.shutdown.clone();
-            admit_conn(stream, reg, runtime, runtime_guard, shutdown, permits.clone());
+            admit_conn(
+                stream,
+                reg,
+                runtime,
+                runtime_guard,
+                shutdown,
+                permits.clone(),
+            );
         }
 
         // Graceful drain: the flag is set, so the poll loop breaks within
@@ -943,8 +949,8 @@ fn apply_register(
             // Entering Working (or a new agent taking the pane) is
             // activity in itself, pixels or not: restart the
             // visible-quiet clock (same rule as hook events).
-            let fresh_work = state == AgentState::Working
-                || old.map(|r| r.agent != agent).unwrap_or(true);
+            let fresh_work =
+                state == AgentState::Working || old.map(|r| r.agent != agent).unwrap_or(true);
             reg.insert(
                 pane.to_string(),
                 AgentRecord {
@@ -1171,7 +1177,9 @@ fn split_prev(
     stale_secs: u64,
 ) -> (Option<&AgentRecord>, Option<&AgentRecord>) {
     match rec {
-        Some(r) if r.source == Source::Hook && elapsed_for_expiry(now, r.updated_at) > stale_secs => {
+        Some(r)
+            if r.source == Source::Hook && elapsed_for_expiry(now, r.updated_at) > stale_secs =>
+        {
             (None, Some(r))
         }
         other => (other, None),
@@ -1297,8 +1305,14 @@ fn refresh_quiet(
     // Pre-fallback summaries: the fill below derives from the same
     // screen the hash already judged, so only merge verdicts count.
     let carried_summary = carried.map(|r| r.summary.as_str()).unwrap_or("");
-    let (h, mut q) =
-        track_quiet_merged(prev_quiet, hash, carried_summary, &rec.summary, rec.state, now);
+    let (h, mut q) = track_quiet_merged(
+        prev_quiet,
+        hash,
+        carried_summary,
+        &rec.summary,
+        rec.state,
+        now,
+    );
     let fresh_work = carried
         .map(|r| r.state != AgentState::Working || r.agent != rec.agent)
         .unwrap_or(true);
@@ -3374,8 +3388,7 @@ mod tests {
     #[test]
     fn path_daemon_bin_must_be_safe_to_exec() {
         use std::os::unix::fs::PermissionsExt;
-        let base =
-            std::env::temp_dir().join(format!("terhub-pathbin-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("terhub-pathbin-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let good_dir = base.join("good");
         let evil_dir = base.join("evil");
@@ -3393,11 +3406,8 @@ mod tests {
         let mut p = std::fs::metadata(&good_bin).unwrap().permissions();
         p.set_mode(0o755);
         std::fs::set_permissions(&good_bin, p).unwrap();
-        let path_var = std::ffi::OsString::from(format!(
-            "{}:{}",
-            evil_dir.display(),
-            good_dir.display()
-        ));
+        let path_var =
+            std::ffi::OsString::from(format!("{}:{}", evil_dir.display(), good_dir.display()));
         let found = find_in_path("terhubd", &path_var).unwrap();
         assert_eq!(found, good_bin);
         // A non-regular file (directory) is not executable-as-daemon.
@@ -3508,8 +3518,7 @@ mod tests {
         use tokio::io::AsyncBufReadExt;
         let registry = Arc::new(Mutex::new(HashMap::new()));
         let shutdown = Arc::new(AtomicBool::new(false));
-        let dir =
-            std::env::temp_dir().join(format!("terhub-shed-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-shed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let permits = Arc::new(tokio::sync::Semaphore::new(1));
         let admit = |stream| {
@@ -3744,8 +3753,7 @@ mod tests {
         old_hook.pane = "%2".to_string();
         live.insert("%2".to_string(), old_hook);
 
-        let listed: std::collections::HashSet<String> =
-            ["%1".to_string()].into_iter().collect();
+        let listed: std::collections::HashSet<String> = ["%1".to_string()].into_iter().collect();
         merge_mid_poll_hooks(&mut next, &live, poll_start, Some(&listed));
 
         assert_eq!(next["%1"].state, AgentState::Waiting);
@@ -3770,8 +3778,7 @@ mod tests {
         pin.pane = "%8".to_string();
         pin.source = Source::Manual;
         live.insert("%8".to_string(), pin);
-        let listed: std::collections::HashSet<String> =
-            ["%1".to_string()].into_iter().collect();
+        let listed: std::collections::HashSet<String> = ["%1".to_string()].into_iter().collect();
         merge_mid_poll_hooks(&mut next, &live, poll_start, Some(&listed));
         assert!(!next.contains_key("%9"), "ghost hook resurrected");
         assert!(next.contains_key("%8"), "manual pin must survive");
@@ -3798,7 +3805,10 @@ mod tests {
         use crate::agent::AgentState::{Done, Error, Limited, Stuck, Waiting, Working};
         let screen = Some("● Chrome Bridge (indefinite)");
         // Done rows show what finished, like Idle rows.
-        assert_eq!(fallback_summary_for(Done, screen), "● Chrome Bridge (indefinite)");
+        assert_eq!(
+            fallback_summary_for(Done, screen),
+            "● Chrome Bridge (indefinite)"
+        );
         // Working rows stay summary-free: spinner text is noise.
         assert_eq!(fallback_summary_for(Working, screen), "");
         // Stuck carries its own explanation from merge_record.
@@ -4255,10 +4265,7 @@ mod tests {
     fn repeated_saves_leave_no_tmp_litter() {
         // Back-to-back saves can share a nanos tick: the attempt counter
         // keeps every tmp name unique, and each rename consumes its tmp.
-        let dir = std::env::temp_dir().join(format!(
-            "terhub-reg-nolitter-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("terhub-reg-nolitter-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("registry.json");
@@ -4283,10 +4290,7 @@ mod tests {
     fn stale_save_tmps_swept_but_live_ones_kept() {
         // The sweep is mtime-vs-start: drive it directly with explicit
         // starts so the test never depends on wall-clock ordering.
-        let dir = std::env::temp_dir().join(format!(
-            "terhub-reg-sweep-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("terhub-reg-sweep-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("registry.json");

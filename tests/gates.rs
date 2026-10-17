@@ -229,8 +229,8 @@ fn make_targets_mirror_ci_gate_scope() {
 /// above, and a reader following README gets a different gate.
 #[test]
 fn docs_quote_exact_gate_commands() {
-    let readme = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))
-        .expect("README.md");
+    let readme =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).expect("README.md");
     for cmd in [
         "cargo test --offline",
         "cargo clippy --offline --all-targets -- -D warnings",
@@ -251,8 +251,8 @@ fn docs_quote_exact_gate_commands() {
 fn guide_names_every_make_target() {
     let make =
         fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Makefile")).expect("Makefile");
-    let guide = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md"))
-        .expect("GUIDE.md");
+    let guide =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md")).expect("GUIDE.md");
     let mut targets = Vec::new();
     for line in make.lines() {
         if let Some(list) = line.strip_prefix(".PHONY:") {
@@ -289,8 +289,8 @@ fn make_default_goal_is_build() {
 /// pins that column forever after.)
 #[test]
 fn parity_matrix_lists_known_backends() {
-    let guide = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md"))
-        .expect("GUIDE.md");
+    let guide =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md")).expect("GUIDE.md");
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     // Matrix column -> source module proving the backend exists.
     let backends = [

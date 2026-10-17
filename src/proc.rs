@@ -776,8 +776,7 @@ mod tests {
         let start = proc_starttime(me).expect("own starttime");
         signal_tree(me, libc::SIGCONT, "probe", Some(start)).unwrap();
         signal_tree(me, libc::SIGCONT, "probe", None).unwrap();
-        let err = signal_tree(me, libc::SIGCONT, "probe", Some(start.wrapping_add(1)))
-            .unwrap_err();
+        let err = signal_tree(me, libc::SIGCONT, "probe", Some(start.wrapping_add(1))).unwrap_err();
         assert!(err.to_string().contains("recycled"), "unexpected: {err:#}");
         assert!(signal_tree(0, libc::SIGCONT, "probe", None).is_err());
         assert!(signal_tree(1, libc::SIGCONT, "probe", None).is_err());
