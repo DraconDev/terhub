@@ -271,11 +271,20 @@ impl Tmux {
     }
 
     fn run(&self, args: &[&str]) -> Result<String> {
+        // Every tmux CLI call is bounded: a wedged server (or a hung
+        // socket) surfaces as a timeout error instead of freezing the
+        // TUI or the daemon poll, which run these calls on their hot
+        // paths. Same budget as the native probes; the timeout error
+        // matches no empty-server string, so it keeps the warning
+        // treatment instead of reading as "no sessions".
         let mut cmd = Command::new(&self.bin);
         if let Some(s) = &self.socket {
             cmd.args(socket_args(s));
         }
-        let out = cmd.args(args).output().context("failed to run tmux")?;
+        cmd.args(args);
+        let what = format!("tmux {}", args.first().unwrap_or(&"?"));
+        let out = crate::native::run_with_timeout(cmd, &what, TMUX_CMD_TIMEOUT_SECS)
+            .context("failed to run tmux")?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         } else {

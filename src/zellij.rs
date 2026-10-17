@@ -23,10 +23,15 @@ pub fn available() -> bool {
 }
 
 fn run(args: &[&str]) -> Result<String> {
+    // Bounded like the tmux backend: a wedged zellij server surfaces
+    // as a timeout error instead of freezing the caller. The timeout
+    // error matches no empty-server string, so it still errors loudly
+    // instead of reading as "no sessions".
     let bin = zellij_bin().context("zellij not found on PATH")?;
-    let out = Command::new(&bin)
-        .args(args)
-        .output()
+    let mut cmd = Command::new(&bin);
+    cmd.args(args);
+    let what = format!("zellij {}", args.first().unwrap_or(&"?"));
+    let out = crate::native::run_with_timeout(cmd, &what, ZELLIJ_CMD_TIMEOUT_SECS)
         .context("failed to run zellij")?;
     if !out.status.success() {
         let mut msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
