@@ -89,6 +89,7 @@ fn pane(id: &str, session: &str, window: &str, command: &str) -> Pane {
         height: 24,
         activity: 0,
         pid: 0,
+        pid_start: 0,
         bell: false,
     }
 }
@@ -2127,6 +2128,7 @@ fn remote_rows_render_in_table() {
         height: 0,
         activity: 1,
         pid: 0,
+        pid_start: 0,
         bell: false,
     });
     app.refresh_filtered();
