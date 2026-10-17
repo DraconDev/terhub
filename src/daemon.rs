@@ -4212,6 +4212,58 @@ mod tests {
     }
 
     #[test]
+    fn repeated_saves_leave_no_tmp_litter() {
+        // Back-to-back saves can share a nanos tick: the attempt counter
+        // keeps every tmp name unique, and each rename consumes its tmp.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-reg-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("registry.json");
+        let mut reg = HashMap::new();
+        reg.insert(
+            "%1".to_string(),
+            carried("pi", AgentState::Working, 1, 2, 100),
+        );
+        save_registry(&path, &reg);
+        save_registry(&path, &reg);
+        save_registry(&path, &reg);
+        let names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["registry.json".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stale_save_tmps_swept_but_live_ones_kept() {
+        // The sweep is mtime-vs-start: drive it directly with explicit
+        // starts so the test never depends on wall-clock ordering.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-reg-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("registry.json");
+        let pid = std::process::id();
+        let own = dir.join(format!("registry.tmp.{pid}.999"));
+        let foreign = dir.join(format!("registry.tmp.{}.999", pid.wrapping_add(1)));
+        std::fs::write(&own, b"stale").unwrap();
+        std::fs::write(&foreign, b"stale").unwrap();
+        // Both predate a future start: only our pid is swept.
+        sweep_stale_tmps(&path, pid, now_unix() + 3600);
+        assert!(!own.exists(), "own stale tmp not swept");
+        assert!(foreign.exists(), "foreign tmp must never be touched");
+        // A file newer than the start (a live peer's in-flight tmp)
+        // is kept even on our pid.
+        std::fs::write(&own, b"live").unwrap();
+        sweep_stale_tmps(&path, pid, 0);
+        assert!(own.exists(), "live tmp must never be touched");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn working_carry_drops_stale_summary() {
         let now = 100_000;
         // A prompt line borrowed while waiting is rot once the agent
