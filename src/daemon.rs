@@ -1814,6 +1814,9 @@ fn poll_sync_with(
                 )
             })
         };
+        // Bell evidence for this pass, derived once: every branch below
+        // mirrors it fresh instead of carrying the old cut.
+        let (bell_now, bell_reason_now) = bell_evidence(screen_hit.as_ref(), pane.bell);
         let replaced_by_live_agent = old.is_some_and(|rec| {
             rec.source == Source::Hook
                 && (proc_hit
@@ -1867,7 +1870,7 @@ fn poll_sync_with(
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
             apply_hook_stuck_gate(&mut r, has_proc, now, tune.stuck_secs, tune.quiet_idle_secs);
             // Bell is reset-each-pass: mirror this poll's flag, never carry.
-            (r.bell, r.bell_reason) = bell_evidence(screen_hit.as_ref(), pane.bell);
+            (r.bell, r.bell_reason) = (bell_now, bell_reason_now.clone());
             if r.summary.is_empty() {
                 r.summary = fallback_summary_for(r.state, screen.as_deref());
             }
@@ -1899,7 +1902,7 @@ fn poll_sync_with(
         ) {
             (rec.screen_hash, rec.quiet_since) = refresh_quiet(carried, hash, &rec, now);
             // Bell is reset-each-pass: mirror this poll's flag, never carry.
-            (rec.bell, rec.bell_reason) = bell_evidence(screen_hit.as_ref(), pane.bell);
+            (rec.bell, rec.bell_reason) = (bell_now, bell_reason_now.clone());
             if rec.summary.is_empty() {
                 rec.summary = fallback_summary_for(rec.state, screen.as_deref());
             }
@@ -1922,7 +1925,7 @@ fn poll_sync_with(
                 (r.screen_hash, r.quiet_since) =
                     track_quiet((r.screen_hash, r.quiet_since), hash, now);
                 // Bell is reset-each-pass: mirror this poll's flag, never carry.
-                (r.bell, r.bell_reason) = bell_evidence(screen_hit.as_ref(), pane.bell);
+                (r.bell, r.bell_reason) = (bell_now, bell_reason_now.clone());
                 if r.summary.is_empty() {
                     r.summary = fallback_summary_for(r.state, screen.as_deref());
                 }
@@ -4235,6 +4238,25 @@ mod tests {
         apply_hook_stuck_gate(&mut claimed, true, now, STUCK_SECS, 3600);
         assert_eq!(claimed.state, AgentState::Stuck);
         assert_eq!(claimed.stuck_base, None);
+    }
+
+    #[test]
+    fn bell_evidence_mirrors_actionable_flag_only() {
+        // Flag + classifier upgrade (🔔 prefix) → recordable with reason.
+        let hit = screen_hit(Some("pi"), AgentState::Waiting, "🔔 Approve? [y/n]");
+        assert_eq!(
+            bell_evidence(hit.as_ref(), true),
+            (true, "Approve? [y/n]".to_string())
+        );
+        // Bare bell with no manifest hit is shell noise: stays clear.
+        assert_eq!(bell_evidence(None, true), (false, String::new()));
+        // No flag: stays clear even with a waiting hit on screen.
+        let hit = screen_hit(Some("pi"), AgentState::Waiting, "Approve? [y/n]");
+        assert_eq!(bell_evidence(hit.as_ref(), false), (false, String::new()));
+        // Flag but no upgrade (bell_override kept Error): stays clear —
+        // the verdict, not the bell, is the evidence.
+        let hit = screen_hit(Some("pi"), AgentState::Error, "Traceback");
+        assert_eq!(bell_evidence(hit.as_ref(), true), (false, String::new()));
     }
 
     #[test]

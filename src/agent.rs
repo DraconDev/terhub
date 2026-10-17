@@ -141,10 +141,10 @@ pub struct AgentRecord {
     /// under it so stuck detection works for manually pinned agents.
     #[serde(default)]
     pub reg_pid: u32,
-    /// The pane's tmux `window_bell_flag` was set on the most recent
-    /// capture (the foreground program emitted a BEL). Holds until
-    /// the next classifier pass resets it. Together with `bell_reason`
-    /// it composes the needs-you evidence: `bell` is the kernel's
+    /// Mirror of the pane's tmux `window_bell_flag`, reset every poll
+    /// (never carried): true only when the flag fired AND the classifier
+    /// upgraded a manifest hit on it. Together with `bell_reason` it
+    /// composes the needs-you evidence: `bell` is the kernel's
     /// yes/no, `bell_reason` is what the screen showed when the bell
     /// rang (so the chip can show "🔔 Y/N" instead of just "🔔").
     #[serde(default)]
