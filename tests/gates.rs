@@ -77,3 +77,25 @@ fn ci_workflow_runs_gates() {
         "CI must run the check-install gate"
     );
 }
+
+/// `make test` / `make clippy` must run the same scope as the CI
+/// gates they stand in for locally: a `--lib --tests` subset lets a
+/// local green pass while CI (all-targets, everything) fails. Pin
+/// the exact CI command strings inside the Makefile recipes so
+/// weakening either side breaks this test.
+#[test]
+fn make_targets_mirror_ci_gate_scope() {
+    let make = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Makefile"))
+        .expect("Makefile");
+    let ci = ci_yml();
+    for cmd in [
+        "cargo test --offline",
+        "cargo clippy --offline --all-targets -- -D warnings",
+    ] {
+        assert!(ci.contains(cmd), "CI must run `{cmd}`");
+        assert!(
+            make.contains(cmd),
+            "Makefile must run the CI command `{cmd}` (local green must equal CI green)"
+        );
+    }
+}
