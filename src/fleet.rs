@@ -249,90 +249,70 @@ pub struct HostStatus {
     pub result: Result<crate::daemon::Snapshot, String>,
 }
 
-/// Max concurrent ssh children during a fleet-wide status query. A
-/// large fleet (hundreds of hosts) would otherwise spawn one thread
-/// and one `ssh` per host at once, exhausting fds and pinning a
-/// core. 16 keeps latency low while bounding the burst.
+/// Worker count for a fleet-wide status query: one worker runs one
+/// ssh child, so this caps threads AND children together. A large
+/// fleet (hundreds of hosts) drains 16 at a time instead of spawning
+/// one thread per host. 16 keeps latency low while bounding threads,
+/// ssh children, and fds.
 const FLEET_FANOUT: usize = 16;
 
-/// Tiny counting semaphore (std has no stable `Semaphore`). Each
-/// permit represents one in-flight ssh child; a worker thread blocks
-/// on `acquire` until the previous one finishes.
-struct Permit {
-    inner: std::sync::Arc<PermitInner>,
-}
-struct PermitInner {
-    state: std::sync::Mutex<usize>,
-    available: std::sync::Condvar,
-}
-impl Permit {
-    fn new(cap: usize) -> std::sync::Arc<Self> {
-        std::sync::Arc::new(Self {
-            inner: std::sync::Arc::new(PermitInner {
-                state: std::sync::Mutex::new(cap),
-                available: std::sync::Condvar::new(),
-            }),
-        })
-    }
-    fn acquire(self: std::sync::Arc<Self>) -> PermitGuard {
-        let mut state = self.inner.state.lock().unwrap();
-        while *state == 0 {
-            state = self.inner.available.wait(state).unwrap();
-        }
-        *state -= 1;
-        let permit = std::sync::Arc::clone(&self);
-        drop(state);
-        PermitGuard { permit }
-    }
-}
-struct PermitGuard {
-    permit: std::sync::Arc<Permit>,
-}
-impl Drop for PermitGuard {
-    fn drop(&mut self) {
-        let mut state = self.permit.inner.state.lock().unwrap();
-        *state += 1;
-        self.permit.inner.available.notify_one();
-    }
-}
-
-/// Query every host concurrently, capped at [`FLEET_FANOUT`] in flight.
-/// Results come back in config order so a slow host delays the answer
-/// but not the others.
+/// Query every host concurrently with a fixed pool of
+/// [`FLEET_FANOUT`] workers pulling from a shared index. Results come
+/// back in config order so a slow host delays the answer but not the
+/// others. The pool — not a semaphore behind one-thread-per-host — is
+/// what bounds threads: each worker runs at most one ssh child, so
+/// the thread count stays flat no matter how large or slow the fleet
+/// is. (A semaphore here would cap ssh children while hundreds of
+/// threads still piled on acquire.)
 pub fn fleet_status(hosts: &[Host]) -> Vec<HostStatus> {
+    if hosts.is_empty() {
+        return Vec::new();
+    }
+    let slots: Vec<std::sync::Mutex<Option<HostStatus>>> = (0..hosts.len())
+        .map(|_| std::sync::Mutex::new(None))
+        .collect();
+    let next: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
     std::thread::scope(|s| {
-        let sem = Permit::new(FLEET_FANOUT);
-        let handles: Vec<_> = hosts
-            .iter()
-            .map(|host| {
-                let sem = std::sync::Arc::clone(&sem);
-                s.spawn(move || {
-                    // Acquire a permit before opening an ssh child so
-                    // the cap is real, not just a thread cap.
-                    let _permit = sem.acquire();
+        for _ in 0..hosts.len().min(FLEET_FANOUT) {
+            s.spawn(|| {
+                loop {
+                    let i = {
+                        // Tolerate a poisoned index (a dead sibling): carry
+                        // on from its counter rather than cascading.
+                        let mut n = next.lock().unwrap_or_else(|e| e.into_inner());
+                        if *n >= hosts.len() {
+                            return;
+                        }
+                        let i = *n;
+                        *n += 1;
+                        i
+                    };
+                    let host = &hosts[i];
                     let result = (|| -> Result<crate::daemon::Snapshot, String> {
                         let text = ssh_run(&host.target, &["terhub", "status", "--json"], 10)
                             .map_err(|e| format!("{e:?}"))?;
                         serde_json::from_str(&text).map_err(|e| format!("bad snapshot: {e}"))
                     })();
-                    HostStatus {
+                    *slots[i].lock().unwrap_or_else(|e| e.into_inner()) = Some(HostStatus {
                         host: host.clone(),
                         result,
-                    }
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .zip(hosts.iter())
-            .map(|(h, host)| {
-                h.join().unwrap_or_else(|_| HostStatus {
+                    });
+                }
+            });
+        }
+    });
+    slots
+        .into_iter()
+        .zip(hosts.iter())
+        .map(|(slot, host)| {
+            slot.into_inner()
+                .unwrap_or(None)
+                .unwrap_or_else(|| HostStatus {
                     host: host.clone(),
-                    result: Err("status thread panicked".to_string()),
+                    result: Err("status worker panicked".to_string()),
                 })
-            })
-            .collect()
-    })
+        })
+        .collect()
 }
 
 /// Turn a remote snapshot into table rows: ids are `host:%N`, sessions
