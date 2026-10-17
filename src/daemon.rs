@@ -3440,8 +3440,10 @@ mod tests {
 
     #[test]
     fn fallback_summary_skips_working_rows() {
-        use crate::agent::AgentState::{Error, Limited, Stuck, Waiting, Working};
+        use crate::agent::AgentState::{Done, Error, Limited, Stuck, Waiting, Working};
         let screen = Some("● Chrome Bridge (indefinite)");
+        // Done rows show what finished, like Idle rows.
+        assert_eq!(fallback_summary_for(Done, screen), "● Chrome Bridge (indefinite)");
         // Working rows stay summary-free: spinner text is noise.
         assert_eq!(fallback_summary_for(Working, screen), "");
         // Stuck carries its own explanation from merge_record.
@@ -3516,6 +3518,51 @@ mod tests {
             assert_eq!(rec.state, AgentState::Idle, "proc: {proc:?}");
             assert_eq!(rec.summary, "✓ Todo list 9/9");
         }
+    }
+
+    #[test]
+    fn done_verdict_beats_live_process() {
+        // A finished agent with a live REPL must read Done, not Working:
+        // the Done screen verdict promotes over the process hit, and the
+        // completion line rides along like Idle's.
+        for proc in [None, Some(("pi", 10))] {
+            let rec = merge_record(
+                None,
+                false,
+                screen_hit(Some("pi"), AgentState::Done, "✓ Todo list 9/9"),
+                proc,
+                &test_pane(),
+                100,
+                300,
+            )
+            .expect("screen verdict claims the pane");
+            assert_eq!(rec.state, AgentState::Done, "proc: {proc:?}");
+            assert_eq!(rec.summary, "✓ Todo list 9/9");
+        }
+    }
+
+    #[test]
+    fn working_to_done_records_turn_time() {
+        // turn_ended covers Done: a finished turn banks its duration
+        // instead of recording last_turn_secs = 0.
+        assert!(crate::agent::turn_ended(
+            AgentState::Working,
+            AgentState::Done
+        ));
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 50, now - 10, now - 120);
+        let rec = merge_record(
+            Some(&old),
+            false,
+            screen_hit(Some("pi"), AgentState::Done, "✓ done"),
+            Some(("pi", 60)),
+            &test_pane(),
+            now,
+            300,
+        )
+        .expect("done merge");
+        assert_eq!(rec.state, AgentState::Done);
+        assert_eq!(rec.last_turn_secs, 120);
     }
 
     #[test]
