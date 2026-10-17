@@ -2465,7 +2465,7 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%1".to_string(), hook_record(99_000));
         let tmux = crate::tmux::Tmux::test("/nonexistent-tmux-binary".into());
-        let (next, sessions, foreground, outage) =
+        let (next, sessions, foreground, outage, _) =
             poll_sync_with(&tmux, prev, &[], Tunables::default());
         assert!(outage);
         assert_eq!(next.len(), 1);
@@ -2520,7 +2520,7 @@ mod tests {
             "%50".to_string(),
             manual_record("%50", 0, now.saturating_sub(99_999)),
         );
-        let (next, _, _, outage) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        let (next, _, _, _, outage) = poll_sync_with(&tmux, prev, &[], Tunables::default());
         assert!(!outage);
         let rec = next.get("%50").expect("manual pin carried");
         assert_eq!(rec.source, Source::Manual);
@@ -2554,7 +2554,7 @@ mod tests {
         let now = now_unix();
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), manual_record("%50", pid, now));
-        let (next, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        let (next, _, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
         let rec = next.get("%50").expect("manual pin carried");
         assert!(rec.agent_start > 0, "reg_pid ticks not tracked");
         let _ = child.kill();
@@ -2623,7 +2623,7 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), pi);
 
-        let (next, _, _, outage) =
+        let (next, _, _, _, outage) =
             poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
 
         assert!(!outage);
@@ -2675,7 +2675,7 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), pi);
 
-        let (next, _, _, outage) =
+        let (next, _, _, _, outage) =
             poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
 
         assert!(!outage);
@@ -2731,7 +2731,7 @@ mod tests {
         let now = now_unix();
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), manual_record("%50", 999_999_999, now));
-        let (next, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        let (next, _, _, _, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
         assert!(!next.contains_key("%50"), "dead-pin record should drop");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2775,13 +2775,13 @@ mod tests {
         let manifests = builtin_compiled();
         let screen = dir.join("screen.txt");
         std::fs::write(&screen, "Error: 1 failed\n$ \n").unwrap();
-        let (next, _, _, _) =
+        let (next, _, _, _, _) =
             poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
         let first = next.get("%50").expect("error record").clone();
         assert_eq!(first.summary, "Error: 1 failed");
         std::thread::sleep(std::time::Duration::from_secs(2));
         std::fs::write(&screen, "Error: 2 failed\n$ \n").unwrap();
-        let (next, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
+        let (next, _, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
         let second = next.get("%50").expect("error record carried").clone();
         assert_eq!(second.summary, "Error: 2 failed");
         assert_eq!(
@@ -2807,13 +2807,13 @@ mod tests {
         let manifests = builtin_compiled();
         let screen = dir.join("screen.txt");
         std::fs::write(&screen, "⠙ Running 13min40s\n$ \n").unwrap();
-        let (next, _, _, _) =
+        let (next, _, _, _, _) =
             poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
         let first = next.get("%50").expect("working record").clone();
         assert_eq!(first.state, AgentState::Working);
         std::thread::sleep(std::time::Duration::from_secs(2));
         std::fs::write(&screen, "⠋ Running 13min44s\n$ \n").unwrap();
-        let (next, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
+        let (next, _, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
         let second = next.get("%50").expect("working record carried").clone();
         assert_eq!(
             second.quiet_since, first.quiet_since,
@@ -2835,13 +2835,13 @@ mod tests {
         let manifests = builtin_compiled();
         let screen = dir.join("screen.txt");
         std::fs::write(&screen, "Error: static\nTip: /context shows budget\n$ \n").unwrap();
-        let (next, _, _, _) =
+        let (next, _, _, _, _) =
             poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
         let first = next.get("%50").expect("error record").clone();
         assert_eq!(first.state, AgentState::Error);
         std::thread::sleep(std::time::Duration::from_secs(2));
         std::fs::write(&screen, "Error: static\nTip: /steer guides response\n$ \n").unwrap();
-        let (next, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
+        let (next, _, _, _, _) = poll_sync_with(&tmux, next, &manifests, Tunables::default());
         let second = next.get("%50").expect("error record carried").clone();
         assert_eq!(second.summary, "Error: static");
         assert_eq!(
@@ -3755,11 +3755,40 @@ mod tests {
         old_hook.pane = "%2".to_string();
         live.insert("%2".to_string(), old_hook);
 
-        merge_mid_poll_hooks(&mut next, &live, poll_start);
+        let listed: std::collections::HashSet<String> =
+            ["%1".to_string()].into_iter().collect();
+        merge_mid_poll_hooks(&mut next, &live, poll_start, Some(&listed));
 
         assert_eq!(next["%1"].state, AgentState::Waiting);
         assert_eq!(next["%1"].summary, "Approve plan?");
         assert!(!next.contains_key("%2"));
+    }
+
+    #[test]
+    fn mid_poll_hook_for_unlisted_pane_is_a_ghost() {
+        // A fresh Hook record for a pane the poll never listed (dead
+        // pane, forged event) must not resurrect into a result rebuilt
+        // from live panes — while a Manual pin for the same pane (human
+        // state) and any fresh hook under an unknown live set (outage)
+        // still merge.
+        let poll_start = 50_000;
+        let mut next = HashMap::new();
+        let mut live = HashMap::new();
+        let mut ghost = hook_record(poll_start + 1);
+        ghost.pane = "%9".to_string();
+        live.insert("%9".to_string(), ghost);
+        let mut pin = hook_record(poll_start + 1);
+        pin.pane = "%8".to_string();
+        pin.source = Source::Manual;
+        live.insert("%8".to_string(), pin);
+        let listed: std::collections::HashSet<String> =
+            ["%1".to_string()].into_iter().collect();
+        merge_mid_poll_hooks(&mut next, &live, poll_start, Some(&listed));
+        assert!(!next.contains_key("%9"), "ghost hook resurrected");
+        assert!(next.contains_key("%8"), "manual pin must survive");
+        // Outage (live set unknown): preserve, never drop.
+        merge_mid_poll_hooks(&mut next, &live, poll_start, None);
+        assert!(next.contains_key("%9"), "outage must preserve hooks");
     }
 
     #[test]
