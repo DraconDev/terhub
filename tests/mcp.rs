@@ -100,24 +100,15 @@ impl Mcp {
                 }
             }
         });
-        match rx.recv_timeout(Duration::from_secs(secs)).unwrap_or_else(|_| {
-            panic!("terhub mcp did not respond within {secs}s")
-        }) {
+        match rx
+            .recv_timeout(Duration::from_secs(secs))
+            .unwrap_or_else(|_| panic!("terhub mcp did not respond within {secs}s"))
+        {
             Ok(v) => v,
             Err(e) => panic!("mcp read_response: {e}"),
         }
     }
 
-    fn stop(mut self) {
-        drop(self.stdin);
-        for _ in 0..50 {
-            match self.child.try_wait() {
-                Ok(Some(_)) => return,
-                _ => std::thread::sleep(Duration::from_millis(100)),
-            }
-        }
-        let _ = self.child.kill();
-    }
 }
 
 fn wait_for(cond: impl Fn() -> bool, tries: u32) -> bool {
@@ -267,9 +258,7 @@ fn mcp_conversation_without_and_with_daemon() {
     }
     std::thread::sleep(Duration::from_secs(2));
     let Mcp {
-        mut child,
-        stdin,
-        ..
+        mut child, stdin, ..
     } = mcp;
     drop(stdin);
     let mut exited = false;
@@ -292,6 +281,9 @@ fn mcp_conversation_without_and_with_daemon() {
         }
     }
     let _ = daemon.kill();
-    assert!(exited, "mcp server survived client disconnect during terhub_wait");
+    assert!(
+        exited,
+        "mcp server survived client disconnect during terhub_wait"
+    );
     let _ = std::fs::remove_dir_all(&runtime);
 }

@@ -4,6 +4,11 @@
 //! Methods: initialize, ping, tools/list, tools/call. Tools: terhub_status,
 //! terhub_capture, terhub_send, terhub_wait, terhub_attend.
 //!
+//! Each frame is handled on its own thread (stdout writes serialized
+//! under a lock), so a long terhub_wait never wedges the server, and
+//! stdin EOF returns from the loop so the process — and every pending
+//! tool with it — exits when the client disconnects.
+//!
 //! Only framed responses go to stdout; diagnostics go to stderr.
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -15,28 +20,51 @@ pub fn run() -> Result<()> {
     let mut reader = std::io::BufReader::new(stdin.lock());
     loop {
         match read_frame(&mut reader)? {
-            None => return Ok(()), // EOF
+            // EOF: the client is gone. Return so the process exits,
+            // which aborts any tool still running on a worker thread
+            // (a 600s terhub_wait must not outlive its client).
+            None => return Ok(()),
             Some(Value::Array(batch)) => {
                 // JSON-RPC batch: handle each request and reply with a
                 // JSON array (omitted entirely if every request was a
                 // notification, per the spec).
-                let mut responses = Vec::with_capacity(batch.len());
-                for req in batch {
-                    if let Some(resp) = handle(&req) {
-                        responses.push(resp);
+                std::thread::spawn(move || {
+                    let mut responses = Vec::with_capacity(batch.len());
+                    for req in batch {
+                        if let Some(resp) = handle(&req) {
+                            responses.push(resp);
+                        }
                     }
-                }
-                if !responses.is_empty() {
-                    write_frame(&Value::Array(responses))?;
-                }
+                    if !responses.is_empty() {
+                        let _ = write_frame_locked(&Value::Array(responses));
+                    }
+                });
             }
+            // One thread per frame: a long tool (terhub_wait) runs
+            // off the server thread, so ping and other tools stay
+            // responsive while it polls. Responses carry ids, so
+            // out-of-order completion is spec-fine.
             Some(req) => {
-                if let Some(resp) = handle(&req) {
-                    write_frame(&resp)?;
-                }
+                std::thread::spawn(move || {
+                    if let Some(resp) = handle(&req) {
+                        let _ = write_frame_locked(&resp);
+                    }
+                });
             }
         }
     }
+}
+
+/// Serialize stdout writes: concurrent tool threads must not
+/// interleave frames. A failed write means the client is gone, so
+/// there is nobody to report it to.
+fn write_frame_locked(value: &Value) -> Result<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    let _guard = LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    write_frame(value)
 }
 
 fn content_length(headers: &[String]) -> Option<usize> {
