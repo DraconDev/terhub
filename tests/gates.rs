@@ -94,8 +94,7 @@ fn ci_actions_pin_shas_not_floating_tags() {
         };
         let after = code[at..].split('@').nth(1).unwrap_or("");
         let sha: String = after.chars().take_while(|c| !c.is_whitespace()).collect();
-        let pinned =
-            sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
+        let pinned = sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
         if !pinned {
             unpinned.push(code.to_string());
         }
