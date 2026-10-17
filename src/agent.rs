@@ -1084,6 +1084,7 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
                     // never sets or clears it, so carry forward.
                     bell: old.map(|r| r.bell).unwrap_or(false),
                     bell_reason: old.map(|r| r.bell_reason.clone()).unwrap_or_default(),
+                    stuck_base: None,
                 },
             );
         }
@@ -1183,6 +1184,7 @@ mod tests {
                     reg_pid: 0,
                     bell: false,
                     bell_reason: String::new(),
+                    stuck_base: None,
                 },
             );
         }
@@ -1234,6 +1236,7 @@ mod tests {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         }];
         assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
         assert_eq!(resolve_handle(&recs, "@pi-other"), None);

@@ -189,6 +189,7 @@ fn title_needy_counts_visible_rows_only() {
         reg_pid: 0,
         bell: false,
         bell_reason: String::new(),
+        stuck_base: None,
     };
     app.agents.insert("%1".to_string(), rec("%1"));
     app.agents.insert("%2".to_string(), rec("%2"));
@@ -229,6 +230,7 @@ fn title_counts_idle_rows_scoped_to_the_filter() {
         reg_pid: 0,
         bell: false,
         bell_reason: String::new(),
+        stuck_base: None,
     };
     // Both idle, but the filter (which matches the bash pane) hides one:
     // title must say 1, not 2.
@@ -284,6 +286,7 @@ fn proc_source_and_stuck_state_render() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -345,6 +348,7 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -385,6 +389,7 @@ fn waiting_record(pane: &str, session: &str, summary: &str) -> terhub::agent::Ag
         reg_pid: 0,
         bell: false,
         bell_reason: String::new(),
+        stuck_base: None,
     }
 }
 
@@ -415,6 +420,7 @@ fn idle_record(pane: &str, session: &str, quiet_age: u64, now: u64) -> terhub::a
         reg_pid: 0,
         bell: false,
         bell_reason: String::new(),
+        stuck_base: None,
     }
 }
 
@@ -515,6 +521,7 @@ fn agent_color_and_idle_warn_reach_cells() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let grid = render_grid(&mut app, 140, 20);
@@ -605,6 +612,7 @@ fn done_state_renders_in_dim_green_check() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let grid = render_grid(&mut app, 140, 20);
@@ -869,6 +877,7 @@ fn preview_title_shows_agent_context() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     app.show_preview = true;
@@ -912,6 +921,7 @@ fn preview_title_shows_model_and_ctx_strip() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     app.show_preview = true;
@@ -1470,6 +1480,7 @@ fn agent_state_renders_in_table() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -1584,6 +1595,7 @@ fn src_and_dir_columns_render() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     app.agents.insert(
@@ -1613,6 +1625,7 @@ fn src_and_dir_columns_render() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let lines = render_lines(&mut app, 140, 20);
@@ -1771,6 +1784,7 @@ fn wide_table_fits_long_commands_and_summaries() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let text = render_lines(&mut app, 195, 24).join("\n");
@@ -1809,6 +1823,7 @@ fn title_nudges_hookless_setups() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     let text = render_lines(&mut app, 140, 20).join("\n");
@@ -2060,6 +2075,7 @@ fn rec(pane: &str, session: &str, state: terhub::agent::AgentState) -> terhub::a
         reg_pid: 0,
         bell: false,
         bell_reason: String::new(),
+        stuck_base: None,
     }
 }
 
@@ -2296,6 +2312,7 @@ fn idle_after_response_finished_marks_summary_with_transition_glyph() {
                 reg_pid: 0,
                 bell: false,
                 bell_reason: String::new(),
+                stuck_base: None,
             },
         );
     }
@@ -2375,6 +2392,7 @@ fn blur_cols_hides_identity_but_keeps_state_readable() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     app.refresh_filtered();
@@ -2448,6 +2466,7 @@ fn blur_cols_off_keeps_full_text() {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         },
     );
     app.refresh_filtered();

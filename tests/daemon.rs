@@ -255,6 +255,7 @@ fn daemon_hook_snapshot_expire_shutdown() {
         reg_pid: 0,
         bell: false,
         bell_reason: String::new(),
+        stuck_base: None,
     };
     std::fs::write(
         runtime.join("registry.json"),

@@ -462,6 +462,7 @@ mod tests {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         }
     }
 

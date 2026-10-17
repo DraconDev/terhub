@@ -935,6 +935,7 @@ fn apply_register(
                     reg_pid: pid,
                     bell: false,
                     bell_reason: String::new(),
+                    stuck_base: None,
                 },
             );
         }
@@ -1240,6 +1241,90 @@ fn refresh_quiet(
     (h, q)
 }
 
+/// The stuck gate, shared by [`merge_record_owned`] and the Hook|Manual
+/// carry branch: a live process (`has_proc`) burning no CPU (`still`) for
+/// `stuck_secs` on a Working|Idle row is hung — unless the screen has been
+/// quiet past `quiet_idle_secs` (finished, not hung) or the gate is
+/// disabled (`stuck_secs = 0`). Returns the Stuck since-clock and summary
+/// on trip. `prev_stuck_since` carries the clock across polls while the
+/// trip persists (no renotify); None starts it at now.
+fn stuck_gate_trip(
+    state: AgentState,
+    has_proc: bool,
+    still: u64,
+    quiet_for: u64,
+    now: u64,
+    stuck_secs: u64,
+    quiet_idle_secs: u64,
+    prev_stuck_since: Option<u64>,
+) -> Option<(u64, String)> {
+    if !matches!(state, AgentState::Working | AgentState::Idle) {
+        return None;
+    }
+    if stuck_secs == 0 || !has_proc || still == 0 {
+        return None;
+    }
+    if now.saturating_sub(still) < stuck_secs {
+        return None;
+    }
+    // A long-quiet screen is finished, not hung (the `samai` fix).
+    if quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs {
+        return None;
+    }
+    Some((
+        prev_stuck_since.unwrap_or(now),
+        format!(
+            "no cpu for {}",
+            crate::history::fmt_dur(now.saturating_sub(still))
+        ),
+    ))
+}
+
+/// Stuck evaluation for a Hook|Manual-carried record (post CPU/quiet
+/// refresh). Hook authority means state carries forward instead of being
+/// re-derived, so the trip saves the hook's verdict in `stuck_base`: a
+/// still-still CPU keeps Stuck without renotifying, and recovered CPU
+/// restores the verdict (clocking the flip, blanking the trip summary so
+/// the screen fallback refills it). A hook-claimed Stuck (no trip base)
+/// is never touched.
+fn apply_hook_stuck_gate(
+    r: &mut AgentRecord,
+    has_proc: bool,
+    now: u64,
+    stuck_secs: u64,
+    quiet_idle_secs: u64,
+) {
+    let underlying = r.stuck_base.unwrap_or(r.state);
+    let quiet_for = if r.quiet_since > 0 {
+        now.saturating_sub(r.quiet_since)
+    } else {
+        0
+    };
+    let prev_since = r.stuck_base.map(|_| r.state_since);
+    if let Some((since, sum)) = stuck_gate_trip(
+        underlying,
+        has_proc,
+        r.cpu_still_since,
+        quiet_for,
+        now,
+        stuck_secs,
+        quiet_idle_secs,
+        prev_since,
+    ) {
+        if r.stuck_base.is_none() {
+            r.stuck_base = Some(underlying);
+        }
+        r.state = AgentState::Stuck;
+        r.state_since = since;
+        r.summary = sum;
+    } else if r.stuck_base.is_some() {
+        r.state = underlying;
+        r.stuck_base = None;
+        r.state_since = now;
+        r.summary = String::new();
+    }
+}
+
 /// Merge one poll's evidence into a record, legacy entry: no snapshot in
 /// scope here, so editor ownership falls back to the old rule (editor
 /// foreground plus any process hit) and the starttime is unknown (0).
@@ -1495,6 +1580,8 @@ fn merge_record_owned(
         last_prompt,
         bell: carried.map(|o| o.bell).unwrap_or(false),
         bell_reason: carried.map(|o| o.bell_reason.clone()).unwrap_or_default(),
+        // Merge re-derives state every poll: no trip base survives it.
+        stuck_base: None,
     })
 }
 
@@ -1716,12 +1803,15 @@ fn poll_sync_with(
             r.window.clone_from(&pane.window_name);
             r.command.clone_from(&pane.command);
             // CPU tracking runs through the hook's life (state untouched) so
-            // stuck evaluation is seamless when the hook lapses.
-            match &proc_hit {
+            // stuck evaluation is seamless when the hook lapses — and the
+            // shared stuck gate runs here too, so a hung hook-claimed pane
+            // reads Stuck instead of Working-until-lapse.
+            let has_proc = match &proc_hit {
                 Some(h) => {
                     let t = snap.subtree_ticks(h.pid);
                     (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &h.agent, t, h.start, now);
                     r.agent_start = h.start;
+                    true
                 }
                 // No detection hit, but the pin names a process: track CPU
                 // under it so stuck detection works for pinned agents.
@@ -1735,14 +1825,17 @@ fn poll_sync_with(
                     let t = snap.subtree_ticks(r.reg_pid);
                     (r.cpu_ticks, r.cpu_still_since) = track_cpu(&r, &agent, t, start, now);
                     r.agent_start = start;
+                    true
                 }
                 None => {
                     r.cpu_ticks = 0;
                     r.cpu_still_since = 0;
                     r.agent_start = 0;
+                    false
                 }
-            }
+            };
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
+            apply_hook_stuck_gate(&mut r, has_proc, now, tune.stuck_secs, tune.quiet_idle_secs);
             if r.summary.is_empty() {
                 r.summary = fallback_summary_for(r.state, screen.as_deref());
             }
@@ -3291,6 +3384,7 @@ mod tests {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         }
     }
 
@@ -3486,6 +3580,7 @@ mod tests {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         }
     }
 

@@ -1182,6 +1182,7 @@ impl App {
                     reg_pid: 0,
                     bell: false,
                     bell_reason: String::new(),
+                    stuck_base: None,
                 });
             }
         }
@@ -6616,6 +6617,7 @@ mod tests {
                 reg_pid: 0,
                 bell: false,
                 bell_reason: String::new(),
+                stuck_base: None,
             },
         );
         let counts = app.session_counts();
@@ -6671,6 +6673,7 @@ mod tests {
             reg_pid: 0,
             bell: false,
             bell_reason: String::new(),
+            stuck_base: None,
         }
     }
 
