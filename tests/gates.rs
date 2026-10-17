@@ -17,6 +17,20 @@ fn ci_yml() -> String {
     .expect("ci.yml")
 }
 
+fn release_yml() -> String {
+    fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/.github/workflows/release.yml"
+    ))
+    .expect("release.yml")
+}
+
+/// Both workflows execute CI-trusted code: a pin or structural rule
+/// enforced on one but not the other leaves the same hole next door.
+fn all_workflows() -> Vec<(&'static str, String)> {
+    vec![("ci.yml", ci_yml()), ("release.yml", release_yml())]
+}
+
 #[test]
 fn deny_config_exists_with_strict_bans() {
     let text = deny_toml();
@@ -85,18 +99,21 @@ fn ci_workflow_runs_gates() {
 /// a 40-hex SHA after the `@`.
 #[test]
 fn ci_actions_pin_shas_not_floating_tags() {
-    let text = ci_yml();
     let mut unpinned = Vec::new();
-    for line in text.lines() {
-        let code = line.split('#').next().unwrap_or("").trim();
-        let Some(at) = code.find("uses:") else {
-            continue;
-        };
-        let after = code[at..].split('@').nth(1).unwrap_or("");
-        let sha: String = after.chars().take_while(|c| !c.is_whitespace()).collect();
-        let pinned = sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
-        if !pinned {
-            unpinned.push(code.to_string());
+    for (file, text) in all_workflows() {
+        for line in text.lines() {
+            let code = line.split('#').next().unwrap_or("").trim();
+            let Some(at) = code.find("uses:") else {
+                continue;
+            };
+            let after = code[at..].split('@').nth(1).unwrap_or("");
+            let sha: String =
+                after.chars().take_while(|c| !c.is_whitespace()).collect();
+            let pinned =
+                sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
+            if !pinned {
+                unpinned.push(format!("{file}: {code}"));
+            }
         }
     }
     assert!(
@@ -114,24 +131,56 @@ fn ci_actions_pin_shas_not_floating_tags() {
 /// conversation instead of silently blessing it.
 #[test]
 fn ci_gate_steps_cannot_be_neutralized() {
-    let text = ci_yml();
-    // Even `continue-on-error: false` is banned: it is a one-word
-    // flip from silencing a gate, and the gates job has no step
-    // whose failure is acceptable.
+    for (file, text) in all_workflows() {
+        // Even `continue-on-error: false` is banned: it is a one-word
+        // flip from silencing a gate, and no workflow has a step
+        // whose failure is acceptable.
+        assert!(
+            !text.contains("continue-on-error"),
+            "{file} must not use continue-on-error (a failing gate must fail the job)"
+        );
+        // Step/job-level `if:` skips the step with every substring pin
+        // intact. Scan code lines only — comments may discuss `if:` freely.
+        let conditional: Vec<&str> = text
+            .lines()
+            .map(|l| l.split('#').next().unwrap_or("").trim())
+            .filter(|code| code.starts_with("if:") || code.starts_with("if :"))
+            .collect();
+        assert!(
+            conditional.is_empty(),
+            "{file} gate steps must be unconditional, found: {conditional:?}"
+        );
+    }
+}
+
+/// The release gate must exist and check what CI cannot: that a `v*`
+/// tag push proves the tagged commit shippable — tag version equals
+/// the manifest version, gates green, crate publishable.
+#[test]
+fn release_workflow_guards_tags() {
+    let text = release_yml();
     assert!(
-        !text.contains("continue-on-error"),
-        "CI must not use continue-on-error (a failing gate must fail the job)"
+        text.contains("tags:"),
+        "release.yml must trigger on tags"
     );
-    // Step/job-level `if:` skips the step with every substring pin
-    // intact. Scan code lines only — comments may discuss `if:` freely.
-    let conditional: Vec<&str> = text
-        .lines()
-        .map(|l| l.split('#').next().unwrap_or("").trim())
-        .filter(|code| code.starts_with("if:") || code.starts_with("if :"))
-        .collect();
     assert!(
-        conditional.is_empty(),
-        "CI gate steps must be unconditional, found: {conditional:?}"
+        text.contains("\"v*\"") || text.contains("'v*'"),
+        "release.yml must trigger on v* tags"
+    );
+    // The version coherence check: tag identity vs manifest.
+    assert!(
+        text.contains("GITHUB_REF_NAME") && text.contains("Cargo.toml"),
+        "release.yml must compare the tag against the Cargo.toml version"
+    );
+    // Publishability on the tagged commit — and on every main commit
+    // via CI, so a release never discovers rot at tag time.
+    assert!(
+        text.contains("cargo publish --dry-run"),
+        "release.yml must run cargo publish --dry-run"
+    );
+    assert!(
+        ci_yml().contains("cargo publish --dry-run"),
+        "ci.yml must run cargo publish --dry-run on every commit"
     );
 }
 

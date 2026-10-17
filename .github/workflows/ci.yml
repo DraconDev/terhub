@@ -29,6 +29,12 @@ jobs:
         run: cargo clippy --offline --all-targets -- -D warnings
       - name: test
         run: cargo test --offline
+      # Publishability, not publishing: proves every main commit keeps
+      # the crate shippable (metadata, file list, lockfile) without
+      # needing a registry token. The tag-triggered release workflow
+      # re-runs this on the exact tagged commit plus a version check.
+      - name: publish dry run
+        run: cargo publish --dry-run
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check
