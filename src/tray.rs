@@ -1633,6 +1633,45 @@ mod tests {
     }
 
     #[test]
+    fn genuinely_corrupt_advertisement_is_still_cleaned() {
+        // The retry must not preserve rot: still-unparseable input
+        // keeps the old delete-and-fall-back behavior.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-hub-rot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(crate::tray::HUB_SESSION_FILE);
+        std::fs::write(&path, "{rot").unwrap();
+        assert!(super::read_session_file_at(&path).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn atomic_publish_reads_back_whole() {
+        // Concurrent readers must see the old or the new advertisement,
+        // never torn bytes: hammer publish-then-read and demand every
+        // read parses.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-hub-atom-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(crate::tray::HUB_SESSION_FILE);
+        let me = std::process::id();
+        for i in 0..50u32 {
+            let json = serde_json::json!({
+                "pid": me,
+                "pane": format!("%{i}"),
+                "tty": null,
+            })
+            .to_string();
+            super::write_session_file(&path, &json).expect("publish");
+            let back = super::read_session_file_at(&path).expect("must parse every time");
+            assert_eq!(back.pid, me);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn attention_carry_uses_alarm_color() {
         // The alarm badge background must come from the palette, not
         // the old hard-coded red. Dracula's alarm is #ff5555, Nord's
