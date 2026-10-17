@@ -1123,6 +1123,7 @@ impl App {
                     height: 0,
                     activity: 0,
                     pid: tab.pid,
+                    pid_start: crate::proc::proc_starttime(tab.pid).unwrap_or(0),
                     bell: false,
                 });
                 let Some(hit) = snap.detect_agent(tab.pid) else {
@@ -4398,7 +4399,7 @@ impl App {
             self.set_status("no pane selected".to_string());
             return;
         };
-        let (id, pid) = (pane.id.clone(), pane.pid);
+        let (id, pid, pid_start) = (pane.id.clone(), pane.pid, pane.pid_start);
         // Pause is pid-based, so native rows (real local pids) work; only
         // true remotes are out of reach.
         if is_remote_pane(&id) && !is_native_pane(&id) {
@@ -4416,13 +4417,22 @@ impl App {
             self.set_status(format!("no pid for pane {id}"));
             return;
         }
+        // Identity gate: pid_start was stamped when the pane was
+        // listed; a recycled pid fails the starttime check inside
+        // pause/resume_group instead of stopping a foreign group.
+        // 0 (unknown, e.g. remote rows) skips the check.
+        let expect = if pid_start != 0 {
+            Some(pid_start)
+        } else {
+            None
+        };
         if crate::proc::is_stopped(pid) {
-            match crate::proc::resume_group(pid) {
+            match crate::proc::resume_group(pid, expect) {
                 Ok(_) => self.set_status(format!("resumed {id}")),
                 Err(e) => self.set_status(format!("resume failed: {e}")),
             }
         } else {
-            match crate::proc::pause_group(pid) {
+            match crate::proc::pause_group(pid, expect) {
                 Ok(_) => self.set_status(format!("paused {id}")),
                 Err(e) => self.set_status(format!("pause failed: {e}")),
             }
@@ -5146,6 +5156,7 @@ mod tests {
             height: 0,
             activity: 1700,
             pid: 0,
+            pid_start: 0,
             bell: false,
         }
     }
@@ -5629,6 +5640,7 @@ mod tests {
             activity: 0,
             bell: true,
             pid: 0,
+            pid_start: 0,
         };
         assert!(p.bell, "Pane.bell must round-trip the tmux flag");
     }
