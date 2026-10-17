@@ -115,8 +115,8 @@ fn ci_gate_steps_cannot_be_neutralized() {
 /// weakening either side breaks this test.
 #[test]
 fn make_targets_mirror_ci_gate_scope() {
-    let make = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Makefile"))
-        .expect("Makefile");
+    let make =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Makefile")).expect("Makefile");
     let ci = ci_yml();
     for cmd in [
         "cargo test --offline",
