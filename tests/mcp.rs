@@ -285,7 +285,6 @@ fn mcp_conversation_without_and_with_daemon() {
     let _ =
         terhub::daemon::send_request(&terhub::daemon::Request::Shutdown, Duration::from_secs(2));
     let _ = child.kill();
-    assert!(exited, "mcp server survived client disconnect during terhub_wait");
     for _ in 0..50 {
         match daemon.try_wait() {
             Ok(Some(_)) => break,
@@ -293,5 +292,6 @@ fn mcp_conversation_without_and_with_daemon() {
         }
     }
     let _ = daemon.kill();
+    assert!(exited, "mcp server survived client disconnect during terhub_wait");
     let _ = std::fs::remove_dir_all(&runtime);
 }
