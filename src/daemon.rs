@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -293,6 +293,7 @@ pub struct Snapshot {
 
 pub struct Server {
     runtime: PathBuf,
+    runtime_guard: RuntimeDirGuard,
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     manifests: Arc<Vec<CompiledManifest>>,
     shutdown: Arc<AtomicBool>,
@@ -307,7 +308,53 @@ pub struct Server {
 /// to an attacker-controlled path). Pre-existing directories are
 /// tightened to 0700 when we own them; non-directory entries and
 /// symlinks are an error.
-fn ensure_runtime_dir(path: &Path) -> Result<()> {
+/// Proof that the runtime dir is still the directory we checked.
+/// The baseline (dev, ino) is captured from an `O_NOFOLLOW |
+/// O_DIRECTORY` open — which atomically refuses a symlink final
+/// component — so a later dir→symlink (or dir→dir) swap by a
+/// parent-dir writer is detected by [`RuntimeDirGuard::verify`]
+/// before the next bind/save instead of being used blindly.
+#[derive(Debug, Clone)]
+struct RuntimeDirGuard {
+    path: PathBuf,
+    dev: u64,
+    ino: u64,
+}
+
+impl RuntimeDirGuard {
+    /// Re-verify the dir at a use point (bind, save): the path must
+    /// still resolve to the same directory captured at check time.
+    /// Fail-closed: any symlink, non-dir, or dev/ino mismatch is an
+    /// error and the caller must not touch the dir's contents.
+    fn verify(&self) -> Result<()> {
+        let link_meta = std::fs::symlink_metadata(&self.path).with_context(|| {
+            format!("stat runtime dir {}", self.path.display())
+        })?;
+        if link_meta.file_type().is_symlink() {
+            anyhow::bail!(
+                "runtime dir {} is a symlink; refusing to use it",
+                self.path.display()
+            );
+        }
+        let meta = std::fs::metadata(&self.path)
+            .with_context(|| format!("stat runtime dir {}", self.path.display()))?;
+        if !meta.is_dir() {
+            anyhow::bail!(
+                "runtime dir {} is no longer a directory; refusing to use it",
+                self.path.display()
+            );
+        }
+        if meta.dev() != self.dev || meta.ino() != self.ino {
+            anyhow::bail!(
+                "runtime dir {} was replaced after the startup check; refusing to use it",
+                self.path.display()
+            );
+        }
+        Ok(())
+    }
+}
+
+fn ensure_runtime_dir(path: &Path) -> Result<RuntimeDirGuard> {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => {
             anyhow::bail!(
@@ -319,7 +366,6 @@ fn ensure_runtime_dir(path: &Path) -> Result<()> {
             let mut perms = std::fs::metadata(path)?.permissions();
             perms.set_mode(0o700);
             std::fs::set_permissions(path, perms)?;
-            Ok(())
         }
         Ok(_) => {
             anyhow::bail!(
@@ -333,10 +379,24 @@ fn ensure_runtime_dir(path: &Path) -> Result<()> {
                 .mode(0o700)
                 .create(path)
                 .with_context(|| format!("create runtime dir {}", path.display()))?;
-            Ok(())
         }
-        Err(e) => Err(e.into()),
+        Err(e) => return Err(e.into()),
     }
+    // Atomic baseline: this open refuses a symlink final component
+    // (O_NOFOLLOW) and non-dirs (O_DIRECTORY) in one step, so there is
+    // no check-then-use gap for the final component; fstat on the fd
+    // pins the (dev, ino) that verify() compares against later.
+    let fd = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(path)
+        .with_context(|| format!("open runtime dir {}", path.display()))?;
+    let meta = fd.metadata()?;
+    Ok(RuntimeDirGuard {
+        path: path.to_path_buf(),
+        dev: meta.dev(),
+        ino: meta.ino(),
+    })
 }
 
 /// Tighten an already-created runtime file (socket, pid, log) to
@@ -375,7 +435,7 @@ fn write_pid_file(pid_file: &Path, pid: &str) -> Result<()> {
 
 impl Server {
     pub fn load(runtime: PathBuf) -> Result<Self> {
-        ensure_runtime_dir(&runtime)?;
+        let runtime_guard = ensure_runtime_dir(&runtime)?;
         let mut manifests = builtin_manifests();
         let (user_manifests, mut warnings) = load_manifests(&config::manifests_dir());
         manifests.extend(user_manifests);
@@ -389,6 +449,7 @@ impl Server {
         let tunables = Tunables::from_config(&config::load_config(None));
         Ok(Server {
             runtime,
+            runtime_guard,
             registry: Arc::new(Mutex::new(registry)),
             manifests: Arc::new(compiled),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -397,6 +458,11 @@ impl Server {
     }
 
     pub async fn run(&self) -> Result<()> {
+        // Re-verify before touching anything: the dir may have been
+        // swapped (dir→symlink) between load() and run().
+        self.runtime_guard
+            .verify()
+            .context("runtime dir changed since startup check")?;
         let sock = self.runtime.join("terhubd.sock");
         let pid_file = self.runtime.join("terhubd.pid");
         // Single-instance lock, held for the daemon's whole life. The
@@ -429,10 +495,11 @@ impl Server {
         let reg = self.registry.clone();
         let manifests = self.manifests.clone();
         let runtime = self.runtime.clone();
+        let runtime_guard = self.runtime_guard.clone();
         let tunables = self.tunables;
         let shutdown_flag = self.shutdown.clone();
         let poll = tokio::spawn(async move {
-            poll_loop(reg, manifests, runtime, tunables, shutdown_flag).await
+            poll_loop(reg, manifests, runtime, runtime_guard, tunables, shutdown_flag).await
         });
 
         loop {
@@ -457,8 +524,11 @@ impl Server {
             };
             let reg = self.registry.clone();
             let runtime = self.runtime.clone();
+            let runtime_guard = self.runtime_guard.clone();
             let shutdown = self.shutdown.clone();
-            tokio::spawn(async move { handle_conn(stream, reg, runtime, shutdown).await });
+            tokio::spawn(async move {
+                handle_conn(stream, reg, runtime, runtime_guard, shutdown).await
+            });
         }
 
         // Graceful drain: the flag is set, so the poll loop breaks within
@@ -479,6 +549,7 @@ async fn handle_conn(
     stream: TokioUnixStream,
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     runtime: PathBuf,
+    runtime_guard: RuntimeDirGuard,
     shutdown: Arc<AtomicBool>,
 ) {
     let (reader, mut writer) = stream.into_split();
@@ -520,12 +591,16 @@ async fn handle_conn(
         }
         Request::Event { event } => {
             // Mutation + save without holding the lock across disk IO.
-            let (transitions, now) =
-                mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
+            let (transitions, now) = mutate_and_save(
+                &registry,
+                &runtime_guard,
+                &runtime.join("registry.json"),
+                |reg| {
                     let now = now_unix();
                     let t = apply_hook_event(reg, &event, now);
                     (t, now)
-                });
+                },
+            );
             emit_transitions(&transitions, now);
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
@@ -545,17 +620,25 @@ async fn handle_conn(
             pid,
             state,
         } => {
-            mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
-                let now = now_unix();
-                apply_register(reg, &pane, &agent, pid, state, now);
-                crate::agent::ensure_handles(reg);
-            });
+            mutate_and_save(
+                &registry,
+                &runtime_guard,
+                &runtime.join("registry.json"),
+                |reg| {
+                    let now = now_unix();
+                    apply_register(reg, &pane, &agent, pid, state, now);
+                    crate::agent::ensure_handles(reg);
+                },
+            );
             Response::ok()
         }
         Request::Unregister { pane } => {
-            let dropped = mutate_and_save(&registry, &runtime.join("registry.json"), |reg| {
-                apply_unregister(reg, &pane)
-            });
+            let dropped = mutate_and_save(
+                &registry,
+                &runtime_guard,
+                &runtime.join("registry.json"),
+                |reg| apply_unregister(reg, &pane),
+            );
             if dropped {
                 Response::ok()
             } else {
@@ -589,6 +672,7 @@ async fn poll_loop(
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     manifests: Arc<Vec<CompiledManifest>>,
     runtime: PathBuf,
+    runtime_guard: RuntimeDirGuard,
     tunables: Tunables,
     shutdown: Arc<AtomicBool>,
 ) {
@@ -620,6 +704,15 @@ async fn poll_loop(
             _ = shutdown_wait(&shutdown) => break,
         }
         let poll_start = now_unix();
+        // Fail-closed: a swapped runtime dir must stop saves, and a
+        // daemon operating on an attacker-chosen dir must not keep
+        // running — trip shutdown so the process exits and a fresh
+        // start re-checks from scratch.
+        if let Err(e) = runtime_guard.verify() {
+            eprintln!("terhubd: runtime dir check failed: {e:#}; shutting down");
+            shutdown.store(true, Ordering::SeqCst);
+            break;
+        }
         let prev = lock_registry(&registry).clone();
         let manifests = manifests.clone();
         let tune = tunables;
@@ -1671,6 +1764,7 @@ fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
 /// progress while a save is in flight.
 fn mutate_and_save<F, R>(
     registry: &Arc<Mutex<HashMap<String, AgentRecord>>>,
+    runtime_guard: &RuntimeDirGuard,
     path: &Path,
     f: F,
 ) -> R
@@ -1685,7 +1779,13 @@ where
         (result, snap)
     };
     let (result, snap) = snapshot;
-    save_registry(path, &snap);
+    // Fail-closed: a swapped runtime dir means the save would land in
+    // an attacker-chosen location, so skip it (and log) instead of
+    // writing. The poll-loop tick check aborts the daemon right after.
+    match runtime_guard.verify() {
+        Ok(()) => save_registry(path, &snap),
+        Err(e) => eprintln!("terhubd: refusing registry save: {e:#}"),
+    }
     result
 }
 
