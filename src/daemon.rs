@@ -1105,6 +1105,20 @@ async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
     .await;
 }
 
+/// Wall-clock age for expiry checks. A backward jump (NTP step,
+/// suspend/resume, VM restore) leaves pre-jump stamps ahead of `now`:
+/// the elapsed real time is unknown, so expiry fails toward fresh
+/// evidence (expired) instead of wedging blind until the clock catches
+/// up. Stuck-age measurement deliberately stays saturating elsewhere —
+/// an alarm must never fire on unknown elapsed.
+fn elapsed_for_expiry(now: u64, stamp: u64) -> u64 {
+    if now < stamp {
+        u64::MAX // clock jumped backwards: treat the deadline as met
+    } else {
+        now - stamp
+    }
+}
+
 /// Split the previous record into (authoritative, expired). A hook record
 /// nobody refreshed recently has lapsed: screen classification takes over,
 /// but the expired record still seeds state continuity so a pane that kept
@@ -1115,7 +1129,7 @@ fn split_prev(
     stale_secs: u64,
 ) -> (Option<&AgentRecord>, Option<&AgentRecord>) {
     match rec {
-        Some(r) if r.source == Source::Hook && now.saturating_sub(r.updated_at) > stale_secs => {
+        Some(r) if r.source == Source::Hook && elapsed_for_expiry(now, r.updated_at) > stale_secs => {
             (None, Some(r))
         }
         other => (other, None),
@@ -1131,7 +1145,7 @@ fn carry_record(old: &AgentRecord, pane: &Pane, now: u64, stale_secs: u64) -> bo
     if old.source == Source::Screen && is_harness_command(&pane.command) {
         return false;
     }
-    now.saturating_sub(old.updated_at) <= stale_secs
+    elapsed_for_expiry(now, old.updated_at) <= stale_secs
 }
 
 /// Advance the stuck clock for `ticks` observed under `agent`: an
@@ -1257,7 +1271,12 @@ fn refresh_quiet(
 /// unless the screen has been quiet past `quiet_idle_secs` (finished,
 /// not hung) or the gate is disabled (`stuck_secs = 0`).
 /// `prev_stuck_since` carries the clock across polls while the trip
-/// persists (no renotify); None starts it at now.
+/// persists (no renotify); None starts it at now. Stillness is measured
+/// with saturating age on purpose: after a backward clock jump a
+/// future-dated `still` reads as zero elapsed (no trip) rather than
+/// expired — an alarm must never fire on unknown elapsed; see
+/// `elapsed_for_expiry`, which applies the opposite (fail-toward-fresh)
+/// direction only where a safe fallback exists.
 struct StuckGate {
     has_proc: bool,
     still: u64,
