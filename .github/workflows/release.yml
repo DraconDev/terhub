@@ -1,0 +1,48 @@
+name: release
+# Release gate: pushing a `v*` tag (the project's release flow — tags
+# v0.1.0..v0.2.3) must prove the tagged commit is shippable. This
+# workflow never publishes to crates.io itself: that step needs a
+# registry token and the owner's explicit call, so it stays manual.
+# What it does prove, on the exact tagged commit:
+#   1. the tag version equals the Cargo.toml version (a mistagged
+#      push fails here, not after users install it);
+#   2. the full gate suite (fmt, clippy, test) is green;
+#   3. `cargo publish --dry-run` passes (the crate stays publishable).
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      # The tmux-dependent suites fail loudly without a tmux binary
+      # (see tests/backend.rs), so the release gate must provide one.
+      - name: install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      # Cold runners have an empty cargo registry: fetch first, or
+      # every --offline gate dies at dependency resolution before
+      # linting or testing anything.
+      - name: fetch dependencies
+        run: cargo fetch --locked
+      # The tag is the release identity: v0.2.3 must point at the
+      # commit whose Cargo.toml says 0.2.3. cargo metadata --no-deps
+      # reads the manifest without touching the network.
+      - name: tag matches Cargo.toml version
+        run: |
+          pkg=$(cargo metadata --no-deps --format-version 1 | python3 -c "import json,sys; print(json.load(sys.stdin)['packages'][0]['version'])")
+          test "v$pkg" = "$GITHUB_REF_NAME"
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --offline --all-targets -- -D warnings
+      - name: test
+        run: cargo test --offline
+      # Publishability, not publishing: proves the crate still ships
+      # (metadata, file list, lockfile) without needing a token.
+      - name: publish dry run
+        run: cargo publish --dry-run
