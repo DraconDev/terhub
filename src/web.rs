@@ -148,10 +148,8 @@ fn blocking_failed() -> axum::response::Response {
 
 async fn api_status() -> impl IntoResponse {
     // Daemon IPC blocks up to its deadline: off the workers.
-    let snap = tokio::task::spawn_blocking(|| {
-        crate::daemon::fetch_snapshot(Duration::from_secs(2))
-    })
-    .await;
+    let snap =
+        tokio::task::spawn_blocking(|| crate::daemon::fetch_snapshot(Duration::from_secs(2))).await;
     match snap {
         Ok(Ok(s)) => ok_json(&s),
         Ok(Err(_)) => daemon_unavailable().into_response(),
@@ -529,11 +527,8 @@ mod tests {
         // 5s) all block: each handler must delegate to spawn_blocking
         // like the stats/timeline handlers do, or one slow backend
         // stalls the Tokio workers serving every other request.
-        let src = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/web.rs"
-        ))
-        .expect("src/web.rs");
+        let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web.rs"))
+            .expect("src/web.rs");
         for handler in [
             "api_status",
             "api_stats",
