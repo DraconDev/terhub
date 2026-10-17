@@ -2520,7 +2520,7 @@ mod tests {
             "%50".to_string(),
             manual_record("%50", 0, now.saturating_sub(99_999)),
         );
-        let (next, _, _, _, outage) = poll_sync_with(&tmux, prev, &[], Tunables::default());
+        let (next, _, _, outage, _) = poll_sync_with(&tmux, prev, &[], Tunables::default());
         assert!(!outage);
         let rec = next.get("%50").expect("manual pin carried");
         assert_eq!(rec.source, Source::Manual);
@@ -2623,7 +2623,7 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), pi);
 
-        let (next, _, _, _, outage) =
+        let (next, _, _, outage, _) =
             poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
 
         assert!(!outage);
@@ -2675,7 +2675,7 @@ mod tests {
         let mut prev = HashMap::new();
         prev.insert("%50".to_string(), pi);
 
-        let (next, _, _, _, outage) =
+        let (next, _, _, outage, _) =
             poll_sync_with(&tmux, prev, &builtin_compiled(), Tunables::default());
 
         assert!(!outage);
