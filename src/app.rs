@@ -2026,10 +2026,12 @@ impl App {
                 Some(None)
             }
             "quit" => {
-                // Only reachable through a modifier binding; the bare q
-                // path handles plain quit. Returning None lets the
-                // caller swallow the event without a second AppEvent.
-                None
+                // Only reachable through a modifier binding (the bare
+                // path handles plain quit): forward the event like
+                // attach/attend below. Returning None here means
+                // "unclaimed", and the caller would swallow the press
+                // with no quit and no status.
+                Some(Some(AppEvent::Quit))
             }
             "help" => {
                 self.set_status(LEGEND.to_string());
