@@ -118,18 +118,81 @@ pub fn log_path() -> PathBuf {
     runtime_dir().join("terhubd.log")
 }
 
+/// A candidate daemon binary is safe to exec only when it is a regular
+/// file owned by us (or root) with no group/world write bit. A bare
+/// PATH name would let anyone with a writable dir early in PATH plant
+/// the binary we then spawn detached and re-spawn on every self-heal
+/// tick, so every PATH-resolved candidate must pass this check.
+fn safe_to_exec(path: &Path) -> Result<()> {
+    let meta = std::fs::metadata(path)
+        .with_context(|| format!("stat {}", path.display()))?;
+    if !meta.file_type().is_file() {
+        anyhow::bail!("{} is not a regular file", path.display());
+    }
+    let euid = unsafe { libc::geteuid() };
+    let owner = meta.uid();
+    if owner != euid && owner != 0 {
+        anyhow::bail!(
+            "{} owned by uid {owner} (expected euid {euid} or root)",
+            path.display()
+        );
+    }
+    if meta.mode() & 0o022 != 0 {
+        anyhow::bail!(
+            "{} is group/world-writable (mode {:o})",
+            path.display(),
+            meta.mode() & 0o777
+        );
+    }
+    Ok(())
+}
+
+/// Pure PATH search (takes the PATH value as an argument so tests do
+/// not mutate process-global env): first `name` under a PATH entry
+/// that passes [`safe_to_exec`]. Unsafe candidates are skipped with a
+/// stderr note rather than aborting the search, so one bad dir early
+/// in PATH does not brick a good install later in it.
+fn find_in_path(name: &str, path_var: &std::ffi::OsStr) -> Result<PathBuf> {
+    let mut rejected = 0;
+    for dir in std::env::split_paths(path_var) {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let candidate = dir.join(name);
+        match safe_to_exec(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(e) => {
+                // Missing file is the common case — only note real
+                // candidates that fail the safety check.
+                if candidate.exists() {
+                    rejected += 1;
+                    eprintln!("terhubd: skipping unsafe daemon binary: {e:#}");
+                }
+            }
+        }
+    }
+    if rejected > 0 {
+        anyhow::bail!("no safe `{name}` found in PATH ({rejected} unsafe candidate(s) rejected)");
+    }
+    anyhow::bail!("no `{name}` found in PATH")
+}
+
 /// The daemon binary: beside this executable when it is there (the
-/// normal installed/cargo layout), else a PATH lookup.
-pub fn daemon_bin() -> PathBuf {
+/// normal installed/cargo layout), else a verified PATH lookup.
+/// Fail-closed: when no sibling exists and no PATH candidate passes
+/// [`safe_to_exec`], spawning is refused rather than exec'ing an
+/// attacker-planted binary.
+pub fn daemon_bin() -> Result<PathBuf> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()
     {
         let sibling = dir.join("terhubd");
         if sibling.is_file() {
-            return sibling;
+            return Ok(sibling);
         }
     }
-    PathBuf::from("terhubd")
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    find_in_path("terhubd", &path_var)
 }
 
 /// How long the spawn waits for the new daemon to answer Ping.
@@ -174,7 +237,8 @@ pub fn spawn_daemon() -> Result<()> {
         .truncate(true)
         .mode(0o600)
         .open(log_path());
-    let mut cmd = std::process::Command::new(daemon_bin());
+    let bin = daemon_bin().context("no safe daemon binary to spawn")?;
+    let mut cmd = std::process::Command::new(&bin);
     // Own process group: never share the launcher's SIGHUP fate.
     {
         use std::os::unix::process::CommandExt;
@@ -191,7 +255,7 @@ pub fn spawn_daemon() -> Result<()> {
         }
     }
     cmd.spawn()
-        .with_context(|| format!("spawn {}", daemon_bin().display()))?;
+        .with_context(|| format!("spawn {}", bin.display()))?;
     // The pid file is written by the daemon after a successful bind, so
     // Ping (not pid liveness) is the readiness signal.
     let deadline = STARTUP_WAIT * 10;
