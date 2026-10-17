@@ -11,6 +11,11 @@
 #
 # Use plain `cargo build` directly if you don't want to install.
 
+# Bare `make` builds: GUIDE promises "or just `make`", so the default
+# goal is declared here instead of depending on `build` staying the
+# first target in this file.
+.DEFAULT_GOAL := build
+
 .PHONY: build build-release test clippy install clean check-lock check-install
 
 # Recommended dev workflow: build + install to ${CARGO_HOME:-~/.cargo}/bin.

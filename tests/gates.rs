@@ -223,3 +223,103 @@ fn make_targets_mirror_ci_gate_scope() {
         );
     }
 }
+
+/// README's Dev block must quote the exact gate commands: a bare
+/// `cargo test` drifts from the `--offline` runs Makefile and CI pin
+/// above, and a reader following README gets a different gate.
+#[test]
+fn docs_quote_exact_gate_commands() {
+    let readme = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))
+        .expect("README.md");
+    for cmd in [
+        "cargo test --offline",
+        "cargo clippy --offline --all-targets -- -D warnings",
+        "cargo fmt --check",
+    ] {
+        assert!(
+            readme.contains(cmd),
+            "README Dev block must quote the exact gate command `{cmd}`"
+        );
+    }
+}
+
+/// GUIDE must document every Makefile target: an undocumented target
+/// rots (nobody learns check-install exists) and a removed target
+/// leaves stale docs. Parse .PHONY so a new target fails here until
+/// GUIDE mentions it as `make <target>`.
+#[test]
+fn guide_names_every_make_target() {
+    let make =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Makefile")).expect("Makefile");
+    let guide = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md"))
+        .expect("GUIDE.md");
+    let mut targets = Vec::new();
+    for line in make.lines() {
+        if let Some(list) = line.strip_prefix(".PHONY:") {
+            targets.extend(list.split_whitespace().map(str::to_string));
+        }
+    }
+    assert!(!targets.is_empty(), "Makefile must declare .PHONY targets");
+    for target in targets {
+        assert!(
+            guide.contains(&format!("`make {target}`")),
+            "GUIDE must document `make {target}`"
+        );
+    }
+}
+
+/// Bare `make` must build by declaration, not by accident of target
+/// order: GUIDE promises "or just `make`", and a reorder of the
+/// Makefile must not silently change what that does.
+#[test]
+fn make_default_goal_is_build() {
+    let make =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Makefile")).expect("Makefile");
+    assert!(
+        make.contains(".DEFAULT_GOAL := build"),
+        "Makefile must declare .DEFAULT_GOAL := build (bare `make` is documented)"
+    );
+}
+
+/// The backend parity matrix must track the backends the code knows:
+/// every wired backend gets a column backed by a source module, and
+/// no column may name a backend the code dropped. (One blind spot by
+/// design: a brand-new backend file has no test-visible registry, so
+/// its author must add the matrix column by hand — this test then
+/// pins that column forever after.)
+#[test]
+fn parity_matrix_lists_known_backends() {
+    let guide = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md"))
+        .expect("GUIDE.md");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    // Matrix column -> source module proving the backend exists.
+    let backends = [
+        ("tmux", "tmux"),
+        ("zellij", "zellij"),
+        ("screen", "screen"),
+        ("SSH fleet", "fleet"),
+        ("native tabs", "native"),
+    ];
+    for (_, module) in &backends {
+        assert!(
+            std::path::Path::new(manifest_dir)
+                .join(format!("src/{module}.rs"))
+                .exists(),
+            "backend module src/{module}.rs must exist"
+        );
+    }
+    let header = guide
+        .lines()
+        .find(|l| l.starts_with("| Capability"))
+        .expect("GUIDE must contain the parity matrix header");
+    let columns: Vec<&str> = header
+        .split('|')
+        .map(str::trim)
+        .filter(|c| !c.is_empty() && *c != "Capability")
+        .collect();
+    let expected: Vec<&str> = backends.iter().map(|(col, _)| *col).collect();
+    assert_eq!(
+        columns, expected,
+        "parity matrix columns must be exactly the wired backends"
+    );
+}

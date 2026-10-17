@@ -139,7 +139,7 @@ See `terhub --help` and [GUIDE.md](GUIDE.md) for the rest.
 ## Dev
 
 ```
-cargo test
-cargo clippy --all-targets -- -D warnings
+cargo test --offline
+cargo clippy --offline --all-targets -- -D warnings
 cargo fmt --check
 ```

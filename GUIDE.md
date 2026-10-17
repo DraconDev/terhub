@@ -47,7 +47,10 @@ runs `cargo build` and then `cargo install --path . --offline --locked
 sync with the working tree. A stale `~/.cargo/bin/terhub` against a
 fresh `target/debug/terhub` is the most common "is it broken or is
 the binary old?" confusion; `make build` removes that footgun. Other
-targets: `make test`, `make clippy`, `make install` (install only).
+targets: `make test`, `make clippy`, `make install` (install only),
+`make build-release` (release build + install), `make check-lock`
+(lockfile/registry sanity), `make check-install` (proves the installed
+binary is fresh — also a CI gate), `make clean`.
 
 `terhub` with no arguments opens the TUI; every subcommand below also works
 from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
