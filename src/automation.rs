@@ -999,6 +999,25 @@ mod tests {
     }
 
     #[test]
+    fn shell_action_failure_keeps_stderr_head() {
+        // Rule failures were undebuggable from the ledger line:
+        // stderr went to /dev/null, leaving just an exit code. The
+        // one-line description must carry the stderr head.
+        let fire = Fire {
+            rule: "r".to_string(),
+            pane: "%1".to_string(),
+            action: Action::Shell {
+                command: "echo boom >&2; exit 3".to_string(),
+            },
+        };
+        let rec = rec("%1", AgentState::Waiting, 0, "");
+        let out = execute_with_timeout(None, &fire, &rec, std::time::Duration::from_secs(10))
+            .expect("a shell failure is a ledger line, not an error");
+        assert!(out.contains("boom"), "stderr head missing: {out}");
+        assert!(out.contains('3'), "exit status missing: {out}");
+    }
+
+    #[test]
     fn shell_capture_survives_pipe_filling_output() {
         let out = shell_capture(
             "seq 1 30000",
