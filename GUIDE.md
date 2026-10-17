@@ -153,9 +153,11 @@ status bar, no modes except small popups:
   rarely need it — just start typing and any unbound printable key
   opens the prompt with that char already entered (`/` always forces
   it, e.g. for queries starting with a bound key). It narrows rows by
-  case-insensitive substring across every text column (session, window,
-  command, dir, agent, state, summary); prefix with `!` to exclude
-  instead (`!zsh` hides every row mentioning zsh). Typing filters live,
+  space-separated tokens, OR-combined, each a case-insensitive
+  substring across every text column (session, window,
+  command, dir, agent, state, summary) — `vim npm` shows rows
+  mentioning either. Prefix a token with `!` to exclude it instead
+  (`vim !zsh` hides every vim row mentioning zsh). Typing filters live,
   `Enter` keeps the query **for this session only — it is never saved**,
   `Esc` clears it.
   *Filter chip*: while any filter is active, the table header carries a

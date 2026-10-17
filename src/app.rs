@@ -520,25 +520,9 @@ pub fn expand_command(
     out
 }
 
-/// Case-insensitive substring match across every text column. `q` must
-/// already be lowercased. A leading `!` negates: `!zsh` keeps every
-/// row whose columns do NOT contain `zsh` (a lone `!` matches
-/// everything).
-fn pane_matches(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
-    let (neg, q) = match q.strip_prefix('!') {
-        Some(rest) => (true, rest),
-        None => (false, q),
-    };
-    if neg && q.is_empty() {
-        return true;
-    }
-    let m = pane_match_any(p, rec, q);
-    if neg { !m } else { m }
-}
-
 /// True when `q` (already lowercased) appears in any of the visible
-/// columns of the row. Shared between `pane_matches` and the multi-
-/// token standing filter helper.
+/// columns of the row. Shared by the multi-token include and
+/// standing-filter helpers.
 fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
     let hit = |s: &str| s.to_lowercase().contains(q);
     hit(&p.id)
@@ -548,6 +532,37 @@ fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
         || hit(&p.command)
         || hit(&p.path)
         || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary))
+}
+
+/// Multi-token OR-combined include: a row is kept when it matches
+/// ANY positive (lowercased) token and NONE of the `!`-prefixed
+/// ones. Empty tokens are skipped, so a lone `!` constrains
+/// nothing and a negation-only query keeps every un-excluded row.
+fn pane_matches_include(p: &Pane, rec: Option<&AgentRecord>, tokens: &[&str]) -> bool {
+    // Exclusions first: a `!`-hit hides the row no matter which
+    // positive token matched, so positives and negations must both
+    // be fully evaluated (no early `true` on the first positive).
+    let mut any_positive = false;
+    let mut positive_hit = false;
+    for tok in tokens {
+        let tok = tok.trim();
+        match tok.strip_prefix('!') {
+            Some(term) => {
+                let term = term.trim();
+                if !term.is_empty() && pane_match_any(p, rec, term) {
+                    return false;
+                }
+            }
+            None => {
+                if tok.is_empty() {
+                    continue;
+                }
+                any_positive = true;
+                positive_hit = positive_hit || pane_match_any(p, rec, tok);
+            }
+        }
+    }
+    !any_positive || positive_hit
 }
 
 /// Multi-token NOT-OR for the standing filter: a row is kept only
@@ -1466,15 +1481,18 @@ impl App {
                 .retain(|p| pane_matches_excludes(p, agents.get(&p.id), &token_refs));
         }
         if !self.filter.is_empty() {
-            // Live find: single substring (the OLD model), with
-            // a `!` prefix for negation. NOT tokenized — the
-            // user-typed `claude waiting` is a single substring
-            // that has to appear in some column, exactly like
-            // before this pass.
-            let q = self.filter.to_lowercase();
+            // Live find: multi-token, OR-combined, with per-token
+            // `!` exclusion — the same token model as the standing
+            // filter, so the two queries compose symmetrically.
+            let tokens: Vec<String> = self
+                .filter
+                .split_whitespace()
+                .map(|t| t.to_lowercase())
+                .collect();
+            let token_refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
             let agents = &self.agents;
             self.filtered
-                .retain(|p| pane_matches(p, agents.get(&p.id), &q));
+                .retain(|p| pane_matches_include(p, agents.get(&p.id), &token_refs));
         }
         self.hidden_quiet = 0;
         if self.hide_quiet_shells {
@@ -3080,7 +3098,12 @@ impl App {
             .map(|t| t.to_lowercase())
             .collect();
         let ex_refs: Vec<&str> = ex_tokens.iter().map(String::as_str).collect();
-        let q_find = self.filter.to_lowercase();
+        let find_tokens: Vec<String> = self
+            .filter
+            .split_whitespace()
+            .map(|t| t.to_lowercase())
+            .collect();
+        let q_find: Vec<&str> = find_tokens.iter().map(String::as_str).collect();
         let mut hidden_by_exclude: Vec<&Pane> = Vec::new();
         let mut hidden_by_search: Vec<&Pane> = Vec::new();
         for p in &self.panes {
@@ -3088,11 +3111,11 @@ impl App {
             // The settings page partitions by which single clause
             // hid the row, not by the combined predicate; the
             // combined predicate would double-count when both
-            // fire. The exclude clause is multi-token (NOT-OR);
-            // the search clause is the OLD single-substring form.
+            // fire. Both clauses are multi-token (NOT-OR exclude,
+            // OR-combined search with per-token `!`).
             if !self.exclude.is_empty() && !pane_matches_excludes(p, rec, &ex_refs) {
                 hidden_by_exclude.push(p);
-            } else if !self.filter.is_empty() && !pane_matches(p, rec, &q_find) {
+            } else if !self.filter.is_empty() && !pane_matches_include(p, rec, &q_find) {
                 hidden_by_search.push(p);
             }
         }
@@ -4957,7 +4980,10 @@ mod tests {
         app.filter = "editor !nvim".to_string();
         app.refresh_filtered();
         assert_eq!(
-            app.filtered.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            app.filtered
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["%2"],
             "!-token should hide only its rows"
         );
@@ -4965,7 +4991,10 @@ mod tests {
         app.filter = "nvim".to_string();
         app.refresh_filtered();
         assert_eq!(
-            app.filtered.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            app.filtered
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["%1"],
         );
     }
