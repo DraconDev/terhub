@@ -750,15 +750,14 @@ impl App {
             .trim_start_matches('!')
             .trim()
             .to_string();
-        // A saved filter whose query matches the standing/loaded search
-        // keeps its name across a restart: the header still names it.
-        // `config.filter` carries the on-disk `[ui] filter` value, which
-        // is the include query under the multi-token model.
-        let active_saved_filter = config
-            .saved_filters
-            .iter()
-            .find(|f| f.matches_query(&config.filter))
-            .map(|f| f.name.clone());
+        // No saved filter is active at startup: saved queries are
+        // live includes, but the live filter starts empty (it is never
+        // persisted) while `config.filter` carries the on-disk `[ui]`
+        // standing EXCLUSION (`!`-prefixed). Matching one domain
+        // against the other never named an applied filter — and could
+        // falsely name one when an exclusion string-coincided with a
+        // saved query. The header names filters again once one is
+        // applied live.
         // Cloned before the move into the struct literal: the fields
         // below consume `config`.
         let saved_filters = config.saved_filters.clone();
@@ -801,7 +800,7 @@ impl App {
             editing_standing: false,
             filter_before_edit: String::new(),
             saved_filters,
-            active_saved_filter,
+            active_saved_filter: None,
             filter_history: VecDeque::new(),
             filter_history_idx: None,
             filter_history_pending: None,
@@ -8218,12 +8217,14 @@ mod tests {
         // saved queries are live includes applied to an empty live
         // filter at startup. Matching one domain against the other
         // named a filter that was never applied.
-        let mut cfg = AppConfig::default();
-        cfg.filter = "!zsh".to_string();
-        cfg.saved_filters = vec![crate::config::SavedFilter {
-            name: "w".to_string(),
-            query: "!zsh".to_string(),
-        }];
+        let cfg = AppConfig {
+            filter: "!zsh".to_string(),
+            saved_filters: vec![crate::config::SavedFilter {
+                name: "w".to_string(),
+                query: "!zsh".to_string(),
+            }],
+            ..AppConfig::default()
+        };
         let app = App::new(cfg);
         assert_eq!(app.filter, "");
         assert_eq!(
