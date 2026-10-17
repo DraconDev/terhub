@@ -1241,15 +1241,13 @@ fn refresh_quiet(
     (h, q)
 }
 
-/// The stuck gate, shared by [`merge_record_owned`] and the Hook|Manual
-/// carry branch: a live process (`has_proc`) burning no CPU (`still`) for
-/// `stuck_secs` on a Working|Idle row is hung — unless the screen has been
-/// quiet past `quiet_idle_secs` (finished, not hung) or the gate is
-/// disabled (`stuck_secs = 0`). Returns the Stuck since-clock and summary
-/// on trip. `prev_stuck_since` carries the clock across polls while the
-/// trip persists (no renotify); None starts it at now.
-fn stuck_gate_trip(
-    state: AgentState,
+/// Inputs to the shared stuck gate: a live process (`has_proc`) burning
+/// no CPU (`still`) for `stuck_secs` on a Working|Idle row is hung —
+/// unless the screen has been quiet past `quiet_idle_secs` (finished,
+/// not hung) or the gate is disabled (`stuck_secs = 0`).
+/// `prev_stuck_since` carries the clock across polls while the trip
+/// persists (no renotify); None starts it at now.
+struct StuckGate {
     has_proc: bool,
     still: u64,
     quiet_for: u64,
@@ -1257,25 +1255,29 @@ fn stuck_gate_trip(
     stuck_secs: u64,
     quiet_idle_secs: u64,
     prev_stuck_since: Option<u64>,
-) -> Option<(u64, String)> {
+}
+
+/// The stuck gate, shared by [`merge_record_owned`] and the Hook|Manual
+/// carry branch. Returns the Stuck since-clock and summary on trip.
+fn stuck_gate_trip(state: AgentState, g: &StuckGate) -> Option<(u64, String)> {
     if !matches!(state, AgentState::Working | AgentState::Idle) {
         return None;
     }
-    if stuck_secs == 0 || !has_proc || still == 0 {
+    if g.stuck_secs == 0 || !g.has_proc || g.still == 0 {
         return None;
     }
-    if now.saturating_sub(still) < stuck_secs {
+    if g.now.saturating_sub(g.still) < g.stuck_secs {
         return None;
     }
     // A long-quiet screen is finished, not hung (the `samai` fix).
-    if quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs {
+    if g.quiet_idle_secs > 0 && g.quiet_for >= g.quiet_idle_secs {
         return None;
     }
     Some((
-        prev_stuck_since.unwrap_or(now),
+        g.prev_stuck_since.unwrap_or(g.now),
         format!(
             "no cpu for {}",
-            crate::history::fmt_dur(now.saturating_sub(still))
+            crate::history::fmt_dur(g.now.saturating_sub(g.still))
         ),
     ))
 }
@@ -1303,13 +1305,15 @@ fn apply_hook_stuck_gate(
     let prev_since = r.stuck_base.map(|_| r.state_since);
     if let Some((since, sum)) = stuck_gate_trip(
         underlying,
-        has_proc,
-        r.cpu_still_since,
-        quiet_for,
-        now,
-        stuck_secs,
-        quiet_idle_secs,
-        prev_since,
+        &StuckGate {
+            has_proc,
+            still: r.cpu_still_since,
+            quiet_for,
+            now,
+            stuck_secs,
+            quiet_idle_secs,
+            prev_stuck_since: prev_since,
+        },
     ) {
         if r.stuck_base.is_none() {
             r.stuck_base = Some(underlying);
@@ -1478,13 +1482,15 @@ fn merge_record_owned(
     };
     if let Some((stuck_since, stuck_summary)) = stuck_gate_trip(
         final_state,
-        proc_hit.is_some(),
-        still,
-        quiet_for,
-        now,
-        stuck_secs,
-        quiet_idle_secs,
-        prev_stuck_since,
+        &StuckGate {
+            has_proc: proc_hit.is_some(),
+            still,
+            quiet_for,
+            now,
+            stuck_secs,
+            quiet_idle_secs,
+            prev_stuck_since,
+        },
     ) {
         final_state = AgentState::Stuck;
         since = stuck_since;
