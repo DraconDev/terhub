@@ -2762,24 +2762,25 @@ impl App {
             ));
             return None;
         }
-        if key_matches(&self.config.spec("filter"), &code, mods) {
-            self.open_filter();
-            return None;
-        }
-        if key_matches(&self.config.spec("hide_shells"), &code, mods) {
-            self.toggle_hide_quiet_shells();
-            return None;
-        }
-        // Saved-filter cycling and clearing work from either focus:
-        // without these, bare bindings can never fire in Normal mode
-        // (the modifier-qualified dispatch path is the only other
-        // handler, so F seeds the filter and X vanishes).
+        // Saved-filter cycling and clearing work from either focus and
+        // sit BEFORE `filter`: letter matching is case-insensitive, so
+        // the default `filter`="f" would otherwise swallow an explicit
+        // bare saved_filter="F". An explicit user binding wins over
+        // the default; untouched defaults still fall through to `filter`.
         if key_matches(&self.config.spec("saved_filter"), &code, mods) {
             self.cycle_saved_filter(tmux);
             return None;
         }
         if key_matches(&self.config.spec("filter_clear"), &code, mods) {
             self.clear_filter();
+            return None;
+        }
+        if key_matches(&self.config.spec("filter"), &code, mods) {
+            self.open_filter();
+            return None;
+        }
+        if key_matches(&self.config.spec("hide_shells"), &code, mods) {
+            self.toggle_hide_quiet_shells();
             return None;
         }
         // Fullscreen preview owns the screen: Enter jumps to the previewed
@@ -5114,7 +5115,11 @@ mod tests {
         app.focus = Focus::Sessions;
         app.filter = "abc".to_string();
         app.on_key(press(KeyCode::Char('X')), &tmux);
-        assert_eq!(app.mode, Mode::Normal, "bare filter_clear opened the filter");
+        assert_eq!(
+            app.mode,
+            Mode::Normal,
+            "bare filter_clear opened the filter"
+        );
         assert!(app.filter.is_empty(), "filter_clear did not clear");
         assert!(
             app.status
