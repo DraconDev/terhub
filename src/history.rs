@@ -1245,6 +1245,52 @@ mod tests {
     }
 
     #[test]
+    fn report_markdown_total_reconciles_with_visible_columns() {
+        // total() sums work+wait+err+idle+done, so the table must show
+        // every one of those columns: a dropped column makes the total
+        // disagree with the visible cells. Second-scale values keep
+        // fmt_dur exact ("Ns"), so the sum is checkable.
+        let row = StatsRow {
+            key: "claude".to_string(),
+            work: 10,
+            wait: 20,
+            err: 0,
+            idle: 5,
+            done: 20,
+        };
+        let data = ReportData {
+            by_day: vec![row.clone()],
+            by_agent: vec![],
+            by_session: vec![],
+            foreground: vec![],
+        };
+        let md = report_markdown(&data, "today");
+        let line = md
+            .lines()
+            .find(|l| l.starts_with("| claude "))
+            .expect("missing row:\n{md}")
+            .to_string();
+        let cells: Vec<&str> = line
+            .split('|')
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+            .collect();
+        // key + work + wait + err + idle + done + total.
+        assert_eq!(
+            cells.len(),
+            7,
+            "row must show every column total() sums:\n{line}"
+        );
+        let secs = |c: &str| c.strip_suffix('s').unwrap().parse::<u64>().unwrap();
+        let visible: u64 = cells[1..6].iter().map(|c| secs(c)).sum();
+        assert_eq!(
+            visible,
+            secs(cells[6]),
+            "total must equal the visible columns:\n{line}"
+        );
+    }
+
+    #[test]
     fn report_markdown_renders_tables() {
         let md = report_markdown(&sample_report(), "today");
         assert!(md.contains("## by agent"), "missing section:\n{md}");
