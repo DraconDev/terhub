@@ -830,7 +830,7 @@ async fn poll_loop(
         let tune = tunables;
         let next = tokio::task::spawn_blocking(move || poll_sync(prev, &manifests, tune)).await;
         match next {
-            Ok((mut next, sessions, foreground, outage)) => {
+            Ok((mut next, sessions, foreground, outage, live_panes)) => {
                 // Fold the poll result back under one lock hold: hooks that
                 // landed during the poll are in the live registry but were
                 // never in the pre-poll clone poll_sync saw, so merging them
@@ -1036,9 +1036,21 @@ fn merge_mid_poll_hooks(
     next: &mut HashMap<String, AgentRecord>,
     live: &HashMap<String, AgentRecord>,
     poll_start: u64,
+    live_panes: Option<&std::collections::HashSet<String>>,
 ) {
     for (pane, rec) in live {
-        if rec.source == Source::Hook && rec.updated_at >= poll_start {
+        // A Hook record for a pane the poll never listed is a ghost —
+        // a dead pane's last event, or a forged one — and must not be
+        // re-inserted into a result rebuilt from live panes only, where
+        // it would linger to the stale window. Manual pins are exempt:
+        // deliberate human state must survive a poll that merely missed
+        // its pane. Unknown live set (outage) keeps the old
+        // preserve-everything behavior.
+        let listed = match live_panes {
+            None => true,
+            Some(set) => set.contains(pane),
+        };
+        if rec.source == Source::Hook && rec.updated_at >= poll_start && listed {
             next.insert(pane.clone(), rec.clone());
         }
         // A register that landed mid-poll is fresher than the poll's
@@ -1727,8 +1739,12 @@ fn outage_result(
     Vec<String>,
     Option<String>,
     bool,
+    Option<std::collections::HashSet<String>>,
 ) {
-    (prev, Vec::new(), None, true)
+    // Outage: the pane listing failed, so the live set is unknown —
+    // ghost filtering stays off rather than risk dropping a real event
+    // mid-outage.
+    (prev, Vec::new(), None, true, None)
 }
 
 /// Take the single-instance flock for `runtime` (non-blocking). The
@@ -1781,6 +1797,10 @@ fn poll_sync(
     Vec<String>,
     Option<String>,
     bool,
+    // Panes tmux listed this poll: the mid-poll hook merge admits
+    // fresh Hook records only for these, so events for dead panes
+    // cannot resurrect as ghosts. None when the listing failed.
+    Option<std::collections::HashSet<String>>,
 ) {
     match Tmux::new() {
         // tmux gone: keep stale rather than wipe
@@ -1818,6 +1838,7 @@ fn poll_sync_with(
     Vec<String>,
     Option<String>,
     bool,
+    Option<std::collections::HashSet<String>>,
 ) {
     // Guarded: the fake tmux is a script this calls exec, and every fork
     // must not land inside a concurrent flock assertion.
@@ -1997,7 +2018,8 @@ fn poll_sync_with(
     sessions.sort();
     sessions.dedup();
     let foreground = tmux.foreground_pane();
-    (next, sessions, foreground, false)
+    let live_panes = panes.iter().map(|p| p.id.clone()).collect();
+    (next, sessions, foreground, false, Some(live_panes))
 }
 
 fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
