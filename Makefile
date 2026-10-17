@@ -11,7 +11,7 @@
 #
 # Use plain `cargo build` directly if you don't want to install.
 
-.PHONY: build test clippy install clean check-lock
+.PHONY: build build-release test clippy install clean check-lock check-install
 
 # Recommended dev workflow: build + install to ~/.cargo/bin.
 build:
