@@ -14,7 +14,7 @@ to see at a glance which of fifteen sessions actually need you —
 terhub is the screen that fixes that. It works on top of tmux, zellij,
 and screen locally, and reaches across SSH to other hosts.
 
-![terhub TUI: every pane, two red rows that need you, filter chip, footer of keys](assets/screenshot.png)
+![terhub TUI: every pane, two red rows that need you, filter chip, footer of keys](https://github.com/DraconDev/terhub/raw/main/assets/screenshot.png)
 
 ## Backend parity
 

@@ -12,6 +12,9 @@ documentation = "https://github.com/DraconDev/terhub#readme"
 # are bundled by default, so exclude each one explicitly.
 exclude = [
     ".dracon/",
+    ".pi-glla/",
+    ".pytest_cache/",
+    "assets/",
     "conversation-*.txt",
     "RESEARCH.md",
     "note.md",
