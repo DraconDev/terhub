@@ -3112,6 +3112,53 @@ mod tests {
     }
 
     #[test]
+    fn path_daemon_bin_must_be_safe_to_exec() {
+        use std::os::unix::fs::PermissionsExt;
+        let base =
+            std::env::temp_dir().join(format!("terhub-pathbin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let good_dir = base.join("good");
+        let evil_dir = base.join("evil");
+        std::fs::create_dir_all(&good_dir).unwrap();
+        std::fs::create_dir_all(&evil_dir).unwrap();
+        // Evil dir first in PATH: a world-writable `terhubd` there must
+        // be skipped, and the good install later in PATH must win.
+        let evil_bin = evil_dir.join("terhubd");
+        std::fs::write(&evil_bin, "#!/bin/sh\nexit 1\n").unwrap();
+        let mut p = std::fs::metadata(&evil_bin).unwrap().permissions();
+        p.set_mode(0o777);
+        std::fs::set_permissions(&evil_bin, p).unwrap();
+        let good_bin = good_dir.join("terhubd");
+        std::fs::write(&good_bin, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut p = std::fs::metadata(&good_bin).unwrap().permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(&good_bin, p).unwrap();
+        let path_var = std::ffi::OsString::from(format!(
+            "{}:{}",
+            evil_dir.display(),
+            good_dir.display()
+        ));
+        let found = find_in_path("terhubd", &path_var).unwrap();
+        assert_eq!(found, good_bin);
+        // A non-regular file (directory) is not executable-as-daemon.
+        let dir_only = base.join("dironly");
+        std::fs::create_dir_all(dir_only.join("terhubd")).unwrap();
+        let path_var = std::ffi::OsString::from(dir_only.join("terhubd").parent().unwrap());
+        assert!(find_in_path("terhubd", &path_var).is_err());
+        // Nothing at all: fail closed, no bare-name fallback.
+        let empty = base.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let path_var = std::ffi::OsString::from(&empty);
+        let err = find_in_path("terhubd", &path_var).unwrap_err();
+        assert!(err.to_string().contains("no `terhubd` found in PATH"));
+        // Only an unsafe candidate: rejected, not returned.
+        let path_var = std::ffi::OsString::from(&evil_dir);
+        let err = find_in_path("terhubd", &path_var).unwrap_err();
+        assert!(err.to_string().contains("unsafe candidate(s) rejected"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn daemon_lock_excludes_second_holder() {
         // Two daemons started together must not both pass: the second
         // flock attempt fails while the first holder lives.
