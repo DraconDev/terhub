@@ -327,9 +327,8 @@ impl RuntimeDirGuard {
     /// Fail-closed: any symlink, non-dir, or dev/ino mismatch is an
     /// error and the caller must not touch the dir's contents.
     fn verify(&self) -> Result<()> {
-        let link_meta = std::fs::symlink_metadata(&self.path).with_context(|| {
-            format!("stat runtime dir {}", self.path.display())
-        })?;
+        let link_meta = std::fs::symlink_metadata(&self.path)
+            .with_context(|| format!("stat runtime dir {}", self.path.display()))?;
         if link_meta.file_type().is_symlink() {
             anyhow::bail!(
                 "runtime dir {} is a symlink; refusing to use it",
@@ -499,7 +498,15 @@ impl Server {
         let tunables = self.tunables;
         let shutdown_flag = self.shutdown.clone();
         let poll = tokio::spawn(async move {
-            poll_loop(reg, manifests, runtime, runtime_guard, tunables, shutdown_flag).await
+            poll_loop(
+                reg,
+                manifests,
+                runtime,
+                runtime_guard,
+                tunables,
+                shutdown_flag,
+            )
+            .await
         });
 
         loop {
