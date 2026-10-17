@@ -3,6 +3,9 @@
 use anyhow::{Context, Result, bail};
 use std::process::Command;
 
+/// Bound for every zellij CLI call (see `run`).
+const ZELLIJ_CMD_TIMEOUT_SECS: u64 = 5;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZSession {
     pub name: String,
@@ -94,6 +97,58 @@ mod tests {
         );
         assert!(parse_sessions("").is_empty());
         assert!(parse_sessions("   \n").is_empty());
+    }
+
+    #[test]
+    fn wedged_server_times_out_instead_of_blocking() {
+        // Same contract as the tmux backend: a wedged zellij server
+        // must time out, never block the caller. The fake binary is
+        // injected via PATH (save/restore: no other lib test resolves
+        // the zellij binary, and PATH is restored before any assert
+        // can panic).
+        let dir = std::env::temp_dir().join(format!(
+            "terhub-zellij-wedge-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("zellij"), "#!/bin/sh\nsleep 30\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                &dir.join("zellij"),
+                std::fs::Permissions::from_mode(0o755),
+            )
+            .unwrap();
+        }
+        let old_path = std::env::var_os("PATH");
+        unsafe {
+            std::env::set_var("PATH", &dir);
+        }
+        let start = std::time::Instant::now();
+        let err = run(&["list-sessions", "--short"]).expect_err("wedged zellij must time out");
+        let elapsed = start.elapsed();
+        match old_path {
+            Some(p) => unsafe {
+                std::env::set_var("PATH", p);
+            },
+            None => unsafe {
+                std::env::remove_var("PATH");
+            },
+        }
+        assert!(
+            format!("{err:#}").contains("timed out"),
+            "unexpected error: {err:#}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_secs(super::ZELLIJ_CMD_TIMEOUT_SECS),
+            "returned before the deadline ({elapsed:?}): timeout path not taken"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(20),
+            "wedged zellij blocked the caller ({elapsed:?})"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

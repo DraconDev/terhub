@@ -230,6 +230,9 @@ fn socket_args(socket: &str) -> Vec<String> {
     }
 }
 
+/// Bound for every tmux CLI call (see `run`).
+const TMUX_CMD_TIMEOUT_SECS: u64 = 5;
+
 pub struct Tmux {
     bin: PathBuf,
     socket: Option<String>,
@@ -672,6 +675,43 @@ mod tests {
         let args = t.attach_args("dev");
         assert_eq!(&args[..2], ["-L", "sock1"]);
         assert_eq!(&args[args.len() - 2..], ["-t", "dev"]);
+    }
+
+    #[test]
+    fn wedged_server_times_out_instead_of_blocking() {
+        // A wedged tmux server must surface as a timeout error, never
+        // freeze the caller: the TUI and the daemon poll run these
+        // calls on their hot paths. Two-sided timing around the
+        // deadline (load only stretches elapsed, so neither flakes).
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-tmux-wedge-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tmux");
+        std::fs::write(&bin, "#!/bin/sh\nsleep 30\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let t = Tmux::test(bin);
+        let start = std::time::Instant::now();
+        let err = t
+            .run(&["list-sessions"])
+            .expect_err("wedged tmux must time out");
+        let elapsed = start.elapsed();
+        assert!(
+            format!("{err:#}").contains("timed out"),
+            "unexpected error: {err:#}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_secs(super::TMUX_CMD_TIMEOUT_SECS),
+            "returned before the deadline ({elapsed:?}): timeout path not taken"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(20),
+            "wedged tmux blocked the caller ({elapsed:?})"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
