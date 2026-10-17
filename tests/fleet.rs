@@ -156,12 +156,21 @@ fn fleet_and_zellij_against_fakes() {
     // id (e.g. from a compromised remote `status --json`) cannot
     // execute remotely. The fake ssh echoes each of its argv on its
     // own line; the remote command is the trailing element.
+    //
+    // The command must route through the remote `terhub capture`
+    // CLI — never raw `tmux capture-pane`, which only sees the
+    // remote default server and misses panes on a private
+    // (`TERHUB_TMUX_SOCKET`) socket.
     let out = f::remote_capture("fake-target", "%3", 60).unwrap();
     let argv: Vec<&str> = out.lines().collect();
     let cmd = argv.last().expect("remote command");
-    for want in ["tmux", "capture-pane", "-p", "-e", "-t", "%3", "-S", "-60"] {
+    for want in ["terhub", "capture", "%3", "--lines", "60"] {
         assert!(cmd.contains(want), "missing {want}: {cmd}");
     }
+    assert!(
+        !cmd.contains("capture-pane"),
+        "must not use raw tmux (misses private sockets): {cmd}"
+    );
     assert!(cmd.contains("'%3'"), "pane must be single-quoted: {cmd}");
 
     // Same with a hostile pane id: the malicious suffix is wrapped in
