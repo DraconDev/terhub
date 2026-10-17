@@ -120,9 +120,17 @@ mod tests {
             std::fs::set_permissions(&dir.join("zellij"), std::fs::Permissions::from_mode(0o755))
                 .unwrap();
         }
+        // Prepend (never replace): the fake script itself needs `sleep`
+        // from the real PATH.
         let old_path = std::env::var_os("PATH");
+        let mut prepended = dir.as_os_str().as_encoded_bytes().to_vec();
+        prepended.push(b':');
+        if let Some(ref p) = old_path {
+            prepended.extend_from_slice(p.as_encoded_bytes());
+        }
+        use std::os::unix::ffi::OsStrExt;
         unsafe {
-            std::env::set_var("PATH", &dir);
+            std::env::set_var("PATH", OsStrExt::from_bytes(&prepended));
         }
         let start = std::time::Instant::now();
         let err = run(&["list-sessions", "--short"]).expect_err("wedged zellij must time out");
