@@ -151,6 +151,29 @@ fn ci_gate_steps_cannot_be_neutralized() {
     }
 }
 
+/// The crates.io bundle must not ship dev junk: git-tracked files are
+/// bundled by default, so the Cargo.toml exclude list has to name every
+/// scratch/asset dir explicitly — and the README must not link the
+/// excluded assets relatively (that 404s on crates.io once they stop
+/// shipping; absolute GitHub URLs render everywhere).
+#[test]
+fn crate_bundle_excludes_dev_junk() {
+    let manifest = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
+        .expect("Cargo.toml");
+    for junk in [".pi-glla/", ".pytest_cache/", "assets/"] {
+        assert!(
+            manifest.contains(junk),
+            "Cargo.toml exclude list must name {junk} (git-tracked files ship by default)"
+        );
+    }
+    let readme = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))
+        .expect("README.md");
+    assert!(
+        !readme.contains("](assets/"),
+        "README must link assets by absolute URL, not relatively (assets/ no longer ships)"
+    );
+}
+
 /// The release gate must exist and check what CI cannot: that a `v*`
 /// tag push proves the tagged commit shippable — tag version equals
 /// the manifest version, gates green, crate publishable.
