@@ -1591,7 +1591,7 @@ mod tests {
         // pid == me can only come from the file (the /proc scan skips
         // self), so this proves the healed advertisement survived.
         assert!(
-            found.is_some_and(|s| s.pid == me),
+            found.as_ref().is_some_and(|s| s.pid == me),
             "torn read lost the live advertisement: {found:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
