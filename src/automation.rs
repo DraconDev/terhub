@@ -611,6 +611,88 @@ mod tests {
         .unwrap();
         let rules = load_rules_from(&path).expect("submit flag must parse");
         assert_eq!(rules.len(), 1);
+        assert!(!rules[0].submit);
+        // Omitted submit defaults to true: existing rules keep
+        // executing on fire.
+        std::fs::write(
+            &path,
+            "[[rule]]\nname = \"t\"\nenabled = true\non = \"waiting\"\naction = \"send-keys\"\ntext = \"hi\"\n",
+        )
+        .unwrap();
+        let rules = load_rules_from(&path).expect("rule must parse");
+        assert!(rules[0].submit);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dry_run_carries_submit_into_the_firing() {
+        let mut r = rule();
+        r.submit = false;
+        let out = dry_run(&[r], &registry(), &[], 1400);
+        assert_eq!(out.len(), 1);
+        match &out[0].2 {
+            Verdict::Fire(f) => match &f.action {
+                Action::SendKeys { text, submit } => {
+                    assert_eq!(text, "continue");
+                    assert!(!submit);
+                }
+                other => panic!("wrong action: {other:?}"),
+            },
+            other => panic!("should fire: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_submit_false_types_without_enter() {
+        // Fake tmux logs every invocation's argv: submit=false must
+        // produce exactly one call (the text), submit=true the text
+        // plus Enter.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-auto-submit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("calls.log");
+        let bin = dir.join("tmux");
+        std::fs::write(
+            &bin,
+            format!("#!/bin/sh\necho \"$@\" >> \"{}\"\n", log.display()),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let tmux = crate::tmux::Tmux::test(bin);
+        let rec = rec("%1", AgentState::Waiting, 0, "");
+        let run = |submit: bool| {
+            std::fs::write(&log, "").unwrap();
+            let fire = Fire {
+                rule: "r".to_string(),
+                pane: "%1".to_string(),
+                action: Action::SendKeys {
+                    text: "hi".to_string(),
+                    submit,
+                },
+            };
+            let desc = execute_with_timeout(
+                Some(&tmux),
+                &fire,
+                &rec,
+                std::time::Duration::from_secs(10),
+            )
+            .expect("fake tmux must succeed");
+            (desc, std::fs::read_to_string(&log).unwrap())
+        };
+        let (desc, calls) = run(false);
+        assert!(desc.contains("(no submit)"), "{desc}");
+        assert_eq!(calls.lines().count(), 1, "{calls}");
+        assert!(calls.contains("-- hi"), "{calls}");
+        assert!(!calls.contains("Enter"), "{calls}");
+        let (desc, calls) = run(true);
+        assert!(!desc.contains("(no submit)"), "{desc}");
+        assert_eq!(calls.lines().count(), 2, "{calls}");
+        assert!(calls.contains("Enter"), "{calls}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -640,6 +722,7 @@ mod tests {
             action: "send-keys".to_string(),
             text: Some("continue".to_string()),
             command: None,
+            submit: true,
         }
     }
 
