@@ -102,9 +102,12 @@ fn install_check_script_exists_and_is_executable() {
 fn install_check_script_proves_install_by_mtime_not_sha() {
     let body = std::fs::read_to_string(SCRIPT).unwrap();
     // Must compare mtimes (the canonical "the install ran" proof).
+    // Both spellings are required: GNU-only `stat -c %Y` dies on
+    // macOS/BSD before asserting anything, so the script must carry
+    // the `stat -f %m` fallback.
     assert!(
-        body.contains("stat -c %Y") || body.contains("stat -f %m"),
-        "{SCRIPT} must compare mtimes (stat -c %Y) to detect install"
+        body.contains("stat -c %Y") && body.contains("stat -f %m"),
+        "{SCRIPT} must compare mtimes portably (stat -c %Y with a stat -f %m fallback)"
     );
     // Must NOT rely solely on SHA — that's a false negative when
     // the source change compiles to a bit-identical binary.

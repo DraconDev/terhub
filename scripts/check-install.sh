@@ -20,6 +20,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Portable mtime: GNU stat spells it `stat -c %Y`, BSD/macOS stat
+# spells it `stat -f %m`. Try GNU first, fall back to BSD so the
+# script asserts on macOS instead of dying before asserting anything.
+file_mtime() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"
+}
+
 CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin/terhub"
 if [ ! -x "$CARGO_BIN" ]; then
     echo "FAIL: $CARGO_BIN not found or not executable"
@@ -32,7 +39,7 @@ if [ ! -f "$SENTINEL" ]; then
     exit 1
 fi
 
-before_mtime=$(stat -c %Y "$CARGO_BIN")
+before_mtime=$(file_mtime "$CARGO_BIN")
 echo "before: mtime=$before_mtime"
 
 # Force a rebuild: touch updates the source mtime, so cargo's
@@ -44,7 +51,7 @@ echo "before: mtime=$before_mtime"
 touch "$SENTINEL"
 make build >/dev/null 2>&1
 
-after_mtime=$(stat -c %Y "$CARGO_BIN")
+after_mtime=$(file_mtime "$CARGO_BIN")
 echo "after:  mtime=$after_mtime"
 
 if [ "$after_mtime" -le "$before_mtime" ]; then
