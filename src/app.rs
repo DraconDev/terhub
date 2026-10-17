@@ -4913,6 +4913,40 @@ mod tests {
     }
 
     #[test]
+    fn session_kill_refuses_own_session() {
+        // Killing the session the hub runs inside would kill the TUI
+        // out from under itself (the pane paths all guard own_pane;
+        // the sidebar session-kill did not).
+        let mut app = app_with(&["a", "b"]);
+        let mut p = Pane::test("%1", "editor", "nvim");
+        p.session = "a".to_string();
+        app.panes = vec![p];
+        app.refresh_filtered();
+        app.own_pane = Some("%1".to_string());
+        let (tmux, dir) = fake_tmux();
+        // Another session still dies on confirm.
+        app.mode = Mode::ConfirmKill("b".to_string());
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert_eq!(
+            app.status.as_deref(),
+            Some("killed b"),
+            "foreign session kill broke: {:?}",
+            app.status
+        );
+        // Own session is refused, never attempted.
+        app.mode = Mode::ConfirmKill("a".to_string());
+        app.on_key(press(KeyCode::Enter), &tmux);
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.contains("own session")),
+            "own session kill not refused: {:?}",
+            app.status
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn modifier_quit_binding_quits() {
         // Quit rebound to a modifier combo must quit: the dispatch
         // "quit" arm returned None ("unclaimed"), so the caller
