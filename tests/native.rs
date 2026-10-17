@@ -46,7 +46,7 @@ if [ "$1" = "--no-auto-start" ]; then shift; else echo "missing --no-auto-start"
 SUB="$1"; shift
 case "$SUB" in
   list) cat "$FAKE_WEZTERM_LIST";;
-  get-text) printf '\033[31mred\033[0m\nplain\n';;
+  get-text) echo "wezterm get-text $*" >> "$FAKE_LOG"; printf '\033[31mred\033[0m\nplain\n';;
   send-text|activate-pane|spawn) echo "wezterm $SUB $*" >> "$FAKE_LOG";;
   *) echo "unexpected: $SUB" >&2; exit 1;;
 esac
@@ -111,6 +111,26 @@ fn native_backends_against_fakes() {
     assert_eq!(n::capture("konsole:999:6", 10).unwrap(), "hello\nworld\n");
     assert_eq!(n::capture("kitty:3", 1).unwrap(), "k3\n");
     assert!(n::capture("wezterm:7", 5).unwrap().contains("red"));
+    // lines=0 means all on every backend (konsole/kitty honor it via
+    // trim_screen_lines): wezterm must ask for the whole scrollback,
+    // not clamp to 1 line.
+    n::capture("wezterm:7", 0).unwrap();
+    let get_text: Vec<&str> = std::fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .filter(|l| l.contains("wezterm get-text"))
+        .collect();
+    assert_eq!(get_text.len(), 2, "expected two get-text calls");
+    assert!(
+        get_text[0].contains("--start-line -5"),
+        "wrong tail: {}",
+        get_text[0]
+    );
+    assert!(
+        get_text[1].contains("--start-line -1000000"),
+        "lines=0 must mean all, not 1 line: {}",
+        get_text[1]
+    );
     assert!(n::capture("konsole:999:99", 5).is_err());
 
     // Mutating calls reach the fakes with the right argv.
