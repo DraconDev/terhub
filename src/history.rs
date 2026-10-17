@@ -215,7 +215,11 @@ pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Ve
     out
 }
 
-pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> usize {
+/// Drop entries older than `keep_days`; returns the surviving count.
+/// A serialization failure is returned as an error instead of the
+/// in-memory count: reporting success while the old ledger stays on
+/// disk would lie about what was pruned.
+pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> Result<usize, String> {
     let cutoff = now.saturating_sub(keep_days * 86400);
     // Per-line lossy decode (see read_lines_lossy): a UTF-8-torn line
     // reaches the quarantine arm below instead of voiding the file.
@@ -265,16 +269,15 @@ pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> usize {
     let mut all = kept;
     all.extend(quarantined);
     let count = all.iter().filter(|e| e.kind != "__corrupt__").count();
-    if let Ok(text) = all
+    let text = all
         .iter()
         .map(serde_json::to_string)
         .collect::<Result<Vec<_>, _>>()
-    {
-        let body = text.join("\n") + if text.is_empty() { "" } else { "\n" };
-        // Atomic write so a crash mid-prune can't truncate the ledger.
-        let _ = crate::config::atomic_write(path, &body);
-    }
-    count
+        .map_err(|e| format!("prune ledger serialization failed: {e}"))?;
+    let body = text.join("\n") + if text.is_empty() { "" } else { "\n" };
+    // Atomic write so a crash mid-prune can't truncate the ledger.
+    let _ = crate::config::atomic_write(path, &body);
+    Ok(count)
 }
 
 fn corrupt_summary(raw: &str, reason: &serde_json::Error) -> String {
