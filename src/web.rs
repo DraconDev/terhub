@@ -508,6 +508,42 @@ mod tests {
     }
 
     #[test]
+    fn blocking_handlers_stay_off_async_workers() {
+        // api_status (daemon IPC, up to 2s) and
+        // api_capture/api_send/api_interrupt (tmux subprocess, up to
+        // 5s) all block: each handler must delegate to spawn_blocking
+        // like the stats/timeline handlers do, or one slow backend
+        // stalls the Tokio workers serving every other request.
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/web.rs"
+        ))
+        .expect("src/web.rs");
+        for handler in [
+            "api_status",
+            "api_stats",
+            "api_timeline",
+            "api_capture",
+            "api_send",
+            "api_interrupt",
+        ] {
+            let start = src
+                .find(&format!("async fn {handler}"))
+                .expect("handler present");
+            let rest = &src[start..];
+            let end = rest[1..]
+                .find("\nasync fn ")
+                .or_else(|| rest[1..].find("\nfn "))
+                .map(|i| i + 1)
+                .unwrap_or(rest.len());
+            assert!(
+                rest[..end].contains("spawn_blocking"),
+                "{handler} must run blocking work via spawn_blocking"
+            );
+        }
+    }
+
+    #[test]
     fn loopback_origins_only() {
         use super::origin_allowed;
         assert!(origin_allowed("http://127.0.0.1:8080"));
