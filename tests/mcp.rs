@@ -49,6 +49,10 @@ impl Mcp {
     fn read_response(&mut self) -> Value {
         // 5s is generous for loopback stdio: the test asserts a fast
         // round-trip, and a wedged child used to hang the suite here.
+        self.read_response_timeout(5)
+    }
+
+    fn read_response_timeout(&mut self, secs: u64) -> Value {
         let reader = Arc::clone(&self.reader);
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
@@ -96,10 +100,9 @@ impl Mcp {
                 }
             }
         });
-        match rx
-            .recv_timeout(Duration::from_secs(5))
-            .expect("terhub mcp did not respond within 5s")
-        {
+        match rx.recv_timeout(Duration::from_secs(secs)).unwrap_or_else(|_| {
+            panic!("terhub mcp did not respond within {secs}s")
+        }) {
             Ok(v) => v,
             Err(e) => panic!("mcp read_response: {e}"),
         }
@@ -228,9 +231,61 @@ fn mcp_conversation_without_and_with_daemon() {
     );
     assert_eq!(attend["result"].get("isError"), None);
 
-    mcp.stop();
+    // A pending terhub_wait must not wedge the server: ping answers
+    // while the 20s wait is still pending. (Single-threaded server:
+    // ping queues behind the wait and read_response's 5s deadline
+    // fires first.) No agent is ever in "error", so the wait runs
+    // the full 20s.
+    {
+        let body = json!({"jsonrpc": "2.0", "id": 8, "method": "tools/call",
+            "params": {"name": "terhub_wait", "arguments": {"state": "error", "timeout_secs": 20}}});
+        let text = serde_json::to_string(&body).unwrap();
+        write!(mcp.stdin, "Content-Length: {}\r\n\r\n{text}", text.len()).unwrap();
+        mcp.stdin.flush().unwrap();
+    }
+    let pong = mcp.call(9, "ping", json!({}));
+    assert_eq!(pong["id"], 9, "ping queued behind terhub_wait");
+    let waited = mcp.read_response_timeout(25);
+    assert_eq!(waited["id"], 8);
+    assert!(
+        waited["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("timeout after 20s"),
+        "unexpected wait outcome: {waited}"
+    );
+
+    // Client disconnect aborts a pending wait: dropping stdin with a
+    // 120s wait in flight must exit the server promptly, not after
+    // the wait times out.
+    {
+        let body = json!({"jsonrpc": "2.0", "id": 10, "method": "tools/call",
+            "params": {"name": "terhub_wait", "arguments": {"state": "error", "timeout_secs": 120}}});
+        let text = serde_json::to_string(&body).unwrap();
+        write!(mcp.stdin, "Content-Length: {}\r\n\r\n{text}", text.len()).unwrap();
+        mcp.stdin.flush().unwrap();
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    let Mcp {
+        mut child,
+        stdin,
+        ..
+    } = mcp;
+    drop(stdin);
+    let mut exited = false;
+    for _ in 0..100 {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                exited = true;
+                break;
+            }
+            _ => std::thread::sleep(Duration::from_millis(100)),
+        }
+    }
     let _ =
         terhub::daemon::send_request(&terhub::daemon::Request::Shutdown, Duration::from_secs(2));
+    let _ = child.kill();
+    assert!(exited, "mcp server survived client disconnect during terhub_wait");
     for _ in 0..50 {
         match daemon.try_wait() {
             Ok(Some(_)) => break,
