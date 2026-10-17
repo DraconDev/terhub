@@ -483,6 +483,31 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_escaper_covers_all_html_contexts() {
+        // The dashboard builds agent rows with innerHTML from
+        // pane/agent/session/summary strings, which include untrusted
+        // remote snapshot text (fleet) — a stored-XSS sink that can
+        // then POST /api/send from the victim browser. esc() is the
+        // single encoding point, so it must neutralize both
+        // element-text (`<`, `>`, `&`) and quoted-attribute (`"`, `'`)
+        // breakouts: `data-p="${esc(a.pane)}"` pops with a bare `"`
+        // and no `<` needed (`" onmouseover="...`).
+        let html = super::DASHBOARD_HTML;
+        for needle in [
+            r#"replace(/&/g,"&amp;")"#,
+            r#"replace(/</g,"&lt;")"#,
+            r#"replace(/>/g,"&gt;")"#,
+            r#"replace(/"/g,"&quot;")"#,
+            r#"replace(/'/g,"&#39;")"#,
+        ] {
+            assert!(
+                html.contains(needle),
+                "dashboard esc() must contain {needle}"
+            );
+        }
+    }
+
+    #[test]
     fn loopback_origins_only() {
         use super::origin_allowed;
         assert!(origin_allowed("http://127.0.0.1:8080"));
