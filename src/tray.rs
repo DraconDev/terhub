@@ -1554,6 +1554,50 @@ mod tests {
     }
 
     #[test]
+    fn transiently_torn_advertisement_survives_the_read() {
+        // A torn concurrent read (publish mid-write) must not delete a
+        // live hub's advertisement: the reader must see the healed file.
+        // Deleting it makes the tray think no hub is open and spawn a
+        // duplicate TUI. The fixer heals the file 10ms in, well inside
+        // any sane retry window; the pid assert keeps a /proc-scan hit
+        // (different pid) from faking a pass.
+        let dir = std::env::temp_dir()
+            .join(format!("terhub-hub-torn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let saved = std::env::var("TERHUB_RUNTIME_DIR").ok();
+        // SAFETY: test-only env mutation, restored below.
+        unsafe {
+            std::env::set_var("TERHUB_RUNTIME_DIR", &dir);
+        }
+        let path = hub_session_path();
+        std::fs::write(&path, "{torn").unwrap();
+        let me = std::process::id();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let _ = std::fs::write(
+                &path,
+                serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
+            );
+        });
+        let found = read_hub_session();
+        // SAFETY: restoring what we borrowed.
+        unsafe {
+            match saved {
+                Some(v) => std::env::set_var("TERHUB_RUNTIME_DIR", v),
+                None => std::env::remove_var("TERHUB_RUNTIME_DIR"),
+            }
+        }
+        // pid == me can only come from the file (the /proc scan skips
+        // self), so this proves the healed advertisement survived.
+        assert!(
+            found.is_some_and(|s| s.pid == me),
+            "torn read lost the live advertisement: {found:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn attention_carry_uses_alarm_color() {
         // The alarm badge background must come from the palette, not
         // the old hard-coded red. Dracula's alarm is #ff5555, Nord's
