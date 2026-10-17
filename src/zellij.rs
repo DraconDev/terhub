@@ -23,12 +23,18 @@ pub fn available() -> bool {
 }
 
 fn run(args: &[&str]) -> Result<String> {
+    let bin = zellij_bin().context("zellij not found on PATH")?;
+    run_with_bin(&bin, args)
+}
+
+/// Test seam with an explicit binary (mirrors [`crate::tmux::Tmux::test`]:
+/// a wedged fake proves the timeout without touching PATH).
+fn run_with_bin(bin: &std::path::Path, args: &[&str]) -> Result<String> {
     // Bounded like the tmux backend: a wedged zellij server surfaces
     // as a timeout error instead of freezing the caller. The timeout
     // error matches no empty-server string, so it still errors loudly
     // instead of reading as "no sessions".
-    let bin = zellij_bin().context("zellij not found on PATH")?;
-    let mut cmd = Command::new(&bin);
+    let mut cmd = Command::new(bin);
     cmd.args(args);
     let what = format!("zellij {}", args.first().unwrap_or(&"?"));
     let out = crate::native::run_with_timeout(cmd, &what, ZELLIJ_CMD_TIMEOUT_SECS)
@@ -129,8 +135,9 @@ mod tests {
             prepended.extend_from_slice(p.as_encoded_bytes());
         }
         use std::os::unix::ffi::OsStrExt;
+        let prepended_path = OsStrExt::from_bytes(&prepended).to_os_string();
         unsafe {
-            std::env::set_var("PATH", OsStrExt::from_bytes(&prepended));
+            std::env::set_var("PATH", prepended_path);
         }
         let start = std::time::Instant::now();
         let err = run(&["list-sessions", "--short"]).expect_err("wedged zellij must time out");
