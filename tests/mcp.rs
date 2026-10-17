@@ -108,7 +108,6 @@ impl Mcp {
             Err(e) => panic!("mcp read_response: {e}"),
         }
     }
-
 }
 
 fn wait_for(cond: impl Fn() -> bool, tries: u32) -> bool {
