@@ -1596,8 +1596,7 @@ mod tests {
         // path-level helper has no env or /proc-scan dependencies. The
         // fixer heals at 10ms and keeps rewriting, so even a delayed
         // thread start lands inside the 50ms retry window.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-hub-torn-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-hub-torn-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(crate::tray::HUB_SESSION_FILE);
@@ -1606,7 +1605,7 @@ mod tests {
         let heal = path.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(10));
-            for _ in 0..400 {
+            for _ in 0..40 {
                 let _ = std::fs::write(
                     &heal,
                     serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
@@ -1628,8 +1627,7 @@ mod tests {
         // returns fast, a torn one pays exactly one beat. (A single
         // glance with no retry would return None for the torn file —
         // the old delete-on-first-sight behavior.)
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-hub-beat-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-hub-beat-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(crate::tray::HUB_SESSION_FILE);
@@ -1660,8 +1658,7 @@ mod tests {
     fn genuinely_corrupt_advertisement_is_still_cleaned() {
         // The retry must not preserve rot: still-unparseable input
         // keeps the old delete-and-fall-back behavior.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-hub-rot-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-hub-rot-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(crate::tray::HUB_SESSION_FILE);
@@ -1675,8 +1672,7 @@ mod tests {
         // Concurrent readers must see the old or the new advertisement,
         // never torn bytes: hammer publish-then-read and demand every
         // read parses.
-        let dir = std::env::temp_dir()
-            .join(format!("terhub-hub-atom-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("terhub-hub-atom-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(crate::tray::HUB_SESSION_FILE);
