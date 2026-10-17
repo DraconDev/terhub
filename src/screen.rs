@@ -49,13 +49,22 @@ pub fn parse_sessions(out: &str) -> Vec<SSession> {
             continue;
         }
         // The session name is everything before the first whitespace, with
-        // the leading PID dot stripped.
+        // the leading PID dot stripped. A real session line is
+        // `<pid>.<name>` with a numeric pid — dotted noise (`error.log
+        // rotated`) has no numeric pid and must not become a phantom
+        // session.
         let Some(head) = l.split_whitespace().next() else {
             continue;
         };
-        let Some((_pid, name)) = head.split_once('.') else {
+        let Some((pid, name)) = head.split_once('.') else {
             continue;
         };
+        if pid.is_empty()
+            || !pid.bytes().all(|b| b.is_ascii_digit())
+            || name.is_empty()
+        {
+            continue;
+        }
         let attached = l.contains("(Attached)");
         out_v.push(SSession {
             name: name.to_string(),
@@ -114,6 +123,17 @@ There are screens on:
     fn parses_empty_server() {
         let out = "No Sockets found in /run/screen/S-root.\n";
         assert!(parse_sessions(out).is_empty());
+    }
+
+    #[test]
+    fn rejects_dotted_noise_without_a_pid() {
+        // A real session line is `<pid>.<name>` with a numeric pid;
+        // dotted noise (`error.log rotated`) must not become a
+        // phantom session named `log`.
+        let out = "error.log rotated\n12345.pts-2.host\t(Detached)\nabc.def\t(Detached)\n";
+        let s = parse_sessions(out);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].name, "pts-2.host");
     }
 
     #[test]
