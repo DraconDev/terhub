@@ -7,18 +7,13 @@ use std::os::unix::fs::PermissionsExt;
 #[test]
 fn find_tmux_skips_non_executable_shadow() {
     use terhub::tmux::Tmux;
-    let base =
-        std::env::temp_dir().join(format!("terhub-tmux-path-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!("terhub-tmux-path-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let shadow = base.join("shadow");
     std::fs::create_dir_all(&shadow).unwrap();
     // A regular file named tmux, earlier on PATH, but not executable.
     std::fs::write(shadow.join("tmux"), "this is not tmux\n").unwrap();
-    std::fs::set_permissions(
-        shadow.join("tmux"),
-        std::fs::Permissions::from_mode(0o644),
-    )
-    .unwrap();
+    std::fs::set_permissions(shadow.join("tmux"), std::fs::Permissions::from_mode(0o644)).unwrap();
     // The real tmux, resolved before PATH is narrowed.
     let real_dir = std::env::var_os("PATH")
         .map(|p| {

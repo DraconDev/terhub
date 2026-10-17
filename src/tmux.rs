@@ -613,8 +613,7 @@ mod tests {
     #[test]
     fn find_tmux_skips_non_executable_files() {
         // No env involved: explicit dirs keep parallel tests safe.
-        let base =
-            std::env::temp_dir().join(format!("terhub-tmux-exec-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("terhub-tmux-exec-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let shadow = base.join("shadow");
         let real = base.join("real");
@@ -623,11 +622,8 @@ mod tests {
         std::fs::write(shadow.join("tmux"), "not tmux\n").unwrap();
         std::fs::write(real.join("tmux"), "#!/bin/sh\n").unwrap();
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(
-            shadow.join("tmux"),
-            std::fs::Permissions::from_mode(0o644),
-        )
-        .unwrap();
+        std::fs::set_permissions(shadow.join("tmux"), std::fs::Permissions::from_mode(0o644))
+            .unwrap();
         std::fs::set_permissions(real.join("tmux"), std::fs::Permissions::from_mode(0o755))
             .unwrap();
         // Skips the shadow, finds the real one past it.
@@ -637,10 +633,7 @@ mod tests {
         );
         // Nothing executable anywhere reads as absent.
         assert_eq!(find_tmux_in([shadow.clone()].into_iter()), None);
-        assert_eq!(
-            find_tmux_in([base.join("missing")].into_iter()),
-            None
-        );
+        assert_eq!(find_tmux_in([base.join("missing")].into_iter()), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
