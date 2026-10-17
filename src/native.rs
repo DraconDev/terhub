@@ -81,7 +81,7 @@ pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Outpu
         }
         buf
     });
-    let deadline = Instant::now() + Duration::from_secs(0); // NEGCONTROL
+    let deadline = Instant::now() + Duration::from_secs(secs);
     let status = loop {
         match child.try_wait()? {
             Some(s) => break s,
