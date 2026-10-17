@@ -115,8 +115,8 @@ fn native_backends_against_fakes() {
     // trim_screen_lines): wezterm must ask for the whole scrollback,
     // not clamp to 1 line.
     n::capture("wezterm:7", 0).unwrap();
-    let get_text: Vec<&str> = std::fs::read_to_string(&log)
-        .unwrap()
+    let logged = std::fs::read_to_string(&log).unwrap();
+    let get_text: Vec<&str> = logged
         .lines()
         .filter(|l| l.contains("wezterm get-text"))
         .collect();

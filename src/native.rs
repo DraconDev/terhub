@@ -707,8 +707,21 @@ fn wezterm_tabs() -> Result<Vec<NativeTab>> {
     Ok(parse_wezterm_list(&wezterm(&["list", "--format", "json"])?))
 }
 
+/// Lines back for wezterm get-text `--start-line`. `lines == 0` means
+/// all — the same convention as [`trim_screen_lines`] — via a large
+/// negative start that wezterm clamps to the top of the scrollback.
+const WEZTERM_ALL_LINES: u32 = 1_000_000;
+
+fn wezterm_start_line(lines: u32) -> String {
+    if lines == 0 {
+        format!("-{WEZTERM_ALL_LINES}")
+    } else {
+        format!("-{lines}")
+    }
+}
+
 fn wezterm_capture(local: &str, lines: u32) -> Result<String> {
-    let start = format!("-{}", lines.max(1));
+    let start = wezterm_start_line(lines);
     wezterm(&[
         "get-text",
         "--pane-id",
@@ -821,7 +834,8 @@ pub fn list_all() -> Vec<BackendReport> {
     })
 }
 
-/// Screen/scrollback text for a native row id.
+/// Screen/scrollback text for a native row id. `lines` caps the tail;
+/// 0 means all, on every backend.
 pub fn capture(id: &str, lines: u32) -> Result<String> {
     let (backend, local) = split_native_id(id).context("not a native row id")?;
     match backend {
@@ -1029,6 +1043,19 @@ mod tests {
     fn int_lists_skip_junk() {
         assert_eq!(parse_int_list("6\n24\n"), vec![6, 24]);
         assert_eq!(parse_int_list("6\nbogus\n\n24\n"), vec![6, 24]);
+    }
+
+    #[test]
+    fn wezterm_zero_lines_means_all() {
+        // Backend parity: konsole/kitty treat 0 as all via
+        // trim_screen_lines, so capture(id, 0) must agree on wezterm.
+        assert_eq!(wezterm_start_line(5), "-5");
+        assert_eq!(wezterm_start_line(1), "-1");
+        assert_eq!(
+            wezterm_start_line(0),
+            format!("-{WEZTERM_ALL_LINES}"),
+            "lines=0 must mean all, not 1 line"
+        );
     }
 
     #[test]
