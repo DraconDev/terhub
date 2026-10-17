@@ -674,13 +674,9 @@ mod tests {
                     submit,
                 },
             };
-            let desc = execute_with_timeout(
-                Some(&tmux),
-                &fire,
-                &rec,
-                std::time::Duration::from_secs(10),
-            )
-            .expect("fake tmux must succeed");
+            let desc =
+                execute_with_timeout(Some(&tmux), &fire, &rec, std::time::Duration::from_secs(10))
+                    .expect("fake tmux must succeed");
             (desc, std::fs::read_to_string(&log).unwrap())
         };
         let (desc, calls) = run(false);
