@@ -26,12 +26,15 @@ build-release:
 	cargo build --release
 	cargo install --path . --offline --locked --force --root "$${CARGO_HOME:-$$HOME/.cargo}"
 
+# Same scope as the CI gates (ci.yml): full all-targets runs, so a
+# local green means CI green. `--lib --tests` used to skip bins and
+# doctests here while CI ran everything.
 test:
-	cargo test --lib --tests
+	cargo test --offline
 
-# Strict clippy; the CI gate uses this.
+# Strict clippy; the CI gate uses this exact command.
 clippy:
-	cargo clippy --lib --tests -- -D warnings
+	cargo clippy --offline --all-targets -- -D warnings
 
 # Install the working tree's binary to ${CARGO_HOME:-~/.cargo}/bin
 # without rebuilding.
