@@ -1329,6 +1329,30 @@ fn apply_hook_stuck_gate(
     }
 }
 
+/// Reset-each-pass bell evidence: mirror this poll's tmux bell flag onto
+/// the record, never carry it. The flag is actionable only when the
+/// classifier's bell_override fired — a manifest hit upgraded to Waiting
+/// with the `🔔 ` summary prefix. A bare bell with no hit is shell noise
+/// (dropped by bell_override), so the record stays clear. The reason is
+/// the matched waiting pattern with the prefix stripped, so the chip can
+/// render `🔔 y/n` instead of just `🔔`.
+fn bell_evidence(hit: Option<&ScreenHit>, pane_bell: bool) -> (bool, String) {
+    if !pane_bell {
+        return (false, String::new());
+    }
+    match hit {
+        Some(h) => match h.summary.strip_prefix("🔔 ") {
+            Some(reason) if !reason.is_empty() => (true, reason.to_string()),
+            // Override fired on an empty match line: still a real bell.
+            Some(_) => (true, "bell".to_string()),
+            // No prefix: bell_override declined (e.g. an Error/Stuck row
+            // keeps its verdict), so there is no bell evidence to record.
+            None => (false, String::new()),
+        },
+        None => (false, String::new()),
+    }
+}
+
 /// Merge one poll's evidence into a record, legacy entry: no snapshot in
 /// scope here, so editor ownership falls back to the old rule (editor
 /// foreground plus any process hit) and the starttime is unknown (0).
@@ -1842,6 +1866,8 @@ fn poll_sync_with(
             };
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
             apply_hook_stuck_gate(&mut r, has_proc, now, tune.stuck_secs, tune.quiet_idle_secs);
+            // Bell is reset-each-pass: mirror this poll's flag, never carry.
+            (r.bell, r.bell_reason) = bell_evidence(screen_hit.as_ref(), pane.bell);
             if r.summary.is_empty() {
                 r.summary = fallback_summary_for(r.state, screen.as_deref());
             }
@@ -1872,6 +1898,8 @@ fn poll_sync_with(
             tune.waiting_idle_secs,
         ) {
             (rec.screen_hash, rec.quiet_since) = refresh_quiet(carried, hash, &rec, now);
+            // Bell is reset-each-pass: mirror this poll's flag, never carry.
+            (rec.bell, rec.bell_reason) = bell_evidence(screen_hit.as_ref(), pane.bell);
             if rec.summary.is_empty() {
                 rec.summary = fallback_summary_for(rec.state, screen.as_deref());
             }
@@ -1893,6 +1921,8 @@ fn poll_sync_with(
                 // clock running through the carry.
                 (r.screen_hash, r.quiet_since) =
                     track_quiet((r.screen_hash, r.quiet_since), hash, now);
+                // Bell is reset-each-pass: mirror this poll's flag, never carry.
+                (r.bell, r.bell_reason) = bell_evidence(screen_hit.as_ref(), pane.bell);
                 if r.summary.is_empty() {
                     r.summary = fallback_summary_for(r.state, screen.as_deref());
                 }
