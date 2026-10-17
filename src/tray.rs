@@ -1209,6 +1209,43 @@ mod tests {
     }
 
     #[test]
+    fn install_icons_prune_spares_user_files() {
+        // The prune must only drop stale OUR versioned names: a
+        // user's own terhub*.svg in the icons dir must survive.
+        let base =
+            std::env::temp_dir().join(format!("terhub-icons-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let dir = base.join("icons/hicolor/scalable/apps");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("terhub-logo.svg"), "<svg>mine</svg>").unwrap();
+        std::fs::write(dir.join("terhub-deadbeef.svg"), "<svg>old</svg>").unwrap();
+        let saved = std::env::var_os("XDG_DATA_HOME");
+        // SAFETY: test-only env mutation, restored below.
+        unsafe {
+            std::env::set_var("XDG_DATA_HOME", &base);
+        }
+        let map = install_icons("github").unwrap();
+        // SAFETY: restoring before asserting so a failure cannot
+        // leak the redirect into sibling tests.
+        unsafe {
+            match saved {
+                Some(v) => std::env::set_var("XDG_DATA_HOME", v),
+                None => std::env::remove_var("XDG_DATA_HOME"),
+            }
+        }
+        assert_eq!(map.len(), 6);
+        assert!(
+            dir.join("terhub-logo.svg").exists(),
+            "prune deleted a user's own file"
+        );
+        assert!(
+            !dir.join("terhub-deadbeef.svg").exists(),
+            "prune kept a stale versioned file"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn versioned_name_is_stable_and_changes_with_content() {
         // The whole reason this name exists: Plasmashell's QIcon cache
         // keys on the name, so a redesigned icon must be a *new* name
