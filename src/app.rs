@@ -1297,9 +1297,18 @@ impl App {
                 // and close the preview. The merges below re-filter once
                 // the row set is complete.
                 // Drop marks for dead panes; survivors keep theirs.
-                // Attended entries die with their pane too.
-                let live: std::collections::HashSet<&str> =
-                    self.panes.iter().map(|p| p.id.as_str()).collect();
+                // Attended entries die with their row too — but the
+                // live set spans every cache, not just tmux: pruning
+                // here runs before merge_caches() re-adds the
+                // fleet/native rows, so a tmux-only set would wipe
+                // every remote/native mark on each tick.
+                let live: std::collections::HashSet<&str> = self
+                    .panes
+                    .iter()
+                    .map(|p| p.id.as_str())
+                    .chain(self.fleet_rows.iter().map(|p| p.id.as_str()))
+                    .chain(self.native_rows.iter().map(|p| p.id.as_str()))
+                    .collect();
                 self.marked.retain(|id| live.contains(id.as_str()));
                 self.attended.retain(|id, _| live.contains(id.as_str()));
             }
@@ -4404,12 +4413,25 @@ impl App {
     /// Drop attended entries the pane has outgrown: a new state or a new
     /// summary is new information, so the row stops reading as seen.
     /// Live-pane pruning happens with `marked` in the pane tick; this is
-    /// the state/summary half, run after every agent snapshot.
+    /// the state/summary half, run after every agent snapshot. The
+    /// lookup spans the fleet/native caches too: refresh_agents() runs
+    /// before merge_caches() re-inserts their records, so a daemon-only
+    /// map would clear every remote/native mark on each tick.
     fn prune_attended(&mut self) {
         let agents = &self.agents;
-        self.attended.retain(|id, (st, sum)| match agents.get(id) {
-            Some(r) => st == r.state.label() && sum == &r.summary,
-            None => st.is_empty() && sum.is_empty(),
+        let fleet = &self.fleet_agents;
+        let native = &self.native_agents;
+        self.attended.retain(|id, (st, sum)| {
+            let r = agents.get(id).or_else(|| {
+                fleet
+                    .iter()
+                    .find(|a| a.pane == *id)
+                    .or_else(|| native.iter().find(|a| a.pane == *id))
+            });
+            match r {
+                Some(r) => st == r.state.label() && sum == &r.summary,
+                None => st.is_empty() && sum.is_empty(),
+            }
         });
     }
 
@@ -5658,10 +5680,7 @@ mod tests {
         // or may not answer — the fleet cache is what must keep the mark.
         let (tmux, dir) = fake_tmux();
         app.refresh(&tmux);
-        assert!(
-            app.is_attended("dev:%1"),
-            "tick wiped the remote checkmark"
-        );
+        assert!(app.is_attended("dev:%1"), "tick wiped the remote checkmark");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
