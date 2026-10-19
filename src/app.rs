@@ -241,8 +241,6 @@ fn clock_hz() -> f64 {
     if hz > 0 { hz as f64 } else { 100.0 }
 }
 
-/// Which list keyboard input drives: the session sidebar or the pane table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// How the client is doing with the daemon.
 ///
 /// The distinction that matters: a daemon that is *not running* and a
@@ -261,6 +259,8 @@ pub enum DaemonLink {
     Incompatible,
 }
 
+/// Which list keyboard input drives: the session sidebar or the pane table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Focus {
     Sessions,
     #[default]
