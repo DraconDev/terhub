@@ -260,6 +260,30 @@ impl Snapshot {
     /// wins ties). Wrappers (shells, systemd-inhibit, node) are transparent:
     /// every descendant is matched, not just direct children.
     pub fn detect_agent(&self, root: u32) -> Option<AgentHit> {
+        let (pid, agent) = self.nearest_agent(root)?;
+        let info = &self.procs[&pid];
+        // The stopped question is about the agent itself, not about the
+        // wrapper that mentions it: `systemd-inhibit pi` is the launcher,
+        // `pi` underneath it is the agent. The search is scoped to the
+        // *named* agent's own subtree, so a sibling agent in the same
+        // pane (a live one next to a stopped one) cannot answer for it.
+        let real = self.agent_proc(pid).unwrap_or(pid);
+        Some(AgentHit {
+            agent: agent.to_string(),
+            pid,
+            start: info.start,
+            stopped: self.is_stopped(real),
+        })
+    }
+
+    /// The nearest agent match at or below `root`: the pid and the
+    /// agent name detection gives it.
+    ///
+    /// Wrappers match on purpose — a pane whose command line merely
+    /// names the agent still counts, and the usual launchers are
+    /// transparent. The *wrapper* is what detection reports; the agent
+    /// binary underneath it is what actually runs.
+    fn nearest_agent(&self, root: u32) -> Option<(u32, &'static str)> {
         if root == 0 || !self.procs.contains_key(&root) {
             return None;
         }
@@ -273,23 +297,41 @@ impl Snapshot {
             if !matches!(info.state, 'Z' | 'X' | 'x')
                 && let Some(agent) = match_proc(&info.comm, &info.cmdline)
             {
-                let stopped = if is_agent_bin(&info.comm) {
-                    // The match *is* the agent binary — the common case,
-                    // and no second walk is needed.
-                    self.is_stopped(pid)
-                } else {
-                    // The match is a wrapper: a pane whose command line
-                    // merely names the agent (`sh -c 'pi …'`) or a
-                    // launcher (`systemd-inhibit pi`). The wrapper is
-                    // not what gets frozen — the agent under it is.
-                    self.agent_pid(root).is_some_and(|p| self.is_stopped(p))
-                };
-                return Some(AgentHit {
-                    agent: agent.to_string(),
-                    pid,
-                    start: info.start,
-                    stopped,
-                });
+                return Some((pid, agent));
+            }
+            if let Some(kids) = self.kids.get(&pid) {
+                for kid in kids {
+                    if seen.insert(*kid) {
+                        queue.push_back(*kid);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// The real agent binary at or below `start`: the nearest process
+    /// whose *own* name is an agent binary.
+    ///
+    /// This is the strict test: a process called `pi` is the agent,
+    /// while a process that merely mentions `pi` on its command line is
+    /// a wrapper around it. The distinction matters when asking "is the
+    /// agent stopped?" — a frozen wrapper says nothing about the agent
+    /// under it, and a *sibling* agent says nothing either.
+    ///
+    /// Scoped to `start` on purpose: searching from the pane root would
+    /// find whichever agent happens to be nearest, which is the wrong
+    /// one whenever a pane runs more than one.
+    fn agent_proc(&self, start: u32) -> Option<u32> {
+        if start == 0 || !self.procs.contains_key(&start) {
+            return None;
+        }
+        let mut queue = std::collections::VecDeque::from([start]);
+        let mut seen = std::collections::HashSet::from([start]);
+        while let Some(pid) = queue.pop_front() {
+            let info = &self.procs[&pid];
+            if !matches!(info.state, 'Z' | 'X' | 'x') && is_agent_bin(&info.comm) {
+                return Some(pid);
             }
             if let Some(kids) = self.kids.get(&pid) {
                 for kid in kids {
