@@ -18,6 +18,19 @@ pub fn fnv1a(s: &str) -> u64 {
     h
 }
 
+/// This build's identity: a fingerprint of the sources it was built
+/// from (see `build.rs`).
+///
+/// Every binary in the package carries the same id, so the client and
+/// the daemon can report whether they are one build. Two processes
+/// that disagree here are talking past each other, and the protocol
+/// version is the part that actually matters — this is the provenance
+/// that says *which* build.
+pub const BUILD_ID: &str = env!("TERHUB_BUILD_ID");
+
+/// The package version, for display next to the build id.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod agent;
 pub mod app;
 pub mod attend;

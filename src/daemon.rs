@@ -860,8 +860,30 @@ async fn handle_conn(
         Ok(Ok(Some(l))) => l,
         _ => return,
     };
-    let req: Request = match serde_json::from_str(&line) {
-        Ok(r) => r,
+    let req: Request = match serde_json::from_str::<WireRequest>(&line) {
+        Ok(wire) => {
+            // A request without a protocol version comes from a
+            // pre-versioned client. It is served in a shape that client
+            // can still decode.
+            let legacy = wire.proto.is_none();
+            match Request::try_from(wire) {
+                Ok(req) => {
+                    // `legacy` rides along on the request enum's
+                    // behalf: the snapshot arm needs it to decide
+                    // whether to down-project.
+                    if legacy {
+                        LEGACY_CLIENT.store(true, Ordering::SeqCst);
+                    }
+                    req
+                }
+                Err(e) => {
+                    let _ =
+                        write_response(&mut writer, &Response::err(format!("bad request: {e}")))
+                            .await;
+                    return;
+                }
+            }
+        }
         Err(e) => {
             let _ = write_response(&mut writer, &Response::err(format!("bad request: {e}"))).await;
             return;
