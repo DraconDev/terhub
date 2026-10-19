@@ -2067,6 +2067,54 @@ pub fn ensure_config() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    /// A pid that is guaranteed not to be running: spawn a child, reap
+    /// it, and use the (now free) pid.
+    fn dead_pid() -> i32 {
+        let child = std::process::Command::new("true").spawn().expect("spawn");
+        let pid = child.id() as i32;
+        let mut child = child;
+        let _ = child.wait();
+        pid
+    }
+
+    /// Age a file so the sweep's grace period has passed.
+    fn age_file(path: &std::path::Path, secs: u64) {
+        let when = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
+        let file = std::fs::File::options().write(true).open(path).expect("open");
+        let times = std::fs::FileTimes::new().set_modified(when);
+        file.set_times(times).expect("set mtime");
+    }
+
+    #[test]
+    fn sweep_removes_a_dead_owners_tmp_and_keeps_a_live_one() {
+        // The ledger's atomic write leaves `.{name}.tmp.{pid}.{nonce}`
+        // behind when a crash lands between the write and the rename.
+        // On a 33 MB ledger that is megabytes per crash, forever.
+        let dir = std::env::temp_dir().join(format!("terhub-tmpsweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dead = dead_pid();
+        let orphan = dir.join(format!(".activity.jsonl.tmp.{dead}.111"));
+        let live = dir.join(format!(".activity.jsonl.tmp.{}.222", std::process::id()));
+        let fresh = dir.join(format!(".activity.jsonl.tmp.{}.333", dead));
+        let other = dir.join("activity.jsonl");
+        for f in [&orphan, &live, &fresh, &other] {
+            std::fs::write(f, b"x").unwrap();
+        }
+        age_file(&orphan, 7200);
+        age_file(&live, 7200);
+        // `fresh` keeps its current mtime: a writer that died a moment
+        // ago may still be inside its rename window.
+
+        let removed = sweep_orphan_tmps(&dir);
+        assert_eq!(removed, 1, "only the dead owner's tmp is collected");
+        assert!(!orphan.exists(), "the orphan is gone");
+        assert!(live.exists(), "a live writer's tmp is never touched");
+        assert!(fresh.exists(), "a tmp inside the grace period is kept");
+        assert!(other.exists(), "the ledger itself is not a tmp");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     /// Unique scratch dir per call: lib tests run in parallel threads and
