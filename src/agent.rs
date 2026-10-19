@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentState {
     #[default]
@@ -33,6 +33,25 @@ pub enum AgentState {
     /// a paused agent reads as a hung one and terhub escalates the
     /// alarm it caused. Never attention: nobody is needed to thaw it.
     Paused,
+}
+
+/// Forward-compatible decode: a state name this build does not know
+/// becomes [`AgentState::Unknown`] instead of failing the decode.
+///
+/// A snapshot is one JSON document, so a single unknown enum variant
+/// used to fail the *whole* response: a client that predated the
+/// `paused` state answered "daemon not running" while a healthy
+/// daemon was serving, and every pane in the TUI went blank. A name
+/// this build has never heard is future information, not corruption —
+/// decode it as unknown and keep the pane visible.
+///
+/// Serialization is unchanged (lowercase variant names), so the
+/// registry and the activity ledger keep their current format.
+impl<'de> Deserialize<'de> for AgentState {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(AgentState::parse(&raw).unwrap_or(AgentState::Unknown))
+    }
 }
 
 impl AgentState {
@@ -76,7 +95,7 @@ impl AgentState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
     Hook,
@@ -86,6 +105,23 @@ pub enum Source {
     /// Pinned by `terhub register`: the detector missed this agent, a
     /// human named it. Carried while its pane (and pid, if any) lives.
     Manual,
+}
+
+/// Forward-compatible decode for [`Source`], for the same reason as
+/// [`AgentState`]: a source this build does not know must not fail the
+/// whole snapshot. It decodes as [`Source::Screen`] — the weakest
+/// evidence there is, and exactly what the UI already renders for any
+/// source it cannot place.
+impl<'de> Deserialize<'de> for Source {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(match raw.trim().to_lowercase().as_str() {
+            "hook" => Source::Hook,
+            "proc" => Source::Proc,
+            "manual" => Source::Manual,
+            _ => Source::Screen,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
