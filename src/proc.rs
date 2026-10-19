@@ -213,6 +213,11 @@ pub struct AgentHit {
     /// starttime of the matched process: continuity checks compare this so
     /// a recycled pid never inherits the previous owner's still-clock.
     pub start: u64,
+    /// The process is stopped (`SIGSTOP`): the state letter in
+    /// `/proc/<pid>/stat` is `T`. A stopped agent burns no CPU, so
+    /// without this the stuck gate would report a deliberately
+    /// frozen agent as hung.
+    pub stopped: bool,
 }
 
 /// One point-in-time view of the process table, shared across all panes of
@@ -272,6 +277,7 @@ impl Snapshot {
                     agent: agent.to_string(),
                     pid,
                     start: info.start,
+                    stopped: matches!(info.state, 'T' | 't'),
                 });
             }
             if let Some(kids) = self.kids.get(&pid) {
@@ -288,8 +294,7 @@ impl Snapshot {
     /// True when `pid`'s subtree contains a terminal editor: the agent
     /// summoned its $EDITOR and is Waiting on the user. Scoped to this
     /// subtree only, so a background agent never claims a sibling editor.
-    pub fn subtree_has_editor(&self, pid: u32) -> bool {
-        if !self.procs.contains_key(&pid) {
+    pub fn subtree_has_editor(&self, pid: u32) -> bool {        if !self.procs.contains_key(&pid) {
             return false;
         }
         let mut queue = std::collections::VecDeque::from([pid]);
