@@ -538,6 +538,18 @@ impl Server {
         self.runtime_guard
             .verify()
             .context("runtime dir changed since startup check")?;
+        // The data dir holds prompts, summaries and project paths — the
+        // same material the daemon's own log is kept out of reach for.
+        // The ledger is created 0600, but a file that predates that
+        // keeps its old mode until something corrects it.
+        if let Some(parent) = history::ledger_path().parent() {
+            let _ = std::fs::create_dir_all(parent);
+            let _ = std::fs::set_permissions(
+                parent,
+                <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+            );
+        }
+        history::ensure_ledger_mode(&history::ledger_path());
         let sock = self.runtime.join("terhubd.sock");
         let pid_file = self.runtime.join("terhubd.pid");
         // Single-instance lock, held for the daemon's whole life. The
@@ -687,6 +699,8 @@ async fn handle_conn(
             return;
         }
     };
+    // A parsed request is a live client: keep the idle reaper honest.
+    stamp_request();
     let resp = match req {
         Request::Ping => Response::ok(),
         Request::Shutdown => {
@@ -788,6 +802,34 @@ async fn shutdown_wait(shutdown: &AtomicBool) {
     }
 }
 
+/// Seconds of client silence after which the daemon retires on its own.
+///
+/// Opt-in via `TERHUBD_IDLE_TTL_SECS`; 0 (the default) means never.
+/// A daemon nobody talks to is an orphan — usually a test that died
+/// before its cleanup ran — and `terhubd` has no parent-death signal,
+/// so without this it would poll tmux forever, burning a slice of a
+/// core. A live daemon is never idle: the TUI polls it every 2s, the
+/// status line and the tray every 3s, so a real installation never
+/// comes near the TTL.
+fn idle_ttl_secs() -> u64 {
+    std::env::var("TERHUBD_IDLE_TTL_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+/// Unix second of the most recent client request; 0 means "never".
+///
+/// Any request counts: the TTL exists to reap orphans, not to retire a
+/// daemon somebody is still using.
+static LAST_REQUEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Stamp the last-request clock. Monotonic within a run: a backwards
+/// wall-clock step must not make an active daemon look idle.
+fn stamp_request() {
+    LAST_REQUEST.fetch_max(now_unix(), Ordering::SeqCst);
+}
+
 async fn poll_loop(
     registry: Arc<Mutex<HashMap<String, AgentRecord>>>,
     manifests: Arc<Vec<CompiledManifest>>,
@@ -809,6 +851,8 @@ async fn poll_loop(
     let mut prev_sessions: Option<std::collections::HashSet<String>> = None;
     let mut prev_foreground: Option<Option<String>> = None;
     let automation_busy = Arc::new(AtomicBool::new(false));
+    let idle_ttl = idle_ttl_secs();
+    let started = now_unix();
     loop {
         if shutdown.load(Ordering::SeqCst) {
             break;
@@ -826,6 +870,24 @@ async fn poll_loop(
             _ = shutdown_wait(&shutdown) => break,
         }
         let poll_start = now_unix();
+        // Orphan reaper: a daemon that no client has spoken to for the
+        // TTL exits on its own. Off by default — a live daemon is
+        // polled constantly — but it bounds the damage when a test
+        // process is killed before its cleanup runs.
+        if idle_ttl > 0 {
+            let last = LAST_REQUEST.load(Ordering::SeqCst);
+            // A daemon that has never been spoken to has no timestamp
+            // yet: measure from the start, so a daemon that is born and
+            // then ignored still expires.
+            let idle_since = if last == 0 { started } else { last };
+            if poll_start.saturating_sub(idle_since) > idle_ttl {
+                eprintln!(
+                    "terhubd: no client request for {idle_ttl}s; exiting (idle timeout)"
+                );
+                shutdown.store(true, Ordering::SeqCst);
+                break;
+            }
+        }
         // Fail-closed: a swapped runtime dir must stop saves, and a
         // daemon operating on an attacker-chosen dir must not keep
         // running — trip shutdown so the process exits and a fresh
@@ -1140,7 +1202,17 @@ async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
     let reg = lock_registry(registry).clone();
     let _ = tokio::task::spawn_blocking(move || {
         let ledger = history::ledger_path();
-        let fires = history::read_rule_fires(&ledger);
+        // Fail closed: an unreadable ledger must not read as "nothing
+        // has fired". The fires *are* the guardrail state — losing them
+        // resets every cooldown and cap, so a rule would fire again
+        // immediately, and again on every tick after that.
+        let fires = match history::read_rule_fires_checked(&ledger) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("terhubd: ledger unreadable, skipping automation pass ({e})");
+                return;
+            }
+        };
         let now = now_unix();
         let tmux = Tmux::new().ok();
         for (fire, rec) in crate::automation::evaluate(&rules, &reg, &fires, now) {
@@ -1148,10 +1220,17 @@ async fn run_automation(registry: &Arc<Mutex<HashMap<String, AgentRecord>>>) {
                 Ok(d) => d,
                 Err(e) => format!("FAILED: {e:?}"),
             };
-            let _ = history::append_entry(
+            // The action has already run, so a failed record is not a
+            // no-op: without it the cooldown never engages and the cap
+            // never increments, and the rule fires again on the next
+            // tick. Stop this pass rather than run it again.
+            if let Err(e) = history::append_entry(
                 &ledger,
                 &history::Entry::rule_fire(&fire.rule, &rec, &desc, now),
-            );
+            ) {
+                eprintln!("terhubd: could not record rule fire ({}): {e}", fire.rule);
+                return;
+            }
         }
     })
     .await;

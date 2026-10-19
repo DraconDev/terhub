@@ -49,7 +49,7 @@ impl Server {
             .unwrap()
             .parse()
             .expect("port in listen line");
-        assert!(wait_for(
+        assert!(common::wait_for(
             || TcpStream::connect(("127.0.0.1", port)).is_ok(),
             50
         ));

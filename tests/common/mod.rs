@@ -53,7 +53,13 @@ impl Sandbox {
     ///
     /// `tag` distinguishes the suites from each other; the pid keeps
     /// concurrently running test binaries apart.
+    ///
+    /// This also reaps the scratch space left by *previous* runs — see
+    /// [`sweep_stale_tempdirs`]. Doing it here means every hermetic
+    /// suite cleans up after the last one, so the backlog stays at one
+    /// run's worth instead of growing without bound.
     pub fn new(tag: &str) -> Sandbox {
+        sweep_stale_tempdirs();
         let pid = std::process::id();
         let runtime = std::env::temp_dir().join(format!("terhub-{tag}-{pid}-rt"));
         let data = std::env::temp_dir().join(format!("terhub-{tag}-{pid}-data"));
@@ -75,6 +81,12 @@ impl Sandbox {
             std::env::set_var("TERHUB_DATA_DIR", &data);
             std::env::set_var("TERHUB_CONFIG", &config);
             std::env::set_var(terhub::tmux::SOCKET_ENV, &socket);
+            // Backstop for the case the Drop guard cannot cover: if the
+            // test process is killed outright, the daemon it spawned
+            // would otherwise run forever. Generous enough that it never
+            // fires mid-suite — the longest quiet stretch is the 20s
+            // `terhub_wait` in the MCP suite.
+            std::env::set_var("TERHUBD_IDLE_TTL_SECS", "120");
         }
 
         Sandbox {
@@ -164,4 +176,60 @@ pub fn wait_for(cond: impl Fn() -> bool, tries: u32) -> bool {
         std::thread::sleep(Duration::from_millis(100));
     }
     cond()
+}
+
+/// Remove scratch directories left behind by test runs that are over.
+///
+/// The suites create scratch paths under the system temp dir, named
+/// `terhub-<what>-<pid>…`. A binary that ends — or is killed — leaves
+/// them behind, and they accumulate: a few hundred directories after a
+/// handful of runs, all of them dead weight.
+///
+/// The pid in the name is the creator's, so "the owner is gone" is
+/// decidable: only scratch space whose owning process no longer exists
+/// is removed. A run in flight keeps its own directories, and a
+/// directory with no pid in its name (`terhub-kwin`, a fixed global
+/// path) is never touched.
+pub fn sweep_stale_tempdirs() -> usize {
+    let tmp = std::env::temp_dir();
+    let Ok(entries) = std::fs::read_dir(&tmp) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !(name.starts_with("terhub-") || name.starts_with("terhubd-")) {
+            continue;
+        }
+        let Some(pid) = owner_pid(name) else {
+            continue;
+        };
+        // The owner is alive: this scratch space is in use.
+        if PathBuf::from(format!("/proc/{pid}")).exists() {
+            continue;
+        }
+        let path = entry.path();
+        let ok = if path.is_dir() {
+            std::fs::remove_dir_all(&path).is_ok()
+        } else {
+            std::fs::remove_file(&path).is_ok()
+        };
+        if ok {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// The pid embedded in a scratch name, if it has one.
+///
+/// Names look like `terhub-hooks-1621106-install` or
+/// `terhubd-env-2188986`: the creator's pid is the first all-digit
+/// component. A component of one or two digits is far more likely to be
+/// a counter than a pid, so those are skipped.
+fn owner_pid(name: &str) -> Option<u32> {
+    name.split(['-', '_', '.'])
+        .find(|part| part.len() >= 3 && part.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|part| part.parse().ok())
 }

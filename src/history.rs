@@ -149,92 +149,269 @@ impl Entry {
     }
 }
 
-pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+/// Exclusive lock on the ledger, taken by every writer and by the
+/// prune.
+///
+/// The prune rewrites the file by rename. An append that lands between
+/// the prune's read and its rename is written through a descriptor on
+/// the *old* inode, which the rename unlinks: the entry is written
+/// successfully and then silently discarded, so it never appears in a
+/// report even though the TUI showed it. The lock makes the two
+/// mutually exclusive.
+///
+/// A sidecar file, not the ledger itself: the prune replaces the
+/// ledger's inode, so a lock held on the ledger would not protect the
+/// file that replaces it.
+struct LedgerLock {
+    file: std::fs::File,
+}
+
+impl LedgerLock {
+    fn acquire(path: &std::path::Path) -> Result<Self> {
+        use std::os::unix::io::AsRawFd;
+        let lock_path = path.with_extension("lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)?;
+        // SAFETY: flock on a live fd, exclusive and blocking. The lock
+        // is released when the fd is closed, which the Drop below does.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        if rc != 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        Ok(LedgerLock { file })
     }
-    use std::io::Write;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
-    writeln!(file, "{}", serde_json::to_string(entry)?)?;
+}
+
+impl Drop for LedgerLock {
+    fn drop(&mut self) {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: the fd is still open here — the file is dropped after
+        // this runs, and the unlock only touches the descriptor.
+        unsafe {
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+/// Make the data directory private to its owner.
+///
+/// The ledger holds prompts, summaries and project paths, and the
+/// daemon's own stderr log is already 0600 for exactly that reason.
+/// A directory that other local accounts can list is a directory they
+/// can read.
+fn ensure_private_dir(dir: &std::path::Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(dir)?;
+    let want = std::fs::Permissions::from_mode(0o700);
+    // Only touch the mode when it is wrong: this runs on the append
+    // path, and a needless chmod syscall is not worth it.
+    let current = std::fs::metadata(dir).map(|m| m.permissions().mode() & 0o777);
+    if current != Some(0o700) {
+        std::fs::set_permissions(dir, want)?;
+    }
     Ok(())
 }
 
-/// Ledger lines, decoded per line. A line torn mid–UTF-8 character
-/// (crash/ENOSPC inside `append_entry`'s one write, splitting a
-/// multi-byte char in a summary) must not void the whole file:
-/// `read_to_string` fails on *any* invalid byte, which used to make
-/// every query report "no activity" and — worse — emptied
-/// `read_rule_fires`, resetting automation cooldowns/caps. Lossy
-/// per-line decoding turns the torn line into an unparseable line,
-/// which the existing paths already skip (reads) or quarantine
-/// (prune), leaving every valid line intact.
-fn read_lines_lossy(path: &std::path::Path) -> std::io::Result<Vec<String>> {
-    let bytes = std::fs::read(path)?;
-    Ok(bytes
-        .split(|b| *b == b'\n')
-        .map(|l| String::from_utf8_lossy(l).into_owned())
-        .collect())
+/// Give an existing ledger the same private mode.
+///
+/// `OpenOptions::mode` only applies when the file is *created*, so a
+/// ledger that predates this fix keeps its old permissions until
+/// something corrects them.
+pub fn ensure_ledger_mode(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(meta) = std::fs::metadata(path)
+        && meta.permissions().mode() & 0o777 != 0o600
+    {
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+}
+
+pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        ensure_private_dir(parent)?;
+    }
+    use std::io::Write;
+    let line = serde_json::to_string(entry)?;
+    // The lock is taken after the serialization so a serialization
+    // failure does not hold it, and before the open so the append
+    // cannot land inside the prune's read-rename window.
+    let _lock = LedgerLock::acquire(path)?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(path)?;
+    writeln!(file, "{line}")?;
+    Ok(())
+}
+
+/// Stream the ledger one line at a time.
+///
+/// A line torn mid–UTF-8 character (a crash/ENOSPC inside
+/// `append_entry`'s one write, splitting a multi-byte char in a
+/// summary) must not void the whole file: `read_to_string` fails on
+/// *any* invalid byte, which used to make every query report "no
+/// activity" and — worse — emptied `read_rule_fires`, resetting
+/// automation cooldowns/caps. Lossy per-line decoding turns the torn
+/// line into an unparseable line, which the existing paths already
+/// skip (reads) or quarantine (prune), leaving every valid line
+/// intact.
+///
+/// The bytes are read in chunks rather than slurped: a 34 MB ledger
+/// costs one 64 KB buffer instead of the whole file plus a `Vec<String>`
+/// holding a copy of every line.
+fn for_each_line(path: &std::path::Path, mut f: impl FnMut(&str)) -> std::io::Result<()> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path)?;
+    let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
+    let mut buf: Vec<u8> = Vec::with_capacity(512);
+    loop {
+        buf.clear();
+        let n = reader.read_until(b'\n', &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        f(&String::from_utf8_lossy(&buf));
+    }
+    Ok(())
+}
+
+/// The timestamp at the head of a ledger line, when the line has the
+/// standard shape.
+///
+/// `serde_json` writes the fields in declaration order and `t` is
+/// first, so the timestamp can be read without deserializing the
+/// line. That is what makes a windowed read cheap: the lines outside
+/// the window are skipped without ever being parsed.
+fn entry_time(line: &str) -> Option<u64> {
+    let rest = line.strip_prefix("{\"t\":")?;
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
+/// Read entries, keeping only those at or after `since` (unix seconds).
+///
+/// `since = None` reads everything. The window is applied *before* the
+/// line is parsed, so a one-hour query no longer costs the same as an
+/// all-time one: on a 34 MB ledger the all-time read was 5.9s and the
+/// one-hour read 3.5s, because the parse happened either way.
+pub fn read_entries_since(path: &std::path::Path, since: Option<u64>) -> Vec<Entry> {
+    read_entries_result(path, since).unwrap_or_default()
+}
+
+/// The read that can fail, for the callers that must not treat a
+/// failure as "nothing is there".
+///
+/// The distinction is the whole point: a missing file means "no
+/// history yet", while a read error means "the history is unreadable".
+/// Collapsing the second into the first empties the automation
+/// guardrail state and lets a rule fire again immediately.
+fn read_entries_result(path: &std::path::Path, since: Option<u64>) -> Result<Vec<Entry>> {
+    let mut out = Vec::new();
+    for_each_line(path, |raw| {
+        let line = raw.trim();
+        if line.is_empty() {
+            return;
+        }
+        if let Some(since) = since
+            && let Some(t) = entry_time(line)
+            && t < since
+        {
+            return;
+        }
+        if let Ok(e) = serde_json::from_str::<Entry>(line) {
+            out.push(e);
+        }
+    })?;
+    Ok(out)
 }
 
 pub fn read_entries(path: &std::path::Path) -> Vec<Entry> {
-    let lines = match read_lines_lossy(path) {
-        Ok(l) => l,
-        Err(_) => return Vec::new(),
-    };
-    lines
-        .iter()
-        .filter_map(|l| serde_json::from_str(l.trim()).ok())
-        .collect()
+    read_entries_since(path, None)
 }
 
 /// Past rule fires as (rule, pane, unixtime) triples for guardrails.
-pub fn read_rule_fires(path: &std::path::Path) -> Vec<(String, String, u64)> {
-    read_entries(path)
+///
+/// `Ok` distinguishes "no file yet" from "the file could not be read":
+/// the difference matters, because a read error must not read as
+/// "nothing has fired" — that empties the guardrail state and lets a
+/// rule fire again immediately.
+pub fn read_rule_fires_checked(path: &std::path::Path) -> Result<Vec<(String, String, u64)>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    Ok(read_entries_result(path, None)?
         .into_iter()
         .filter(|e| e.kind == "rule")
         .filter_map(|e| e.event.clone().map(|r| (r, e.pane.clone(), e.t)))
-        .collect()
+        .collect())
 }
+
+/// Past rule fires, treating an unreadable ledger as "no fires".
+///
+/// Prefer [`read_rule_fires_checked`] anywhere the difference is
+/// load-bearing.
+pub fn read_rule_fires(path: &std::path::Path) -> Vec<(String, String, u64)> {
+    read_rule_fires_checked(path).unwrap_or_default()
+}
+
+/// Default ceiling on the ledger's size, in bytes.
+///
+/// The 90-day window bounds the ledger by *age*; this bounds it by
+/// size. Without the second bound a busy machine reaches hundreds of
+/// megabytes inside the retention window (this ledger grew ~1.9
+/// MB/day), and every query pays to parse all of it.
+pub const LEDGER_MAX_BYTES: usize = 64 * 1024 * 1024;
 
 /// Drop entries older than `keep_days`; returns surviving count.
 /// Prompt text kept per ledger line (the record keeps a shorter cut).
 pub const LEDGER_PROMPT_CAP: usize = 500;
 
-/// Recent prompts, newest first, optionally scoped to one pane.
-pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Vec<Entry> {
-    let mut out: Vec<Entry> = entries
-        .iter()
-        .filter(|e| e.kind == "prompt" && pane.is_none_or(|p| e.pane == p))
-        .cloned()
-        .collect();
-    out.sort_by_key(|e| std::cmp::Reverse(e.t));
-    out.truncate(limit);
-    out
+/// Drop entries older than `keep_days`; returns surviving count.
+///
+/// A serialization *or write* failure is returned as an error instead
+/// of the in-memory count: reporting success while the old ledger
+/// stays on disk would lie about what was pruned — and the write
+/// failure is the likelier one (read-only dir, full disk).
+pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> Result<usize, String> {
+    prune_bounded(path, now, keep_days, LEDGER_MAX_BYTES)
 }
 
-/// Drop entries older than `keep_days`; returns the surviving count.
-/// A serialization failure is returned as an error instead of the
-/// in-memory count: reporting success while the old ledger stays on
-/// disk would lie about what was pruned.
-pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> Result<usize, String> {
+/// [`prune`] with an explicit byte ceiling.
+///
+/// The oldest ordinary entries are dropped first — the file is
+/// append-only, so its order is chronological. Quarantined (torn)
+/// lines are kept whatever happens: the user may still be working on
+/// recovering the data, so they are not what the budget is spent on.
+pub fn prune_bounded(
+    path: &std::path::Path,
+    now: u64,
+    keep_days: u64,
+    max_bytes: usize,
+) -> Result<usize, String> {
     let cutoff = now.saturating_sub(keep_days * 86400);
-    // Per-line lossy decode (see read_lines_lossy): a UTF-8-torn line
-    // reaches the quarantine arm below instead of voiding the file.
-    let lines = match read_lines_lossy(path) {
-        Ok(l) => l,
-        // Unchanged behavior (a read failure still reports an empty
-        // prune); only serialization failure is newly propagated.
-        Err(_) => return Ok(0),
-    };
+    // The lock makes this read-rewrite atomic with respect to appends.
+    // Without it, an append that lands between the read and the rename
+    // is written to the old inode and then silently discarded.
+    let _lock = LedgerLock::acquire(path)
+        .map_err(|e| format!("prune ledger lock failed: {e}"))?;
+    // A ledger that does not exist yet has nothing to prune.
+    if !path.exists() {
+        return Ok(0);
+    }
     let mut kept: Vec<Entry> = Vec::new();
     let mut quarantined: Vec<Entry> = Vec::new();
-    for line in &lines {
-        let l = line.trim();
+    // Per-line lossy decode (see for_each_line): a UTF-8-torn line
+    // reaches the quarantine arm below instead of voiding the file.
+    for_each_line(path, |raw| {
+        let l = raw.trim();
         if l.is_empty() {
-            continue;
+            return;
         }
         match serde_json::from_str::<Entry>(l) {
             Ok(e) if e.kind == "__corrupt__" => {
@@ -267,19 +444,52 @@ pub fn prune(path: &std::path::Path, now: u64, keep_days: u64) -> Result<usize, 
                 });
             }
         }
-    }
-    let mut all = kept;
-    all.extend(quarantined);
-    let count = all.iter().filter(|e| e.kind != "__corrupt__").count();
-    let text = all
+    })
+    .map_err(|e| format!("prune ledger read failed: {e}"))?;
+    let kept_lines: Vec<String> = kept
         .iter()
         .map(serde_json::to_string)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("prune ledger serialization failed: {e}"))?;
-    let body = text.join("\n") + if text.is_empty() { "" } else { "\n" };
+    let quarantined_lines: Vec<String> = quarantined
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("prune ledger serialization failed: {e}"))?;
+    // Spend the budget on the ordinary entries, oldest first.
+    let mut kept_bytes: usize = kept_lines.iter().map(|l| l.len() + 1).sum();
+    let quarantined_bytes: usize = quarantined_lines.iter().map(|l| l.len() + 1).sum();
+    let mut start = 0usize;
+    while kept_bytes + quarantined_bytes > max_bytes && start < kept_lines.len() {
+        kept_bytes -= kept_lines[start].len() + 1;
+        start += 1;
+    }
+    let kept_lines = &kept_lines[start..];
+    let count = kept_lines.len();
+    let mut body = String::with_capacity(kept_bytes + quarantined_bytes);
+    for l in kept_lines.iter().chain(quarantined_lines.iter()) {
+        body.push_str(l);
+        body.push('\n');
+    }
     // Atomic write so a crash mid-prune can't truncate the ledger.
-    let _ = crate::config::atomic_write(path, &body);
+    // The failure is propagated: a prune that could not write has not
+    // pruned anything, and saying otherwise hides the ledger growing
+    // without bound.
+    crate::config::atomic_write(path, &body)
+        .map_err(|e| format!("prune ledger write failed: {e}"))?;
     Ok(count)
+}
+
+/// Recent prompts, newest first, optionally scoped to one pane.
+pub fn recent_prompts(entries: &[Entry], pane: Option<&str>, limit: usize) -> Vec<Entry> {
+    let mut out: Vec<Entry> = entries
+        .iter()
+        .filter(|e| e.kind == "prompt" && pane.is_none_or(|p| e.pane == p))
+        .cloned()
+        .collect();
+    out.sort_by_key(|e| std::cmp::Reverse(e.t));
+    out.truncate(limit);
+    out
 }
 
 fn corrupt_summary(raw: &str, reason: &serde_json::Error) -> String {

@@ -1464,8 +1464,16 @@ use slot::*;
 /// the same directory, fsync, rename. A crash mid-write leaves the
 /// original file intact (and the tmp is orphaned in the same dir; a
 /// future init/cleanup can prune it).
+///
+/// The target's mode is preserved. `File::create` would reset it to
+/// 0644, which silently undoes a deliberate `chmod 600` on every
+/// rewrite — and these files are rewritten on a timer (the ledger
+/// hourly, the config on every save). A file that does not exist yet
+/// is created 0600: everything written here holds prompts, summaries
+/// or config, and nothing needs it to be world-readable.
 pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -1483,8 +1491,19 @@ pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Resul
         .and_then(|f| f.to_str())
         .unwrap_or("config");
     let tmp = parent.join(format!(".{fname}.tmp.{pid}.{nonce}"));
+    // Keep the target's current mode; 0600 for a file that is new.
+    let mode = std::fs::metadata(path)
+        .map(|m| m.permissions().mode() & 0o777)
+        .unwrap_or(0o600);
     {
-        let mut f = std::fs::File::create(&tmp)?;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            // create_new, not create: a predictable name must not be
+            // able to redirect the write through a symlink.
+            .create_new(true)
+            .mode(mode)
+            .open(&tmp)?;
         f.write_all(text.as_bytes())?;
         f.sync_all()?;
     }
@@ -1494,6 +1513,8 @@ pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Resul
     if let Err(e) = std::fs::rename(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
         std::fs::write(path, text)?;
+        // The fallback write reset the mode too: put it back.
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
         return Err(e);
     }
     Ok(())
