@@ -282,8 +282,7 @@ impl Snapshot {
                     // merely names the agent (`sh -c 'pi …'`) or a
                     // launcher (`systemd-inhibit pi`). The wrapper is
                     // not what gets frozen — the agent under it is.
-                    self.agent_pid(root)
-                        .is_some_and(|p| self.is_stopped(p))
+                    self.agent_pid(root).is_some_and(|p| self.is_stopped(p))
                 };
                 return Some(AgentHit {
                     agent: agent.to_string(),
