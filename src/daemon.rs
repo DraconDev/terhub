@@ -860,30 +860,18 @@ async fn handle_conn(
         Ok(Ok(Some(l))) => l,
         _ => return,
     };
-    let req: Request = match serde_json::from_str::<WireRequest>(&line) {
-        Ok(wire) => {
-            // A request without a protocol version comes from a
-            // pre-versioned client. It is served in a shape that client
-            // can still decode.
-            let legacy = wire.proto.is_none();
-            match Request::try_from(wire) {
-                Ok(req) => {
-                    // `legacy` rides along on the request enum's
-                    // behalf: the snapshot arm needs it to decide
-                    // whether to down-project.
-                    if legacy {
-                        LEGACY_CLIENT.store(true, Ordering::SeqCst);
-                    }
-                    req
-                }
-                Err(e) => {
-                    let _ =
-                        write_response(&mut writer, &Response::err(format!("bad request: {e}")))
-                            .await;
-                    return;
-                }
-            }
+    let wire: WireRequest = match serde_json::from_str(&line) {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = write_response(&mut writer, &Response::err(format!("bad request: {e}"))).await;
+            return;
         }
+    };
+    // A request without a protocol version comes from a pre-versioned
+    // client. It is served in a shape that client can still decode.
+    let legacy = wire.proto.is_none();
+    let req: Request = match Request::try_from(wire) {
+        Ok(r) => r,
         Err(e) => {
             let _ = write_response(&mut writer, &Response::err(format!("bad request: {e}"))).await;
             return;
@@ -904,14 +892,20 @@ async fn handle_conn(
                 v.sort_by(|a, b| a.pane.cmp(&b.pane));
                 v
             };
-            Response {
-                ok: true,
-                snapshot: Some(Snapshot {
-                    agents,
-                    updated_at: now_unix(),
-                }),
-                error: None,
-            }
+            let snapshot = Snapshot {
+                agents,
+                updated_at: now_unix(),
+            };
+            // A legacy client cannot decode states that were added
+            // after it was built: hand it the down-projected view
+            // instead of a response it will fail to parse. A versioned
+            // client gets the true state.
+            let snapshot = if legacy {
+                project_for_legacy(snapshot)
+            } else {
+                snapshot
+            };
+            Response::snapshot(snapshot)
         }
         Request::Event { event } => {
             // Mutation + save without holding the lock across disk IO.
