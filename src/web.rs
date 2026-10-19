@@ -360,9 +360,11 @@ th { text-align: left; color: #8b949e; font-weight: normal; padding: 2px 6px; }
 td { padding: 3px 6px; border-top: 1px solid #21262d; cursor: pointer; }
 tr.sel td { background: #1c3a4a; }
 tr:hover td { background: #1c2a3a; }
-.waiting, .error { color: #ff7b72; font-weight: bold; }
+.waiting, .error, .stuck, .limited { color: #ff7b72; font-weight: bold; }
 .working { color: #3fb950; }
-.idle, .unknown { color: #8b949e; }
+.done { color: #56d364; font-weight: bold; }
+/* Paused: deliberately frozen — dim, like idle. Never alarming. */
+.idle, .unknown, .paused { color: #8b949e; }
 pre.cap { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 8px;
   height: 220px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
 textarea { width: 100%; height: 54px; background: #0d1117; color: #e6edf3;
@@ -405,7 +407,10 @@ async function refresh() {
     const st = await jget("/api/status");
     document.getElementById("daemon").textContent = "daemon ok";
     const ag = st.agents || [];
-    const needy = ag.filter(a => a.state === "waiting" || a.state === "error").length;
+    // "Needs you" is the same set the TUI, the tray and the CLI count:
+    // waiting, error, stuck, limited. A paused pane is deliberately
+    // frozen, so it is never one of them.
+    const needy = ag.filter(a => ["waiting", "error", "stuck", "limited"].includes(a.state)).length;
     document.getElementById("counts").textContent = ag.length + " agents · " + needy + " need you";
     let h = "<table><tr><th>pane</th><th>agent</th><th>state</th><th>for</th><th>session</th><th>summary</th></tr>";
     const now = Math.floor(Date.now()/1000);

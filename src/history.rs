@@ -1220,7 +1220,8 @@ pub fn heatmap_line_count(spans: &[Span]) -> usize {
 
 /// Day × hour activity grid: one row per day, 24 hour cells. Only
 /// work-ish states (working/waiting/error/stuck/limited) heat a cell;
-/// idle and unknown stay cold.
+/// idle, paused and unknown stay cold — a deliberately frozen agent
+/// did no work.
 pub fn render_heatmap(
     frame: &mut ratatui::Frame,
     spans: &[Span],

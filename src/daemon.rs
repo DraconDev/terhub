@@ -976,6 +976,18 @@ fn log_entry(entry: &history::Entry) {
     let _ = history::append_entry(&history::ledger_path(), entry);
 }
 
+/// The pause clock carried in from the previous poll, if the record was
+/// already paused.
+///
+/// The merge re-derives the state *and its clock* from live evidence, so
+/// by the time the pause is applied the carried clock is gone. It has to
+/// be read before the merge, or "paused for 2h" would read "paused for
+/// 2s" — the clock would reset on every poll.
+fn carried_pause_since(rec: Option<&AgentRecord>) -> Option<u64> {
+    rec.filter(|r| r.state == AgentState::Paused)
+        .map(|r| r.state_since)
+}
+
 /// Mark a record as paused, or leave it alone.
 ///
 /// A pane whose agent process is stopped is deliberately frozen, not
@@ -990,14 +1002,16 @@ fn log_entry(entry: &history::Entry) {
 /// from the process state every poll and never carried, so a resumed
 /// pane is working again on the next tick and the mark cannot go
 /// stale.
-fn apply_paused(rec: &mut AgentRecord, paused: bool, now: u64) {
+///
+/// `prev_paused_since` is the clock carried in from the previous poll
+/// (see [`carried_pause_since`]): the moment the pane was first seen
+/// frozen. Without it the clock would restart on every poll.
+fn apply_paused(rec: &mut AgentRecord, paused: bool, now: u64, prev_paused_since: Option<u64>) {
     if !paused {
         return;
     }
-    if rec.state != AgentState::Paused {
-        rec.state_since = now;
-    }
     rec.state = AgentState::Paused;
+    rec.state_since = prev_paused_since.unwrap_or(now);
     rec.summary = "paused".to_string();
 }
 
@@ -2079,7 +2093,10 @@ fn poll_sync_with(
             if r.summary.is_empty() {
                 r.summary = fallback_summary_for(r.state, screen.as_deref());
             }
-            apply_paused(&mut r, paused, now);
+            // The hook branch carries the state (and its clock) forward,
+            // so the pause clock is already in `r`.
+            let prev_pause = carried_pause_since(Some(&r));
+            apply_paused(&mut r, paused, now, prev_pause);
             next.insert(pane.id.clone(), r);
             continue;
         }
@@ -2094,6 +2111,10 @@ fn poll_sync_with(
                 .is_some_and(|h| snap.subtree_has_editor(h.pid));
         let carried = old.or(stale);
         let lapsed = old.is_none() && stale.is_some();
+        // The pause clock has to be read *before* the merge: the merge
+        // re-derives the state and its clock from live evidence, and
+        // the pause is applied on top of the result.
+        let prev_pause = carried_pause_since(carried);
         if let Some(mut rec) = merge_record_owned(
             carried,
             lapsed,
@@ -2117,7 +2138,7 @@ fn poll_sync_with(
             // process burns no CPU), and the pause is the better
             // explanation — so it overwrites the state, the clock and
             // the summary.
-            apply_paused(&mut rec, paused, now);
+            apply_paused(&mut rec, paused, now, prev_pause);
             next.insert(pane.id.clone(), rec);
         } else if let Some(o) = old {
             // Pane alive but nothing matches: keep last known state only
@@ -2141,6 +2162,11 @@ fn poll_sync_with(
                 if r.summary.is_empty() {
                     r.summary = fallback_summary_for(r.state, screen.as_deref());
                 }
+                // Same rule as everywhere else: a stopped pane is
+                // paused, not "working". The carried state is a memory
+                // of a tree that is currently frozen.
+                let prev_pause = carried_pause_since(Some(&r));
+                apply_paused(&mut r, paused, now, prev_pause);
                 next.insert(pane.id.clone(), r);
             }
         }
@@ -4390,6 +4416,39 @@ mod tests {
     }
 
     #[test]
+    fn a_paused_agent_survives_a_registry_round_trip() {
+        // The pauser registry *is* the persisted record: terhub has to
+        // remember a pane it paused across a daemon restart, or the
+        // pane comes back as "stuck" the moment the daemon bounces.
+        let dir = std::env::temp_dir().join(format!("terhub-reg-paused-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("registry.json");
+        let mut rec = carried("pi", AgentState::Working, 1, 2, 100);
+        apply_paused(&mut rec, true, 100, None);
+        assert_eq!(rec.state, AgentState::Paused);
+        let mut reg = HashMap::new();
+        let pane = rec.pane.clone();
+        reg.insert(pane.clone(), rec);
+        save_registry(&path, &reg);
+        // The mark is on disk, in the readable spelling.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"paused\""), "registry must carry the paused mark");
+        // And it comes back as paused, not as a dropped record.
+        let loaded = load_registry(&path);
+        let back = loaded
+            .get(&pane)
+            .expect("the paused record must survive the round trip");
+        assert_eq!(back.state, AgentState::Paused);
+        assert_eq!(back.summary, "paused");
+        assert!(
+            !back.state.needs_attention(),
+            "a remembered pause must not come back as an alarm"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn repeated_saves_leave_no_tmp_litter() {
         // Back-to-back saves can share a nanos tick: the attempt counter
         // keeps every tmp name unique, and each rename consumes its tmp.
@@ -4572,13 +4631,77 @@ mod tests {
         // Without the pause the gate does fire — that is the bug.
         assert_eq!(rec.state, AgentState::Stuck);
         // With the pause it does not.
-        apply_paused(&mut rec, true, now);
+        apply_paused(&mut rec, true, now, None);
         assert_eq!(rec.state, AgentState::Paused);
         assert_eq!(rec.summary, "paused");
         assert!(
             !rec.state.needs_attention(),
             "a paused agent needs nobody: it must not escalate"
         );
+    }
+
+    #[test]
+    fn the_pause_clock_survives_the_next_poll() {
+        // The bug this catches: the merge re-derives the state *and its
+        // clock* from live evidence, so a naive "reset the clock when
+        // the state changes" would restart the pause every poll and
+        // "paused for 2h" would read "paused for 2s".
+        let now = 100_000;
+        // Poll 1: the pane is stopped, the merge says "stuck".
+        let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        let mut rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Stuck);
+        apply_paused(&mut rec, true, now, None);
+        assert_eq!(rec.state_since, now, "the pause starts its own clock");
+
+        // Poll 2: the same thing happens again, an hour later. The
+        // carried pause clock has to survive it.
+        let later = now + 3600;
+        let prev_pause = carried_pause_since(Some(&rec));
+        assert_eq!(prev_pause, Some(now), "the paused clock is carried in");
+        let mut rec2 = merge_record(
+            Some(&rec),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            later,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        // The merge re-derived the state and its own clock...
+        assert_eq!(rec2.state, AgentState::Stuck);
+        assert_eq!(rec2.state_since, later, "the merge reset the clock");
+        // ...but the pause must put the original one back.
+        apply_paused(&mut rec2, true, later, prev_pause);
+        assert_eq!(rec2.state, AgentState::Paused);
+        assert_eq!(
+            rec2.state_since, now,
+            "an hour later, the pause is still an hour old"
+        );
+    }
+
+    #[test]
+    fn a_pause_that_was_not_carried_starts_its_own_clock() {
+        // A pane stopped between polls: there is no carried clock, so
+        // the pause starts now. That is the best answer available —
+        // the moment of the stop is not observable, only the moment of
+        // the sighting.
+        let now = 100_000;
+        let mut rec = carried("pi", AgentState::Working, 500, now - 10, now - 10);
+        assert_eq!(carried_pause_since(Some(&rec)), None);
+        apply_paused(&mut rec, true, now, None);
+        assert_eq!(rec.state, AgentState::Paused);
+        assert_eq!(rec.state_since, now);
     }
 
     #[test]
@@ -4597,7 +4720,7 @@ mod tests {
             STUCK_SECS,
         )
         .expect("no record");
-        apply_paused(&mut rec, false, now);
+        apply_paused(&mut rec, false, now, None);
         assert_eq!(rec.state, AgentState::Stuck);
         assert_ne!(rec.summary, "paused");
     }
@@ -4606,11 +4729,14 @@ mod tests {
     fn pausing_starts_its_own_clock() {
         let now = 100_000;
         let mut rec = carried("pi", AgentState::Working, 500, now - 10, now - 10);
-        apply_paused(&mut rec, true, now);
+        apply_paused(&mut rec, true, now, None);
         assert_eq!(rec.state, AgentState::Paused);
         assert_eq!(rec.state_since, now, "the pause starts the state clock");
-        // A second poll keeps the original clock, not a fresh one.
-        apply_paused(&mut rec, true, now + 30);
+        // A second poll keeps the original clock, not a fresh one: the
+        // caller hands back what the record carried.
+        let prev = carried_pause_since(Some(&rec));
+        assert_eq!(prev, Some(now));
+        apply_paused(&mut rec, true, now + 30, prev);
         assert_eq!(rec.state_since, now);
     }
 

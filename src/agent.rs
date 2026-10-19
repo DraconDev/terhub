@@ -1511,7 +1511,21 @@ mod tests {
             command: "pi".to_string(),
             updated_at: 1_700_000_000,
             state_since: 1_700_000_000,
-            ..Default::default()
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: String::new(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
+            stuck_base: None,
         };
         let json = serde_json::to_string(&rec).unwrap();
         assert!(json.contains("\"paused\""), "state must persist as paused");

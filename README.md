@@ -70,7 +70,7 @@ except small popups:
   found, `scr` = screen guess), time in state, last turn, idle age, and a
   summary carrying the prompt or error line that decided the state.
 - **States that matter are red.** Waiting, error, stuck, and quota-limited
-  rows shout; working/idle are quiet. The filter chip (`◼`) names every
+  rows shout; working/idle/paused are quiet. The filter chip (`◼`) names every
   filter hiding rows so one is never silently active.
 - **Preview on demand.** Right-click or `p`: fullscreen scrollable reader
   over the pane's last 500 lines with its own ANSI colors, live CPU, and —
@@ -108,7 +108,14 @@ timelines, and per-pane history.
 Agent states: `working`, `waiting` (needs you), `error` (needs you),
 `idle`, `done` (finished — never needs you), `stuck` (needs you: no CPU
 for 10+ minutes), `limited` (needs you: quota/rate wall, paused until
-reset — never a crash), `unknown`.
+reset — never a crash), `paused` (you stopped it — never needs you),
+`unknown`.
+
+A pane you freeze with `z` reads as `paused`: dim, not badged, never
+counted in "needs you" and never reported as stuck (a stopped process
+burns no CPU, which is exactly what a hang looks like). The mark is read
+from the process state on every poll, so it cannot go stale, and it is
+persisted in the registry so it survives a daemon restart.
 
 ## Tray icon (KDE/Plasma)
 

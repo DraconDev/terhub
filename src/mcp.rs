@@ -265,7 +265,7 @@ fn tools() -> Value {
     json!([
         {"name": "terhub_status", "description": "Agent states: which panes run agents, who is waiting or errored.",
          "inputSchema": {"type": "object", "properties": {
-             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|stuck|limited"}}}},
+             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|stuck|limited|paused"}}}},
         {"name": "terhub_capture", "description": "Recent screen content of a pane.",
          "inputSchema": {"type": "object", "properties": {
              "pane": {"type": "string"}, "lines": {"type": "number"}},
@@ -314,7 +314,9 @@ fn state_filter(args: &Value) -> Result<Option<crate::agent::AgentState>, String
         None => Ok(None),
         Some(s) => crate::agent::AgentState::parse(s)
             .map(Some)
-            .ok_or_else(|| "bad state (working|waiting|error|idle|stuck|limited)".to_string()),
+            .ok_or_else(|| {
+                "bad state (working|waiting|error|idle|stuck|limited|paused)".to_string()
+            }),
     }
 }
 

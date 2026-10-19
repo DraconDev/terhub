@@ -62,10 +62,11 @@ from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
   them; pane ids look like `%69`.
 - **Agent** is anything running in a pane that behaves like a coding agent
   (claude, codex, gemini, pi, …). terhub tracks each agent pane in one of
-  eight states: `working`, `waiting` (needs you), `error` (needs you),
+  nine states: `working`, `waiting` (needs you), `error` (needs you),
   `idle`, `done` (finished — a completion banner was seen; never needs
   you), `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
-  you: quota/rate wall, paused until reset — never a crash), `unknown`.
+  you: quota/rate wall, paused until reset — never a crash), `paused`
+  (you stopped it — never needs you), `unknown`.
 - **Daemon (`terhubd`)** holds the live agent registry. Hook events from
   agents are authoritative; agent identity comes from the process tree and
   states from screen patterns, re-polled every 2 seconds.
@@ -112,7 +113,10 @@ status bar, no modes except small popups:
   `a` attends, `Esc` steps back to the session bar. `w` spawns an agent
   window with an opening prompt (profile picker on `Tab`), `e` restarts
   the pane's command (with confirm), `z` freezes/thaws the pane's process
-  tree. `Space` toggles a `+`
+  tree. A frozen pane reads as `paused`: it is dim, it never counts as
+  "needs you", and it is never reported as stuck (a stopped process burns
+  no CPU, which is exactly what the stuck smell looks like — see
+  [Pausing a pane](#pausing-a-pane)). `Space` toggles a `+`
   mark on the row and steps down (file-manager style), `u` clears all
   marks; with marks set, `x` kills the whole marked set under one
   confirmation and `a` attends the longest-waiting marked pane. Marks
@@ -491,6 +495,34 @@ for the pane takes over). `--pid` lets the poll track CPU under that
 process for stuck detection, and the pin drops itself when the process
 exits. Handles work: `register @old-pin …` re-pins under a new name.
 
+### Pausing a pane
+
+`z` in the TUI freezes a pane's whole process tree with `SIGSTOP` (and
+`z` again thaws it). A frozen pane is **paused**, and terhub remembers
+that it is the one that paused it:
+
+- The row reads `paused` and renders dim — never red, never a `!` badge,
+  never counted in "needs you". You froze it on purpose; nobody needs to
+  be told about a hang that does not exist.
+- It is **not** reported as `stuck`. A stopped process burns no CPU,
+  which is byte-for-byte the same signal the stuck detector reads as
+  "hung" — so without the pause registry, terhub would escalate an
+  alarm about its own `z` press.
+- The mark is read from the process state (`/proc/<pid>/stat`) on every
+  poll, never carried, so it can never go stale: thaw the pane and it
+  is working again on the next tick, kill it and the mark goes with it.
+  The same is true for a pane stopped by anything else — `kill -STOP`
+  from a shell, a suspend, an editor — not just by terhub's `z`.
+- The pause is persisted in the agent registry, so it survives a daemon
+  restart: the pane does not come back as `stuck` the moment terhubd
+  bounces.
+- Paused time counts as **idle** in `terhub stats` and `report` — it is
+  neither work nor an error, and the report schema stays the same.
+
+The pause clock is the moment the pane was first seen frozen, and it
+keeps running while the pane stays frozen ("paused for 2h"), so the
+state column tells you how long you left it hanging.
+
 ## Hooks: telling terhub what agents do
 
 Hooks are fire-and-forget, made for agent lifecycle scripts:
@@ -500,10 +532,10 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
 terhub hook --agent pi --pane %2 --state working --prompt "fix the parser"
 ```
 
-- `--state` accepts `working|waiting|error|idle|stuck|limited|unknown`
+- `--state` accepts `working|waiting|error|idle|stuck|limited|paused|unknown`
   plus aliases: `work/busy/running/start`, `wait/input/attention/blocked/
   needs-input/stop`, `failed/fail`, `done/complete/completed`, `hung`,
-  `limit/quota/capped`.
+  `limit/quota/capped`, `paused/stopped/frozen/suspended`.
   `start`/`stop` match the lifecycle states that spawning harnesses emit.
 - `--pane` is the pane id (`%N`); inside tmux, `$TMUX_PANE` has it.
 - `--summary` is free text shown in peek/status and matchable by rules.
