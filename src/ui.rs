@@ -1071,7 +1071,15 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
     let idle = app.visible_idle();
     let mut title = format!(" terhub — {} pane(s)", app.filtered.len());
     if !app.agents_live {
-        title.push_str(" · daemon down");
+        // "daemon down" and "daemon incompatible" are different
+        // failures: the first means start a daemon, the second means
+        // the daemon is running and this client cannot read it. Saying
+        // "down" for the second sends the user to start a daemon that
+        // is already serving.
+        match app.daemon_link {
+            crate::app::DaemonLink::Incompatible => title.push_str(" · daemon incompatible"),
+            _ => title.push_str(" · daemon down"),
+        }
     }
     if let Some(s) = app.side_session() {
         title.push_str(&format!(" · {} only", truncate(&s.name, 16)));

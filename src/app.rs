@@ -243,6 +243,24 @@ fn clock_hz() -> f64 {
 
 /// Which list keyboard input drives: the session sidebar or the pane table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// How the client is doing with the daemon.
+///
+/// The distinction that matters: a daemon that is *not running* and a
+/// daemon that *answered but cannot be understood* are different
+/// failures with different fixes, and telling the user the wrong one
+/// sends them to start a daemon that is already running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DaemonLink {
+    /// The daemon answered and its answer is usable.
+    #[default]
+    Live,
+    /// No daemon answered.
+    Down,
+    /// A daemon answered, but this build cannot read the answer (a
+    /// protocol mismatch, or a response this build does not know).
+    Incompatible,
+}
+
 pub enum Focus {
     Sessions,
     #[default]
@@ -622,6 +640,11 @@ pub struct App {
     /// Last snapshot fetch succeeded. False reads as "daemon down" in the
     /// title — an empty `agents` alone can't tell down from idle.
     pub agents_live: bool,
+    /// How the last daemon fetch went. A daemon that answered but could
+    /// not be understood is a different failure from no daemon at all,
+    /// and the title says which one it is: "daemon down" invites the
+    /// user to start a daemon that is already running.
+    pub daemon_link: DaemonLink,
     /// First visible row of each list (the UI keeps these in view).
     pub session_scroll: usize,
     pub pane_scroll: usize,
@@ -805,6 +828,7 @@ impl App {
             preview_for: None,
             agents: HashMap::new(),
             agents_live: true,
+            daemon_link: DaemonLink::Live,
             session_scroll: 0,
             pane_scroll: 0,
             cursor: 0,
@@ -1364,16 +1388,31 @@ impl App {
                     .map(|a| (a.pane.clone(), a))
                     .collect();
                 self.agents_live = true;
+                self.daemon_link = DaemonLink::Live;
             }
-            Err(_) => {
-                // Self-heal before declaring the daemon down: a daemon
-                // nobody supervises dies silently (terminal SIGHUP, the
-                // OOM killer), and the only symptom is every pane losing
-                // its badges for the rest of the session. Rate-limited,
-                // so a genuinely unbootable daemon is not re-forked per
-                // tick. The title still says "daemon down" until the
-                // next good fetch.
-                daemon::ensure_running();
+            Err(e) => {
+                if e.is_unreachable() {
+                    // Self-heal before declaring the daemon down: a daemon
+                    // nobody supervises dies silently (terminal SIGHUP, the
+                    // OOM killer), and the only symptom is every pane losing
+                    // its badges for the rest of the session. Rate-limited,
+                    // so a genuinely unbootable daemon is not re-forked per
+                    // tick. The title still says "daemon down" until the
+                    // next good fetch.
+                    daemon::ensure_running();
+                    self.daemon_link = DaemonLink::Down;
+                } else {
+                    // The daemon answered and this build cannot read the
+                    // answer. Re-forking it would not help — the healthy
+                    // daemon would refuse the lock and the log would fill
+                    // with "another terhub daemon already holds the lock"
+                    // while the real problem (two different builds) went
+                    // unmentioned.
+                    if self.daemon_link != DaemonLink::Incompatible {
+                        self.set_status(e.message());
+                    }
+                    self.daemon_link = DaemonLink::Incompatible;
+                }
                 self.agents.clear();
                 self.agents_live = false;
             }
