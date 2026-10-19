@@ -428,11 +428,9 @@ impl TryFrom<WireRequest> for Request {
                 pid: w.pid.ok_or("register without a pid")?,
                 state: w.state.ok_or("register without a state")?,
             },
-            Cmd::Unregister => {
-                Request::Unregister {
-                    pane: w.pane.ok_or("unregister without a pane")?,
-                }
-            }
+            Cmd::Unregister => Request::Unregister {
+                pane: w.pane.ok_or("unregister without a pane")?,
+            },
         })
     }
 }
@@ -2821,9 +2819,12 @@ pub fn build_note(resp: &SnapshotResponse) -> Option<String> {
 
 pub fn fetch_snapshot_detailed(timeout: Duration) -> Result<SnapshotResponse, DaemonError> {
     let resp = send_request(&Request::Snapshot, timeout)?;
-    let snapshot = resp.snapshot.clone().ok_or_else(|| DaemonError::Unreadable {
-        detail: "daemon returned no snapshot".to_string(),
-    })?;
+    let snapshot = resp
+        .snapshot
+        .clone()
+        .ok_or_else(|| DaemonError::Unreadable {
+            detail: "daemon returned no snapshot".to_string(),
+        })?;
     Ok(SnapshotResponse {
         snapshot,
         daemon_proto: resp.proto,
@@ -2961,14 +2962,18 @@ mod tests {
             msg.contains("daemon running but the response could not be read"),
             "unreadable: {msg}"
         );
-        assert!(!err.is_unreachable(), "only a missing daemon is unreachable");
+        assert!(
+            !err.is_unreachable(),
+            "only a missing daemon is unreachable"
+        );
     }
 
     #[test]
     fn a_version_mismatch_names_both_versions() {
         // The diagnostic has to say what to do, not just that something
         // is wrong: "run `make build`" is the whole fix.
-        let raw = r#"{"ok":true,"snapshot":{"agents":[],"updated_at":2},"proto":99,"build":"9.9.9+zzz"}"#;
+        let raw =
+            r#"{"ok":true,"snapshot":{"agents":[],"updated_at":2},"proto":99,"build":"9.9.9+zzz"}"#;
         let err = decode_response(raw).unwrap();
         assert!(err.ok);
         // A decodable response from another version is not an error, but

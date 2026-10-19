@@ -640,7 +640,10 @@ fn corrupt_summary(raw: &str, reason: &serde_json::Error) -> String {
 /// failed to parse, plus the reason. This splits the head back out so
 /// a repair can recover the timestamp the line carried.
 fn corrupt_head(summary: &str) -> &str {
-    let head = summary.rsplit_once("  (").map(|(h, _)| h).unwrap_or(summary);
+    let head = summary
+        .rsplit_once("  (")
+        .map(|(h, _)| h)
+        .unwrap_or(summary);
     head.strip_suffix('…').unwrap_or(head)
 }
 
@@ -703,8 +706,7 @@ pub struct RepairReport {
 /// half cannot be honestly completed, and inventing the missing half
 /// would fabricate history.
 pub fn repair_quarantine(path: &std::path::Path) -> Result<RepairReport, String> {
-    let _lock =
-        LedgerLock::acquire(path).map_err(|e| format!("repair ledger lock failed: {e}"))?;
+    let _lock = LedgerLock::acquire(path).map_err(|e| format!("repair ledger lock failed: {e}"))?;
     if !path.exists() {
         return Ok(RepairReport::default());
     }
@@ -750,8 +752,8 @@ pub fn repair_quarantine(path: &std::path::Path) -> Result<RepairReport, String>
         if q.t == 0 {
             q.t = recover_timestamp(corrupt_head(&q.summary)).unwrap_or(0);
         }
-        let line =
-            serde_json::to_string(&q).map_err(|e| format!("repair ledger serialization failed: {e}"))?;
+        let line = serde_json::to_string(&q)
+            .map_err(|e| format!("repair ledger serialization failed: {e}"))?;
         body.push_str(&line);
         body.push('\n');
     }
@@ -764,8 +766,8 @@ pub fn repair_quarantine(path: &std::path::Path) -> Result<RepairReport, String>
     // be written to the old inode and silently discarded.
     let mut body = String::new();
     for e in &kept {
-        let line =
-            serde_json::to_string(e).map_err(|e| format!("repair ledger serialization failed: {e}"))?;
+        let line = serde_json::to_string(e)
+            .map_err(|e| format!("repair ledger serialization failed: {e}"))?;
         body.push_str(&line);
         body.push('\n');
     }
@@ -1655,7 +1657,11 @@ mod tests {
         // timestamp the line carried.
         let archived = read_entries(&quarantine_path(&path));
         assert_eq!(archived.len(), 1);
-        assert!(archived[0].summary.contains("summ"), "{}", archived[0].summary);
+        assert!(
+            archived[0].summary.contains("summ"),
+            "{}",
+            archived[0].summary
+        );
         assert_eq!(archived[0].t, 200, "the timestamp is recovered");
         // A second repair finds nothing to do: the lines are archived
         // once, not copied again.

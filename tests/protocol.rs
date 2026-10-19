@@ -125,8 +125,10 @@ fn mixed_builds_keep_working() {
         for agent in agents {
             let state = agent["state"].as_str().unwrap_or("unknown");
             assert!(
-                ["unknown", "working", "waiting", "error", "done", "idle", "stuck", "limited"]
-                    .contains(&state),
+                [
+                    "unknown", "working", "waiting", "error", "done", "idle", "stuck", "limited"
+                ]
+                .contains(&state),
                 "legacy answer carries a state a legacy client cannot decode: {state}"
             );
         }
@@ -135,7 +137,8 @@ fn mixed_builds_keep_working() {
 
     // --- a daemon that speaks another version is named, not hidden ------
     {
-        let payload = r#"{"ok":true,"snapshot":{"agents":[],"updated_at":2},"proto":99,"build":"9.9.9+zzz"}"#;
+        let payload =
+            r#"{"ok":true,"snapshot":{"agents":[],"updated_at":2},"proto":99,"build":"9.9.9+zzz"}"#;
         let _fake = fake_daemon(&sandbox.runtime, payload);
         let resp = daemon::fetch_snapshot_detailed(Duration::from_secs(2)).expect("snapshot");
         let note = daemon::compat_note(&resp).expect("a version mismatch must be reported");
@@ -163,7 +166,10 @@ fn mixed_builds_keep_working() {
             msg.contains("daemon running but the response could not be read"),
             "{msg}"
         );
-        assert!(!err.is_unreachable(), "only a missing daemon is unreachable");
+        assert!(
+            !err.is_unreachable(),
+            "only a missing daemon is unreachable"
+        );
     }
 
     // --- no daemon at all is the one case that says "not running" -------

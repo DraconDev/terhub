@@ -1471,7 +1471,8 @@ use slot::*;
 /// hourly, the config on every save). A file that does not exist yet
 /// is created 0600: everything written here holds prompts, summaries
 /// or config, and nothing needs it to be world-readable.
-pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {    use std::io::Write;
+pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(
@@ -2080,7 +2081,10 @@ mod tests {
     /// Age a file so the sweep's grace period has passed.
     fn age_file(path: &std::path::Path, secs: u64) {
         let when = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
-        let file = std::fs::File::options().write(true).open(path).expect("open");
+        let file = std::fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("open");
         let times = std::fs::FileTimes::new().set_modified(when);
         file.set_times(times).expect("set mtime");
     }
