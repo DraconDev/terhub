@@ -2600,35 +2600,239 @@ fn read_capped_line(reader: &mut impl BufRead, cap: usize) -> Result<String> {
     String::from_utf8(line).map_err(|e| anyhow::anyhow!("non-utf8 line: {e}"))
 }
 
-pub fn send_request(req: &Request, timeout: Duration) -> Result<Response> {
+/// Why a daemon request failed.
+///
+/// The three cases are genuinely different, and the difference is the
+/// whole point of this type: only the first means "there is no
+/// daemon". The second means a daemon answered and this build could
+/// not read the answer; the third means a daemon answered, named its
+/// protocol version, and that version is not ours.
+#[derive(Debug)]
+pub enum DaemonError {
+    /// No daemon answered: the connect, write or read failed.
+    Unreachable { detail: String },
+    /// A daemon answered, but the response is not readable by this build.
+    Unreadable { detail: String },
+    /// A daemon answered, but it speaks another protocol version.
+    Incompatible {
+        client_proto: u32,
+        daemon_proto: Option<u32>,
+        daemon_build: Option<String>,
+        detail: String,
+    },
+}
+
+impl DaemonError {
+    /// The user-facing message.
+    ///
+    /// A daemon that answered must never be reported as "not running":
+    /// that lie is what turned a protocol mismatch into a blank
+    /// screen and a false "daemon down" header.
+    pub fn message(&self) -> String {
+        match self {
+            DaemonError::Unreachable { detail } => {
+                format!("daemon not running (terhub daemon start): {detail}")
+            }
+            DaemonError::Unreadable { detail } => {
+                format!("daemon running but the response could not be read ({detail})")
+            }
+            DaemonError::Incompatible {
+                client_proto,
+                daemon_proto,
+                daemon_build,
+                detail,
+            } => match daemon_proto {
+                Some(p) if *p != *client_proto => {
+                    let build = daemon_build
+                        .as_ref()
+                        .map(|b| format!(" (daemon build {b})"))
+                        .unwrap_or_default();
+                    format!(
+                        "daemon build incompatible: client proto {client_proto} / daemon proto {p}{build} — run `make build`"
+                    )
+                }
+                _ => format!("daemon running but the response could not be read ({detail})"),
+            },
+        }
+    }
+
+    /// True only when there is genuinely no daemon to talk to.
+    ///
+    /// The TUI's self-heal re-forks the daemon on this and only this: a
+    /// daemon that answered but cannot be understood must not be
+    /// restarted, or the log fills with "another terhub daemon already
+    /// holds the lock" while the healthy daemon keeps serving.
+    pub fn is_unreachable(&self) -> bool {
+        matches!(self, DaemonError::Unreachable { .. })
+    }
+}
+
+impl std::fmt::Display for DaemonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+impl std::error::Error for DaemonError {}
+
+/// This build's identity, as the daemon reports it.
+pub fn build_id() -> &'static str {
+    crate::BUILD_ID
+}
+
+/// Send a request to the daemon and decode its answer.
+///
+/// The error type distinguishes "no daemon" from "a daemon I cannot
+/// understand" — the distinction the whole protocol work exists for.
+pub fn send_request(req: &Request, timeout: Duration) -> Result<Response, DaemonError> {
     let sock = socket_path();
-    let mut stream =
-        UnixStream::connect(&sock).with_context(|| format!("connect {}", sock.display()))?;
-    stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
-    let mut line = serde_json::to_string(req)?;
+    let mut stream = UnixStream::connect(&sock).map_err(|e| DaemonError::Unreachable {
+        detail: format!("connect {}: {e}", sock.display()),
+    })?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .and_then(|()| stream.set_write_timeout(Some(timeout)))
+        .map_err(|e| DaemonError::Unreachable {
+            detail: format!("set socket timeout: {e}"),
+        })?;
+    let mut line =
+        serde_json::to_string(&WireRequest::from(req)).map_err(|e| DaemonError::Unreadable {
+            detail: format!("encode request: {e}"),
+        })?;
     line.push('\n');
-    stream.write_all(line.as_bytes())?;
-    stream.flush()?;
+    stream
+        .write_all(line.as_bytes())
+        .and_then(|()| stream.flush())
+        .map_err(|e| DaemonError::Unreachable {
+            detail: format!("write request: {e}"),
+        })?;
     let mut reader = BufReader::new(stream);
-    let resp = read_capped_line(&mut reader, MAX_RESPONSE_BYTES)?;
-    serde_json::from_str(&resp).context("bad daemon response")
+    let raw = read_capped_line(&mut reader, MAX_RESPONSE_BYTES).map_err(|e| {
+        DaemonError::Unreachable {
+            detail: format!("read response: {e}"),
+        }
+    })?;
+    decode_response(&raw)
 }
 
-pub fn fetch_snapshot(timeout: Duration) -> Result<Snapshot> {
+/// Decode a daemon response in two steps.
+///
+/// The envelope (`ok`, `proto`, `build`, `error`) is read leniently
+/// first, so the daemon's identity is known even when the payload is
+/// not readable by this build. Only then is the snapshot decoded
+/// strictly — that is where an unknown agent state used to fail, and
+/// the failure used to take the daemon's identity with it, leaving
+/// the client with nothing to say but "daemon not running".
+fn decode_response(raw: &str) -> Result<Response, DaemonError> {
+    let value: serde_json::Value =
+        serde_json::from_str(raw).map_err(|e| DaemonError::Unreadable {
+            detail: format!("decode response: {e}"),
+        })?;
+    let proto = value
+        .get("proto")
+        .and_then(serde_json::Value::as_u64)
+        .map(|v| v as u32);
+    let build = value
+        .get("build")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let ok = value
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let error = value
+        .get("error")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let snapshot = match value.get("snapshot") {
+        Some(v) if !v.is_null() => {
+            let snapshot: Snapshot =
+                serde_json::from_value(v.clone()).map_err(|e| DaemonError::Incompatible {
+                    client_proto: PROTO_VERSION,
+                    daemon_proto: proto,
+                    daemon_build: build.clone(),
+                    detail: format!("decode snapshot: {e}"),
+                })?;
+            Some(snapshot)
+        }
+        _ => None,
+    };
+    Ok(Response {
+        ok,
+        snapshot,
+        error,
+        proto,
+        build,
+    })
+}
+
+/// A snapshot plus the identity of the daemon that served it.
+#[derive(Debug, Clone)]
+pub struct SnapshotResponse {
+    pub snapshot: Snapshot,
+    pub daemon_proto: Option<u32>,
+    pub daemon_build: Option<String>,
+}
+
+/// A one-line note when the daemon is not this build, or `None` when
+/// client and daemon agree.
+///
+/// A daemon that speaks another protocol version is not a failure by
+/// itself: the data may decode fine. It is still worth saying out
+/// loud, because the next state the daemon adds will not.
+pub fn compat_note(resp: &SnapshotResponse) -> Option<String> {
+    match resp.daemon_proto {
+        Some(p) if p != PROTO_VERSION => Some(format!(
+            "daemon build incompatible: client proto {PROTO_VERSION} / daemon proto {p} — run `make build`"
+        )),
+        None => Some(
+            "daemon predates the versioned protocol (it sends no protocol version) — run `make build` to update it"
+                .to_string(),
+        ),
+        Some(_) => None,
+    }
+}
+
+/// A one-line note when the daemon is not the same build as this
+/// client, or `None` when it is.
+pub fn build_note(resp: &SnapshotResponse) -> Option<String> {
+    let daemon = resp.daemon_build.as_deref()?;
+    if daemon == crate::BUILD_ID {
+        None
+    } else {
+        Some(format!(
+            "daemon build {daemon} is not this build ({}) — run `make build`",
+            crate::BUILD_ID
+        ))
+    }
+}
+
+pub fn fetch_snapshot_detailed(timeout: Duration) -> Result<SnapshotResponse, DaemonError> {
     let resp = send_request(&Request::Snapshot, timeout)?;
-    resp.snapshot.context("daemon returned no snapshot")
+    let snapshot = resp.snapshot.clone().ok_or_else(|| DaemonError::Unreadable {
+        detail: "daemon returned no snapshot".to_string(),
+    })?;
+    Ok(SnapshotResponse {
+        snapshot,
+        daemon_proto: resp.proto,
+        daemon_build: resp.build,
+    })
 }
 
-pub fn send_event(ev: &HookEvent, timeout: Duration) -> Result<()> {
+pub fn fetch_snapshot(timeout: Duration) -> Result<Snapshot, DaemonError> {
+    Ok(fetch_snapshot_detailed(timeout)?.snapshot)
+}
+
+pub fn send_event(ev: &HookEvent, timeout: Duration) -> Result<(), DaemonError> {
     let resp = send_request(&Request::Event { event: ev.clone() }, timeout)?;
     if resp.ok {
         Ok(())
     } else {
-        anyhow::bail!(
-            resp.error
-                .unwrap_or_else(|| "daemon rejected event".to_string())
-        )
+        Err(DaemonError::Unreadable {
+            detail: resp
+                .error
+                .unwrap_or_else(|| "daemon rejected event".to_string()),
+        })
     }
 }
 
