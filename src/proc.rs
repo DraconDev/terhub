@@ -360,48 +360,16 @@ impl Snapshot {
     /// it wants checked, so the pane-root path can keep the guard it
     /// had before (the starttime stamped when the pane was listed).
     pub fn freeze_target(&self, pane_pid: u32) -> Option<u32> {
-        if let Some(agent) = self.agent_pid(pane_pid) {
-            return Some(agent);
+        // The agent the pane is known by: the same one detection
+        // names, so a pane running two agents freezes the one terhub
+        // is tracking, not whichever binary happens to be nearest.
+        if let Some((pid, _)) = self.nearest_agent(pane_pid) {
+            // The agent binary under the wrapper, when there is one.
+            return Some(self.agent_proc(pid).unwrap_or(pid));
         }
         // No agent in the pane: the pane root is all there is to freeze.
         if pane_pid != 0 && self.procs.contains_key(&pane_pid) {
             return Some(pane_pid);
-        }
-        None
-    }
-
-    /// The process that is *really* the agent at or below `root`: the
-    /// nearest one whose own name is an agent binary.
-    ///
-    /// [`detect_agent`] matches wrappers on purpose — a pane whose
-    /// command line merely names the agent still counts, and the usual
-    /// launchers are transparent. But a wrapper is not what gets
-    /// frozen: the agent underneath it is. The stopped question needs
-    /// the agent binary itself, so this looks for a process whose own
-    /// name is in the catalog rather than one that only mentions it.
-    ///
-    /// This is also the right target for a freeze: a tmux pane root
-    /// sits in its own process group, and an interactive shell gives
-    /// its foreground job another one, so signalling the pane root's
-    /// group never reaches the agent at all.
-    pub fn agent_pid(&self, root: u32) -> Option<u32> {
-        if root == 0 || !self.procs.contains_key(&root) {
-            return None;
-        }
-        let mut queue = std::collections::VecDeque::from([root]);
-        let mut seen = std::collections::HashSet::from([root]);
-        while let Some(pid) = queue.pop_front() {
-            let info = &self.procs[&pid];
-            if !matches!(info.state, 'Z' | 'X' | 'x') && is_agent_bin(&info.comm) {
-                return Some(pid);
-            }
-            if let Some(kids) = self.kids.get(&pid) {
-                for kid in kids {
-                    if seen.insert(*kid) {
-                        queue.push_back(*kid);
-                    }
-                }
-            }
         }
         None
     }
@@ -968,6 +936,68 @@ mod tests {
         assert_eq!(snap2.freeze_target(999), None);
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&dir2);
+    }
+
+    /// A pane running two agents: a stopped one and a live one.
+    ///
+    /// The stopped answer must come from the agent the pane is *named*
+    /// by — the one detection reports — and not from a sibling that
+    /// happens to be nearer. A live sibling must never mask a frozen
+    /// agent, and a frozen sibling must never condemn a live one.
+    #[test]
+    fn a_sibling_agent_does_not_answer_the_stopped_question() {
+        // The real shape of a busy pane: a `pi` that was suspended
+        // (under a launcher) sitting next to a live `minimax-code`.
+        let dir = fake_proc_states(
+            "sibling",
+            &[
+                ("100", "1", "zsh", "-zsh", 10, 5, 1000),
+                (
+                    "101",
+                    "100",
+                    "systemd-inhibit",
+                    "systemd-inhibit --who=pi --mode=block node /home/dracon/.npm-global/bin/pi --approve",
+                    10,
+                    5,
+                    1001,
+                ),
+                ("102", "101", "pi", "/bin/pi", 10, 5, 1002),
+                ("103", "100", "minimax-code", "minimax-code", 10, 5, 1003),
+            ],
+            &[("101", 'T'), ("102", 'T')],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        let hit = snap.detect_agent(100).expect("pi detected");
+        assert_eq!(hit.agent, "pi", "the pane is named by the nearest match");
+        assert_eq!(hit.pid, 101, "which is the launcher");
+        assert!(
+            hit.stopped,
+            "the pi under the launcher is frozen; the live sibling must not answer for it"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The mirror image: the named agent runs, a sibling is stopped.
+    /// The live agent must not be reported as paused.
+    #[test]
+    fn a_stopped_sibling_does_not_condemn_a_live_agent() {
+        let dir = fake_proc_states(
+            "sibling-live",
+            &[
+                ("100", "1", "zsh", "-zsh", 10, 5, 1000),
+                ("101", "100", "minimax-code", "minimax-code", 10, 5, 1001),
+                ("102", "100", "pi", "/bin/pi", 10, 5, 1002),
+            ],
+            &[("102", 'T')],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        let hit = snap.detect_agent(100).expect("an agent detected");
+        assert_eq!(hit.agent, "minimax-code");
+        assert!(
+            !hit.stopped,
+            "the named agent is live; a stopped sibling must not pause it"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
