@@ -2,23 +2,16 @@
 //! check the dashboard and APIs with plain TCP, first without a daemon
 //! (graceful 503s), then with one (live agent data).
 //!
-//! Single test: owns TERHUB_RUNTIME_DIR for this binary.
+//! Single test: owns the sandbox (runtime dir, data dir, config file and
+//! tmux socket) for this binary.
+mod common;
+
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-
-fn wait_for(cond: impl Fn() -> bool, tries: u32) -> bool {
-    for _ in 0..tries {
-        if cond() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    cond()
-}
 
 struct Server {
     child: Child,
@@ -118,13 +111,11 @@ fn web_dashboard_and_apis() {
         terhub::tmux::Tmux::available(),
         "tmux is required for this suite (CI installs it)"
     );
-    let runtime = std::env::temp_dir().join(format!("terhub-web-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&runtime);
-    std::fs::create_dir_all(&runtime).unwrap();
-    // SAFETY: single test in this binary.
-    unsafe {
-        std::env::set_var("TERHUB_RUNTIME_DIR", &runtime);
-    }
+    // Private runtime dir, data dir, config file and tmux socket. This
+    // suite spawns a real daemon: without the isolation that daemon
+    // classifies the operator's live agents and writes its probe events
+    // into the operator's real activity ledger.
+    let _sandbox = common::Sandbox::new("web");
 
     let server = Server::start();
 
@@ -155,16 +146,8 @@ fn web_dashboard_and_apis() {
     let (code, _) = server.get("/api/timeline?since=all&limit=10");
     assert_eq!(code, 200);
 
-    let mut daemon = Command::new(env!("CARGO_BIN_EXE_terhubd"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn terhubd");
-    assert!(
-        wait_for(terhub::daemon::daemon_alive, 100),
-        "daemon did not come up"
-    );
+    // The guard stops the daemon when the test ends, panic or not.
+    let _daemon = common::TestDaemon::start();
     terhub::daemon::send_event(
         &terhub::agent::HookEvent {
             pane: "%616161".to_string(),
@@ -201,15 +184,7 @@ fn web_dashboard_and_apis() {
     let (code, _) = server.post("/api/interrupt", r#"{"pane":"%999999"}"#);
     assert_eq!(code, 500);
 
-    let _ =
-        terhub::daemon::send_request(&terhub::daemon::Request::Shutdown, Duration::from_secs(2));
-    for _ in 0..50 {
-        match daemon.try_wait() {
-            Ok(Some(_)) => break,
-            _ => std::thread::sleep(Duration::from_millis(100)),
-        }
-    }
-    let _ = daemon.kill();
     drop(server);
-    let _ = std::fs::remove_dir_all(&runtime);
+    // The daemon is stopped by the TestDaemon guard when it drops — on
+    // this path and on a panic — so no daemon outlives the suite.
 }

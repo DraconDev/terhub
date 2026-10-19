@@ -1,7 +1,10 @@
 //! MCP stdio conversation test: framed initialize/list/call against `terhub
 //! mcp`, first without a daemon (graceful errors), then with one (live data).
 //!
-//! Single test: owns TERHUB_RUNTIME_DIR for this binary.
+//! Single test: owns the sandbox (runtime dir, data dir, config file and
+//! tmux socket) for this binary.
+mod common;
+
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -110,16 +113,6 @@ impl Mcp {
     }
 }
 
-fn wait_for(cond: impl Fn() -> bool, tries: u32) -> bool {
-    for _ in 0..tries {
-        if cond() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    cond()
-}
-
 #[test]
 fn mcp_conversation_without_and_with_daemon() {
     // Fail loudly without tmux (the backend.rs house rule): a silent
@@ -129,13 +122,12 @@ fn mcp_conversation_without_and_with_daemon() {
         terhub::tmux::Tmux::available(),
         "tmux is required for this suite (CI installs it)"
     );
-    let runtime = std::env::temp_dir().join(format!("terhub-mcp-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&runtime);
-    std::fs::create_dir_all(&runtime).unwrap();
-    // SAFETY: single test in this binary.
-    unsafe {
-        std::env::set_var("TERHUB_RUNTIME_DIR", &runtime);
-    }
+    // Private runtime dir, data dir, config file and tmux socket. This
+    // suite spawns a real daemon: without the isolation that daemon
+    // classifies the operator's live agents — so the suite's result
+    // depends on what they happen to be running — and it writes its
+    // probe events into the operator's real activity ledger.
+    let _sandbox = common::Sandbox::new("mcp");
 
     let mut mcp = Mcp::spawn();
     let init = mcp.call(1, "initialize", json!({}));
@@ -181,16 +173,8 @@ fn mcp_conversation_without_and_with_daemon() {
     assert_eq!(bad_method["error"]["code"], -32601);
 
     // Start a daemon on the same socket and push a hook; status sees it.
-    let mut daemon = Command::new(env!("CARGO_BIN_EXE_terhubd"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn terhubd");
-    assert!(
-        wait_for(terhub::daemon::daemon_alive, 100),
-        "daemon did not come up"
-    );
+    // The guard stops it when the test ends, panic or not.
+    let _daemon = common::TestDaemon::start();
     terhub::daemon::send_event(
         &terhub::agent::HookEvent {
             pane: "%424242".to_string(),
@@ -270,19 +254,11 @@ fn mcp_conversation_without_and_with_daemon() {
             _ => std::thread::sleep(Duration::from_millis(100)),
         }
     }
-    let _ =
-        terhub::daemon::send_request(&terhub::daemon::Request::Shutdown, Duration::from_secs(2));
     let _ = child.kill();
-    for _ in 0..50 {
-        match daemon.try_wait() {
-            Ok(Some(_)) => break,
-            _ => std::thread::sleep(Duration::from_millis(100)),
-        }
-    }
-    let _ = daemon.kill();
     assert!(
         exited,
         "mcp server survived client disconnect during terhub_wait"
     );
-    let _ = std::fs::remove_dir_all(&runtime);
+    // The daemon is stopped by the TestDaemon guard when it drops — on
+    // this path and on a panic — so no daemon outlives the suite.
 }
