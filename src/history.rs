@@ -1695,6 +1695,7 @@ mod tests {
 
     #[test]
     fn append_creates_a_private_ledger() {
+        // The ledger holds prompts, summaries and project paths, and
         // the daemon's own log is already 0600 for that reason.
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("terhub-perm-{}", std::process::id()));
