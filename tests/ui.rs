@@ -835,6 +835,23 @@ fn title_names_a_dead_daemon() {
 }
 
 #[test]
+fn title_names_an_incompatible_daemon() {
+    // A daemon that answered but cannot be understood is not a dead
+    // daemon: "daemon down" sends the user to start a daemon that is
+    // already running, and the empty columns read as "no agents".
+    let mut app = app_with_panes();
+    app.agents_live = false;
+    app.daemon_link = terhub::app::DaemonLink::Incompatible;
+    let lines = render_lines(&mut app, 160, 12);
+    let text = lines.join("\n");
+    assert!(text.contains("daemon incompatible"), "missing marker:\n{text}");
+    assert!(
+        !text.contains("daemon down"),
+        "a live daemon must not be called down:\n{text}"
+    );
+}
+
+#[test]
 fn footer_hints_match_navigation() {
     // Tab toggles focus (not "sessions") and arrows only steer the bar.
     let mut app = app_with_panes();
