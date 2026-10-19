@@ -933,7 +933,15 @@ mod tests {
         // instead: re-read the file until it holds a parseable pid,
         // bounded so a genuinely broken spawn still fails fast rather
         // than hanging the suite.
-        const PID_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
+        //
+        // The bound is generous on purpose: the assertion under test is
+        // about killpg, not about how fast a shell forks. A tight
+        // deadline here only measures the host's load — the suite runs
+        // its test binaries in parallel, and a 200ms fork window lost
+        // the race regularly enough to redden CI. The wait ends as soon
+        // as the pid appears, so the generous bound costs nothing in
+        // the happy path.
+        const PID_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
         const POLL: std::time::Duration = std::time::Duration::from_millis(10);
         let gc_pid = {
             let deadline = std::time::Instant::now() + PID_WAIT;
