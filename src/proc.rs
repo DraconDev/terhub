@@ -898,6 +898,36 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// The freeze target is the *agent*, not the pane root.
+    ///
+    /// tmux puts each pane root in its own process group, and an
+    /// interactive shell gives its foreground job another one, so
+    /// signalling the pane root's group never reaches the agent.
+    #[test]
+    fn the_freeze_target_is_the_agent_not_the_pane_root() {
+        let dir = fake_proc(
+            "freeze-target",
+            &[
+                ("100", "1", "bash", "-bash", 10, 5, 1000),
+                ("101", "100", "muse", "/bin/muse", 10, 5, 1001),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        assert_eq!(
+            snap.freeze_target(100),
+            Some(101),
+            "the agent is the freeze target, not the pane root"
+        );
+        // A pane with no agent freezes its own root.
+        let dir2 = fake_proc("freeze-none", &[("100", "1", "bash", "-bash", 10, 5, 1000)]);
+        let snap2 = Snapshot::capture_from(&dir2);
+        assert_eq!(snap2.freeze_target(100), Some(100));
+        // A pane that does not exist freezes nothing.
+        assert_eq!(snap2.freeze_target(999), None);
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir2);
+    }
+
     #[test]
     fn detects_pi_through_wrappers() {
         // The %192 shape: zsh → systemd-inhibit → node /bin/pi.

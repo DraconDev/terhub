@@ -4608,7 +4608,11 @@ impl App {
         // since. The agent is read live: the TUI does not track agent
         // pids between refreshes, so there is no older stamp to use.
         let expect = if target == pid {
-            if pid_start != 0 { Some(pid_start) } else { None }
+            if pid_start != 0 {
+                Some(pid_start)
+            } else {
+                None
+            }
         } else {
             snap.proc_start(target)
         };
