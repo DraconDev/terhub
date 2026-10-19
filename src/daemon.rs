@@ -4433,7 +4433,10 @@ mod tests {
         save_registry(&path, &reg);
         // The mark is on disk, in the readable spelling.
         let raw = std::fs::read_to_string(&path).unwrap();
-        assert!(raw.contains("\"paused\""), "registry must carry the paused mark");
+        assert!(
+            raw.contains("\"paused\""),
+            "registry must carry the paused mark"
+        );
         // And it comes back as paused, not as a dropped record.
         let loaded = load_registry(&path);
         let back = loaded

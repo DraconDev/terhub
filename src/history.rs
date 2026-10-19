@@ -172,6 +172,10 @@ impl LedgerLock {
         let lock_path = path.with_extension("lock");
         let file = std::fs::OpenOptions::new()
             .create(true)
+            // The sidecar holds no data — it exists purely as a flock
+            // target — so its contents are never truncated. Truncating
+            // it would be harmless but wrong on purpose.
+            .truncate(false)
             .read(true)
             .write(true)
             .open(&lock_path)?;

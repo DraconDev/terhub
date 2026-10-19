@@ -312,11 +312,9 @@ fn snapshot() -> Result<crate::daemon::Snapshot, String> {
 fn state_filter(args: &Value) -> Result<Option<crate::agent::AgentState>, String> {
     match args.get("state").and_then(|s| s.as_str()) {
         None => Ok(None),
-        Some(s) => crate::agent::AgentState::parse(s)
-            .map(Some)
-            .ok_or_else(|| {
-                "bad state (working|waiting|error|idle|stuck|limited|paused)".to_string()
-            }),
+        Some(s) => crate::agent::AgentState::parse(s).map(Some).ok_or_else(|| {
+            "bad state (working|waiting|error|idle|stuck|limited|paused)".to_string()
+        }),
     }
 }
 

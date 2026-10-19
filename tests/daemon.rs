@@ -208,13 +208,21 @@ fn daemon_hook_snapshot_expire_shutdown() {
         );
     }
 
-    // Clean shutdown removes the socket.
+    // Clean shutdown removes the socket. The daemon can go unresponsive
+    // a moment before the file is unlinked: a ping is a 300ms request,
+    // so under load it can time out while the daemon is still draining
+    // the poll. Wait for the socket to actually go instead of asserting
+    // on the first unresponsive answer — otherwise this asserts on a
+    // race and fails for the wrong reason.
     daemon::send_request(&Request::Shutdown, Duration::from_secs(2)).unwrap();
     assert!(
         wait_for(|| !daemon::daemon_alive(), 50),
         "daemon did not stop"
     );
-    assert!(!daemon::socket_path().exists(), "stale socket left behind");
+    assert!(
+        wait_for(|| !daemon::socket_path().exists(), 50),
+        "stale socket left behind"
+    );
 
     // A hook record older than the staleness window lapses on restart: the
     // poll must not treat it as authoritative forever.
