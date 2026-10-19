@@ -1035,7 +1035,7 @@ pub fn item_is_listed(entries: &[String], unique: &str) -> bool {
 /// nothing errors — the icon is simply forgotten. Re-register whenever
 /// the watcher no longer lists us. Idempotent: a tick that finds us
 /// listed does nothing, so this costs one property read per poll.
-fn ensure_registered(watcher: &zbus::blocking::Proxy<'_>, unique: &str) {
+async fn ensure_registered(watcher: &zbus::Proxy<'_>, unique: &str) {
     // The property read can fail transiently (the watcher is mid-restart,
     // the bus is busy) — a failure must NOT read as "we're unlisted":
     // `unwrap_or_default` turns every error into an empty list and makes
@@ -1043,13 +1043,19 @@ fn ensure_registered(watcher: &zbus::blocking::Proxy<'_>, unique: &str) {
     // is exactly the race that produced the field-observed "icon went
     // invisible" bug. On error, do nothing this tick and retry next
     // poll — the self-heal loop is what makes the retry safe.
-    let Ok(listed) = watcher.get_property::<Vec<String>>("RegisteredStatusNotifierItems") else {
+    let Ok(listed) = watcher
+        .get_property::<Vec<String>>("RegisteredStatusNotifierItems")
+        .await
+    else {
         return;
     };
     if item_is_listed(&listed, unique) {
         return;
     }
-    match watcher.call_method("RegisterStatusNotifierItem", &(unique,)) {
+    match watcher
+        .call_method("RegisterStatusNotifierItem", &(unique,))
+        .await
+    {
         Ok(_) => println!("terhub tray: re-registered after watcher reset"),
         Err(e) => eprintln!("terhub tray: re-register failed: {e}"),
     }
@@ -1057,7 +1063,20 @@ fn ensure_registered(watcher: &zbus::blocking::Proxy<'_>, unique: &str) {
 
 /// Register the tray icon and keep it fed from the daemon. Runs until
 /// the process is killed; dropping the connection removes the icon.
+///
+/// zbus 6 has no blocking API, so the D-Bus work is async and this
+/// wrapper owns the runtime. The poll loop must `await` its sleep
+/// rather than block the thread: the object server that answers the
+/// host's property reads runs on this same runtime, and a blocking
+/// sleep would freeze the icon for the whole interval.
 pub fn run() -> anyhow::Result<()> {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(run_async())
+}
+
+async fn run_async() -> anyhow::Result<()> {
     // The active theme is what the user is reading the panel in: it
     // decides which palette of accent colors the icon pulls from. The
     // TUI's load_config() owns the theme, so we go through it rather
@@ -1068,30 +1087,34 @@ pub fn run() -> anyhow::Result<()> {
     );
     refresh_icon_cache();
     let mut last_theme = theme;
-    let conn = zbus::blocking::Connection::session()?;
+    let conn = zbus::Connection::session().await?;
     let unique = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
     let view: Shared = Arc::new(Mutex::new(TrayView::default()));
     let tray = Tray {
         view: Arc::clone(&view),
         names: std::sync::Arc::clone(&names),
     };
-    conn.request_name(unique.as_str())?;
+    conn.request_name(unique.as_str()).await?;
     // Export before registering: the watcher introspects the name as
     // soon as Register returns, and finds nothing if we register first.
-    conn.object_server().at(SNI_PATH, tray)?;
+    conn.object_server().at(SNI_PATH, tray).await?;
     let emitter = conn
         .object_server()
         .interface::<_, Tray>(SNI_PATH)
+        .await
         .map(|i| i.signal_emitter().clone())
         .map_err(anyhow::Error::from)?;
 
-    let watcher = zbus::blocking::Proxy::new(
+    let watcher = zbus::Proxy::new(
         &conn,
         "org.kde.StatusNotifierWatcher",
         "/StatusNotifierWatcher",
         "org.kde.StatusNotifierWatcher",
-    )?;
-    watcher.call_method("RegisterStatusNotifierItem", &(unique.as_str(),))?;
+    )
+    .await?;
+    watcher
+        .call_method("RegisterStatusNotifierItem", &(unique.as_str(),))
+        .await?;
     println!("terhub tray registered — ctrl-c to remove");
 
     // Last exposed strings: the host only re-reads on our signals,
@@ -1105,9 +1128,15 @@ pub fn run() -> anyhow::Result<()> {
         // A live update: the user might change theme in the TUI's
         // settings popup, so re-check it on every poll.
         let active = crate::config::load_config(None).theme;
-        let mut next = match crate::daemon::fetch_snapshot(SNAP_TIMEOUT) {
-            Ok(snap) => TrayView::from_agents(&snap.agents),
-            Err(_) => TrayView::disconnected(),
+        // The daemon fetch is blocking socket I/O with a 2 s timeout:
+        // keep it off the runtime thread so the object server stays
+        // responsive to the host while it is in flight.
+        let fetched = tokio::task::spawn_blocking(|| crate::daemon::fetch_snapshot(SNAP_TIMEOUT))
+            .await
+            .ok();
+        let mut next = match fetched {
+            Some(Ok(snap)) => TrayView::from_agents(&snap.agents),
+            _ => TrayView::disconnected(),
         };
         next.hub_open = read_hub_session().is_some();
         if let Ok(mut v) = view.lock() {
@@ -1139,21 +1168,21 @@ pub fn run() -> anyhow::Result<()> {
         let icon = exposed_icon_name(&map, snap.icon_state());
         if icon != last_icon {
             last_icon = icon;
-            if let Err(e) = zbus::block_on(Tray::new_icon(&emitter)) {
+            if let Err(e) = Tray::new_icon(&emitter).await {
                 eprintln!("terhub tray: NewIcon signal failed: {e}");
             }
         }
         let attention = exposed_attention_name(&map);
         if attention != last_attention {
             last_attention = attention;
-            if let Err(e) = zbus::block_on(Tray::new_attention_icon(&emitter)) {
+            if let Err(e) = Tray::new_attention_icon(&emitter).await {
                 eprintln!("terhub tray: NewAttentionIcon signal failed: {e}");
             }
         }
         let title = snap.title();
         if title != last_title {
             last_title = title;
-            if let Err(e) = zbus::block_on(Tray::new_title(&emitter)) {
+            if let Err(e) = Tray::new_title(&emitter).await {
                 eprintln!("terhub tray: NewTitle signal failed: {e}");
             }
         }
@@ -1164,15 +1193,15 @@ pub fn run() -> anyhow::Result<()> {
         );
         if tooltip != last_tooltip {
             last_tooltip = tooltip;
-            if let Err(e) = zbus::block_on(Tray::new_tool_tip(&emitter)) {
+            if let Err(e) = Tray::new_tool_tip(&emitter).await {
                 eprintln!("terhub tray: NewToolTip signal failed: {e}");
             }
         }
         // Self-heal: a host restart (or a restarted watcher) forgets every
         // item, so re-register on our own cadence instead of waiting for
         // the user to notice the icon is gone and restart us by hand.
-        ensure_registered(&watcher, &unique);
-        std::thread::sleep(POLL);
+        ensure_registered(&watcher, &unique).await;
+        tokio::time::sleep(POLL).await;
     }
 }
 
