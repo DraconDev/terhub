@@ -1462,8 +1462,8 @@ use slot::*;
 
 /// Write `text` to `path` atomically: write to a unique tmp file in
 /// the same directory, fsync, rename. A crash mid-write leaves the
-/// original file intact (and the tmp is orphaned in the same dir; a
-/// future init/cleanup can prune it).
+/// original file intact (and the tmp is orphaned in the same dir;
+/// [`sweep_orphan_tmps`] prunes those).
 ///
 /// The target's mode is preserved. `File::create` would reset it to
 /// 0644, which silently undoes a deliberate `chmod 600` on every
@@ -1471,8 +1471,7 @@ use slot::*;
 /// hourly, the config on every save). A file that does not exist yet
 /// is created 0600: everything written here holds prompts, summaries
 /// or config, and nothing needs it to be world-readable.
-pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write;
+pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Result<()> {    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(

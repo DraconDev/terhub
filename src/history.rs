@@ -634,6 +634,182 @@ fn corrupt_summary(raw: &str, reason: &serde_json::Error) -> String {
     }
 }
 
+/// The preserved head of a quarantined line, without the parse reason.
+///
+/// The quarantine stores the first 200 characters of the line that
+/// failed to parse, plus the reason. This splits the head back out so
+/// a repair can recover the timestamp the line carried.
+fn corrupt_head(summary: &str) -> &str {
+    let head = summary.rsplit_once("  (").map(|(h, _)| h).unwrap_or(summary);
+    head.strip_suffix('…').unwrap_or(head)
+}
+
+/// Recover the timestamp a torn line carried.
+///
+/// A quarantined entry is stored with `t = 0` (the prune does not know
+/// the original time), but the preserved head still starts with the
+/// original `{"t":…}` field. Recovering it keeps the archive in
+/// chronological order, so an archived line can still be placed in
+/// time. `None` when the head does not carry a readable timestamp.
+fn recover_timestamp(head: &str) -> Option<u64> {
+    let after = head.split_once("\"t\"")?.1;
+    let digits: String = after
+        .trim_start()
+        .trim_start_matches(':')
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse().ok()
+    }
+}
+
+/// Where quarantined (torn) lines are archived when the ledger is
+/// repaired: next to the ledger, named after it.
+pub fn quarantine_path(path: &std::path::Path) -> std::path::PathBuf {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "activity.jsonl".to_string());
+    path.with_file_name(format!("{name}.quarantine.jsonl"))
+}
+
+/// What a repair did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RepairReport {
+    /// Quarantined lines found in the hot ledger.
+    pub found: usize,
+    /// Lines moved into the archive next to the ledger.
+    pub archived: usize,
+    /// The archive the lines were moved to (empty when nothing was).
+    pub archive: String,
+}
+
+/// Move the ledger's quarantined lines out of the hot ledger and into
+/// an archive beside it.
+///
+/// A torn line is a line a crash cut short mid-write. The prune keeps
+/// it as a `__corrupt__` entry, so the data is never lost — but a hot
+/// ledger full of them is a ledger nobody can read: every query
+/// carries them, and their count hides new damage in the noise of old
+/// damage.
+///
+/// The archived entry keeps the preserved head and the parse reason,
+/// and recovers the timestamp the line carried, so the archive stays
+/// ordered by time. Nothing is reconstructed: a line that was cut in
+/// half cannot be honestly completed, and inventing the missing half
+/// would fabricate history.
+pub fn repair_quarantine(path: &std::path::Path) -> Result<RepairReport, String> {
+    let _lock =
+        LedgerLock::acquire(path).map_err(|e| format!("repair ledger lock failed: {e}"))?;
+    if !path.exists() {
+        return Ok(RepairReport::default());
+    }
+    let mut kept: Vec<Entry> = Vec::new();
+    let mut quarantined: Vec<Entry> = Vec::new();
+    for_each_line(path, |raw| {
+        let line = raw.trim();
+        if line.is_empty() {
+            return;
+        }
+        match serde_json::from_str::<Entry>(line) {
+            Ok(e) if e.kind == "__corrupt__" => quarantined.push(e),
+            Ok(e) => kept.push(e),
+            Err(reason) => quarantined.push(Entry {
+                t: 0,
+                kind: "__corrupt__".to_string(),
+                pane: String::new(),
+                agent: String::new(),
+                from: None,
+                to: None,
+                session: String::new(),
+                window: String::new(),
+                summary: corrupt_summary(line, &reason),
+                event: None,
+            }),
+        }
+    })
+    .map_err(|e| format!("repair ledger read failed: {e}"))?;
+
+    let mut report = RepairReport {
+        found: quarantined.len(),
+        ..RepairReport::default()
+    };
+    if quarantined.is_empty() {
+        return Ok(report);
+    }
+
+    // Archive the lines, with the timestamp they carried recovered
+    // from the preserved head.
+    let archive = quarantine_path(path);
+    let mut body = String::new();
+    for mut q in quarantined {
+        if q.t == 0 {
+            q.t = recover_timestamp(corrupt_head(&q.summary)).unwrap_or(0);
+        }
+        let line =
+            serde_json::to_string(&q).map_err(|e| format!("repair ledger serialization failed: {e}"))?;
+        body.push_str(&line);
+        body.push('\n');
+    }
+    append_lines(&archive, &body).map_err(|e| format!("repair archive write failed: {e}"))?;
+    report.archived = report.found;
+    report.archive = archive.display().to_string();
+
+    // Rewrite the hot ledger without them. The lock keeps this
+    // atomic against appends: an append that lands mid-rewrite would
+    // be written to the old inode and silently discarded.
+    let mut body = String::new();
+    for e in &kept {
+        let line =
+            serde_json::to_string(e).map_err(|e| format!("repair ledger serialization failed: {e}"))?;
+        body.push_str(&line);
+        body.push('\n');
+    }
+    crate::config::atomic_write(path, &body)
+        .map_err(|e| format!("repair ledger write failed: {e}"))?;
+    Ok(report)
+}
+
+/// Number of quarantined lines in the archive beside the ledger.
+pub fn archived_count(path: &std::path::Path) -> usize {
+    let archive = quarantine_path(path);
+    if !archive.exists() {
+        return 0;
+    }
+    let mut n = 0;
+    let _ = for_each_line(&archive, |raw| {
+        let line = raw.trim();
+        if line.is_empty() {
+            return;
+        }
+        match serde_json::from_str::<Entry>(line) {
+            Ok(e) if e.kind == "__corrupt__" => n += 1,
+            Ok(_) => {}
+            Err(_) => {}
+        }
+    });
+    n
+}
+
+/// Append lines to a file, creating it if needed.
+fn append_lines(path: &std::path::Path, body: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("open {}: {e}", path.display()))?;
+    file.write_all(body.as_bytes())
+        .map_err(|e| format!("write {}: {e}", path.display()))?;
+    file.sync_all()
+        .map_err(|e| format!("sync {}: {e}", path.display()))?;
+    Ok(())
+}
+
 /// Number of quarantined (torn) lines currently in the ledger. The
 /// `history status` / CLI surfaces this so the user can see and act on
 /// a crash that left a torn line behind.
