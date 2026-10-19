@@ -1694,6 +1694,39 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_appends_do_not_interleave_into_one_line() {
+        // `writeln!` issues the content and the newline as two writes,
+        // so two appends could interleave into one line ("{...}{...}") —
+        // which the reader then quarantines as corrupt. The live
+        // ledger carries 43 such lines from before the fix.
+        let dir = std::env::temp_dir().join(format!("terhub-conc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        let mut handles = Vec::new();
+        for w in 0..8u64 {
+            let path = path.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..25u64 {
+                    let text = format!("payload-{w}-{i}");
+                    append_entry(&path, &Entry::prompt(w * 1000 + i, "%1", "pi", &text)).unwrap();
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        let back = read_entries(&path);
+        assert_eq!(
+            back.len(),
+            200,
+            "entries were lost or interleaved: {} readable of 200",
+            back.len()
+        );
+        assert_eq!(corrupt_count(&path), 0, "a concurrent append was torn");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn append_creates_a_private_ledger() {
         // The ledger holds prompts, summaries and project paths, and
         // the daemon's own log is already 0600 for that reason.
