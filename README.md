@@ -52,6 +52,9 @@ terhub            # opens the TUI
 First run creates `~/.config/terhub/config.toml` with defaults.
 Full manual: [GUIDE.md](GUIDE.md).
 
+Project status: [AUDIT.md](AUDIT.md) (the 2026-10-19 audit — 36 findings) and
+[TASKS.md](TASKS.md) (the prioritised improvement backlog).
+
 ## The TUI
 
 One-line session bar on top, one huge pane table, one status bar — no modes

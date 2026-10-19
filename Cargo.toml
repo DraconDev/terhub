@@ -17,6 +17,8 @@ exclude = [
     "assets/",
     "conversation-*.txt",
     "RESEARCH.md",
+    "AUDIT.md",
+    "TASKS.md",
     "note.md",
     "Cargo.toml.orig",
     "examples/",
