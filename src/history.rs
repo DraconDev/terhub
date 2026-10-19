@@ -1528,6 +1528,147 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A windowed read must produce the same spans as a full read.
+    ///
+    /// A span runs from one transition to the next for that pane, or to
+    /// `now` when there is no next one. Dropping the transitions
+    /// before the window would drop the *start* of the span that is
+    /// still open at the window's edge — and `stats` clips that span
+    /// to the window, so the time it contributes would be lost. The
+    /// anchors are what keep it: this test is the proof that they do.
+    #[test]
+    fn windowed_read_produces_the_same_spans_as_a_full_read() {
+        let dir = std::env::temp_dir().join(format!("terhub-window-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        // %1 transitions at 100 (before the window) and 300 (inside).
+        // %2 transitions at 150 (before the window) and never again, so
+        // its span is still open when the window starts.
+        append_entry(&path, &entry(100, "%1", AgentState::Working)).unwrap();
+        append_entry(&path, &entry(150, "%2", AgentState::Working)).unwrap();
+        append_entry(&path, &entry(300, "%1", AgentState::Waiting)).unwrap();
+        let now = 400;
+        let since = Some(200);
+
+        let full = build_spans(&read_entries(&path), now);
+        let windowed = build_spans(&read_entries_windowed(&path, since), now);
+        assert_eq!(
+            full.len(),
+            windowed.len(),
+            "windowed read lost a span: {full:?} vs {windowed:?}"
+        );
+        for (a, b) in full.iter().zip(windowed.iter()) {
+            assert_eq!((&a.pane, a.start, a.end), (&b.pane, b.start, b.end));
+        }
+        // The open span of %2 survives the window: it starts before it.
+        let open = windowed.iter().find(|s| s.pane == "%2").expect("%2 span");
+        assert_eq!(open.start, 150);
+        assert_eq!(open.end, now);
+        // And the stats agree, which is what the CLI actually reports.
+        let full_stats = stats(&full, since, GroupBy::Agent);
+        let window_stats = stats(&windowed, since, GroupBy::Agent);
+        assert_eq!(
+            serde_json::to_value(&full_stats).unwrap(),
+            serde_json::to_value(&window_stats).unwrap(),
+            "the windowed read changed the reported stats"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn windowed_read_equals_the_filtered_full_read() {
+        let dir = std::env::temp_dir().join(format!("terhub-window2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        for t in [10, 100, 200, 300, 400] {
+            append_entry(&path, &entry(t, "%1", AgentState::Working)).unwrap();
+        }
+        let all = read_entries(&path);
+        for since in [Some(0), Some(150), Some(350), Some(1000), None] {
+            let windowed = read_entries_since(&path, since);
+            let expected: Vec<&Entry> = all
+                .iter()
+                .filter(|e| since.is_none_or(|c| e.t >= c))
+                .collect();
+            assert_eq!(
+                windowed.len(),
+                expected.len(),
+                "window {since:?} read the wrong number of entries"
+            );
+            for (w, e) in windowed.iter().zip(expected.iter()) {
+                assert_eq!(w.t, e.t);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_bounded_drops_the_oldest_past_the_byte_cap() {
+        let dir = std::env::temp_dir().join(format!("terhub-cap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        // Ten prompts, each comfortably over 100 bytes on disk.
+        for t in 100..110u64 {
+            let text = "x".repeat(200);
+            append_entry(&path, &Entry::prompt(t, "%1", "pi", &text)).unwrap();
+        }
+        let size = std::fs::metadata(&path).unwrap().len();
+        assert!(size > 1000, "fixture too small to be interesting: {size}");
+        // A cap that only fits the last three entries.
+        let cap = 400;
+        let kept = prune_bounded(&path, 1_000_000, 90, cap).unwrap();
+        assert!(kept < 10, "the cap was not applied: {kept} entries kept");
+        let after = std::fs::metadata(&path).unwrap().len();
+        assert!(after <= cap, "ledger is {after} bytes, over the {cap} cap");
+        // The survivors are the newest ones.
+        let back = read_entries(&path);
+        let newest = back.last().unwrap().t;
+        assert_eq!(newest, 109);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_reports_a_write_failure_instead_of_claiming_success() {
+        // A prune that could not write has not pruned anything, and
+        // saying otherwise hides the ledger growing without bound.
+        let dir = std::env::temp_dir().join(format!("terhub-prune-ro-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("activity.jsonl");
+        append_entry(&path, &Entry::prompt(100, "%1", "pi", "one")).unwrap();
+        // Make the directory unwritable so the atomic write fails.
+        let mut perms = std::fs::metadata(&dir).unwrap().permissions();
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o500);
+        std::fs::set_permissions(&dir, perms).unwrap();
+        let result = prune(&path, 100 + 91 * 86400, 90);
+        // Restore the mode so the directory can be removed again.
+        let mut perms = std::fs::metadata(&dir).unwrap().permissions();
+        perms.set_mode(0o700);
+        std::fs::set_permissions(&dir, perms).unwrap();
+        assert!(
+            result.is_err(),
+            "a prune that could not write reported success: {result:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn append_creates_a_private_ledger() {
+        // The ledger holds prompts, summaries and project paths, and
+        // the daemon's own log is already 0600 for that reason.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("terhub-perm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("activity.jsonl");
+        append_entry(&path, &Entry::prompt(100, "%1", "pi", "one")).unwrap();
+        let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o600, "ledger is not owner-only");
+        let dir_mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700, "data dir is not owner-only");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn timeline_renders_spans() {
         use ratatui::{Terminal, backend::TestBackend};
