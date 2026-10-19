@@ -497,9 +497,9 @@ exits. Handles work: `register @old-pin …` re-pins under a new name.
 
 ### Pausing a pane
 
-`z` in the TUI freezes a pane's whole process tree with `SIGSTOP` (and
-`z` again thaws it). A frozen pane is **paused**, and terhub remembers
-that it is the one that paused it:
+`z` in the TUI freezes the pane's **agent** with `SIGSTOP` (and `z` again
+thaws it). A frozen pane is **paused**, and terhub remembers that it is
+the one that paused it:
 
 - The row reads `paused` and renders dim — never red, never a `!` badge,
   never counted in "needs you". You froze it on purpose; nobody needs to
@@ -508,11 +508,23 @@ that it is the one that paused it:
   which is byte-for-byte the same signal the stuck detector reads as
   "hung" — so without the pause registry, terhub would escalate an
   alarm about its own `z` press.
+- The freeze targets the **agent's own process group**, not the pane
+  root's. That matters under tmux: a pane root sits in its own process
+  group and an interactive shell gives its foreground job another one,
+  so signalling the pane root never reaches the agent at all — and
+  tmux resumes a pane whose root stopped, so the freeze would not even
+  hold. The pane's shell stays alive and responsive while the agent is
+  frozen; a pane with no detected agent falls back to freezing its
+  root.
 - The mark is read from the process state (`/proc/<pid>/stat`) on every
   poll, never carried, so it can never go stale: thaw the pane and it
   is working again on the next tick, kill it and the mark goes with it.
   The same is true for a pane stopped by anything else — `kill -STOP`
-  from a shell, a suspend, an editor — not just by terhub's `z`.
+  from a shell, a `Ctrl-Z`, a suspend, an editor — not just by terhub's
+  `z`. A paused agent is the one thing terhub *never* escalates about.
+- Thawing is clean: the freeze's silence is not inherited, so a resumed
+  agent is not reported as `stuck` on the way back. The still-clock
+  measured the pause, not the agent's work.
 - The pause is persisted in the agent registry, so it survives a daemon
   restart: the pane does not come back as `stuck` the moment terhubd
   bounces.

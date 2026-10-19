@@ -518,9 +518,13 @@ impl Server {
             eprintln!("terhubd: broken manifest skipped ({w})");
         }
         let registry = load_registry(&runtime.join("registry.json"));
-        if let Err(e) = history::prune(&history::ledger_path(), now_unix(), 90) {
-            eprintln!("terhubd: history prune failed ({e})");
-        }
+        // No ledger prune here: pruning is the poll loop's job (hourly,
+        // and its first tick fires immediately), so it happens off the
+        // bind path. Pruning in `load` meant a daemon start blocked on
+        // a full read-and-rewrite of the ledger — seconds on a ledger
+        // of tens of megabytes — and the socket did not appear until
+        // it was done, so every `terhub daemon start` (and every TUI
+        // self-heal) stalled on it.
         let tunables = Tunables::from_config(&config::load_config(None));
         Ok(Server {
             runtime,

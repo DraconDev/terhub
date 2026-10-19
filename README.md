@@ -113,9 +113,11 @@ reset — never a crash), `paused` (you stopped it — never needs you),
 
 A pane you freeze with `z` reads as `paused`: dim, not badged, never
 counted in "needs you" and never reported as stuck (a stopped process
-burns no CPU, which is exactly what a hang looks like). The mark is read
-from the process state on every poll, so it cannot go stale, and it is
-persisted in the registry so it survives a daemon restart.
+burns no CPU, which is exactly what a hang looks like). The freeze
+targets the agent's own process group, so it holds under tmux and the
+pane's shell stays alive. The mark is read from the process state on
+every poll, so it cannot go stale, and it is persisted in the registry
+so it survives a daemon restart.
 
 ## Tray icon (KDE/Plasma)
 

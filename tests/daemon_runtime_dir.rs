@@ -8,6 +8,19 @@
 //! at the same dir (as this test originally did) flag-vs-env resolution
 //! is indistinguishable and the test cannot prove its own title.
 //! Single test function: it owns TERHUB_RUNTIME_DIR for this test binary.
+//!
+//! # Hermeticity
+//!
+//! The daemon this test spawns is a *real* daemon: it polls tmux and
+//! prunes the activity ledger at startup. Left on the ambient
+//! environment it did both against the developer's own machine — it
+//! pruned the real 35 MB ledger (which is why this test was slow and
+//! flaky: the prune held the ledger lock for seconds while other test
+//! daemons queued behind it), and it wrote the developer's real panes
+//! into their real history. So the data dir, the config and the tmux
+//! socket are all pointed at private paths here, and only
+//! TERHUB_RUNTIME_DIR — the variable under test — is left pointing
+//! where the test needs it.
 use std::time::Duration;
 
 #[test]
@@ -15,13 +28,23 @@ fn runtime_dir_flag_wins_over_env() {
     let pid = std::process::id();
     let flag_dir = std::env::temp_dir().join(format!("terhubd-flag-{pid}"));
     let env_dir = std::env::temp_dir().join(format!("terhubd-env-{pid}"));
-    let _ = std::fs::remove_dir_all(&flag_dir);
-    let _ = std::fs::remove_dir_all(&env_dir);
-    std::fs::create_dir_all(&flag_dir).unwrap();
-    std::fs::create_dir_all(&env_dir).unwrap();
-    // SAFETY: this test binary runs this single test; nothing else reads the var.
+    // Private data dir: the daemon prunes the ledger at startup, and
+    // appends its transitions. The ambient ledger is the developer's
+    // real history — off limits.
+    let data_dir = std::env::temp_dir().join(format!("terhubd-data-{pid}"));
+    // A private tmux server: the daemon polls panes, and the ambient
+    // server holds the developer's real work.
+    let socket = format!("terhubd-sock-{pid}");
+    for dir in [&flag_dir, &env_dir, &data_dir] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    // SAFETY: this test binary runs this single test; nothing else reads the vars.
     unsafe {
         std::env::set_var("TERHUB_RUNTIME_DIR", &env_dir);
+        std::env::set_var("TERHUB_DATA_DIR", &data_dir);
+        std::env::set_var("TERHUB_CONFIG", data_dir.join("none.toml"));
+        std::env::set_var(terhub::tmux::SOCKET_ENV, &socket);
     }
     let bin = env!("CARGO_BIN_EXE_terhubd");
     let mut child = std::process::Command::new(bin)
@@ -82,4 +105,12 @@ fn runtime_dir_flag_wins_over_env() {
     }
     let _ = std::fs::remove_dir_all(&flag_dir);
     let _ = std::fs::remove_dir_all(&env_dir);
+    let _ = std::fs::remove_dir_all(&data_dir);
+    // The private tmux server: it was never started (no pane ever
+    // asked for it), but a stray one must not outlive the test.
+    let _ = std::process::Command::new("tmux")
+        .args(["-L", &socket, "kill-server"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 }
