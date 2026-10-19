@@ -988,6 +988,26 @@ fn carried_pause_since(rec: Option<&AgentRecord>) -> Option<u64> {
         .map(|r| r.state_since)
 }
 
+/// A pane that was paused and is running again must not inherit the
+/// pause's silence.
+///
+/// The still-clock is "the tick sum last changed" — while the agent is
+/// frozen it does not change, so the clock ages for as long as the pane
+/// stays paused. On resume, the first poll may still see the same tick
+/// sum (the agent has not burned a tick yet), and the stuck gate would
+/// then fire on a clock that measured the *freeze* rather than the
+/// agent's work: a hang that never happened.
+///
+/// Clearing the clock gives the resumed agent a fresh chance. The next
+/// poll either sees a moved tick sum (the agent is working again, and
+/// the gate stays quiet) or keeps the fresh clock and ages it normally,
+/// so a genuinely idle agent still becomes stuck.
+fn clear_pause_silence(rec: &mut AgentRecord, still_paused: bool) {
+    if !still_paused && rec.state == AgentState::Paused {
+        rec.cpu_still_since = 0;
+    }
+}
+
 /// Mark a record as paused, or leave it alone.
 ///
 /// A pane whose agent process is stopped is deliberately frozen, not
@@ -2047,6 +2067,10 @@ fn poll_sync_with(
             && !replaced_by_live_agent
         {
             let mut r = rec.clone();
+            // A pane that was paused and is running again must not
+            // inherit the freeze's silence: the still-clock measured
+            // the pause, not the agent's work.
+            clear_pause_silence(&mut r, paused);
             r.session.clone_from(&pane.session);
             r.window.clone_from(&pane.window_name);
             r.command.clone_from(&pane.command);
@@ -2115,6 +2139,14 @@ fn poll_sync_with(
         // re-derives the state and its clock from live evidence, and
         // the pause is applied on top of the result.
         let prev_pause = carried_pause_since(carried);
+        // A pane that was paused and is running again must not inherit
+        // the freeze's silence — the still-clock measured the pause, not
+        // the agent's work, and the merge's stuck gate reads that clock.
+        let mut carried_owned = carried.cloned();
+        if let Some(c) = carried_owned.as_mut() {
+            clear_pause_silence(c, paused);
+        }
+        let carried = carried_owned.as_ref();
         if let Some(mut rec) = merge_record_owned(
             carried,
             lapsed,
@@ -4705,6 +4737,58 @@ mod tests {
         apply_paused(&mut rec, true, now, None);
         assert_eq!(rec.state, AgentState::Paused);
         assert_eq!(rec.state_since, now);
+    }
+
+    #[test]
+    fn a_resumed_agent_is_not_immediately_reported_as_stuck() {
+        // The false alarm this catches: while the agent is frozen it
+        // burns no CPU, so the still-clock ages for the whole pause. On
+        // resume the first poll can still see the same tick sum, and
+        // the stuck gate would fire on a clock that measured the
+        // *freeze* — reporting a hang that never happened, one poll
+        // after the pause the user deliberately ended.
+        let now = 100_000;
+        let mut paused = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        apply_paused(&mut paused, true, now, None);
+        assert_eq!(paused.state, AgentState::Paused);
+        // The pause ages the clock: the frozen agent burned nothing.
+        paused.cpu_still_since = now - 601;
+        // The resume: the pane is running again.
+        let mut resumed = paused.clone();
+        clear_pause_silence(&mut resumed, false);
+        assert_eq!(
+            resumed.cpu_still_since, 0,
+            "the freeze's silence must not be inherited"
+        );
+        // And the merge must not call that a hang.
+        let rec = merge_record(
+            Some(&resumed),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        assert_ne!(
+            rec.state,
+            AgentState::Stuck,
+            "a resumed agent is working again, not hung"
+        );
+    }
+
+    #[test]
+    fn a_pause_that_is_still_on_keeps_its_silence() {
+        // The other half: while the pane is still paused, the clock is
+        // the clock — clearing it would restart it every poll and the
+        // paused duration would never age.
+        let now = 100_000;
+        let mut rec = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        apply_paused(&mut rec, true, now, None);
+        rec.cpu_still_since = now - 601;
+        clear_pause_silence(&mut rec, true);
+        assert_eq!(rec.cpu_still_since, now - 601);
     }
 
     #[test]

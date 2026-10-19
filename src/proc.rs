@@ -651,6 +651,17 @@ fn is_python_argv0(argv0: &str) -> bool {
             .is_some_and(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.'))
 }
 
+/// True when the process's *own* name is an agent binary.
+///
+/// This is the strict test: a process called `pi` is the agent, while a
+/// process that merely mentions `pi` on its command line is a wrapper
+/// around it. The distinction matters when asking "is the agent
+/// stopped?" — a frozen wrapper says nothing about the agent under it.
+fn is_agent_bin(comm: &str) -> bool {
+    let base = proc_base(comm);
+    AGENT_BINS.iter().any(|b| *b == base)
+}
+
 fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
     let find_bin = |name: &str| AGENT_BINS.iter().find(|b| **b == name).copied();
     if let Some(agent) = find_bin(&proc_base(comm)) {
@@ -807,6 +818,54 @@ mod tests {
         assert!(!snap2.is_stopped(100));
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&dir2);
+    }
+
+    /// The agent stopped under a wrapper: the wrapper's command line
+    /// names the agent, so the *wrapper* is what the detector matches
+    /// first — but the wrapper is not what was frozen. The real agent
+    /// under it is, and that is what has to be read.
+    #[test]
+    fn a_stopped_agent_under_a_wrapper_is_reported_as_stopped() {
+        // `sh -c '/bin/muse …'`: the shell's command line names the
+        // agent, so the detector matches the shell. Stopping the agent
+        // underneath it must still read as stopped.
+        let dir = fake_proc_states(
+            "wrapper-stopped",
+            &[
+                ("100", "1", "sh", "sh -c /bin/muse", 10, 5, 1000),
+                ("101", "100", "muse", "/bin/muse", 10, 5, 1001),
+            ],
+            &[("101", 'T')],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        let hit = snap.detect_agent(100).expect("muse detected");
+        assert_eq!(hit.agent, "muse");
+        // The matched process is the wrapper (the pane root)...
+        assert_eq!(hit.pid, 100);
+        assert!(!snap.is_stopped(100), "the wrapper itself is running");
+        // ...but the agent under it is frozen, and that is the truth.
+        assert!(
+            hit.stopped,
+            "the frozen agent under the wrapper must read as stopped"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The wrapper is running and the agent under it is running too:
+    /// nothing is paused.
+    #[test]
+    fn a_running_agent_under_a_wrapper_is_not_stopped() {
+        let dir = fake_proc(
+            "wrapper-running",
+            &[
+                ("100", "1", "sh", "sh -c /bin/muse", 10, 5, 1000),
+                ("101", "100", "muse", "/bin/muse", 10, 5, 1001),
+            ],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        let hit = snap.detect_agent(100).expect("muse detected");
+        assert!(!hit.stopped);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
