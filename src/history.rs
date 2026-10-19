@@ -208,7 +208,9 @@ fn ensure_private_dir(dir: &std::path::Path) -> Result<()> {
     let want = std::fs::Permissions::from_mode(0o700);
     // Only touch the mode when it is wrong: this runs on the append
     // path, and a needless chmod syscall is not worth it.
-    let current = std::fs::metadata(dir).map(|m| m.permissions().mode() & 0o777);
+    let current = std::fs::metadata(dir)
+        .ok()
+        .map(|m| m.permissions().mode() & 0o777);
     if current != Some(0o700) {
         std::fs::set_permissions(dir, want)?;
     }
@@ -234,6 +236,7 @@ pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
         ensure_private_dir(parent)?;
     }
     use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
     let line = serde_json::to_string(entry)?;
     // The lock is taken after the serialization so a serialization
     // failure does not hold it, and before the open so the append
