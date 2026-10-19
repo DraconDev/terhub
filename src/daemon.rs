@@ -2868,6 +2868,150 @@ mod tests {
     static NEXT_TEST_DIR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     #[test]
+    fn a_versioned_request_carries_the_protocol_version() {
+        // The wire shape is what an old client and a new daemon share:
+        // the command stays where it was, the version rides along.
+        let line = serde_json::to_string(&WireRequest::from(&Request::Snapshot)).unwrap();
+        assert_eq!(line, r#"{"cmd":"snapshot","proto":1}"#);
+
+        // A pre-versioned client sends the old shape: no proto at all.
+        // That is how the daemon recognises a legacy client.
+        let legacy: WireRequest = serde_json::from_str(r#"{"cmd":"snapshot"}"#).unwrap();
+        assert_eq!(legacy.cmd, Cmd::Snapshot);
+        assert_eq!(legacy.proto, None, "no proto field means a legacy client");
+
+        // The old wire shapes still parse into the same commands.
+        let reg: WireRequest = serde_json::from_str(
+            r#"{"cmd":"register","pane":"%1","agent":"pi","pid":7,"state":"working"}"#,
+        )
+        .unwrap();
+        assert_eq!(reg.proto, None);
+        let req = Request::try_from(reg).unwrap();
+        match req {
+            Request::Register {
+                pane,
+                agent,
+                pid,
+                state,
+            } => {
+                assert_eq!(pane, "%1");
+                assert_eq!(agent, "pi");
+                assert_eq!(pid, 7);
+                assert_eq!(state, AgentState::Working);
+            }
+            other => panic!("wrong command: {other:?}"),
+        }
+
+        // A command whose payload is missing is an error, not a panic.
+        let broken: WireRequest = serde_json::from_str(r#"{"cmd":"unregister"}"#).unwrap();
+        assert!(Request::try_from(broken).is_err());
+    }
+
+    #[test]
+    fn a_legacy_client_gets_states_it_can_decode() {
+        // The whole point of the down-projection: a client that predates
+        // the `paused` state cannot decode it, and one unknown variant
+        // used to fail the whole snapshot — which the client then
+        // reported as "daemon not running" while the daemon was fine.
+        assert_eq!(legacy_state(AgentState::Paused), AgentState::Idle);
+        // Every other state is one the legacy client already knows.
+        for state in [
+            AgentState::Unknown,
+            AgentState::Working,
+            AgentState::Waiting,
+            AgentState::Error,
+            AgentState::Done,
+            AgentState::Idle,
+            AgentState::Stuck,
+            AgentState::Limited,
+        ] {
+            assert_eq!(legacy_state(state), state, "{state:?} must survive");
+        }
+    }
+
+    /// A response the client can read: one agent in the given state.
+    fn response_with_state(state: &str) -> String {
+        format!(
+            r#"{{"ok":true,"snapshot":{{"agents":[{{"pane":"%1","agent":"pi","state":"{state}","source":"proc","updated_at":1,"state_since":1}}],"updated_at":2}},"proto":1,"build":"0.2.3+abc"}}"#
+        )
+    }
+
+    #[test]
+    fn an_unknown_agent_state_keeps_the_pane_visible() {
+        // A state this build has never heard of is future information,
+        // not corruption: the pane stays listed, as unknown.
+        let resp = decode_response(&response_with_state("hyperfocus")).unwrap();
+        let agents = resp.snapshot.unwrap().agents;
+        assert_eq!(agents.len(), 1, "the pane must survive an unknown state");
+        assert_eq!(agents[0].state, AgentState::Unknown);
+    }
+
+    #[test]
+    fn an_unreadable_response_never_says_daemon_not_running() {
+        // A daemon that answered must never be reported as absent: the
+        // fix for a dead daemon (start one) is useless here.
+        let raw = r#"{"ok":true,"snapshot":{"agents":[{"pane":"%1","agent":"pi","state":"working","source":"proc","updated_at":1,"state_since":1,"ctx_pct":"high"}],"updated_at":2},"proto":1,"build":"0.2.3+abc"}"#;
+        let err = decode_response(raw).unwrap_err();
+        let msg = err.message();
+        assert!(
+            !msg.contains("daemon not running"),
+            "a live daemon must not be reported as absent: {msg}"
+        );
+        assert!(
+            msg.contains("daemon running but the response could not be read"),
+            "unreadable: {msg}"
+        );
+        assert!(!err.is_unreachable(), "only a missing daemon is unreachable");
+    }
+
+    #[test]
+    fn a_version_mismatch_names_both_versions() {
+        // The diagnostic has to say what to do, not just that something
+        // is wrong: "run `make build`" is the whole fix.
+        let raw = r#"{"ok":true,"snapshot":{"agents":[],"updated_at":2},"proto":99,"build":"9.9.9+zzz"}"#;
+        let err = decode_response(raw).unwrap();
+        assert!(err.ok);
+        // A decodable response from another version is not an error, but
+        // it is worth saying out loud.
+        let resp = SnapshotResponse {
+            snapshot: err.snapshot.unwrap(),
+            daemon_proto: err.proto,
+            daemon_build: err.build,
+        };
+        let note = compat_note(&resp).expect("a version mismatch must be reported");
+        assert!(note.contains("client proto 1"), "{note}");
+        assert!(note.contains("daemon proto 99"), "{note}");
+        assert!(note.contains("make build"), "{note}");
+
+        let build = build_note(&resp).expect("a build mismatch must be reported");
+        assert!(build.contains("9.9.9+zzz"), "{build}");
+    }
+
+    #[test]
+    fn a_matching_daemon_reports_nothing() {
+        let resp = SnapshotResponse {
+            snapshot: Snapshot::default(),
+            daemon_proto: Some(PROTO_VERSION),
+            daemon_build: Some(build_label()),
+        };
+        assert!(compat_note(&resp).is_none());
+        assert!(build_note(&resp).is_none());
+    }
+
+    #[test]
+    fn a_legacy_daemon_is_reported_as_legacy() {
+        // No proto at all: the daemon predates the versioned protocol.
+        // It still serves usable data, so this is a note, not a failure.
+        let resp = SnapshotResponse {
+            snapshot: Snapshot::default(),
+            daemon_proto: None,
+            daemon_build: None,
+        };
+        let note = compat_note(&resp).expect("a legacy daemon must be reported");
+        assert!(note.contains("make build"), "{note}");
+    }
+
+    #[test]
     fn respawn_backoff_gates_repeated_attempts() {
         // A daemon that cannot come up must not be re-forked every tick:
         // only the first attempt after a quiet period is due.
