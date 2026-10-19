@@ -302,6 +302,31 @@ impl Snapshot {
         None
     }
 
+    /// The process a freeze should target for a pane: the agent
+    /// itself when one runs there, else the pane root.
+    ///
+    /// A tmux pane root sits in its own process group, and an
+    /// interactive shell gives its foreground job another one. So
+    /// signalling the pane root's group never reaches the agent at
+    /// all — and tmux resumes a pane whose root stopped, so the freeze
+    /// would not hold even for the part it did reach. The agent's own
+    /// group is the right target: it holds the agent and everything it
+    /// spawned, and leaving the pane's shell running keeps tmux out of
+    /// it.
+    ///
+    /// Returns the pid and its starttime, the pair the signalling
+    /// helpers use to refuse a recycled pid.
+    pub fn freeze_target(&self, pane_pid: u32) -> Option<(u32, u64)> {
+        if let Some(agent) = self.agent_pid(pane_pid) {
+            return Some((agent, self.proc_start(agent).unwrap_or(0)));
+        }
+        // No agent in the pane: the pane root is all there is to freeze.
+        if pane_pid != 0 && self.procs.contains_key(&pane_pid) {
+            return Some((pane_pid, self.proc_start(pane_pid).unwrap_or(0)));
+        }
+        None
+    }
+
     /// The process that is *really* the agent at or below `root`: the
     /// nearest one whose own name is an agent binary.
     ///

@@ -4595,12 +4595,9 @@ impl App {
         // A pane with no detected agent falls back to the pane root:
         // that is all there is to freeze.
         let snap = crate::proc::Snapshot::capture();
-        let (target, target_start) = match snap.agent_pid(pid) {
-            Some(agent_pid) => {
-                let start = snap.proc_start(agent_pid).unwrap_or(0);
-                (agent_pid, start)
-            }
-            None => (pid, pid_start),
+        let Some((target, target_start)) = snap.freeze_target(pid) else {
+            self.set_status(format!("no pid for pane {id}"));
+            return;
         };
         // Identity gate: the starttime was stamped when the process was
         // seen; a recycled pid fails the starttime check inside
