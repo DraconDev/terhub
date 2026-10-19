@@ -4581,22 +4581,43 @@ impl App {
             self.set_status(format!("no pid for pane {id}"));
             return;
         }
-        // Identity gate: pid_start was stamped when the pane was
-        // listed; a recycled pid fails the starttime check inside
+        // Freeze the *agent*, not the pane root.
+        //
+        // tmux puts each pane root in its own process group, and an
+        // interactive shell gives its foreground job another one. So
+        // signalling the pane root's group never reaches the agent at
+        // all — and tmux resumes a pane whose root stopped, so the
+        // freeze would not hold even for the part it did reach. The
+        // agent's own group is the right target: it holds the agent
+        // and everything it spawned, and leaving the pane's shell
+        // running keeps tmux out of it.
+        //
+        // A pane with no detected agent falls back to the pane root:
+        // that is all there is to freeze.
+        let snap = crate::proc::Snapshot::capture();
+        let (target, target_start) = match snap.agent_pid(pid) {
+            Some(agent_pid) => {
+                let start = snap.proc_start(agent_pid).unwrap_or(0);
+                (agent_pid, start)
+            }
+            None => (pid, pid_start),
+        };
+        // Identity gate: the starttime was stamped when the process was
+        // seen; a recycled pid fails the starttime check inside
         // pause/resume_group instead of stopping a foreign group.
         // 0 (unknown, e.g. remote rows) skips the check.
-        let expect = if pid_start != 0 {
-            Some(pid_start)
+        let expect = if target_start != 0 {
+            Some(target_start)
         } else {
             None
         };
-        if crate::proc::is_stopped(pid) {
-            match crate::proc::resume_group(pid, expect) {
+        if crate::proc::is_stopped(target) {
+            match crate::proc::resume_group(target, expect) {
                 Ok(_) => self.set_status(format!("resumed {id}")),
                 Err(e) => self.set_status(format!("resume failed: {e}")),
             }
         } else {
-            match crate::proc::pause_group(pid, expect) {
+            match crate::proc::pause_group(target, expect) {
                 Ok(_) => self.set_status(format!("paused {id}")),
                 Err(e) => self.set_status(format!("pause failed: {e}")),
             }
