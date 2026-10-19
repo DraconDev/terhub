@@ -492,7 +492,7 @@ impl Response {
             snapshot: None,
             error: None,
             proto: Some(PROTO_VERSION),
-            build: Some(build_id().to_string()),
+            build: Some(build_label()),
         }
     }
 
@@ -502,7 +502,7 @@ impl Response {
             snapshot: None,
             error: Some(msg),
             proto: Some(PROTO_VERSION),
-            build: Some(build_id().to_string()),
+            build: Some(build_label()),
         }
     }
 
@@ -512,7 +512,7 @@ impl Response {
             snapshot: Some(snapshot),
             error: None,
             proto: Some(PROTO_VERSION),
-            build: Some(build_id().to_string()),
+            build: Some(build_label()),
         }
     }
 }
@@ -2680,6 +2680,13 @@ pub fn build_id() -> &'static str {
     crate::BUILD_ID
 }
 
+/// The build label the client and the daemon compare: the package
+/// version plus the source fingerprint. Two processes agree on "same
+/// build" only when both parts agree.
+pub fn build_label() -> String {
+    format!("{}+{}", crate::VERSION, crate::BUILD_ID)
+}
+
 /// Send a request to the daemon and decode its answer.
 ///
 /// The error type distinguishes "no daemon" from "a daemon I cannot
@@ -2797,12 +2804,12 @@ pub fn compat_note(resp: &SnapshotResponse) -> Option<String> {
 /// client, or `None` when it is.
 pub fn build_note(resp: &SnapshotResponse) -> Option<String> {
     let daemon = resp.daemon_build.as_deref()?;
-    if daemon == crate::BUILD_ID {
+    if daemon == build_label() {
         None
     } else {
         Some(format!(
             "daemon build {daemon} is not this build ({}) — run `make build`",
-            crate::BUILD_ID
+            build_label()
         ))
     }
 }

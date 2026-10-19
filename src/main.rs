@@ -1023,12 +1023,49 @@ fn cmd_hooks(action: &HooksAction) -> i32 {
 fn cmd_daemon(action: &DaemonAction) -> i32 {
     match action {
         DaemonAction::Status => {
-            if daemon::daemon_alive() {
-                println!("running ({})", daemon::socket_path().display());
-                0
-            } else {
+            if !daemon::daemon_alive() {
                 println!("not running");
-                1
+                return 1;
+            }
+            println!("running ({})", daemon::socket_path().display());
+            // Both identities, side by side: a daemon from another
+            // build is the failure that looks like "no daemon" from
+            // the outside, so it has to be visible here.
+            match daemon::fetch_snapshot_detailed(Duration::from_secs(2)) {
+                Ok(resp) => {
+                    let daemon_build = resp
+                        .daemon_build
+                        .clone()
+                        .unwrap_or_else(|| "unknown (pre-versioned daemon)".to_string());
+                    let daemon_proto = resp
+                        .daemon_proto
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "none (pre-versioned daemon)".to_string());
+                    println!("daemon build {daemon_build} (proto {daemon_proto})");
+                    println!(
+                        "client build {} (proto {})",
+                        daemon::build_label(),
+                        daemon::PROTO_VERSION
+                    );
+                    let mut mismatch = false;
+                    for note in [daemon::compat_note(&resp), daemon::build_note(&resp)]
+                        .into_iter()
+                        .flatten()
+                    {
+                        println!("{note}");
+                        mismatch = true;
+                    }
+                    if mismatch { 1 } else { 0 }
+                }
+                Err(e) => {
+                    println!(
+                        "client build {} (proto {})",
+                        daemon::build_label(),
+                        daemon::PROTO_VERSION
+                    );
+                    eprintln!("terhub: {}", e.message());
+                    1
+                }
             }
         }
         DaemonAction::Start => {
