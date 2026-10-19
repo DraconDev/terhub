@@ -716,6 +716,10 @@ impl Server {
             );
         }
         history::ensure_ledger_mode(&history::ledger_path());
+        // Collect the crash leftovers of the ledger's atomic writes.
+        // They are megabytes each on a busy ledger, and nothing else
+        // would ever remove them.
+        crate::config::sweep_orphan_tmps(&history::data_dir());
         let sock = self.runtime.join("terhubd.sock");
         let pid_file = self.runtime.join("terhubd.pid");
         // Single-instance lock, held for the daemon's whole life. The

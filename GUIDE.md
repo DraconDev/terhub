@@ -375,6 +375,43 @@ per 2s so an unbootable daemon is retried instead of fork-storming. The
 title keeps saying `daemon down` until the next good snapshot, so the
 error is never hidden — it is just repaired too.
 
+### Client and daemon must be the same build
+
+`terhub daemon status` prints both identities side by side:
+
+```sh
+$ terhub daemon status
+running (/run/user/1000/terhub/terhubd.sock)
+daemon build 0.2.3+3f2a1b0c9d8e7f60 (proto 1)
+client build 0.2.3+3f2a1b0c9d8e7f60 (proto 1)
+```
+
+The *build* is a fingerprint of the sources the binary was built from
+(the same one in every binary of the package), and *proto* is the wire
+protocol version. The two must agree: a client that cannot decode what
+the daemon says would otherwise look exactly like a daemon that is not
+running, and the TUI would show `daemon down` with empty columns while a
+healthy daemon kept serving. It does not:
+
+- The client sends its protocol version; the daemon answers with its own.
+  A mismatch is reported by name — `daemon build incompatible: client
+  proto 1 / daemon proto 2 — run `make build``.
+- A client from *before* the protocol was versioned keeps working: the
+  daemon recognizes the old request shape and answers it in a shape that
+  client can read (states it does not know are down-projected to the
+  nearest state it does).
+- A state this build has never heard of decodes as `unknown` and the
+  pane stays listed, instead of failing the whole snapshot.
+- The TUI distinguishes `daemon down` (no daemon — start one) from
+  `daemon incompatible` (a daemon answered, this client cannot read it
+  — rebuild). It never re-forks the daemon for the second case: the
+  daemon is already running, and re-forking it only fills the log with
+  "another terhub daemon already holds the lock".
+
+So a mismatch is fixed by one command: `make build` (build + install,
+client and daemon together), then `terhub daemon stop && terhub daemon
+start` so the running daemon is the one you just built.
+
 Per pane it merges three signals:
 
 1. **Hook events** (`terhub hook …`, see below) — authoritative while fresh.
@@ -701,6 +738,26 @@ transition is logged (working and idle included), so WORK/IDLE columns
 reflect real time — but only from this version on; older ledger ranges
 logged attention states only, and show 0 there.
 
+### A torn ledger
+
+```sh
+terhub history status     # size, line count, quarantined lines
+terhub history repair     # move the torn lines into an archive
+```
+
+A crash can cut a ledger line in half. The prune keeps such a line as a
+`__corrupt__` entry — the data is never dropped — but a hot ledger full
+of them is a ledger nobody can read, and their count hides new damage in
+the noise of old damage. `terhub history repair` moves them out: the hot
+ledger parses cleanly again, and the torn lines are preserved beside it
+in `activity.jsonl.quarantine.jsonl`, with the raw head, the parse
+reason, and the timestamp the line carried. Nothing is reconstructed — a
+line that was cut in half cannot honestly be completed, and inventing the
+missing half would fabricate history.
+
+`terhub history status` always reports the count, so "0" is something
+you can check after a repair.
+
 ## Automation
 
 `~/.config/terhub/automation.toml` holds rules that act on agent state
@@ -964,6 +1021,16 @@ default one to "isolate" a test: it destroys live sessions.
 - **"daemon not running"**: `terhub daemon start`. Only one daemon per
   runtime dir; a second start says "already listening". A failed start
   prints the tail of `$XDG_RUNTIME_DIR/terhub/terhubd.log` with the reason.
+- **"daemon incompatible" in the TUI title, or "daemon build
+  incompatible"**: the daemon is running, but the client cannot read
+  what it says — two different builds. `terhub daemon status` prints both
+  identities; `make build` then `terhub daemon stop && terhub daemon
+  start` puts them back in step. A client from before the protocol was
+  versioned keeps working: the daemon serves it the old shape.
+- **"daemon running but the response could not be read"**: the daemon
+  answered, but the answer is not readable by this client. Same fix as
+  above, and the message deliberately does *not* say "daemon not
+  running": a daemon that answered must never be reported as absent.
 - **Pane shows no agent**: idle shells are skipped until a hook, a known
   agent process, or a screen pattern claims them. Add a manifest or emit
   hooks from the agent; unknown agent binaries are a feature request.

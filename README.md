@@ -119,6 +119,24 @@ pane's shell stays alive. The mark is read from the process state on
 every poll, so it cannot go stale, and it is persisted in the registry
 so it survives a daemon restart.
 
+The client and the daemon speak a versioned protocol, and
+`terhub daemon status` prints both build identities so a mismatch shows
+up before it bites:
+
+```sh
+$ terhub daemon status
+running (/run/user/1000/terhub/terhubd.sock)
+daemon build 0.2.3+3f2a1b0c9d8e7f60 (proto 1)
+client build 0.2.3+3f2a1b0c9d8e7f60 (proto 1)
+```
+
+Different builds are reported by name (`daemon build incompatible: client
+proto 1 / daemon proto 2 — run `make build``) instead of masquerading as
+a dead daemon; a client from before the protocol was versioned keeps
+working, because the daemon serves it the shape it can read. Fix a
+mismatch with `make build`, then `terhub daemon stop && terhub daemon
+start`.
+
 ## Tray icon (KDE/Plasma)
 
 ```sh
