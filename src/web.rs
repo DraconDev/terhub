@@ -189,8 +189,16 @@ async fn api_stats(Query(q): Query<StatsQuery>) -> impl IntoResponse {
         }
     };
     // Ledger read + span build are blocking file/CPU work: off the workers.
+    // The windowed read keeps only the range's entries (plus the
+    // anchors for the spans that were still open at its edge), so the
+    // dashboard's 2-second refresh does not re-parse the whole ledger.
     let rows = tokio::task::spawn_blocking(move || {
-        stats_rows(&h::read_entries(&h::ledger_path()), since, group, now)
+        stats_rows(
+            &h::read_entries_windowed(&h::ledger_path(), since),
+            since,
+            group,
+            now,
+        )
     })
     .await;
     match rows {
@@ -226,7 +234,7 @@ async fn api_timeline(Query(q): Query<TimelineQuery>) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(200);
     let spans = tokio::task::spawn_blocking(move || {
         timeline_rows(
-            &h::read_entries(&h::ledger_path()),
+            &h::read_entries_windowed(&h::ledger_path(), since),
             since,
             session.as_deref(),
             agent.as_deref(),

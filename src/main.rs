@@ -123,6 +123,11 @@ enum Cmd {
         #[command(subcommand)]
         action: HooksAction,
     },
+    /// Activity ledger health.
+    History {
+        #[command(subcommand)]
+        action: HistoryAction,
+    },
     /// Jump to the agent waiting longest.
     Attend {
         /// Cycle to the next needy agent instead of the longest-waiting.
@@ -383,6 +388,12 @@ enum HooksAction {
         #[arg(value_parser = ["all", "claude", "pi"], default_value = "all")]
         agent: String,
     },
+}
+
+#[derive(Subcommand)]
+enum HistoryAction {
+    /// Show the ledger's size, its cap and its health.
+    Status,
 }
 
 /// Print a line, silently tolerating closed pipes (`| head`).
@@ -869,6 +880,47 @@ fn read_stdin_text() -> String {
     }
 }
 
+fn cmd_history(action: &HistoryAction) -> i32 {
+    use terhub::history as h;
+    match action {
+        HistoryAction::Status => {
+            let path = h::ledger_path();
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let cap = h::LEDGER_MAX_BYTES as u64;
+            print_out(&format!("ledger:      {}", path.display()));
+            print_out(&format!(
+                "size:        {} (cap {})",
+                fmt_bytes(size),
+                fmt_bytes(cap)
+            ));
+            print_out(&format!("lines:       {}", h::line_count(&path)));
+            let quarantined = h::corrupt_count(&path);
+            if quarantined > 0 {
+                print_out(&format!(
+                    "quarantined: {quarantined} torn line(s) — kept by the prune; see the warning from `terhub stats`"
+                ));
+            }
+            0
+        }
+    }
+}
+
+/// Human-readable byte count.
+fn fmt_bytes(n: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * 1024;
+    const GB: u64 = 1024 * 1024 * 1024;
+    if n >= GB {
+        format!("{:.1} GB", n as f64 / GB as f64)
+    } else if n >= MB {
+        format!("{:.1} MB", n as f64 / MB as f64)
+    } else if n >= KB {
+        format!("{:.1} KB", n as f64 / KB as f64)
+    } else {
+        format!("{n} B")
+    }
+}
+
 fn cmd_hooks(action: &HooksAction) -> i32 {
     use terhub::hooks;
     match action {
@@ -1249,8 +1301,11 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
         GroupByArg::Session => h::GroupBy::Session,
     };
     let path = h::ledger_path();
-    let entries = h::read_entries(&path);
-    warn_corrupt(&path);
+    // The windowed read: only the entries inside the range are
+    // deserialized, plus the anchors that keep the spans that were
+    // still open at the range's edge open.
+    let entries = h::read_entries_windowed(&path, since);
+    warn_corrupt(&entries, &path);
     let spans = h::build_spans(&entries, now);
     let rows = h::stats(&spans, since, group);
     if rows.iter().all(|r| r.total() == 0) {
@@ -1264,9 +1319,10 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
 /// Print a notice when the ledger carries quarantined (torn) lines,
 /// plus the first quarantine's reason (parse error + raw head) so the
 /// user can act on it without a dedicated `history check` subcommand.
-fn warn_corrupt(path: &std::path::Path) {
-    use terhub::history as h;
-    let entries = h::read_entries(path);
+///
+/// The entries are passed in rather than read again: a second full
+/// read of the ledger doubled the cost of every `stats` and `report`.
+fn warn_corrupt(entries: &[terhub::history::Entry], path: &std::path::Path) {
     let n = entries.iter().filter(|e| e.kind == "__corrupt__").count();
     if n == 0 {
         return;
@@ -1287,8 +1343,8 @@ fn cmd_report(since: &str, json: bool, markdown: bool) -> i32 {
         return 1;
     };
     let path = h::ledger_path();
-    let entries = h::read_entries(&path);
-    warn_corrupt(&path);
+    let entries = h::read_entries_windowed(&path, since);
+    warn_corrupt(&entries, &path);
     let spans = h::build_spans(&entries, now);
     let data = h::ReportData {
         by_day: h::stats(&spans, since, h::GroupBy::Day),
@@ -1333,9 +1389,10 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
     let Some(since) = resolve_since(since, now) else {
         return 1;
     };
-    let entries: Vec<h::Entry> = h::read_entries(&h::ledger_path())
+    // The window is applied inside the read, so the lines outside it
+    // are never deserialized.
+    let entries: Vec<h::Entry> = h::read_entries_since(&h::ledger_path(), since)
         .into_iter()
-        .filter(|e| since.is_none_or(|c| e.t >= c))
         .filter(|e| kind == "all" || e.kind == kind)
         .collect();
     if entries.is_empty() {
@@ -1400,10 +1457,7 @@ fn cmd_recap(since: &str, pane: Option<&str>, limit: usize) -> i32 {
     let Some(since) = resolve_since(since, now) else {
         return 1;
     };
-    let entries: Vec<h::Entry> = h::read_entries(&h::ledger_path())
-        .into_iter()
-        .filter(|e| since.is_none_or(|c| e.t >= c))
-        .collect();
+    let entries: Vec<h::Entry> = h::read_entries_since(&h::ledger_path(), since);
     let prompts = h::recent_prompts(&entries, pane, limit.max(1));
     if prompts.is_empty() {
         print_out("no prompts in range");
@@ -1432,7 +1486,10 @@ fn cmd_timeline(
     let Some(since) = resolve_since(since, now) else {
         return 1;
     };
-    let mut spans = h::build_spans(&h::read_entries(&h::ledger_path()), now);
+    // The windowed read keeps the spans that were open at the range's
+    // edge: the timeline shows how long each state lasted, and a span
+    // that started before the range still contributed to it.
+    let mut spans = h::build_spans(&h::read_entries_windowed(&h::ledger_path(), since), now);
     spans.retain(|s| {
         since.is_none_or(|c| s.end >= c)
             && session.is_none_or(|f| s.session.contains(f))
@@ -2481,6 +2538,7 @@ fn real_main() -> i32 {
         Some(Cmd::Unregister { pane }) => cmd_unregister(&pane),
         Some(Cmd::Daemon { action }) => cmd_daemon(&action),
         Some(Cmd::Hooks { action }) => cmd_hooks(&action),
+        Some(Cmd::History { action }) => cmd_history(&action),
         Some(Cmd::Attend { cycle, list }) => cmd_attend(cycle, list),
         Some(Cmd::Peek { plain, pick }) => cmd_peek(plain, pick),
         Some(Cmd::StatusLine { pane }) => cmd_status_line(pane.as_deref()),

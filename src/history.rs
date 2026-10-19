@@ -251,7 +251,8 @@ pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
     Ok(())
 }
 
-/// Stream the ledger one line at a time.
+/// Stream the ledger one line at a time, reporting each line's byte
+/// offset.
 ///
 /// A line torn mid–UTF-8 character (a crash/ENOSPC inside
 /// `append_entry`'s one write, splitting a multi-byte char in a
@@ -266,20 +267,63 @@ pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
 /// The bytes are read in chunks rather than slurped: a 34 MB ledger
 /// costs one 64 KB buffer instead of the whole file plus a `Vec<String>`
 /// holding a copy of every line.
-fn for_each_line(path: &std::path::Path, mut f: impl FnMut(&str)) -> std::io::Result<()> {
+fn for_each_line_offset(
+    path: &std::path::Path,
+    mut f: impl FnMut(u64, &str),
+) -> std::io::Result<()> {
     use std::io::BufRead;
     let file = std::fs::File::open(path)?;
     let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
     let mut buf: Vec<u8> = Vec::with_capacity(512);
+    let mut offset: u64 = 0;
     loop {
         buf.clear();
         let n = reader.read_until(b'\n', &mut buf)?;
         if n == 0 {
             break;
         }
-        f(&String::from_utf8_lossy(&buf));
+        f(offset, &String::from_utf8_lossy(&buf));
+        offset += n as u64;
     }
     Ok(())
+}
+
+/// [`for_each_line_offset`] for callers that do not need the offsets.
+fn for_each_line(path: &std::path::Path, mut f: impl FnMut(&str)) -> std::io::Result<()> {
+    for_each_line_offset(path, |_, line| f(line))
+}
+
+/// The timestamp, kind and pane from a ledger line's fixed prefix,
+/// without deserializing it.
+///
+/// `serde_json` writes the fields in declaration order, and the first
+/// three are `t`, `kind` and `pane` — a number, a fixed set of kinds,
+/// and a pane id. None of them is free text, so the prefix can be
+/// read positionally. A line that does not have the expected shape
+/// returns `None` and is parsed in full, so a future field order
+/// cannot silently change the answer.
+fn peek(line: &str) -> Option<(u64, &str, &str)> {
+    let rest = line.strip_prefix("{\"t\":")?;
+    let end = rest.find(|c: char| !c.is_ascii_digit())?;
+    let t: u64 = rest[..end].parse().ok()?;
+    let rest = rest[end..].strip_prefix(",\"kind\":\"")?;
+    let k_end = rest.find('"')?;
+    let kind = &rest[..k_end];
+    let rest = rest[k_end..].strip_prefix(",\"pane\":\"")?;
+    let p_end = rest.find('"')?;
+    let pane = &rest[..p_end];
+    Some((t, kind, pane))
+}
+
+/// One entry, read by its byte offset in the file.
+fn read_entry_at(path: &std::path::Path, offset: u64) -> Option<Entry> {
+    use std::io::{BufRead, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    file.seek(SeekFrom::Start(offset)).ok()?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    serde_json::from_str(line.trim()).ok()
 }
 
 /// The timestamp at the head of a ledger line, when the line has the
@@ -303,8 +347,78 @@ fn entry_time(line: &str) -> Option<u64> {
 /// line is parsed, so a one-hour query no longer costs the same as an
 /// all-time one: on a 34 MB ledger the all-time read was 5.9s and the
 /// one-hour read 3.5s, because the parse happened either way.
+///
+/// This drops the entries before the window outright, so the spans
+/// that were still open at the window's edge lose their start. Use
+/// [`read_entries_windowed`] wherever spans matter.
 pub fn read_entries_since(path: &std::path::Path, since: Option<u64>) -> Vec<Entry> {
     read_entries_result(path, since).unwrap_or_default()
+}
+
+/// The entries a windowed query needs: everything at or after the
+/// window, plus the anchors that keep the open spans open.
+///
+/// A span runs from one transition to the next for that pane, or to
+/// `now` when there is no next one. Dropping the transitions before
+/// the window would drop the *start* of the span that is still open at
+/// the window's edge — and `stats` clips that span to the window, so
+/// the time it contributes would be lost. The anchors are the last
+/// agent entry per pane, and the last human entry, before the window:
+/// with those in place the spans are the ones an all-time read would
+/// produce.
+///
+/// The anchors are remembered by byte offset rather than by value, so
+/// the lines outside the window are never copied or parsed.
+pub fn read_entries_windowed(path: &std::path::Path, since: Option<u64>) -> Vec<Entry> {
+    let Some(since) = since else {
+        return read_entries(path);
+    };
+    let mut in_window: Vec<Entry> = Vec::new();
+    let mut agent_at: HashMap<String, u64> = HashMap::new();
+    let mut human_at: Option<u64> = None;
+    let _ = for_each_line_offset(path, |offset, raw| {
+        let line = raw.trim();
+        if line.is_empty() {
+            return;
+        }
+        let Some((t, kind, pane)) = peek(line) else {
+            // An unexpected shape: parse it in full and decide there.
+            if let Ok(e) = serde_json::from_str::<Entry>(line)
+                && e.t >= since
+            {
+                in_window.push(e);
+            }
+            return;
+        };
+        if t >= since {
+            if let Ok(e) = serde_json::from_str::<Entry>(line) {
+                in_window.push(e);
+            }
+            return;
+        }
+        // Before the window: remember where the last anchoring entry
+        // of each kind is, so it can be read afterwards.
+        match kind {
+            "agent" => {
+                agent_at.insert(pane.to_string(), offset);
+            }
+            "human" => human_at = Some(offset),
+            _ => {}
+        }
+    });
+    let mut out: Vec<Entry> = Vec::with_capacity(in_window.len() + agent_at.len() + 1);
+    for offset in agent_at.values() {
+        if let Some(e) = read_entry_at(path, *offset) {
+            out.push(e);
+        }
+    }
+    if let Some(offset) = human_at
+        && let Some(e) = read_entry_at(path, offset)
+    {
+        out.push(e);
+    }
+    out.extend(in_window);
+    out
 }
 
 /// The read that can fail, for the callers that must not treat a
@@ -510,11 +624,38 @@ fn corrupt_summary(raw: &str, reason: &serde_json::Error) -> String {
 /// Number of quarantined (torn) lines currently in the ledger. The
 /// `history status` / CLI surfaces this so the user can see and act on
 /// a crash that left a torn line behind.
+///
+/// The kind is at a fixed position in the line, so the count does not
+/// need a full parse of every entry.
 pub fn corrupt_count(path: &std::path::Path) -> usize {
-    read_entries(path)
-        .iter()
-        .filter(|e| e.kind == "__corrupt__")
-        .count()
+    let mut n = 0;
+    let _ = for_each_line(path, |raw| {
+        let line = raw.trim();
+        if line.is_empty() {
+            return;
+        }
+        let is_corrupt = match peek(line) {
+            Some((_, kind, _)) => kind == "__corrupt__",
+            None => serde_json::from_str::<Entry>(line)
+                .map(|e| e.kind == "__corrupt__")
+                .unwrap_or(false),
+        };
+        if is_corrupt {
+            n += 1;
+        }
+    });
+    n
+}
+
+/// Number of ledger lines, quarantined ones included.
+pub fn line_count(path: &std::path::Path) -> usize {
+    let mut n = 0;
+    let _ = for_each_line(path, |raw| {
+        if !raw.trim().is_empty() {
+            n += 1;
+        }
+    });
+    n
 }
 
 // ---------------------------------------------------------------------------
