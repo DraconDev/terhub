@@ -1305,7 +1305,7 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
     // deserialized, plus the anchors that keep the spans that were
     // still open at the range's edge open.
     let entries = h::read_entries_windowed(&path, since);
-    warn_corrupt(&entries, &path);
+    warn_corrupt(&path);
     let spans = h::build_spans(&entries, now);
     let rows = h::stats(&spans, since, group);
     if rows.iter().all(|r| r.total() == 0) {
@@ -1320,10 +1320,14 @@ fn cmd_stats(since: &str, group_by: GroupByArg) -> i32 {
 /// plus the first quarantine's reason (parse error + raw head) so the
 /// user can act on it without a dedicated `history check` subcommand.
 ///
-/// The entries are passed in rather than read again: a second full
-/// read of the ledger doubled the cost of every `stats` and `report`.
-fn warn_corrupt(entries: &[terhub::history::Entry], path: &std::path::Path) {
-    let n = entries.iter().filter(|e| e.kind == "__corrupt__").count();
+/// The ledger is scanned for this directly rather than taken from the
+/// read's entries: the quarantined lines carry `t = 0`, so a windowed
+/// read leaves them out — and the warning must not depend on the
+/// window. The scan reads the kind from each line's prefix, so it
+/// does not deserialize the whole ledger.
+fn warn_corrupt(path: &std::path::Path) {
+    use terhub::history as h;
+    let n = h::corrupt_count(path);
     if n == 0 {
         return;
     }
@@ -1331,8 +1335,8 @@ fn warn_corrupt(entries: &[terhub::history::Entry], path: &std::path::Path) {
         "warning: {n} quarantined ledger line(s) at {} (prune keeps them tagged __corrupt__ so they survive; inspect the first with):",
         path.display()
     );
-    if let Some(q) = entries.iter().find(|e| e.kind == "__corrupt__") {
-        eprintln!("  first quarantine: {}", q.summary);
+    if let Some(q) = h::first_corrupt_summary(path) {
+        eprintln!("  first quarantine: {q}");
     }
 }
 
@@ -1344,7 +1348,7 @@ fn cmd_report(since: &str, json: bool, markdown: bool) -> i32 {
     };
     let path = h::ledger_path();
     let entries = h::read_entries_windowed(&path, since);
-    warn_corrupt(&entries, &path);
+    warn_corrupt(&path);
     let spans = h::build_spans(&entries, now);
     let data = h::ReportData {
         by_day: h::stats(&spans, since, h::GroupBy::Day),

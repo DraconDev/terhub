@@ -247,7 +247,16 @@ pub fn append_entry(path: &std::path::Path, entry: &Entry) -> Result<()> {
         .append(true)
         .mode(0o600)
         .open(path)?;
-    writeln!(file, "{line}")?;
+    // One write, newline included. `writeln!` issues the content and
+    // the newline as two separate writes, and two concurrent appends
+    // could interleave into one line ("{...}{...}") — which the reader
+    // then quarantines as corrupt. A single write to an O_APPEND fd
+    // is atomic; the ledger already holds 43 such lines from before
+    // this was fixed.
+    let mut buf = String::with_capacity(line.len() + 1);
+    buf.push_str(&line);
+    buf.push('\n');
+    file.write_all(buf.as_bytes())?;
     Ok(())
 }
 
@@ -309,7 +318,8 @@ fn peek(line: &str) -> Option<(u64, &str, &str)> {
     let rest = rest[end..].strip_prefix(",\"kind\":\"")?;
     let k_end = rest.find('"')?;
     let kind = &rest[..k_end];
-    let rest = rest[k_end..].strip_prefix(",\"pane\":\"")?;
+    // The kind's closing quote comes first, then the next key.
+    let rest = rest[k_end..].strip_prefix("\",\"pane\":\"")?;
     let p_end = rest.find('"')?;
     let pane = &rest[..p_end];
     Some((t, kind, pane))
@@ -656,6 +666,36 @@ pub fn line_count(path: &std::path::Path) -> usize {
         }
     });
     n
+}
+
+/// The first quarantined line's stored reason, if there is one.
+///
+/// Scanned directly rather than taken from a read's entries: the
+/// quarantined entries carry `t = 0`, so a windowed read leaves them
+/// out — and the warning about them must not depend on the window.
+pub fn first_corrupt_summary(path: &std::path::Path) -> Option<String> {
+    let mut found: Option<String> = None;
+    let _ = for_each_line(path, |raw| {
+        if found.is_some() {
+            return;
+        }
+        let line = raw.trim();
+        if line.is_empty() {
+            return;
+        }
+        let is_corrupt = match peek(line) {
+            Some((_, kind, _)) => kind == "__corrupt__",
+            None => serde_json::from_str::<Entry>(line)
+                .map(|e| e.kind == "__corrupt__")
+                .unwrap_or(false),
+        };
+        if is_corrupt {
+            found = serde_json::from_str::<Entry>(line)
+                .map(|e| e.summary)
+                .ok();
+        }
+    });
+    found
 }
 
 // ---------------------------------------------------------------------------
@@ -1615,8 +1655,8 @@ mod tests {
         let size = std::fs::metadata(&path).unwrap().len();
         assert!(size > 1000, "fixture too small to be interesting: {size}");
         // A cap that only fits the last three entries.
-        let cap = 400;
-        let kept = prune_bounded(&path, 1_000_000, 90, cap).unwrap();
+        let cap: u64 = 400;
+        let kept = prune_bounded(&path, 1_000_000, 90, cap as usize).unwrap();
         assert!(kept < 10, "the cap was not applied: {kept} entries kept");
         let after = std::fs::metadata(&path).unwrap().len();
         assert!(after <= cap, "ledger is {after} bytes, over the {cap} cap");
@@ -1655,7 +1695,6 @@ mod tests {
 
     #[test]
     fn append_creates_a_private_ledger() {
-        // The ledger holds prompts, summaries and project paths, and
         // the daemon's own log is already 0600 for that reason.
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("terhub-perm-{}", std::process::id()));
