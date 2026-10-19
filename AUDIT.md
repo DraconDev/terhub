@@ -30,6 +30,10 @@ lifecycle, ledger scale, and the state of the improvement backlog**.
 | A-18 | MED | backends | `screen` is the only backend with no timeout, and it hides failures |
 | A-19 | MED | release | the tag workflow skips `cargo deny` and `check-install` |
 | A-20 | MED | release | the declared MSRV 1.88 is never built |
+| A-32 | MED | tui | the sparkline's 64 KB tail slice can land mid-character |
+| A-33 | MED | tui | the 3 s tick re-captures the preview synchronously (10 s SSH on the UI thread) |
+| A-34 | MED | tui | three of four "clear the search" paths leave the filter chip stale |
+| A-35 | MED | tui | deleting the last saved filter wedges the Settings popup |
 | A-8 | LOW | repo | repo and doc hygiene |
 | A-21 | LOW | mcp | the state filter's message lists 6 of the 8 real states |
 | A-22 | LOW | hooks | the installed hook exits 1 outside tmux |
@@ -41,10 +45,6 @@ lifecycle, ledger scale, and the state of the improvement backlog**.
 | A-28 | LOW | fleet | `host doctor` discards the ssh error |
 | A-29 | LOW | ops | crash-orphaned temp files in three places, never cleaned |
 | A-30 | LOW | web | the timeline API returns oldest-first; the guide says newest-first |
-| A-32 | MED | tui | the sparkline's 64 KB tail slice can land mid-character |
-| A-33 | MED | tui | the 3 s tick re-captures the preview synchronously (10 s SSH on the UI thread) |
-| A-34 | MED | tui | three of four "clear the search" paths leave the filter chip stale |
-| A-35 | MED | tui | deleting the last saved filter wedges the Settings popup |
 | A-36 | LOW | tui | the mouse-hover highlight is wiped by every 3 s tick |
 
 ---
@@ -60,13 +60,26 @@ lifecycle, ledger scale, and the state of the improvement backlog**.
 | `cargo deny check` | **FAILED** — advisories (see A-1) |
 | `cargo publish --dry-run` | not run (needs a clean tree) |
 
-Scale of the tree: 20 source files, 40,431 lines of Rust, 658 tests
+Scale of the tree: 20 source files, 40,431 lines of Rust, 662 tests
 (149 of them in `src/app.rs` alone). `src/app.rs` is 8,466 lines and holds a
 single 4,176-line `impl App` block; `src/daemon.rs` is 4,645 lines.
 
 The audit ran read-only against the live checkout, plus a hermetic re-run of
 the failing suite and live measurement of the running daemon and the real
-ledger on this machine. No project file was modified.
+ledger on this machine. **No source file was changed.** Three non-source
+files were touched, all cosmetic: this document, `TASKS.md`, a pointer to
+both from `README.md`, and the `Cargo.toml` `exclude` list so the two dev
+documents stay out of the published crate.
+
+**Method.** The tree was swept in four passes: the gates and the live
+environment by hand, then three read-only scouts over (a) the TUI/config
+layer, (b) the daemon/hooks/ledger layer, and (c) the web/MCP/fleet/tray
+and release surface. Every candidate finding was then re-checked against
+the source before it was written up — several scout claims were dropped or
+downgraded in the process (notably the MCP state-filter claim, which turned
+out to be a wrong error message rather than a broken filter, and the
+screen-timeout claim, which was correct). The line numbers below are the
+current tree, not the scouts'.
 
 ---
 
