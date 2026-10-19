@@ -394,6 +394,9 @@ enum HooksAction {
 enum HistoryAction {
     /// Show the ledger's size, its cap and its health.
     Status,
+    /// Move the ledger's quarantined (torn) lines into an archive
+    /// beside it, so the hot ledger parses cleanly.
+    Repair,
 }
 
 /// Print a line, silently tolerating closed pipes (`| head`).
@@ -904,13 +907,44 @@ fn cmd_history(action: &HistoryAction) -> i32 {
                 fmt_bytes(cap)
             ));
             print_out(&format!("lines:       {}", h::line_count(&path)));
+            // Always reported, not only when it is non-zero: a count
+            // that appears only when there is damage cannot be compared
+            // against a previous run, and "0" is the thing a user
+            // checks after a repair.
             let quarantined = h::corrupt_count(&path);
-            if quarantined > 0 {
+            print_out(&format!(
+                "quarantined: {quarantined} torn line(s) in the hot ledger"
+            ));
+            let archived = h::archived_count(&path);
+            if archived > 0 {
                 print_out(&format!(
-                    "quarantined: {quarantined} torn line(s) — kept by the prune; see the warning from `terhub stats`"
+                    "archived:    {archived} preserved in {}",
+                    h::quarantine_path(&path).display()
                 ));
             }
             0
+        }
+        HistoryAction::Repair => {
+            let path = h::ledger_path();
+            match h::repair_quarantine(&path) {
+                Ok(report) => {
+                    if report.found == 0 {
+                        print_out("nothing to repair: no quarantined lines in the hot ledger");
+                    } else {
+                        print_out(&format!(
+                            "moved {} torn line(s) out of {}",
+                            report.archived,
+                            path.display()
+                        ));
+                        print_out(&format!("archived in {}", report.archive));
+                    }
+                    0
+                }
+                Err(e) => {
+                    eprintln!("terhub: {e}");
+                    1
+                }
+            }
         }
     }
 }

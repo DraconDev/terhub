@@ -1519,6 +1519,83 @@ pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Resul
     Ok(())
 }
 
+/// Remove the orphaned atomic-write temporaries in `dir`; returns how
+/// many were removed.
+///
+/// [`atomic_write`] creates `.{name}.tmp.{pid}.{nonce}` and renames it
+/// over the target. A crash between the two leaves the tmp behind, and
+/// on the ledger — tens of megabytes of history — that is megabytes
+/// per crash, forever: nothing else ever collects them.
+///
+/// The owner is named in the file name, so a tmp whose pid is gone
+/// cannot be in flight. A tmp whose pid is alive belongs to a live
+/// writer (a concurrent save in this process, or another daemon on the
+/// same directory) and is left alone — deleting it would turn a
+/// harmless crash leftover into a lost write.
+pub fn sweep_orphan_tmps(dir: &std::path::Path) -> usize {
+    // A writer that died a moment ago may still be in its rename
+    // window on another thread; give it a grace period.
+    const GRACE_SECS: u64 = 60;
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        // `.{name}.tmp.{pid}.{nonce}` and `{name}.tmp.{pid}.{nonce}.{tag}`
+        // both carry the pid right after the last ".tmp.".
+        let Some((_, tail)) = name.rsplit_once(".tmp.") else {
+            continue;
+        };
+        let Some((pid, _)) = tail.split_once('.') else {
+            continue;
+        };
+        let Ok(pid) = pid.parse::<i32>() else {
+            continue;
+        };
+        if pid <= 0 || process_alive(pid) {
+            continue;
+        }
+        // Old enough that no live writer owns it any more.
+        let age = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| now.saturating_sub(d.as_secs()))
+            .unwrap_or(0);
+        if age < GRACE_SECS {
+            continue;
+        }
+        if std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// Whether a pid still names a live process.
+///
+/// `kill(pid, 0)` is the portable test: it succeeds for a process we
+/// may signal, fails with EPERM for one we may not (still alive), and
+/// fails with ESRCH for one that is gone.
+fn process_alive(pid: i32) -> bool {
+    // SAFETY: kill with signal 0 performs error checking only and
+    // sends no signal.
+    let rc = unsafe { libc::kill(pid, 0) };
+    if rc == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
 /// True when the line assigns `key` (ignores comments and lookalikes).
 fn is_key_line(line: &str, key: &str) -> bool {
     let t = line.trim_start();

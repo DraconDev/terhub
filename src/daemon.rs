@@ -1045,9 +1045,14 @@ async fn poll_loop(
             _ = tick.tick() => {},
             _ = prune_tick.tick() => {
                 let _ = tokio::task::spawn_blocking(|| {
-                    if let Err(e) = history::prune(&history::ledger_path(), now_unix(), 90) {
+                    let ledger = history::ledger_path();
+                    if let Err(e) = history::prune(&ledger, now_unix(), 90) {
                         eprintln!("terhubd: history prune failed ({e})");
                     }
+                    // Crash leftovers from the ledger's atomic writes
+                    // are megabytes each; collect them with the prune
+                    // that already rewrites the file.
+                    crate::config::sweep_orphan_tmps(&history::data_dir());
                 }).await;
                 continue;
             },
