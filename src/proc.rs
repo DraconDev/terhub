@@ -273,12 +273,55 @@ impl Snapshot {
             if !matches!(info.state, 'Z' | 'X' | 'x')
                 && let Some(agent) = match_proc(&info.comm, &info.cmdline)
             {
+                let stopped = if is_agent_bin(&info.comm) {
+                    // The match *is* the agent binary — the common case,
+                    // and no second walk is needed.
+                    self.is_stopped(pid)
+                } else {
+                    // The match is a wrapper: a pane whose command line
+                    // merely names the agent (`sh -c 'pi …'`) or a
+                    // launcher (`systemd-inhibit pi`). The wrapper is
+                    // not what gets frozen — the agent under it is.
+                    self.agent_proc(root)
+                        .is_some_and(|p| self.is_stopped(p))
+                };
                 return Some(AgentHit {
                     agent: agent.to_string(),
                     pid,
                     start: info.start,
-                    stopped: matches!(info.state, 'T' | 't'),
+                    stopped,
                 });
+            }
+            if let Some(kids) = self.kids.get(&pid) {
+                for kid in kids {
+                    if seen.insert(*kid) {
+                        queue.push_back(*kid);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// The process that is *really* the agent at or below `root`: the
+    /// nearest one whose own name is an agent binary.
+    ///
+    /// [`detect_agent`] matches wrappers on purpose — a pane whose
+    /// command line merely names the agent still counts, and the usual
+    /// launchers are transparent. But a wrapper is not what gets
+    /// frozen: the agent underneath it is. The stopped question needs
+    /// the agent binary itself, so this looks for a process whose own
+    /// name is in the catalog rather than one that only mentions it.
+    fn agent_proc(&self, root: u32) -> Option<u32> {
+        if root == 0 || !self.procs.contains_key(&root) {
+            return None;
+        }
+        let mut queue = std::collections::VecDeque::from([root]);
+        let mut seen = std::collections::HashSet::from([root]);
+        while let Some(pid) = queue.pop_front() {
+            let info = &self.procs[&pid];
+            if !matches!(info.state, 'Z' | 'X' | 'x') && is_agent_bin(&info.comm) {
+                return Some(pid);
             }
             if let Some(kids) = self.kids.get(&pid) {
                 for kid in kids {
