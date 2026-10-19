@@ -1617,6 +1617,55 @@ mod tests {
     }
 
     #[test]
+    fn repair_moves_torn_lines_into_the_archive() {
+        // The repair is the difference between "the ledger has 43
+        // unreadable lines" and "the ledger is clean and the 43 lines
+        // are preserved beside it". Nothing may be lost: the archive
+        // keeps the preserved head and the parse reason, and recovers
+        // the timestamp the line carried.
+        let dir = std::env::temp_dir().join(format!("terhub-repair-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("activity.jsonl");
+        append_entry(&path, &Entry::prompt(100, "%1", "pi", "keep me")).unwrap();
+        append_raw(
+            &path,
+            "{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"summ",
+        ); // torn
+        // Quarantine it the way the prune does, so the repair sees the
+        // shape it will meet in the wild.
+        prune(&path, 100 + 90 * 86400, 90).unwrap();
+        assert_eq!(corrupt_count(&path), 1, "torn line quarantined");
+
+        let report = repair_quarantine(&path).unwrap();
+        assert_eq!(report.found, 1);
+        assert_eq!(report.archived, 1);
+        assert!(report.archive.contains("quarantine"), "{}", report.archive);
+        assert_eq!(
+            corrupt_count(&path),
+            0,
+            "the hot ledger must hold no torn lines after a repair"
+        );
+        assert_eq!(archived_count(&path), 1, "the archive keeps the record");
+        // The good entry survives the repair untouched.
+        let entries = read_entries(&path);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].summary, "keep me");
+        // The archived record keeps the raw head, the reason and the
+        // timestamp the line carried.
+        let archived = read_entries(&quarantine_path(&path));
+        assert_eq!(archived.len(), 1);
+        assert!(archived[0].summary.contains("summ"), "{}", archived[0].summary);
+        assert_eq!(archived[0].t, 200, "the timestamp is recovered");
+        // A second repair finds nothing to do: the lines are archived
+        // once, not copied again.
+        let again = repair_quarantine(&path).unwrap();
+        assert_eq!(again.found, 0);
+        assert_eq!(archived_count(&path), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn prune_quarantines_torn_lines_and_keeps_them() {
         // A torn line (truncated crash) must not be silently dropped:
         // it is tagged __corrupt__, the raw head is preserved in

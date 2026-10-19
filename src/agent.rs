@@ -1512,6 +1512,43 @@ mod tests {
     }
 
     #[test]
+    fn an_unknown_state_name_decodes_as_unknown() {
+        // A name this build has never heard of is future information,
+        // not corruption. The whole snapshot is one JSON document, so
+        // failing here used to fail the entire response — and the
+        // client then reported "daemon not running" while a healthy
+        // daemon was serving. The pane must survive.
+        let state: AgentState = serde_json::from_str("\"hyperfocus\"").unwrap();
+        assert_eq!(state, AgentState::Unknown);
+        // The known names still decode exactly.
+        for (name, want) in [
+            ("paused", AgentState::Paused),
+            ("working", AgentState::Working),
+            ("waiting", AgentState::Waiting),
+            ("error", AgentState::Error),
+            ("done", AgentState::Done),
+            ("idle", AgentState::Idle),
+            ("stuck", AgentState::Stuck),
+            ("limited", AgentState::Limited),
+            ("unknown", AgentState::Unknown),
+        ] {
+            let got: AgentState = serde_json::from_str(&format!("\"{name}\"")).unwrap();
+            assert_eq!(got, want, "{name}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_source_decodes_as_screen() {
+        // Same rule as the state: the weakest evidence there is, so the
+        // UI renders it exactly as it renders any source it cannot
+        // place, and the record survives.
+        let source: Source = serde_json::from_str("\"telepathy\"").unwrap();
+        assert_eq!(source, Source::Screen);
+        let known: Source = serde_json::from_str("\"hook\"").unwrap();
+        assert_eq!(known, Source::Hook);
+    }
+
+    #[test]
     fn paused_state_is_quiet_not_attention() {
         // The whole point of the pauser registry: a pane terhub paused
         // itself must never be reported as needing the user. It is
