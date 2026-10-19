@@ -844,7 +844,10 @@ fn title_names_an_incompatible_daemon() {
     app.daemon_link = terhub::app::DaemonLink::Incompatible;
     let lines = render_lines(&mut app, 160, 12);
     let text = lines.join("\n");
-    assert!(text.contains("daemon incompatible"), "missing marker:\n{text}");
+    assert!(
+        text.contains("daemon incompatible"),
+        "missing marker:\n{text}"
+    );
     assert!(
         !text.contains("daemon down"),
         "a live daemon must not be called down:\n{text}"
