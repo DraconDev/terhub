@@ -326,6 +326,150 @@ pub enum Request {
     Shutdown,
 }
 
+/// The wire protocol version.
+///
+/// The version rides with every request and response. A request
+/// *without* `proto` comes from a pre-versioned (legacy) client, and
+/// the daemon answers such a client in a shape that client can still
+/// decode — see [`legacy_state`].
+pub const PROTO_VERSION: u32 = 1;
+
+/// The command set, as it appears on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Cmd {
+    Ping,
+    Snapshot,
+    Event,
+    Register,
+    Unregister,
+    Shutdown,
+}
+
+/// The wire envelope.
+///
+/// A flat struct rather than the tagged [`Request`] enum, so the
+/// protocol version can ride alongside the command without touching
+/// every variant. The serialized shape is the same one the tagged enum
+/// produced (`{"cmd":"snapshot"}`, `{"cmd":"register","pane":…}`), so
+/// an old client and a new daemon still speak to each other.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WireRequest {
+    pub cmd: Cmd,
+    /// Absent => a legacy (pre-versioned) client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proto: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<HookEvent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<AgentState>,
+}
+
+impl From<&Request> for WireRequest {
+    fn from(req: &Request) -> Self {
+        let mut w = WireRequest {
+            cmd: Cmd::Ping,
+            proto: Some(PROTO_VERSION),
+            event: None,
+            pane: None,
+            agent: None,
+            pid: None,
+            state: None,
+        };
+        match req {
+            Request::Ping => {}
+            Request::Snapshot => w.cmd = Cmd::Snapshot,
+            Request::Shutdown => w.cmd = Cmd::Shutdown,
+            Request::Event { event } => {
+                w.cmd = Cmd::Event;
+                w.event = Some(event.clone());
+            }
+            Request::Register {
+                pane,
+                agent,
+                pid,
+                state,
+            } => {
+                w.cmd = Cmd::Register;
+                w.pane = Some(pane.clone());
+                w.agent = Some(agent.clone());
+                w.pid = Some(*pid);
+                w.state = Some(*state);
+            }
+            Request::Unregister { pane } => {
+                w.cmd = Cmd::Unregister;
+                w.pane = Some(pane.clone());
+            }
+        }
+        w
+    }
+}
+
+impl TryFrom<WireRequest> for Request {
+    type Error = String;
+
+    fn try_from(w: WireRequest) -> Result<Self, String> {
+        Ok(match w.cmd {
+            Cmd::Ping => Request::Ping,
+            Cmd::Snapshot => Request::Snapshot,
+            Cmd::Shutdown => Request::Shutdown,
+            Cmd::Event => Request::Event {
+                event: w.event.ok_or("event command without an event")?,
+            },
+            Cmd::Register => Request::Register {
+                pane: w.pane.ok_or("register without a pane")?,
+                agent: w.agent.ok_or("register without an agent")?,
+                pid: w.pid.ok_or("register without a pid")?,
+                state: w.state.ok_or("register without a state")?,
+            },
+            Cmd::Unregister => {
+                Request::Unregister {
+                    pane: w.pane.ok_or("unregister without a pane")?,
+                }
+            }
+        })
+    }
+}
+
+/// The agent states a legacy (pre-versioned) client can decode.
+///
+/// A legacy client has no `paused` variant: handing it one fails the
+/// whole response, and the client then reports "daemon not running"
+/// while the daemon is perfectly alive. The daemon therefore
+/// down-projects the states a legacy client cannot read.
+///
+/// `paused` and `idle` are both quiet, so `idle` is the honest legacy
+/// rendering of a paused agent: it needs nobody, exactly like idle.
+/// Every state is listed explicitly — adding a new one forces a
+/// decision here instead of silently breaking every old client.
+pub fn legacy_state(state: AgentState) -> AgentState {
+    match state {
+        AgentState::Paused => AgentState::Idle,
+        AgentState::Unknown => AgentState::Unknown,
+        AgentState::Working => AgentState::Working,
+        AgentState::Waiting => AgentState::Waiting,
+        AgentState::Error => AgentState::Error,
+        AgentState::Done => AgentState::Done,
+        AgentState::Idle => AgentState::Idle,
+        AgentState::Stuck => AgentState::Stuck,
+        AgentState::Limited => AgentState::Limited,
+    }
+}
+
+/// Down-project a whole snapshot for a legacy client.
+pub fn project_for_legacy(mut snap: Snapshot) -> Snapshot {
+    for agent in &mut snap.agents {
+        agent.state = legacy_state(agent.state);
+    }
+    snap
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
     pub ok: bool,
@@ -333,6 +477,12 @@ pub struct Response {
     pub snapshot: Option<Snapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// The daemon's protocol version. Absent => a pre-versioned daemon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proto: Option<u32>,
+    /// The daemon's build identity (see [`build_id`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 impl Response {
@@ -341,6 +491,8 @@ impl Response {
             ok: true,
             snapshot: None,
             error: None,
+            proto: Some(PROTO_VERSION),
+            build: Some(build_id().to_string()),
         }
     }
 
@@ -349,6 +501,18 @@ impl Response {
             ok: false,
             snapshot: None,
             error: Some(msg),
+            proto: Some(PROTO_VERSION),
+            build: Some(build_id().to_string()),
+        }
+    }
+
+    fn snapshot(snapshot: Snapshot) -> Self {
+        Response {
+            ok: true,
+            snapshot: Some(snapshot),
+            error: None,
+            proto: Some(PROTO_VERSION),
+            build: Some(build_id().to_string()),
         }
     }
 }
