@@ -282,7 +282,7 @@ impl Snapshot {
                     // merely names the agent (`sh -c 'pi …'`) or a
                     // launcher (`systemd-inhibit pi`). The wrapper is
                     // not what gets frozen — the agent under it is.
-                    self.agent_proc(root)
+                    self.agent_pid(root)
                         .is_some_and(|p| self.is_stopped(p))
                 };
                 return Some(AgentHit {
@@ -312,7 +312,12 @@ impl Snapshot {
     /// frozen: the agent underneath it is. The stopped question needs
     /// the agent binary itself, so this looks for a process whose own
     /// name is in the catalog rather than one that only mentions it.
-    fn agent_proc(&self, root: u32) -> Option<u32> {
+    ///
+    /// This is also the right target for a freeze: a tmux pane root
+    /// sits in its own process group, and an interactive shell gives
+    /// its foreground job another one, so signalling the pane root's
+    /// group never reaches the agent at all.
+    pub fn agent_pid(&self, root: u32) -> Option<u32> {
         if root == 0 || !self.procs.contains_key(&root) {
             return None;
         }
