@@ -987,6 +987,9 @@ fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
             .fg(pal.done.fg.unwrap_or(Color::Green))
             .add_modifier(Modifier::BOLD),
         AgentState::Working => Style::default().fg(Color::Green),
+        // Paused: deliberately stopped — dim, like idle. It must not
+        // read as alarming: nothing is wrong, the user did it.
+        AgentState::Paused => pal.dim,
         AgentState::Idle | AgentState::Unknown => pal.dim,
     }
 }

@@ -881,9 +881,7 @@ async fn poll_loop(
             // then ignored still expires.
             let idle_since = if last == 0 { started } else { last };
             if poll_start.saturating_sub(idle_since) > idle_ttl {
-                eprintln!(
-                    "terhubd: no client request for {idle_ttl}s; exiting (idle timeout)"
-                );
+                eprintln!("terhubd: no client request for {idle_ttl}s; exiting (idle timeout)");
                 shutdown.store(true, Ordering::SeqCst);
                 break;
             }
@@ -976,6 +974,31 @@ async fn poll_loop(
 
 fn log_entry(entry: &history::Entry) {
     let _ = history::append_entry(&history::ledger_path(), entry);
+}
+
+/// Mark a record as paused, or leave it alone.
+///
+/// A pane whose agent process is stopped is deliberately frozen, not
+/// hung. A stopped process burns no CPU, so the Stuck gate — which
+/// reads "no CPU" as "hung" — would report terhub's own `z` as a dead
+/// agent, escalate it, and notify the user about a hang that does not
+/// exist.
+///
+/// The state *is* the registry's record: it is persisted with the rest
+/// of the agent record, so the pane reads as paused in the TUI, in
+/// `terhub status`, and after a daemon restart. The evidence is read
+/// from the process state every poll and never carried, so a resumed
+/// pane is working again on the next tick and the mark cannot go
+/// stale.
+fn apply_paused(rec: &mut AgentRecord, paused: bool, now: u64) {
+    if !paused {
+        return;
+    }
+    if rec.state != AgentState::Paused {
+        rec.state_since = now;
+    }
+    rec.state = AgentState::Paused;
+    rec.summary = "paused".to_string();
 }
 
 /// Pin a manual agent record (`terhub register`). Same agent + state
@@ -1942,6 +1965,17 @@ fn poll_sync_with(
     for pane in &panes {
         let (old, stale) = split_prev(prev.get(&pane.id), now, tune.stale_secs);
         let proc_hit = snap.detect_agent(pane.pid);
+        // The pauser registry: a pane whose agent process is *stopped*
+        // is paused, not hung. A stopped process burns no CPU, so the
+        // Stuck gate would otherwise report terhub's own `z` as a dead
+        // agent and escalate an alarm terhub caused itself.
+        //
+        // Read from the process state every poll, never carried: a
+        // resumed pane is working again on the next tick, and a stale
+        // "paused" mark could never expire. The pane root counts too —
+        // a shell frozen with its agent still running is just as
+        // deliberately stopped.
+        let paused = proc_hit.as_ref().is_some_and(|h| h.stopped) || snap.is_stopped(pane.pid);
         // Skip idle shells nobody has claimed yet — unless a process hit
         // claims them (an agent behind a shell prompt is still an agent).
         if old.is_none() && proc_hit.is_none() && is_shell_command(&pane.command) {
@@ -2035,12 +2069,17 @@ fn poll_sync_with(
                 }
             };
             (r.screen_hash, r.quiet_since) = track_quiet((r.screen_hash, r.quiet_since), hash, now);
-            apply_hook_stuck_gate(&mut r, has_proc, now, tune.stuck_secs, tune.quiet_idle_secs);
+            // A stopped agent is paused, not hung: the stuck gate must
+            // not fire on a tree that was frozen on purpose.
+            if !paused {
+                apply_hook_stuck_gate(&mut r, has_proc, now, tune.stuck_secs, tune.quiet_idle_secs);
+            }
             // Bell is reset-each-pass: mirror this poll's flag, never carry.
             (r.bell, r.bell_reason) = (bell_now, bell_reason_now.clone());
             if r.summary.is_empty() {
                 r.summary = fallback_summary_for(r.state, screen.as_deref());
             }
+            apply_paused(&mut r, paused, now);
             next.insert(pane.id.clone(), r);
             continue;
         }
@@ -2073,6 +2112,12 @@ fn poll_sync_with(
             if rec.summary.is_empty() {
                 rec.summary = fallback_summary_for(rec.state, screen.as_deref());
             }
+            // A stopped agent is paused, not hung. This runs last: the
+            // merge's own stuck gate may have said "stuck" (a stopped
+            // process burns no CPU), and the pause is the better
+            // explanation — so it overwrites the state, the clock and
+            // the summary.
+            apply_paused(&mut rec, paused, now);
             next.insert(pane.id.clone(), rec);
         } else if let Some(o) = old {
             // Pane alive but nothing matches: keep last known state only
@@ -4505,6 +4550,68 @@ mod tests {
         assert_eq!(rec.state_since, now);
         assert_eq!(rec.summary, "no cpu for 10m");
         assert!(rec.state.needs_attention());
+    }
+
+    #[test]
+    fn a_paused_agent_is_not_reported_as_stuck() {
+        // The false alarm this fixes: a stopped process burns no CPU,
+        // so the stuck gate says "hung" — and terhub's own `z` is what
+        // stopped it. The pause is the better explanation, so it wins.
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        let mut rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        // Without the pause the gate does fire — that is the bug.
+        assert_eq!(rec.state, AgentState::Stuck);
+        // With the pause it does not.
+        apply_paused(&mut rec, true, now);
+        assert_eq!(rec.state, AgentState::Paused);
+        assert_eq!(rec.summary, "paused");
+        assert!(
+            !rec.state.needs_attention(),
+            "a paused agent needs nobody: it must not escalate"
+        );
+    }
+
+    #[test]
+    fn a_resumed_agent_keeps_its_real_state() {
+        // The pause is read from the process state every poll and
+        // never carried, so a resumed pane is working again at once.
+        let now = 100_000;
+        let old = carried("pi", AgentState::Working, 500, now - 601, now - 601);
+        let mut rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("no record");
+        apply_paused(&mut rec, false, now);
+        assert_eq!(rec.state, AgentState::Stuck);
+        assert_ne!(rec.summary, "paused");
+    }
+
+    #[test]
+    fn pausing_starts_its_own_clock() {
+        let now = 100_000;
+        let mut rec = carried("pi", AgentState::Working, 500, now - 10, now - 10);
+        apply_paused(&mut rec, true, now);
+        assert_eq!(rec.state, AgentState::Paused);
+        assert_eq!(rec.state_since, now, "the pause starts the state clock");
+        // A second poll keeps the original clock, not a fresh one.
+        apply_paused(&mut rec, true, now + 30);
+        assert_eq!(rec.state_since, now);
     }
 
     #[test]

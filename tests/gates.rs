@@ -248,7 +248,11 @@ fn the_declared_msrv_is_built_in_ci() {
         "CI must build the declared MSRV {msrv} (toolchain: \"{msrv}.0\")"
     );
     for doc in ["README.md", "GUIDE.md"] {
-        let text = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/", doc)).expect(doc);
+        let path = match doc {
+            "README.md" => concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"),
+            _ => concat!(env!("CARGO_MANIFEST_DIR"), "/GUIDE.md"),
+        };
+        let text = fs::read_to_string(path).expect(doc);
         assert!(
             text.contains(&format!("Rust {msrv}+")),
             "{doc} must state the declared MSRV (Rust {msrv}+)"

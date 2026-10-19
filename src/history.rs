@@ -525,8 +525,7 @@ pub fn prune_bounded(
     // The lock makes this read-rewrite atomic with respect to appends.
     // Without it, an append that lands between the read and the rename
     // is written to the old inode and then silently discarded.
-    let _lock = LedgerLock::acquire(path)
-        .map_err(|e| format!("prune ledger lock failed: {e}"))?;
+    let _lock = LedgerLock::acquire(path).map_err(|e| format!("prune ledger lock failed: {e}"))?;
     // A ledger that does not exist yet has nothing to prune.
     if !path.exists() {
         return Ok(0);
@@ -690,9 +689,7 @@ pub fn first_corrupt_summary(path: &std::path::Path) -> Option<String> {
                 .unwrap_or(false),
         };
         if is_corrupt {
-            found = serde_json::from_str::<Entry>(line)
-                .map(|e| e.summary)
-                .ok();
+            found = serde_json::from_str::<Entry>(line).map(|e| e.summary).ok();
         }
     });
     found
@@ -909,6 +906,9 @@ pub fn stats(spans: &[Span], since: Option<u64>, group: GroupBy) -> Vec<StatsRow
             AgentState::Waiting => row.wait += dur,
             AgentState::Error | AgentState::Stuck | AgentState::Limited => row.err += dur,
             AgentState::Done => row.done += dur,
+            // A paused agent is deliberate, not an error and not work:
+            // the time counts as idle, because nothing was burning.
+            AgentState::Paused => row.idle += dur,
             AgentState::Idle => row.idle += dur,
             AgentState::Unknown => {}
         }
@@ -1085,6 +1085,8 @@ fn state_style(state: AgentState) -> ratatui::style::Style {
             .fg(Color::LightGreen)
             .add_modifier(Modifier::BOLD),
         AgentState::Working => Style::default().fg(Color::Green),
+        // Paused: deliberately stopped — dim, like idle, never alarming.
+        AgentState::Paused => Style::default().fg(Color::DarkGray),
         AgentState::Idle => Style::default().fg(Color::DarkGray),
         AgentState::Unknown => Style::default().fg(Color::DarkGray),
     }

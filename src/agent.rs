@@ -27,6 +27,12 @@ pub enum AgentState {
     /// Usage/quota wall hit: the agent is paused until reset, not broken.
     /// Quota language is telemetry about limits, never a crash report.
     Limited,
+    /// The agent's process tree is stopped (`SIGSTOP`) — deliberately
+    /// frozen, by terhub's own `z` or by anyone else. Distinct from
+    /// `Stuck`: a stopped process burns no CPU, so without this state
+    /// a paused agent reads as a hung one and terhub escalates the
+    /// alarm it caused. Never attention: nobody is needed to thaw it.
+    Paused,
 }
 
 impl AgentState {
@@ -41,6 +47,7 @@ impl AgentState {
             "done" | "finished" | "complete" | "completed" => Some(AgentState::Done),
             "stuck" | "hung" => Some(AgentState::Stuck),
             "limited" | "limit" | "quota" | "capped" => Some(AgentState::Limited),
+            "paused" | "stopped" | "frozen" | "suspended" => Some(AgentState::Paused),
             "unknown" => Some(AgentState::Unknown),
             _ => None,
         }
@@ -56,6 +63,7 @@ impl AgentState {
             AgentState::Done => "done",
             AgentState::Stuck => "stuck",
             AgentState::Limited => "limited",
+            AgentState::Paused => "paused",
         }
     }
 
@@ -1449,6 +1457,67 @@ mod tests {
         // A finished agent must never badge as needing action: it's
         // the visual whole point of the Done FYI row.
         assert!(!AgentState::Done.needs_attention());
+    }
+
+    #[test]
+    fn paused_state_parses_and_labels() {
+        // The pauser registry writes "paused" into the registry and the
+        // TUI reads it back, so the label and the parse must agree.
+        assert_eq!(AgentState::parse("paused"), Some(AgentState::Paused));
+        assert_eq!(AgentState::parse("stopped"), Some(AgentState::Paused));
+        assert_eq!(AgentState::parse("FROZEN"), Some(AgentState::Paused));
+        assert_eq!(AgentState::parse("suspended"), Some(AgentState::Paused));
+        assert_eq!(AgentState::Paused.label(), "paused");
+        // Label and parse round-trip: whatever we render, we can read.
+        assert_eq!(
+            AgentState::parse(AgentState::Paused.label()),
+            Some(AgentState::Paused)
+        );
+    }
+
+    #[test]
+    fn paused_state_is_quiet_not_attention() {
+        // The whole point of the pauser registry: a pane terhub paused
+        // itself must never be reported as needing the user. It is
+        // deliberate, not a hang, not an error.
+        assert!(!AgentState::Paused.needs_attention());
+    }
+
+    #[test]
+    fn paused_state_round_trips_through_serde() {
+        // The registry persists the state as a lowercase string. A state
+        // that cannot be read back would silently drop the pane's
+        // "paused" mark on the next daemon restart.
+        let json = serde_json::to_string(&AgentState::Paused).unwrap();
+        assert_eq!(json, "\"paused\"");
+        assert_eq!(
+            serde_json::from_str::<AgentState>(&json).unwrap(),
+            AgentState::Paused
+        );
+    }
+
+    #[test]
+    fn a_paused_record_round_trips_through_serde() {
+        // The full record is what the registry writes: the paused mark
+        // has to survive the trip through registry.json.
+        let rec = AgentRecord {
+            pane: "%3".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Paused,
+            source: Source::Proc,
+            summary: "paused".to_string(),
+            session: "work".to_string(),
+            window: "1".to_string(),
+            command: "pi".to_string(),
+            updated_at: 1_700_000_000,
+            state_since: 1_700_000_000,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&rec).unwrap();
+        assert!(json.contains("\"paused\""), "state must persist as paused");
+        let back: AgentRecord = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.state, AgentState::Paused);
+        assert_eq!(back.summary, "paused");
     }
 
     #[test]

@@ -386,8 +386,11 @@ fn state_rank_of(state: crate::agent::AgentState) -> u8 {
         AgentState::Limited => 3,
         AgentState::Working => 4,
         AgentState::Done => 5,
-        AgentState::Idle => 6,
-        AgentState::Unknown => 7,
+        // Paused is deliberate: nobody is needed to thaw it, so it
+        // sorts with the quiet states rather than with the needy ones.
+        AgentState::Paused => 6,
+        AgentState::Idle => 7,
+        AgentState::Unknown => 8,
     }
 }
 

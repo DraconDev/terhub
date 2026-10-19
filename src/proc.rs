@@ -294,7 +294,8 @@ impl Snapshot {
     /// True when `pid`'s subtree contains a terminal editor: the agent
     /// summoned its $EDITOR and is Waiting on the user. Scoped to this
     /// subtree only, so a background agent never claims a sibling editor.
-    pub fn subtree_has_editor(&self, pid: u32) -> bool {        if !self.procs.contains_key(&pid) {
+    pub fn subtree_has_editor(&self, pid: u32) -> bool {
+        if !self.procs.contains_key(&pid) {
             return false;
         }
         let mut queue = std::collections::VecDeque::from([pid]);
@@ -439,6 +440,18 @@ impl Snapshot {
             }
         }
         total
+    }
+
+    /// True when `pid` is a stopped process (`SIGSTOP`): the state
+    /// letter in `/proc/<pid>/stat` is `T`.
+    ///
+    /// A stopped process burns no CPU, so every consumer that infers
+    /// "hung" from CPU stillness has to ask this first — otherwise a
+    /// deliberately frozen agent reads as a dead one.
+    pub fn is_stopped(&self, pid: u32) -> bool {
+        self.procs
+            .get(&pid)
+            .is_some_and(|info| matches!(info.state, 'T' | 't'))
     }
 }
 
@@ -693,6 +706,17 @@ mod tests {
     /// Minimal /proc stand-in: (pid, ppid, comm, cmdline, utime, stime, start).
     /// `tag` keeps parallel tests out of each other's fixture dir.
     fn fake_proc(tag: &str, entries: &[(&str, &str, &str, &str, u64, u64, u64)]) -> PathBuf {
+        let states: Vec<(&str, char)> = entries.iter().map(|(pid, ..)| (*pid, 'S')).collect();
+        fake_proc_states(tag, entries, &states)
+    }
+
+    /// The same stand-in, with an explicit stat state per pid: `T` is a
+    /// stopped process, which is what a paused agent looks like.
+    fn fake_proc_states(
+        tag: &str,
+        entries: &[(&str, &str, &str, &str, u64, u64, u64)],
+        states: &[(&str, char)],
+    ) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("terhub-proc-{}-{tag}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         for (pid, ppid, comm, cmdline, utime, stime, start) in entries {
@@ -700,17 +724,46 @@ mod tests {
             fs::create_dir_all(&d).unwrap();
             fs::write(d.join("comm"), format!("{comm}\n")).unwrap();
             fs::write(d.join("cmdline"), cmdline.replace(' ', "\0")).unwrap();
+            let state = states
+                .iter()
+                .find(|(p, _)| p == pid)
+                .map(|(_, s)| *s)
+                .unwrap_or('S');
             // state ppid pgrp session tty tpgid flags minflt cminflt majflt
             // cmajflt utime stime cutime cstime pri nice threads itreal starttime
             fs::write(
                 d.join("stat"),
                 format!(
-                    "{pid} ({comm}) S {ppid} 0 0 0 0 0 0 0 0 0 {utime} {stime} 0 0 0 0 0 0 {start}"
+                    "{pid} ({comm}) {state} {ppid} 0 0 0 0 0 0 0 0 0 {utime} {stime} 0 0 0 0 0 0 {start}"
                 ),
             )
             .unwrap();
         }
         dir
+    }
+
+    /// A stopped agent is detected as stopped: the state letter in
+    /// /proc is `T`, and that is what tells the daemon "paused, not
+    /// hung" (a stopped process burns no CPU).
+    #[test]
+    fn a_stopped_agent_is_reported_as_stopped() {
+        let dir = fake_proc_states(
+            "stopped",
+            &[("100", "1", "pi", "/bin/pi", 10, 5, 1000)],
+            &[("100", 'T')],
+        );
+        let snap = Snapshot::capture_from(&dir);
+        let hit = snap.detect_agent(100).expect("pi detected");
+        assert!(hit.stopped, "a SIGSTOPped agent must read as stopped");
+        assert!(snap.is_stopped(100));
+        // A running one does not.
+        let dir2 = fake_proc("running", &[("100", "1", "pi", "/bin/pi", 10, 5, 1000)]);
+        let snap2 = Snapshot::capture_from(&dir2);
+        let hit2 = snap2.detect_agent(100).expect("pi detected");
+        assert!(!hit2.stopped);
+        assert!(!snap2.is_stopped(100));
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir2);
     }
 
     #[test]
