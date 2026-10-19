@@ -552,7 +552,7 @@ fn resolve_pane_arg(pane: &str) -> Result<String, String> {
         return Ok(pane.to_string());
     }
     let snap = daemon::fetch_snapshot(Duration::from_secs(2))
-        .map_err(|_| format!("terhub: daemon not running (needed to resolve '{pane}')"))?;
+        .map_err(|e| format!("terhub: {} (needed to resolve '{pane}')", e.message()))?;
     terhub::agent::resolve_handle(&snap.agents, pane)
         .ok_or_else(|| format!("terhub: unknown handle '{pane}' (see `terhub status`)"))
 }
@@ -682,13 +682,23 @@ fn cmd_kill_pane(pane: &str) -> i32 {
 }
 
 fn cmd_status(json: bool) -> i32 {
-    let snapshot = match daemon::fetch_snapshot(Duration::from_secs(2)) {
+    let resp = match daemon::fetch_snapshot_detailed(Duration::from_secs(2)) {
         Ok(s) => s,
-        Err(_) => {
-            eprintln!("terhub: daemon not running (terhub daemon start)");
+        Err(e) => {
+            eprintln!("terhub: {}", e.message());
             return 1;
         }
     };
+    // A daemon that is not this build still serves usable data, so the
+    // note goes to stderr and the exit code stays 0: the mismatch is
+    // reported, not turned into a failure the user has to debug.
+    for note in [daemon::compat_note(&resp), daemon::build_note(&resp)]
+        .into_iter()
+        .flatten()
+    {
+        eprintln!("terhub: {note}");
+    }
+    let snapshot = resp.snapshot;
     if json {
         match serde_json::to_string_pretty(&snapshot) {
             Ok(text) => {
@@ -839,7 +849,7 @@ fn cmd_register(pane: &str, agent: &str, pid: Option<u32>, state: &str) -> i32 {
             1
         }
         Err(e) => {
-            eprintln!("terhub: daemon not running ({e:?})");
+            eprintln!("terhub: {}", e.message());
             1
         }
     }
@@ -862,7 +872,7 @@ fn cmd_unregister(pane: &str) -> i32 {
             1
         }
         Err(e) => {
-            eprintln!("terhub: daemon not running ({e:?})");
+            eprintln!("terhub: {}", e.message());
             1
         }
     }
@@ -1084,8 +1094,8 @@ fn cmd_attend(cycle: bool, list: bool) -> i32 {
     use terhub::attend as at;
     let snapshot = match daemon::fetch_snapshot(Duration::from_secs(2)) {
         Ok(s) => s,
-        Err(_) => {
-            eprintln!("terhub: daemon not running (terhub daemon start)");
+        Err(e) => {
+            eprintln!("terhub: {}", e.message());
             return 1;
         }
     };
@@ -1665,8 +1675,8 @@ fn cmd_automation(action: &AutomationAction) -> i32 {
             };
             let snapshot = match daemon::fetch_snapshot(Duration::from_secs(2)) {
                 Ok(s) => s,
-                Err(_) => {
-                    eprintln!("terhub: daemon not running (terhub daemon start)");
+                Err(e) => {
+                    eprintln!("terhub: {}", e.message());
                     return 1;
                 }
             };
