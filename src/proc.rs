@@ -314,15 +314,16 @@ impl Snapshot {
     /// spawned, and leaving the pane's shell running keeps tmux out of
     /// it.
     ///
-    /// Returns the pid and its starttime, the pair the signalling
-    /// helpers use to refuse a recycled pid.
-    pub fn freeze_target(&self, pane_pid: u32) -> Option<(u32, u64)> {
+    /// Returns the pid to signal. The caller supplies the starttime
+    /// it wants checked, so the pane-root path can keep the guard it
+    /// had before (the starttime stamped when the pane was listed).
+    pub fn freeze_target(&self, pane_pid: u32) -> Option<u32> {
         if let Some(agent) = self.agent_pid(pane_pid) {
-            return Some((agent, self.proc_start(agent).unwrap_or(0)));
+            return Some(agent);
         }
         // No agent in the pane: the pane root is all there is to freeze.
         if pane_pid != 0 && self.procs.contains_key(&pane_pid) {
-            return Some((pane_pid, self.proc_start(pane_pid).unwrap_or(0)));
+            return Some(pane_pid);
         }
         None
     }

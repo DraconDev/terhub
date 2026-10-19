@@ -4595,18 +4595,22 @@ impl App {
         // A pane with no detected agent falls back to the pane root:
         // that is all there is to freeze.
         let snap = crate::proc::Snapshot::capture();
-        let Some((target, target_start)) = snap.freeze_target(pid) else {
+        let Some(target) = snap.freeze_target(pid) else {
             self.set_status(format!("no pid for pane {id}"));
             return;
         };
-        // Identity gate: the starttime was stamped when the process was
-        // seen; a recycled pid fails the starttime check inside
-        // pause/resume_group instead of stopping a foreign group.
-        // 0 (unknown, e.g. remote rows) skips the check.
-        let expect = if target_start != 0 {
-            Some(target_start)
+        // Identity gate: a recycled pid fails the starttime check
+        // inside pause/resume_group instead of stopping a foreign
+        // group. 0 (unknown, e.g. remote rows) skips the check.
+        //
+        // The pane root keeps the starttime stamped when the pane was
+        // listed — that is the guard against a pid that was recycled
+        // since. The agent is read live: the TUI does not track agent
+        // pids between refreshes, so there is no older stamp to use.
+        let expect = if target == pid {
+            if pid_start != 0 { Some(pid_start) } else { None }
         } else {
-            None
+            snap.proc_start(target)
         };
         if crate::proc::is_stopped(target) {
             match crate::proc::resume_group(target, expect) {
