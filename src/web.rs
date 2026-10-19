@@ -78,10 +78,14 @@ async fn dashboard() -> Html<&'static str> {
     Html(DASHBOARD_HTML)
 }
 
-fn daemon_unavailable() -> (StatusCode, Json<serde_json::Value>) {
+/// The 503 a client gets when the daemon cannot be used, with the
+/// reason: "not running" and "running but not readable" are different
+/// problems, and a dashboard that cannot tell them apart sends the
+/// reader to start a daemon that is already serving.
+fn daemon_unusable(reason: &str) -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::SERVICE_UNAVAILABLE,
-        Json(serde_json::json!({"error": "daemon not running"})),
+        Json(serde_json::json!({"error": reason})),
     )
 }
 
@@ -152,7 +156,7 @@ async fn api_status() -> impl IntoResponse {
         tokio::task::spawn_blocking(|| crate::daemon::fetch_snapshot(Duration::from_secs(2))).await;
     match snap {
         Ok(Ok(s)) => ok_json(&s),
-        Ok(Err(_)) => daemon_unavailable().into_response(),
+        Ok(Err(e)) => daemon_unusable(&e.message()).into_response(),
         Err(_) => blocking_failed(),
     }
 }

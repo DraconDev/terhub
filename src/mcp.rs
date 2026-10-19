@@ -303,8 +303,7 @@ fn tool_result(name: &str, args: &Value) -> Result<String, String> {
 }
 
 fn snapshot() -> Result<crate::daemon::Snapshot, String> {
-    crate::daemon::fetch_snapshot(Duration::from_secs(2))
-        .map_err(|_| "daemon not running (terhub daemon start)".to_string())
+    crate::daemon::fetch_snapshot(Duration::from_secs(2)).map_err(|e| e.message())
 }
 
 /// Optional `state` argument: absent means unfiltered, but a present

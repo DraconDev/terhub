@@ -4402,8 +4402,8 @@ impl App {
                     }
                 }
             }
-            Err(_) => {
-                self.set_status("daemon not running".to_string());
+            Err(e) => {
+                self.set_status(e.message());
                 None
             }
         }
