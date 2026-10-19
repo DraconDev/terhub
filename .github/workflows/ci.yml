@@ -48,3 +48,21 @@ jobs:
         run: cargo install --path . --offline --locked --force --root "${CARGO_HOME:-$HOME/.cargo}"
       - name: check-install
         run: make check-install
+
+  # The advertised minimum Rust version must actually build the crate.
+  # Nothing else proves it: every other job runs on `stable`, so a
+  # dependency that raises its own MSRV leaves CI green while the
+  # users the README promises to support silently lose support.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # The toolchain comes from the `with:` input, so the action's
+      # pinned SHA is the same one the stable job uses.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.89.0"
+      - name: fetch dependencies
+        run: cargo fetch --locked
+      - name: check the minimum supported Rust version
+        run: cargo check --offline --all-targets

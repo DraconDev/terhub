@@ -33,7 +33,7 @@ explains how the pieces fit and how to set each one up.
 
 ## Install
 
-Requires tmux 3.x on PATH and Rust 1.88+.
+Requires tmux 3.x on PATH and Rust 1.89+.
 
 ```sh
 cargo install --path .

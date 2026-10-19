@@ -202,6 +202,60 @@ fn release_workflow_guards_tags() {
     );
 }
 
+/// The tag workflow must run the same gates the main branch runs.
+///
+/// A dependency-policy or install gate that only CI enforces leaves
+/// the same hole next door: a tag on a commit carrying a crate
+/// `deny.toml` would reject would publish anyway.
+#[test]
+fn release_workflow_runs_the_same_gates_as_ci() {
+    let ci = ci_yml();
+    let rel = release_yml();
+    for gate in [
+        "cargo-deny-action",
+        "check-install",
+        "cargo publish --dry-run",
+        "cargo test --offline",
+        "cargo clippy",
+        "cargo fmt --check",
+    ] {
+        assert!(ci.contains(gate), "CI must run {gate}");
+        assert!(
+            rel.contains(gate),
+            "release.yml must run {gate} too — the tag is what users install"
+        );
+    }
+}
+
+/// The advertised minimum Rust version must actually be built.
+///
+/// Every other job runs on `stable`, so a dependency that raises its
+/// own MSRV leaves CI green while the version the README promises
+/// silently stops working. The declared version, the CI job and the
+/// docs must all say the same thing.
+#[test]
+fn the_declared_msrv_is_built_in_ci() {
+    let manifest =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).expect("Cargo.toml");
+    let msrv = manifest
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("rust-version = \""))
+        .and_then(|rest| rest.split('"').next())
+        .expect("Cargo.toml must declare rust-version");
+    let ci = ci_yml();
+    assert!(
+        ci.contains(&format!("toolchain: \"{msrv}.0\"")),
+        "CI must build the declared MSRV {msrv} (toolchain: \"{msrv}.0\")"
+    );
+    for doc in ["README.md", "GUIDE.md"] {
+        let text = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/", doc)).expect(doc);
+        assert!(
+            text.contains(&format!("Rust {msrv}+")),
+            "{doc} must state the declared MSRV (Rust {msrv}+)"
+        );
+    }
+}
+
 /// `make test` / `make clippy` must run the same scope as the CI
 /// gates they stand in for locally: a `--lib --tests` subset lets a
 /// local green pass while CI (all-targets, everything) fails. Pin

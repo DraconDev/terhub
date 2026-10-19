@@ -41,7 +41,7 @@ backend supports is supported there too.
 
 ## Install
 
-Requires tmux 3.x on PATH and Rust 1.88+.
+Requires tmux 3.x on PATH and Rust 1.89+.
 
 ```sh
 cargo install --path .

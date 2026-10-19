@@ -46,3 +46,16 @@ jobs:
       # (metadata, file list, lockfile) without needing a token.
       - name: publish dry run
         run: cargo publish --dry-run
+      # The dependency policy is a gate, not a suggestion: a tag on a
+      # commit carrying a crate `deny.toml` would reject must not
+      # publish. CI runs the same check on every main commit, but the
+      # tag is what users install, so the tagged commit is re-checked.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check
+      # The stale-binary behavioural gate, same as CI: a release must
+      # not be the first time the install path is exercised.
+      - name: install binary
+        run: cargo install --path . --offline --locked --force --root "${CARGO_HOME:-$HOME/.cargo}"
+      - name: check-install
+        run: make check-install
