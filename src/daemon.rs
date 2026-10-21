@@ -3629,9 +3629,10 @@ mod tests {
         let now = 100_000;
         // The real failure case: the process is alive and its REPL keeps
         // burning CPU, so Stuck never trips, but the screen has not moved
-        // for 10 minutes — it finished. No completion text, no pattern.
+        // for longer than the quiet threshold — it finished. No
+        // completion text, no pattern.
         let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
-        old.quiet_since = now - 600;
+        old.quiet_since = now - (QUIET_IDLE_SECS + 300);
         let rec = merge_record_owned(
             Some(&old),
             false,
@@ -3660,7 +3661,7 @@ mod tests {
         // just measured. Drive three polls to prove Idle survives.
         let now = 100_000;
         let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
-        old.quiet_since = now - 600;
+        old.quiet_since = now - (QUIET_IDLE_SECS + 300);
         let h = 0xABCD_1234_u64; // screen has not moved across all polls
         old.screen_hash = h;
 
@@ -3683,7 +3684,7 @@ mod tests {
         let (nh, nq) = refresh_quiet(Some(&old), Some(h), &rec, now);
         assert_eq!(
             nq,
-            now - 600,
+            now - (QUIET_IDLE_SECS + 300),
             "the flip's own summary reset the clock it reads"
         );
 
@@ -3779,7 +3780,7 @@ mod tests {
         // A demotion into Idle keeps the old clock — that stillness is
         // the whole reason it demoted.
         let mut working = carried("pi", AgentState::Working, 500, now - 4, now - 900);
-        working.quiet_since = now - 600;
+        working.quiet_since = now - (QUIET_IDLE_SECS + 300);
         working.screen_hash = h;
         let demoted = merge_record_owned(
             Some(&working),
@@ -3796,7 +3797,11 @@ mod tests {
         .expect("no record");
         assert_eq!(demoted.state, AgentState::Idle);
         let (_, dq) = refresh_quiet(Some(&working), Some(h), &demoted, now);
-        assert_eq!(dq, now - 600, "demotion must not whitewash stillness");
+        assert_eq!(
+            dq,
+            now - (QUIET_IDLE_SECS + 300),
+            "demotion must not whitewash stillness"
+        );
     }
 
     #[test]
