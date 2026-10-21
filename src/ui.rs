@@ -1029,6 +1029,17 @@ fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&str> {
     }
 }
 
+/// How long a row's screen has been unchanged, with the window-activity
+/// fallback for panes the daemon has no clock for. `None` when there is
+/// no clock at all (unknown).
+fn quiet_age(rec: Option<&crate::agent::AgentRecord>, activity: u64, now: u64) -> Option<u64> {
+    match rec {
+        Some(r) if r.quiet_since > 0 => Some(now.saturating_sub(r.quiet_since)),
+        _ if activity == 0 => None,
+        _ => Some(now.saturating_sub(activity)),
+    }
+}
+
 /// Idle cell: duration text plus the warn tint for a genuinely idle row
 /// (quiet past `idle_flag_secs` — a day-scale idle stops looking fine).
 ///
@@ -1050,16 +1061,10 @@ fn idle_cell(
     if matches!(state, Some(crate::agent::AgentState::Working)) {
         return ("—".to_string(), false);
     }
-    let (text, age) = match rec {
-        Some(r) if r.quiet_since > 0 => {
-            let age = now.saturating_sub(r.quiet_since);
-            (crate::history::fmt_dur(age), Some(age))
-        }
-        _ if activity == 0 => ("—".to_string(), None),
-        _ => {
-            let age = now.saturating_sub(activity);
-            (crate::history::fmt_dur(age), Some(age))
-        }
+    let age = quiet_age(rec, activity, now);
+    let text = match age {
+        Some(a) => crate::history::fmt_dur(a),
+        None => "—".to_string(),
     };
     let warn = cfg.idle_warn
         && age.is_some_and(|a| {
@@ -1517,7 +1522,13 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
         .unwrap_or("—");
     let state = rec.map(|r| r.state.label()).unwrap_or("—");
     let now = crate::agent::now_unix();
-    let (idle, _) = idle_cell(rec, p.activity, now, &app.config);
+    // The preview is a per-pane detail, not the triage column: it shows
+    // the quiet age for every state, working included — "how long has
+    // this screen been frozen" is exactly what you ask about one pane.
+    let idle = match quiet_age(rec, p.activity, now) {
+        Some(a) => crate::history::fmt_dur(a),
+        None => "—".to_string(),
+    };
     let mut title = format!(
         " {} · {}:{} · {agent} {state} {idle}",
         p.id, p.session, p.window_name,

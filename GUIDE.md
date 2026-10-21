@@ -237,11 +237,14 @@ status bar, no modes except small popups:
   screen meaningfully changed — spinner frames, footer-tip carousels, and
   counter ticks (elapsed times, token rates) don't count, so a spinner
   can't look busy forever; a changed summary line still resets it.
-  Unclaimed panes fall back to tmux's window-activity age. Agent cells
-  share one color per agent name (see `[style]`), and `Idle` tints when
-  a row is `working` but quiet past `stuck_secs` — the stuck smell —
-  or `idle` but quiet past `idle_flag_secs` (default 6h, `0` disables),
-  without relabeling the state.
+  Unclaimed panes fall back to tmux's window-activity age. A `working`
+  row shows `—` there: it is not idle, and a long quiet turn (a model
+  thinking, a tool call that prints nothing) is not an idle one — its
+  age lives in the `Turn` column, and a hung agent shows `stuck` in the
+  State column. Agent cells share one color per agent name (see
+  `[style]`), and `Idle` tints when a row is `idle` but quiet past
+  `idle_flag_secs` (default 6h, `0` disables), without relabeling the
+  state.
 
 Everything except arrows/mouse/Tab/Esc/Alt+digits is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
@@ -303,15 +306,15 @@ enabled = true
 poll_secs = 2        # re-poll cadence (restart daemon to apply)
 stuck_secs = 600     # still-CPU → stuck (0 disables)
 stale_secs = 1800    # evidence staleness for carry + hook lapse
-quiet_idle_secs = 300 # frozen screen → idle (0 disables)
+quiet_idle_secs = 900 # frozen screen → idle (0 disables)
 waiting_idle_secs = 1800 # untouched prompt → idle (0 disables)
 
 [style]
 color_agents = true  # hash-color Agent cells so one agent reads as a group
 agent_palette = []   # style specs for the hash; empty = theme default
-idle_warn = true     # tint Idle when working + quiet past stuck_secs
+idle_warn = true     # tint the Idle cell of a long-idle row
 idle_warn_style = "bold yellow"
-idle_flag_secs = 21600  # also tint Idle when idle + quiet past this (0 disables)
+idle_flag_secs = 21600  # tint Idle when idle + quiet past this (0 disables)
 
 [style.agents]        # per-agent overrides (style specs)
 pi = "cyan"
@@ -435,7 +438,7 @@ Per pane it merges three signals:
    `stuck_secs` (default 10 minutes) becomes `stuck` (needs you), clearing
    the moment it computes again (`stuck_secs = 0` disables stuck
    detection). A live agent whose **screen has not changed** for
-   `quiet_idle_secs` (default 5 minutes) becomes `idle` — a finished turn
+   `quiet_idle_secs` (default 15 minutes) becomes `idle` — a finished turn
    prints whatever it prints, and most print nothing that matches an idle
    pattern, so without this they read `working` forever (their REPL keeps
    burning CPU, so stuck detection never trips either). The screen moving

@@ -406,16 +406,9 @@ fn working_row_never_shows_an_idle_age() {
     let row = text.iter().position(|l| l.contains("%1")).unwrap();
     let idle = &grid[row][idle_column_index(&text)];
     assert_eq!(idle.0, "—", "working row shows an idle age:\n{text:?}");
-    assert_ne!(
-        idle.1,
-        Color::Red,
-        "working row tinted as idle:\n{text:?}"
-    );
+    assert_ne!(idle.1, Color::Red, "working row tinted as idle:\n{text:?}");
     // The turn age still tells the story — it lives in the Turn column.
-    assert!(
-        text[row].contains("1h"),
-        "turn age missing:\n{text:?}"
-    );
+    assert!(text[row].contains("1h"), "turn age missing:\n{text:?}");
 }
 
 /// Column index of the `Idle` header, counted in cells (byte offsets
