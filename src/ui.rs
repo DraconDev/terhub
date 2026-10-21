@@ -1029,16 +1029,27 @@ fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&str> {
     }
 }
 
-/// Idle cell: duration text plus warn tints — working with no visible
-/// change past the stuck threshold (the stuck smell), and idle past
-/// `idle_flag_secs` (a day-scale idle stops looking fine). Waiting is
-/// quiet by nature, so only working and idle warn.
+/// Idle cell: duration text plus the warn tint for a genuinely idle row
+/// (quiet past `idle_flag_secs` — a day-scale idle stops looking fine).
+///
+/// A `working` row is not idle and never looks like one: it shows `—`
+/// and never tints. A silent working row is a normal long turn (a model
+/// thinking, a tool call that prints nothing), and the age climbing in
+/// the Idle column used to read as "idle" — a working pane painted like
+/// a finished one. Its turn age lives in the `Turn` column, and a hung
+/// agent shows `stuck` in the State column (the daemon's CPU-based
+/// gate), so nothing is lost by keeping idle out of the working row.
+/// Waiting is quiet by nature and only ever shows the age.
 fn idle_cell(
     rec: Option<&crate::agent::AgentRecord>,
     activity: u64,
     now: u64,
     cfg: &crate::config::AppConfig,
 ) -> (String, bool) {
+    let state = rec.map(|r| r.state);
+    if matches!(state, Some(crate::agent::AgentState::Working)) {
+        return ("—".to_string(), false);
+    }
     let (text, age) = match rec {
         Some(r) if r.quiet_since > 0 => {
             let age = now.saturating_sub(r.quiet_since);
@@ -1052,13 +1063,9 @@ fn idle_cell(
     };
     let warn = cfg.idle_warn
         && age.is_some_and(|a| {
-            let state = rec.map(|r| r.state);
-            (matches!(state, Some(crate::agent::AgentState::Working))
-                && cfg.stuck_secs > 0
-                && a > cfg.stuck_secs)
-                || (matches!(state, Some(crate::agent::AgentState::Idle))
-                    && cfg.idle_flag_secs > 0
-                    && a > cfg.idle_flag_secs)
+            matches!(state, Some(crate::agent::AgentState::Idle))
+                && cfg.idle_flag_secs > 0
+                && a > cfg.idle_flag_secs
         });
     (text, warn)
 }

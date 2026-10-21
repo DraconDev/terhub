@@ -44,7 +44,13 @@ pub const STUCK_SECS: u64 = 600;
 /// it prints, and most print nothing that matches an idle pattern, so
 /// without it finished agents read `Working` forever (their REPL keeps
 /// burning CPU, so Stuck never trips either).
-pub const QUIET_IDLE_SECS: u64 = 300;
+///
+/// 15 minutes, not 5: a live turn is often silent (a model thinking, a
+/// tool call that prints nothing), and five minutes of a frozen screen
+/// called plenty of working agents "finished". The flip only has to come
+/// later than the silence it mistakes for an end — a quarter of an hour
+/// of a frozen screen behind a live agent is a real end-of-turn signal.
+pub const QUIET_IDLE_SECS: u64 = 900;
 
 /// A `waiting` prompt untouched this long stops counting as urgent.
 /// Longer than [`QUIET_IDLE_SECS`] on purpose: an agent that just asked
