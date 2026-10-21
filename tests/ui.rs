@@ -326,7 +326,7 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
         AgentRecord {
             pane: "%1".to_string(),
             agent: "pi".to_string(),
-            state: AgentState::Working,
+            state: AgentState::Waiting,
             source: Source::Proc,
             summary: String::new(),
             session: "alpha".to_string(),
@@ -359,6 +359,70 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
         !tokens.contains(&"5s") && !tokens.contains(&"6s"),
         "repaint age leaked:\n{text}"
     );
+}
+
+#[test]
+fn working_row_never_shows_an_idle_age() {
+    use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
+    let mut app = app_with_panes();
+    let now = now_unix();
+    // A working agent whose screen has been frozen for an hour is a long
+    // turn, not an idle pane: the Idle cell stays blank and untinted.
+    app.agents.insert(
+        "%1".to_string(),
+        AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            source: Source::Hook,
+            summary: "turn started".to_string(),
+            session: "alpha".to_string(),
+            window: "editor".to_string(),
+            command: "pi".to_string(),
+            updated_at: now,
+            state_since: now - 3600,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 3600,
+            screen_hash: 7,
+            quiet_since: now - 3600,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: String::new(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
+            stuck_base: None,
+        },
+    );
+    let grid = render_grid(&mut app, 140, 20);
+    let text: Vec<String> = grid
+        .iter()
+        .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
+        .collect();
+    let row = text.iter().position(|l| l.contains("%1")).unwrap();
+    let idle = &grid[row][idle_column_index(&text)];
+    assert_eq!(idle.0, "—", "working row shows an idle age:\n{text:?}");
+    assert_ne!(
+        idle.1,
+        Color::Red,
+        "working row tinted as idle:\n{text:?}"
+    );
+    // The turn age still tells the story — it lives in the Turn column.
+    assert!(
+        text[row].contains("1h"),
+        "turn age missing:\n{text:?}"
+    );
+}
+
+/// Column index of the `Idle` header, counted in cells (byte offsets
+/// lie before multibyte borders).
+fn idle_column_index(text: &[String]) -> usize {
+    let hdr = text.iter().find(|l| l.contains("Idle")).unwrap();
+    hdr[..hdr.find("Idle").unwrap()].chars().count()
 }
 
 fn waiting_record(pane: &str, session: &str, summary: &str) -> terhub::agent::AgentRecord {
@@ -484,7 +548,7 @@ fn long_idle_tints_idle_cell() {
 }
 
 #[test]
-fn agent_color_and_idle_warn_reach_cells() {
+fn agent_color_reaches_cells_and_working_rows_stay_untinted() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
     app.config
@@ -535,10 +599,13 @@ fn agent_color_and_idle_warn_reach_cells() {
     let ix = hdr[..hdr.find("Idle").unwrap()].chars().count();
     let row = text.iter().position(|l| l.contains("%1")).unwrap();
     assert_eq!(grid[row][ax].1, Color::Red, "agent override color missing");
-    assert_eq!(grid[row][ix].1, Color::Red, "idle warn color missing");
+    // A working row is not idle: no age, no warn tint — however long the
+    // screen has been quiet.
+    assert_eq!(grid[row][ix].0, "—", "working row shows an idle age");
+    assert_ne!(grid[row][ix].1, Color::Red, "working row tinted as idle");
     assert!(
-        grid[row][ix].2.contains(Modifier::BOLD),
-        "idle warn bold missing"
+        !grid[row][ix].2.contains(Modifier::BOLD),
+        "working row warned as idle"
     );
 }
 

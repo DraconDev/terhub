@@ -2191,7 +2191,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_cell_warns_only_on_stale_working() {
+    fn idle_cell_never_marks_a_working_row_idle() {
         use crate::agent::{AgentRecord, AgentState, Source};
         use crate::config::AppConfig;
         let cfg = AppConfig::default();
@@ -2223,23 +2223,44 @@ mod tests {
             bell_reason: String::new(),
             stuck_base: None,
         };
-        // Working + quiet past stuck_secs (600) → warn.
+        // Working is not idle: no age in the cell, no tint — however long
+        // the screen has been frozen. A silent working row is a long turn.
         let r = rec(AgentState::Working, now - 3600);
-        assert_eq!(
-            idle_cell(Some(&r), 0, now, &cfg),
-            ("1h0m".to_string(), true)
-        );
-        // Fresh work → calm.
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("—".to_string(), false));
         let r = rec(AgentState::Working, now - 5);
-        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("5s".to_string(), false));
-        // Waiting is quiet by nature → calm even when old.
-        let r = rec(AgentState::Waiting, now - 3600);
-        assert!(!idle_cell(Some(&r), 0, now, &cfg).1);
-        // No quiet clock → window activity age, still warns when stale.
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("—".to_string(), false));
+        // A working row falls back to window activity for nothing either.
         let r = rec(AgentState::Working, 0);
         assert_eq!(
             idle_cell(Some(&r), now - 3600, now, &cfg),
+            ("—".to_string(), false)
+        );
+        // Waiting is quiet by nature → the age shows, never a tint.
+        let r = rec(AgentState::Waiting, now - 3600);
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &cfg),
+            ("1h0m".to_string(), false)
+        );
+        // Idle past the flag threshold → the long-idle tint.
+        let flag = AppConfig {
+            idle_flag_secs: 600,
+            ..AppConfig::default()
+        };
+        let r = rec(AgentState::Idle, now - 3600);
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &flag),
             ("1h0m".to_string(), true)
+        );
+        let r = rec(AgentState::Idle, now - 60);
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &flag),
+            ("1m".to_string(), false)
+        );
+        // No quiet clock → window activity age, still untinted.
+        let r = rec(AgentState::Waiting, 0);
+        assert_eq!(
+            idle_cell(Some(&r), now - 3600, now, &cfg),
+            ("1h0m".to_string(), false)
         );
         // Unclaimed panes never warn.
         assert_eq!(
@@ -2247,18 +2268,13 @@ mod tests {
             ("1h0m".to_string(), false)
         );
         assert_eq!(idle_cell(None, 0, now, &cfg), ("—".to_string(), false));
-        // Off switches: flag or stuck_secs = 0.
+        // idle_warn = 0 is the off switch.
         let off = AppConfig {
             idle_warn: false,
             ..AppConfig::default()
         };
-        let r = rec(AgentState::Working, now - 3600);
+        let r = rec(AgentState::Idle, now - 3600);
         assert!(!idle_cell(Some(&r), 0, now, &off).1);
-        let nostuck = AppConfig {
-            stuck_secs: 0,
-            ..AppConfig::default()
-        };
-        assert!(!idle_cell(Some(&r), 0, now, &nostuck).1);
     }
 
     #[test]
