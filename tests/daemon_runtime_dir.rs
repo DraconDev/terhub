@@ -57,7 +57,12 @@ fn runtime_dir_flag_wins_over_env() {
         .expect("spawn terhubd");
     let mut up = false;
     for _ in 0..100 {
-        if flag_dir.join("terhubd.sock").exists() {
+        // Wait for the pid file, not just the socket: the daemon binds
+        // the socket first and writes the pid file right after, so
+        // reading the pid the moment the socket appears races the
+        // daemon's startup and fails for the wrong reason (the suite
+        // is run under load, where that window is easy to miss).
+        if flag_dir.join("terhubd.sock").exists() && flag_dir.join("terhubd.pid").exists() {
             up = true;
             break;
         }
