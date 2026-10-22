@@ -24,6 +24,8 @@ fn make_manifest(done_pat: &str) -> CompiledManifest {
         idle: vec![],
         idle_fallback: vec![],
         waiting_unless: vec![],
+        busy: vec![],
+        phase: vec![],
     })
     .unwrap()
 }
