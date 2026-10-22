@@ -1962,7 +1962,7 @@ mod tests {
         .unwrap();
         let state = m
             .classify("Summary\nall tasks passed · 0 failed\n")
-            .map(|(s, _)| s);
+            .map(|(s, _, _)| s);
         assert_ne!(
             state,
             Some(AgentState::Done),
@@ -2153,7 +2153,7 @@ mod tests {
         // chrome is present here exactly as on a finished pane, which
         // is why the manifest claims no working/idle patterns at all.
         assert_ne!(
-            pi_manifest().classify(PI_WORKING_SCREEN).map(|(s, _)| s),
+            pi_manifest().classify(PI_WORKING_SCREEN).map(|(s, _, _)| s),
             Some(AgentState::Waiting),
             "working screen must not read as waiting"
         );
@@ -2165,7 +2165,7 @@ mod tests {
         // as waiting either. Both negatives come from real captures so
         // a pattern that fires on live traffic fails here.
         assert_ne!(
-            pi_manifest().classify(PI_FINISHED_SCREEN).map(|(s, _)| s),
+            pi_manifest().classify(PI_FINISHED_SCREEN).map(|(s, _, _)| s),
             Some(AgentState::Waiting),
             "finished screen must not read as waiting"
         );
