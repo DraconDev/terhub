@@ -4127,6 +4127,7 @@ mod tests {
             STUCK_SECS,
             0,
             0,
+            0,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working, "0 must disable the flip");
@@ -4199,6 +4200,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             0,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
