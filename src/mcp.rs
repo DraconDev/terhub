@@ -847,7 +847,7 @@ mod tests {
 
     #[test]
     fn the_history_tool_is_advertised() {
-        let names: Vec<String> = tools()["tools"]
+        let names: Vec<String> = tools()
             .as_array()
             .unwrap()
             .iter()
