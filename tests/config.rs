@@ -19,6 +19,13 @@ fn default_text_roundtrips() {
     let fresh = AppConfig::default();
     assert_eq!(cfg.key("kill"), fresh.key("kill"));
     assert_eq!(cfg.theme, fresh.theme);
+    // The written `[daemon]` block must survive the reader: a knob the
+    // writer emits but the reader does not know is a knob the user cannot
+    // turn (and, with `deny_unknown_fields` elsewhere in the config, a
+    // file that fails to load).
+    assert_eq!(cfg.done_idle_secs, fresh.done_idle_secs);
+    assert_eq!(cfg.quiet_idle_secs, fresh.quiet_idle_secs);
+    assert_eq!(cfg.waiting_idle_secs, fresh.waiting_idle_secs);
     std::fs::remove_file(path).ok();
 }
 
