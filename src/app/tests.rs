@@ -2560,6 +2560,60 @@ fn enter_in_search_never_persists() {
 }
 
 #[test]
+fn an_exclusion_typed_in_the_search_is_remembered() {
+    // The live search is session-only, but a query of nothing but
+    // `!` terms is not a search: it says "hide these", and the user
+    // expects that to survive the next launch. This is the "it keeps
+    // forgetting my filter" complaint.
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let _scratch = ScopedConfig::new();
+    let mut app = app_with(&["a"]);
+    let tmux = Tmux::new().unwrap();
+    app.open_filter();
+    for c in "!zsh !micro".chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), &tmux);
+    }
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
+    assert_eq!(app.exclude, "zsh micro");
+    // And it reached the config file, so the next launch restores it.
+    let (cfg, _) = crate::config::load_config_report(Some(_scratch.path.clone()));
+    assert_eq!(cfg.filter, "!zsh micro");
+}
+
+#[test]
+fn a_search_with_a_positive_term_stays_session_only() {
+    // "zsh" asks for a pane to show; "!zsh" asks for one to hide.
+    // Only the second is a preference worth keeping.
+    let _scratch = ScopedConfig::new();
+    let mut app = app_with(&["a"]);
+    assert!(app.remember_exclusions("zsh").is_none());
+    assert!(app.remember_exclusions("!zsh npm").is_none());
+    assert!(app.remember_exclusions("").is_none());
+    assert_eq!(app.exclude, "", "a search became a standing exclusion");
+}
+
+#[test]
+fn remembered_exclusions_merge_into_the_standing_filter() {
+    // The standing line is the accumulated exclusion: a new one adds to
+    // it rather than replacing it, so an existing exclusion is not
+    // silently dropped.
+    let _scratch = ScopedConfig::new();
+    let mut app = app_with(&["a"]);
+    app.exclude = "bash".to_string();
+    let added = app.remember_exclusions("!zsh !micro");
+    assert_eq!(added, Some(vec!["zsh".to_string(), "micro".to_string()]));
+    assert_eq!(app.exclude, "bash zsh micro");
+    // The same terms again change nothing and write nothing.
+    assert_eq!(app.remember_exclusions("!zsh"), Some(Vec::new()));
+    assert_eq!(app.exclude, "bash zsh micro");
+    // The legacy per-token bang form folds into the canonical one.
+    app.exclude = "!bash !zsh".to_string();
+    let added = app.remember_exclusions("!micro");
+    assert_eq!(added, Some(vec!["micro".to_string()]));
+    assert_eq!(app.exclude, "bash zsh micro");
+}
+
+#[test]
 fn standing_strips_leading_bang_on_enter() {
     // The standing editor used to call `normalize_exclude`,
     // which added a `!`. Under the new model the field stores

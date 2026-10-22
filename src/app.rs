@@ -2316,13 +2316,13 @@ impl App {
                     // filter again (round-trip through the prompt),
                     // otherwise the header reverts to the raw query.
                     self.active_saved_filter = self.find_saved_filter_by_query(&q);
-                    self.push_filter_history(q);
-                    self.cancel_modal();
                     // A query of nothing but `!` terms is not a search:
                     // it says "hide these", and the user expects that to
                     // survive the next launch. The search itself stays
                     // session-only — a search is a momentary question.
                     let remembered = self.remember_exclusions(&q);
+                    self.push_filter_history(q);
+                    self.cancel_modal();
                     match remembered {
                         None => {
                             if !self.filter.is_empty() {
@@ -2333,7 +2333,10 @@ impl App {
                             }
                         }
                         Some(added) if added.is_empty() => {
-                            self.set_status(format!("exclusions already saved: {}", q.trim()));
+                            self.set_status(format!(
+                                "exclusions already saved: {}",
+                                self.filter.trim()
+                            ));
                         }
                         Some(added) => {
                             self.set_status(format!(
@@ -3223,6 +3226,66 @@ impl App {
         } else {
             self.set_status(format!("{label}: {q}"));
         }
+    }
+
+    /// Remember the exclusions in a committed live query.
+    ///
+    /// A query of nothing but `!` terms is not a search — it says
+    /// "hide these", and the standing filter is the persisted form of
+    /// exactly that. The live search is session-only on purpose (a
+    /// search is a momentary question), but an exclusion is a
+    /// preference the user expects to keep, and losing it on the next
+    /// launch is the "why did it forget my filter" complaint.
+    ///
+    /// The terms are merged into the standing filter rather than
+    /// replacing it: the standing line is the accumulated exclusion,
+    /// and the standing editor (settings → Filters) is where a term is
+    /// removed. A query carrying any positive term is a search, and
+    /// stays session-only.
+    ///
+    /// Returns `None` when the query is not an exclusion, an empty list
+    /// when every term was already standing, and the newly remembered
+    /// terms otherwise.
+    fn remember_exclusions(&mut self, q: &str) -> Option<Vec<String>> {
+        let mut terms: Vec<String> = Vec::new();
+        for tok in q.split_whitespace() {
+            let tok = tok.trim();
+            if tok.is_empty() {
+                continue;
+            }
+            // A positive term: this is a search, not an exclusion.
+            let term = tok.strip_prefix('!')?;
+            let term = term.trim().to_lowercase();
+            if !term.is_empty() && !terms.contains(&term) {
+                terms.push(term);
+            }
+        }
+        if terms.is_empty() {
+            return None;
+        }
+        // The standing line holds bare tokens; the on-disk form re-adds
+        // the leading `!`. Normalising here also folds the legacy
+        // per-token bangs ("!bash !zsh") into the canonical form, which
+        // means exactly the same to the matcher.
+        let mut standing: Vec<String> = self
+            .exclude
+            .split_whitespace()
+            .map(|t| t.trim().trim_start_matches('!').trim().to_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect();
+        let mut added: Vec<String> = Vec::new();
+        for term in terms {
+            if !standing.contains(&term) {
+                standing.push(term.clone());
+                added.push(term);
+            }
+        }
+        if added.is_empty() {
+            return Some(Vec::new());
+        }
+        self.exclude = standing.join(" ");
+        self.persist_filter();
+        Some(added)
     }
 
     /// Live re-filter while typing; restarts at the top row. Edits

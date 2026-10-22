@@ -164,6 +164,12 @@ status bar, no modes except small popups:
   (`vim !zsh` hides every vim row mentioning zsh). Typing filters live,
   `Enter` keeps the query **for this session only — it is never saved**,
   `Esc` clears it.
+  *One exception*: a query made of nothing but `!` terms (`!zsh !micro`)
+  is not a search — it says "hide these", and that is a preference, not
+  a question. Such a query is **merged into the standing filter and
+  saved to the config**, so it survives the next launch; the status
+  line says `exclusions saved (remembered): zsh micro`. A query with
+  any positive term (`vim !zsh`) stays a session-only search.
   *Filter chip*: while any filter is active, the table header carries a
   `◼` block plus a label naming every filter that is hiding rows —
   `◼ filter: zsh · search: vim` — so a filter is never silent. It rides
