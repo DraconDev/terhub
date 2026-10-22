@@ -582,16 +582,46 @@ impl Tmux {
     /// Jump the client to a pane. Inside tmux this switches the client in
     /// place; outside tmux it selects the pane server-side and execs attach.
     /// Only returns (Ok) when no exec was needed.
+    ///
+    /// The exec is right for a TUI that is about to become the session
+    /// and wrong for a long-lived background process (the tray): it
+    /// replaces the process image, so the tray would be gone and the
+    /// user's terminal taken over. Background callers use
+    /// [`switch_client_to`](Self::switch_client_to) and
+    /// [`select_pane_server_side`](Self::select_pane_server_side)
+    /// instead.
     pub fn focus_pane(&self, pane: &str) -> Result<()> {
         if env::var("TMUX").is_ok() {
-            self.run(&["switch-client", "-t", pane]).map(|_| ())
+            self.switch_client_to(pane)
         } else {
             Self::need_tty()?;
-            self.run(&["select-window", "-t", pane])?;
-            self.run(&["select-pane", "-t", pane])?;
+            self.select_pane_server_side(pane)?;
             let session = self.session_of_pane(pane)?;
             self.attach_here(&session)
         }
+    }
+
+    /// Switch the tmux client to a pane.
+    ///
+    /// Only works from inside a tmux client — the caller *is* that
+    /// client. Outside tmux the server has no current client to switch
+    /// and answers "no current client"; that is not an error to paper
+    /// over, it means the caller has to raise the window itself.
+    pub fn switch_client_to(&self, pane: &str) -> Result<()> {
+        self.run(&["switch-client", "-t", pane]).map(|_| ())
+    }
+
+    /// Select a pane server-side: the session's active window and pane
+    /// move to it, and nothing is attached to the caller.
+    ///
+    /// This is the focus a background process can do — the session is
+    /// ready to show that pane, so whoever looks at the session sees
+    /// it. The caller is still responsible for bringing the window to
+    /// the front.
+    pub fn select_pane_server_side(&self, pane: &str) -> Result<()> {
+        self.run(&["select-window", "-t", pane])?;
+        self.run(&["select-pane", "-t", pane])?;
+        Ok(())
     }
 
     /// Move our own client to another session without leaving the process

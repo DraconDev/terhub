@@ -795,12 +795,30 @@ impl Drop for HubSessionGuard {
 /// have no addressable way to focus it, so the caller can avoid spawning
 /// a duplicate TUI instead.
 pub fn focus_hub(s: &HubSession) -> bool {
+    let tmux = crate::tmux::Tmux::new().ok();
+    focus_hub_with(s, tmux.as_ref())
+}
+
+/// [`focus_hub`] with an explicit tmux handle, so a test can drive the
+/// click path against a fake binary.
+fn focus_hub_with(s: &HubSession, tmux: Option<&crate::tmux::Tmux>) -> bool {
+    // Never attach from the tray. `Tmux::focus_pane` execs
+    // `tmux attach-session` when the caller is outside tmux, which
+    // replaces the tray's process image: the status icon vanishes and
+    // the user's terminal is taken over by a session the tray owns.
+    // The tray only asks tmux to move the session's selection, and
+    // then raises the window itself.
     if let Some(pane) = &s.pane
         && !pane.is_empty()
-        && let Ok(tmux) = crate::tmux::Tmux::new()
-        && tmux.focus_pane(pane).is_ok()
+        && let Some(tmux) = tmux
     {
-        return true;
+        // A client switch only works when the tray itself runs inside
+        // tmux; outside there is no client to switch, and the session's
+        // selection is all a background process can move.
+        if tmux.switch_client_to(pane).is_ok() {
+            return true;
+        }
+        let _ = tmux.select_pane_server_side(pane);
     }
     // Not in tmux (or the jump failed): raise the terminal window that
     // owns the TTY. Each xdotool call is bounded (2s) so a wedged
@@ -1209,6 +1227,48 @@ async fn run_async() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use crate::agent::Source;
+
+    #[test]
+    fn a_tray_click_never_attaches_the_session() {
+        // The tray used to call Tmux::focus_pane, which execs
+        // `tmux attach-session` when the caller is outside tmux: the
+        // tray's process image was replaced, the status icon vanished
+        // and the user's terminal was taken over. A click may only
+        // move the session's selection.
+        let dir = std::env::temp_dir().join(format!("terhub-tray-focus-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("tmux");
+        let log = dir.join("argv.txt");
+        std::fs::write(
+            &bin,
+            format!("#!/bin/sh\necho \"$@\" >> {}\n", log.display()),
+        )
+        .unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let tmux = crate::tmux::Tmux::with_socket(bin, Some("sock9".to_string()));
+        let hub = HubSession {
+            pid: 1,
+            pane: Some("%3".to_string()),
+            tty: None,
+        };
+        // The click does not report success (there is no window to
+        // raise here), but it must not have attached either.
+        let _ = focus_hub_with(&hub, Some(&tmux));
+        let argv = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            !argv.contains("attach-session"),
+            "the tray attached the session: {argv}"
+        );
+        assert!(
+            argv.contains("select-pane") || argv.contains("switch-client"),
+            "the tray did not move the session's selection: {argv}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn item_is_listed_matches_bare_and_path_forms() {
