@@ -3470,10 +3470,10 @@ mod tests {
 
     /// Fake tmux listing a single `%50` pane running `sleep` (pid
     /// substituted in): capture prints a bare prompt, everything else is
-    /// empty. Fields are `\x1f`-separated like the real PANE_FORMAT.
+    /// empty. Fields are separated like the real PANE_FORMAT.
     fn fake_tmux_one_sleep_pane(dir: &std::path::Path, pid: u32) -> crate::tmux::Tmux {
         use std::os::unix::fs::PermissionsExt;
-        let sep = "\x1f";
+        let sep = crate::tmux::SEP;
         let line = [
             "%50", "@1", "w", "1", "0", "sleep", "/tmp", "1", "80", "24", "sess", "0",
         ]
@@ -3735,7 +3735,7 @@ mod tests {
     /// polls to change what the pane shows. Command + pid substituted in.
     fn fake_tmux_file_screen(dir: &std::path::Path, pid: u32, command: &str) {
         use std::os::unix::fs::PermissionsExt;
-        let sep = "\x1f";
+        let sep = crate::tmux::SEP;
         let line = [
             "%50", "@1", "w", "1", "0", command, "/tmp", "1", "80", "24", "sess", "0",
         ]

@@ -80,18 +80,32 @@ impl Pane {
     }
 }
 
-/// Field separator for tmux `-F` formats: ASCII unit separator. A tab
-/// separator collides with tabs inside window names, paths, and session
-/// names, shifting every later field; 0x1f passes through tmux untouched
-/// and never appears in names.
-const SEP: char = '\x1f';
+/// Field separator for tmux `-F` formats.
+///
+/// Printable on purpose. A tab separator collides with tabs inside window
+/// names, paths, and session names, shifting every later field; the obvious
+/// fix — an ASCII unit separator — works on tmux 3.6 but silently breaks on
+/// tmux 3.4 and older, which escape control characters that appear in the
+/// *literal* part of a format string: a raw 0x1f comes back as the four
+/// characters `\037`, every field collapses into the first, and the pane
+/// listing quietly degrades to one broken pane per line. tmux 3.4 is what
+/// ubuntu-24.04 ships, so that is not an exotic target. A printable
+/// sentinel passes through every tmux version untouched.
+///
+/// A sentinel inside a real field still fails closed: the field count
+/// overflows, the line is skipped, and the pane is dropped rather than
+/// parsed shifted.
+pub(crate) const SEP: &str = "|~|";
 
 /// Field counts of the two formats below: more parts than this means a
 /// separator smuggled inside a field, and the line is skipped.
 const PANE_FIELDS: usize = 14;
 const SESSION_FIELDS: usize = 5;
 
-const PANE_FORMAT: &str = "#{pane_id}\x1f#{window_id}\x1f#{window_name}\x1f#{window_active}\x1f#{pane_index}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_active}\x1f#{pane_width}\x1f#{pane_height}\x1f#{session_name}\x1f#{window_activity}\x1f#{pane_pid}\x1f#{window_bell_flag}";
+/// Session listing format. Same printable separator as [`PANE_FORMAT`].
+const SESSION_FORMAT: &str = "#{session_name}|~|#{session_windows}|~|#{session_attached}|~|#{t:session_created}|~|#{t:session_activity}";
+
+const PANE_FORMAT: &str = "#{pane_id}|~|#{window_id}|~|#{window_name}|~|#{window_active}|~|#{pane_index}|~|#{pane_current_command}|~|#{pane_current_path}|~|#{pane_active}|~|#{pane_width}|~|#{pane_height}|~|#{session_name}|~|#{window_activity}|~|#{pane_pid}|~|#{window_bell_flag}";
 
 fn parse_panes(out: &str) -> Vec<Pane> {
     let mut panes = Vec::new();
@@ -319,11 +333,7 @@ impl Tmux {
     }
 
     pub fn list_sessions(&self) -> Result<Vec<Session>> {
-        let out = match self.run(&[
-            "list-sessions",
-            "-F",
-            "#{session_name}\x1f#{session_windows}\x1f#{session_attached}\x1f#{t:session_created}\x1f#{t:session_activity}",
-        ]) {
+        let out = match self.run(&["list-sessions", "-F", SESSION_FORMAT]) {
             Ok(o) => o,
             Err(e) => {
                 let m = e.to_string().to_lowercase();
@@ -851,7 +861,7 @@ mod tests {
     #[test]
     fn tab_in_window_name_does_not_shift_fields() {
         // Window name carries a real tab: fields must still land correctly.
-        let line = "%9\x1f@3\x1fedit\tnotes\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242";
+        let line = "%9|~|@3|~|edit\tnotes|~|1|~|0|~|nvim|~|/home/u|~|1|~|120|~|40|~|dev|~|1790940000|~|4242";
         let panes = parse_panes(line);
         assert_eq!(panes.len(), 1);
         assert_eq!(panes[0].window_name, "edit\tnotes");
@@ -866,13 +876,13 @@ mod tests {
         // closed (skip) rather than parse shifted. The current
         // PANE_FIELDS is 14 (incl. window_bell_flag), so a 15-field
         // line is the first to overflow.
-        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242\x1f1\x1fEXTRA";
+        let line = "%9|~|@3|~|edit|~|1|~|0|~|nvim|~|/home/u|~|1|~|120|~|40|~|dev|~|1790940000|~|4242|~|1|~|EXTRA";
         assert!(parse_panes(line).is_empty());
     }
 
     #[test]
     fn session_tab_in_name_does_not_shift() {
-        let line = "my\tsess\x1f3\x1f1\x1f1749000000\x1f1790940000";
+        let line = "my\tsess|~|3|~|1|~|1749000000|~|1790940000";
         let sessions = parse_sessions(line);
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].name, "my\tsess");
@@ -881,15 +891,45 @@ mod tests {
     }
 
     #[test]
+    fn the_format_separator_survives_tmux_escaping() {
+        // tmux escapes control characters that appear in the literal part
+        // of a `-F` format string on some versions (3.4 turns a raw 0x1f
+        // into the four characters `\037`). A control-character separator
+        // therefore parses on tmux 3.6 and collapses every field into the
+        // first on tmux 3.4 — silently, with no error. The separator has
+        // to stay printable.
+        for (what, format) in [("PANE_FORMAT", PANE_FORMAT), ("session", SESSION_FORMAT)] {
+            assert!(
+                !format.chars().any(char::is_control),
+                "{what} contains a control character: tmux would escape it"
+            );
+            assert!(
+                !SEP.chars().any(char::is_control),
+                "the separator must be printable"
+            );
+        }
+    }
+
+    #[test]
+    fn a_separator_inside_a_field_fails_closed() {
+        // The sentinel is printable, so a field can in principle contain
+        // it. It must fail closed — the pane is dropped, never parsed
+        // with shifted fields.
+        let line = "%9|~|@3|~|edit|~|1|~|0|~|nvim|~|/home/u|~|1|~|120|~|40|~|dev|~|1790940000|~|4242|~|1|~|EXTRA";
+        assert!(parse_panes(line).is_empty());
+    }
+
+    #[test]
     fn parse_panes_reads_window_activity() {
-        let line = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev\x1f1790940000\x1f4242";
+        let line =
+            "%9|~|@3|~|edit|~|1|~|0|~|nvim|~|/home/u|~|1|~|120|~|40|~|dev|~|1790940000|~|4242";
         let panes = parse_panes(line);
         assert_eq!(panes.len(), 1);
         assert_eq!(panes[0].session, "dev");
         assert_eq!(panes[0].activity, 1790940000);
         assert_eq!(panes[0].pid, 4242);
         // Short lines (older tmux without the field) still parse.
-        let legacy = "%9\x1f@3\x1fedit\x1f1\x1f0\x1fnvim\x1f/home/u\x1f1\x1f120\x1f40\x1fdev";
+        let legacy = "%9|~|@3|~|edit|~|1|~|0|~|nvim|~|/home/u|~|1|~|120|~|40|~|dev";
         assert_eq!(parse_panes(legacy)[0].activity, 0);
         assert_eq!(parse_panes(legacy)[0].pid, 0);
     }
