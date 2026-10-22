@@ -145,6 +145,7 @@ fn mcp_conversation_without_and_with_daemon() {
         names,
         vec![
             "terhub_status",
+            "terhub_history",
             "terhub_capture",
             "terhub_send",
             "terhub_wait",
@@ -195,8 +196,71 @@ fn mcp_conversation_without_and_with_daemon() {
     );
     assert_eq!(status["result"].get("isError"), None);
     let text = status["result"]["content"][0]["text"].as_str().unwrap();
+    // The status is JSON: a caller must not have to parse a prose blob.
+    let doc: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
+    assert!(doc["agents"].is_array(), "no agents array:\n{text}");
+    let rows = doc["agents"].as_array().unwrap();
+    let probe = rows
+        .iter()
+        .find(|a| a["pane"] == "%424242")
+        .unwrap_or_else(|| panic!("missing pane:\n{text}"));
+    assert_eq!(probe["agent"], "codex");
+    assert_eq!(probe["state"], "working");
+    assert_eq!(probe["summary"], "mcp probe");
+    // Every row carries the fields a caller acts on.
+    for row in rows {
+        for field in ["pane", "agent", "state", "waiting_secs", "session", "source"] {
+            assert!(row.get(field).is_some(), "row missing {field}: {row}");
+        }
+    }
+    assert_eq!(doc["count"], rows.len());
+
+    // The filters narrow the set.
+    let filtered = mcp.call(
+        11,
+        "tools/call",
+        json!({"name": "terhub_status", "arguments": {"pane": "%424242"}}),
+    );
+    assert_eq!(filtered["result"].get("isError"), None);
+    let text = filtered["result"]["content"][0]["text"].as_str().unwrap();
+    let doc: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(doc["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(doc["agents"][0]["pane"], "%424242");
+
+    // The legacy text form is still one argument away.
+    let legacy = mcp.call(
+        12,
+        "tools/call",
+        json!({"name": "terhub_status", "arguments": {"pane": "%424242", "format": "text"}}),
+    );
+    assert_eq!(legacy["result"].get("isError"), None);
+    let text = legacy["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("%424242"), "missing pane:\n{text}");
-    assert!(text.contains("codex"), "missing agent:\n{text}");
+    assert!(
+        !text.trim_start().starts_with('{'),
+        "the text form must stay prose:\n{text}"
+    );
+
+    // The ledger is readable over MCP: the daemon logged the probe's
+    // transition, so the history tool has something to report.
+    let history = mcp.call(
+        13,
+        "tools/call",
+        json!({"name": "terhub_history", "arguments": {"since": "today", "kind": "agent"}}),
+    );
+    assert_eq!(history["result"].get("isError"), None);
+    let text = history["result"]["content"][0]["text"].as_str().unwrap();
+    let doc: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
+    assert!(doc["entries"].is_array(), "no entries array:\n{text}");
+    assert!(doc["count"].as_u64().is_some(), "no count:\n{text}");
+
+    // A bad argument is an error, not a silent empty result.
+    let bad_since = mcp.call(
+        14,
+        "tools/call",
+        json!({"name": "terhub_history", "arguments": {"since": "last-tuesday"}}),
+    );
+    assert_eq!(bad_since["result"]["isError"], true);
 
     let attend = mcp.call(
         7,

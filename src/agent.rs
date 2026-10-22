@@ -107,6 +107,23 @@ pub enum Source {
     Manual,
 }
 
+impl Source {
+    /// The source's name in full.
+    ///
+    /// The table renders its own short forms ("hook", "proc", "man",
+    /// "scr"); this is the unabbreviated name, for anything that
+    /// reports a record outside the table — the MCP tools, JSON
+    /// output, a log line.
+    pub fn label(self) -> &'static str {
+        match self {
+            Source::Hook => "hook",
+            Source::Screen => "screen",
+            Source::Proc => "proc",
+            Source::Manual => "manual",
+        }
+    }
+}
+
 /// Forward-compatible decode for [`Source`], for the same reason as
 /// [`AgentState`]: a source this build does not know must not fail the
 /// whole snapshot. It decodes as [`Source::Screen`] — the weakest

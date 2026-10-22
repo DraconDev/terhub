@@ -299,9 +299,24 @@ fn handle(req: &Value) -> Option<Value> {
 
 fn tools() -> Value {
     json!([
-        {"name": "terhub_status", "description": "Agent states: which panes run agents, who is waiting or errored.",
+        {"name": "terhub_status", "description": "Agent states: which panes run agents, who is waiting or errored. Returns JSON.",
          "inputSchema": {"type": "object", "properties": {
-             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|stuck|limited|paused"}}}},
+             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|done|stuck|limited|paused"},
+             "session": {"type": "string", "description": "Filter: only this tmux session"},
+             "pane": {"type": "string", "description": "Filter: only this pane (e.g. %3)"},
+             "agent": {"type": "string", "description": "Filter: only this agent (e.g. claude)"},
+             "needs_attention": {"type": "boolean", "description": "Filter: only agents waiting on the human"},
+             "limit": {"type": "number", "description": "Max agents to return (default: all)"},
+             "format": {"type": "string", "description": "json (default) or text (the legacy one-line-per-agent form)"}}}},
+        {"name": "terhub_history", "description": "The activity ledger: state transitions, prompts and session events. Returns JSON.",
+         "inputSchema": {"type": "object", "properties": {
+             "since": {"type": "string", "description": "Window: today|yesterday|week|month|all, 24h, 7d, or YYYY-MM-DD (default: today)"},
+             "limit": {"type": "number", "description": "Max entries to return (default: 100)"},
+             "kind": {"type": "string", "description": "Filter: agent|session|rule|human|prompt"},
+             "pane": {"type": "string", "description": "Filter: only this pane"},
+             "session": {"type": "string", "description": "Filter: only this tmux session"},
+             "prompts": {"type": "boolean", "description": "Return the recent prompts instead of the transitions"},
+             "stats": {"type": "boolean", "description": "Include per-agent time-in-state totals"}}}},
         {"name": "terhub_capture", "description": "Recent screen content of a pane.",
          "inputSchema": {"type": "object", "properties": {
              "pane": {"type": "string"}, "lines": {"type": "number"}},
@@ -330,6 +345,7 @@ fn call_tool(params: &Value) -> Value {
 fn tool_result(name: &str, args: &Value) -> Result<String, String> {
     match name {
         "terhub_status" => tool_status(args),
+        "terhub_history" => tool_history(args),
         "terhub_capture" => tool_capture(args),
         "terhub_send" => tool_send(args),
         "terhub_wait" => tool_wait(args),
@@ -348,24 +364,122 @@ fn state_filter(args: &Value) -> Result<Option<crate::agent::AgentState>, String
     match args.get("state").and_then(|s| s.as_str()) {
         None => Ok(None),
         Some(s) => crate::agent::AgentState::parse(s).map(Some).ok_or_else(|| {
-            "bad state (working|waiting|error|idle|stuck|limited|paused)".to_string()
+            "bad state (working|waiting|error|idle|done|stuck|limited|paused)".to_string()
         }),
     }
 }
 
-fn tool_status(args: &Value) -> Result<String, String> {
-    let filter = state_filter(args)?;
-    let snap = snapshot().map_err(|e| e.message())?;
-    let mut agents = snap.agents;
-    if let Some(f) = filter {
-        agents.retain(|a| a.state == f);
+/// The filters `terhub_status` understands.
+///
+/// Every one is optional. A filter that is *present but empty* is the
+/// caller's mistake, not a filter that matches everything: an empty
+/// `session` would silently select every pane and look like the filter
+/// simply did not work.
+#[derive(Default)]
+struct StatusFilters {
+    state: Option<crate::agent::AgentState>,
+    session: Option<String>,
+    pane: Option<String>,
+    agent: Option<String>,
+    needs_attention: bool,
+    limit: Option<usize>,
+}
+
+/// Read an optional string argument, rejecting an empty one.
+fn optional_str(args: &Value, name: &str) -> Result<Option<String>, String> {
+    match args.get(name) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s.trim().is_empty() => Err(format!("{name} must not be empty")),
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(format!("{name} must be a string")),
     }
+}
+
+impl StatusFilters {
+    fn read(args: &Value) -> Result<Self, String> {
+        let limit = match args.get("limit") {
+            None | Some(Value::Null) => None,
+            Some(v) => {
+                let n = v
+                    .as_u64()
+                    .ok_or_else(|| "limit must be a number".to_string())?;
+                if n == 0 {
+                    return Err("limit must be at least 1".to_string());
+                }
+                Some(n.min(1000) as usize)
+            }
+        };
+        Ok(Self {
+            state: state_filter(args)?,
+            session: optional_str(args, "session")?,
+            pane: optional_str(args, "pane")?,
+            agent: optional_str(args, "agent")?,
+            needs_attention: args
+                .get("needs_attention")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false),
+            limit,
+        })
+    }
+
+    fn matches(&self, a: &crate::agent::AgentRecord) -> bool {
+        if let Some(s) = self.state
+            && a.state != s
+        {
+            return false;
+        }
+        if let Some(s) = &self.session
+            && a.session != *s
+        {
+            return false;
+        }
+        if let Some(p) = &self.pane
+            && a.pane != *p
+        {
+            return false;
+        }
+        if let Some(g) = &self.agent
+            && !a.agent.eq_ignore_ascii_case(g)
+        {
+            return false;
+        }
+        if self.needs_attention && !a.state.needs_attention() {
+            return false;
+        }
+        true
+    }
+}
+
+/// One agent as JSON: the fields an operator (or a model) acts on.
+fn agent_json(a: &crate::agent::AgentRecord, now: u64) -> Value {
+    json!({
+        "pane": a.pane,
+        "agent": a.agent,
+        "state": a.state.label(),
+        "state_since": a.state_since,
+        "waiting_secs": a.waiting_secs(now),
+        "session": a.session,
+        "window": a.window,
+        "handle": a.handle,
+        "model": a.model,
+        "ctx_pct": a.ctx_pct,
+        "last_turn_secs": a.last_turn_secs,
+        "summary": a.summary,
+        "source": a.source.label(),
+        "updated_at": a.updated_at,
+        "needs_attention": a.state.needs_attention(),
+    })
+}
+
+/// The legacy one-line-per-agent rendering, kept for callers that
+/// asked for `format: "text"`.
+fn status_text(agents: &[crate::agent::AgentRecord]) -> String {
     if agents.is_empty() {
-        return Ok("no agents".to_string());
+        return "no agents".to_string();
     }
     let now = crate::agent::now_unix();
     let mut out = String::new();
-    for a in crate::attend::needy_first(agents) {
+    for a in agents {
         out.push_str(&format!(
             "{} {} {} {}s {} {}\n",
             a.pane,
@@ -376,7 +490,150 @@ fn tool_status(args: &Value) -> Result<String, String> {
             a.summary,
         ));
     }
-    Ok(out.trim_end().to_string())
+    out.trim_end().to_string()
+}
+
+/// Agent states, as JSON.
+///
+/// JSON is the default because the old plain-text blob made every
+/// caller parse it: the fields are already there, and a model reading
+/// `ctx_pct` as a number beats it reading "ctx=42%" out of a sentence.
+/// The old form stays one argument away (`format: "text"`) for the
+/// callers that want it.
+fn tool_status(args: &Value) -> Result<String, String> {
+    let filters = StatusFilters::read(args)?;
+    let as_text = args
+        .get("format")
+        .and_then(|f| f.as_str())
+        .map(|f| f.trim().eq_ignore_ascii_case("text"))
+        .unwrap_or(false);
+    let snap = snapshot().map_err(|e| e.message())?;
+    let agents: Vec<crate::agent::AgentRecord> = snap
+        .agents
+        .into_iter()
+        .filter(|a| filters.matches(a))
+        .collect();
+    // Needy first: the same order the text form has always used.
+    let agents = crate::attend::needy_first(agents);
+    let agents: Vec<crate::agent::AgentRecord> = match filters.limit {
+        Some(n) => agents.into_iter().take(n).collect(),
+        None => agents,
+    };
+    if as_text {
+        return Ok(status_text(&agents));
+    }
+    let now = crate::agent::now_unix();
+    let rows: Vec<Value> = agents.iter().map(|a| agent_json(a, now)).collect();
+    let doc = json!({
+        "count": rows.len(),
+        "agents": rows,
+    });
+    serde_json::to_string_pretty(&doc).map_err(|e| format!("cannot render status: {e}"))
+}
+
+/// One ledger entry as JSON.
+fn entry_json(e: &crate::history::Entry) -> Value {
+    json!({
+        "t": e.t,
+        "kind": e.kind,
+        "pane": e.pane,
+        "agent": e.agent,
+        "from": e.from.map(|s| s.label()),
+        "to": e.to.map(|s| s.label()),
+        "session": e.session,
+        "window": e.window,
+        "summary": e.summary,
+        "event": e.event,
+    })
+}
+
+/// The activity ledger: transitions, prompts, session events, rule
+/// fires.
+///
+/// This is the same ledger the web UI reads, so an agent that can
+/// drive terhub can also ask what happened in it — the question the
+/// plain-text `terhub_status` could never answer.
+fn tool_history(args: &Value) -> Result<String, String> {
+    let now = crate::agent::now_unix();
+    // Default to today: the ledger grows without bound, and "all" on
+    // a long-lived install is a multi-second read.
+    let since_arg = args
+        .get("since")
+        .and_then(|s| s.as_str())
+        .unwrap_or("today")
+        .trim();
+    if since_arg.is_empty() {
+        return Err("since must not be empty".to_string());
+    }
+    let since = crate::history::parse_since(since_arg, now).map_err(|e| format!("{e:#}"))?;
+    let limit = match args.get("limit") {
+        None | Some(Value::Null) => 100usize,
+        Some(v) => {
+            let n = v
+                .as_u64()
+                .ok_or_else(|| "limit must be a number".to_string())?;
+            if n == 0 {
+                return Err("limit must be at least 1".to_string());
+            }
+            n.min(1000) as usize
+        }
+    };
+    let kind = optional_str(args, "kind")?.map(|k| k.trim().to_lowercase());
+    if let Some(k) = &kind
+        && !matches!(k.as_str(), "agent" | "session" | "rule" | "human" | "prompt")
+    {
+        return Err("bad kind (agent|session|rule|human|prompt)".to_string());
+    }
+    let pane = optional_str(args, "pane")?;
+    let session = optional_str(args, "session")?;
+    let prompts = args
+        .get("prompts")
+        .and_then(|p| p.as_bool())
+        .unwrap_or(false);
+    let want_stats = args
+        .get("stats")
+        .and_then(|s| s.as_bool())
+        .unwrap_or(false);
+
+    let path = crate::history::ledger_path();
+    // Windowed: the entries inside the window, plus the anchors that
+    // keep the spans open across its edge.
+    let entries = crate::history::read_entries_windowed(&path, since);
+
+    let mut rows: Vec<Value> = Vec::new();
+    if prompts {
+        for e in crate::history::recent_prompts(&entries, pane.as_deref(), limit) {
+            rows.push(entry_json(&e));
+        }
+    } else {
+        let mut kept: Vec<&crate::history::Entry> = entries.iter().collect();
+        if let Some(k) = &kind {
+            kept.retain(|e| &e.kind == k);
+        }
+        if let Some(p) = &pane {
+            kept.retain(|e| &e.pane == p);
+        }
+        if let Some(s) = &session {
+            kept.retain(|e| &e.session == s);
+        }
+        // Newest first: "the last 10" means the last 10, not the first
+        // 10 of the day.
+        for e in kept.iter().rev().take(limit) {
+            rows.push(entry_json(e));
+        }
+    }
+
+    let mut doc = json!({
+        "count": rows.len(),
+        "since": since,
+        "entries": rows,
+    });
+    if want_stats {
+        let spans = crate::history::build_spans(&entries, now);
+        let grouped = crate::history::stats(&spans, since, crate::history::GroupBy::Agent);
+        doc["stats"] = serde_json::to_value(grouped).unwrap_or(Value::Null);
+    }
+    serde_json::to_string_pretty(&doc).map_err(|e| format!("cannot render history: {e}"))
 }
 
 fn tool_capture(args: &Value) -> Result<String, String> {
@@ -484,6 +741,121 @@ fn tool_attend() -> Result<String, String> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    fn record(pane: &str, agent: &str, state: crate::agent::AgentState, session: &str) -> crate::agent::AgentRecord {
+        crate::agent::AgentRecord {
+            pane: pane.to_string(),
+            agent: agent.to_string(),
+            state,
+            source: crate::agent::Source::Hook,
+            summary: "needs input".to_string(),
+            session: session.to_string(),
+            window: "@1".to_string(),
+            command: "claude".to_string(),
+            updated_at: 1_000,
+            state_since: 900,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 42,
+            screen_hash: 0,
+            quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: "@pi-wez".to_string(),
+            model: "opus-4.5".to_string(),
+            ctx_pct: Some(42),
+            reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
+            stuck_base: None,
+        }
+    }
+
+    #[test]
+    fn the_status_filters_narrow_the_agent_set() {
+        let agents = vec![
+            record("%1", "claude", crate::agent::AgentState::Waiting, "work"),
+            record("%2", "codex", crate::agent::AgentState::Working, "work"),
+            record("%3", "claude", crate::agent::AgentState::Working, "play"),
+        ];
+        let kept = |args: Value| -> Vec<String> {
+            let f = StatusFilters::read(&args).expect("filters parse");
+            agents
+                .iter()
+                .filter(|a| f.matches(a))
+                .map(|a| a.pane.clone())
+                .collect()
+        };
+        assert_eq!(kept(json!({})), vec!["%1", "%2", "%3"]);
+        assert_eq!(kept(json!({"state": "working"})), vec!["%2", "%3"]);
+        assert_eq!(kept(json!({"pane": "%1"})), vec!["%1"]);
+        assert_eq!(kept(json!({"agent": "CLAUDE"})), vec!["%1", "%3"]);
+        assert_eq!(kept(json!({"session": "play"})), vec!["%3"]);
+        assert_eq!(
+            kept(json!({"needs_attention": true})),
+            vec!["%1"],
+            "only the waiting agent needs the human"
+        );
+        // A filter that is present but empty is a mistake, not a filter
+        // that matches everything.
+        assert!(StatusFilters::read(&json!({"session": ""})).is_err());
+        assert!(StatusFilters::read(&json!({"state": "nonsense"})).is_err());
+        assert!(StatusFilters::read(&json!({"limit": 0})).is_err());
+    }
+
+    #[test]
+    fn an_agent_renders_as_the_fields_a_caller_acts_on() {
+        let a = record("%1", "claude", crate::agent::AgentState::Waiting, "work");
+        let v = agent_json(&a, 1_000);
+        assert_eq!(v["pane"], "%1");
+        assert_eq!(v["agent"], "claude");
+        assert_eq!(v["state"], "waiting");
+        assert_eq!(v["session"], "work");
+        assert_eq!(v["model"], "opus-4.5");
+        assert_eq!(v["ctx_pct"], 42);
+        assert_eq!(v["last_turn_secs"], 42);
+        assert_eq!(v["handle"], "@pi-wez");
+        assert_eq!(v["source"], "hook");
+        assert_eq!(v["needs_attention"], true);
+        assert_eq!(v["waiting_secs"], 100);
+    }
+
+    #[test]
+    fn a_ledger_entry_renders_its_transition() {
+        let e = crate::history::Entry::transition(
+            1_234,
+            &crate::attend::Transition {
+                pane: "%7".to_string(),
+                agent: "pi".to_string(),
+                from: crate::agent::AgentState::Working,
+                to: crate::agent::AgentState::Waiting,
+                session: "wez".to_string(),
+                window: "@3".to_string(),
+                summary: "needs input".to_string(),
+            },
+        );
+        let v = entry_json(&e);
+        assert_eq!(v["t"], 1_234);
+        assert_eq!(v["kind"], "agent");
+        assert_eq!(v["pane"], "%7");
+        assert_eq!(v["from"], "working");
+        assert_eq!(v["to"], "waiting");
+        assert_eq!(v["session"], "wez");
+        assert_eq!(v["summary"], "needs input");
+    }
+
+    #[test]
+    fn the_history_tool_is_advertised() {
+        let names: Vec<String> = tools()["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(names.contains(&"terhub_history".to_string()), "{names:?}");
+        assert!(names.contains(&"terhub_status".to_string()), "{names:?}");
+    }
 
     #[test]
     fn a_batch_answers_with_one_array_and_no_notification_replies() {
