@@ -2318,8 +2318,29 @@ impl App {
                     self.active_saved_filter = self.find_saved_filter_by_query(&q);
                     self.push_filter_history(q);
                     self.cancel_modal();
-                    if !self.filter.is_empty() {
-                        self.set_status(format!("search kept for this session: {}", self.filter));
+                    // A query of nothing but `!` terms is not a search:
+                    // it says "hide these", and the user expects that to
+                    // survive the next launch. The search itself stays
+                    // session-only — a search is a momentary question.
+                    let remembered = self.remember_exclusions(&q);
+                    match remembered {
+                        None => {
+                            if !self.filter.is_empty() {
+                                self.set_status(format!(
+                                    "search kept for this session: {}",
+                                    self.filter
+                                ));
+                            }
+                        }
+                        Some(added) if added.is_empty() => {
+                            self.set_status(format!("exclusions already saved: {}", q.trim()));
+                        }
+                        Some(added) => {
+                            self.set_status(format!(
+                                "exclusions saved (remembered): {}",
+                                added.join(" ")
+                            ));
+                        }
                     }
                 }
                 self.refresh_filtered();
