@@ -441,6 +441,20 @@ pub struct Manifest {
     /// spinner is an input box, not a plea for input.
     #[serde(default)]
     pub waiting_unless: Vec<String>,
+    /// Lines that prove the agent is still working *on its own* — a
+    /// running goal, a live background task. A `busy` match is working
+    /// evidence and a veto at once: the quiet verdicts that describe a
+    /// turn that ended (a `done` banner, the input box that came back)
+    /// must not outrank work that is still in flight.
+    #[serde(default)]
+    pub busy: Vec<String>,
+    /// The agent's published activity line — what it is doing right now
+    /// (`◎ Goal · Verifying the result · 54min59s active`). A `phase`
+    /// match is everything a `busy` match is, and it also supplies the
+    /// Summary text: a busy pane has no verdict to show, and the phase is
+    /// the one line that says what the agent is up to.
+    #[serde(default)]
+    pub phase: Vec<String>,
 }
 
 pub struct CompiledManifest {
@@ -454,6 +468,8 @@ pub struct CompiledManifest {
     idle: Vec<Regex>,
     idle_fallback: Vec<Regex>,
     waiting_unless: Vec<Regex>,
+    busy: Vec<Regex>,
+    phase: Vec<Regex>,
 }
 
 impl CompiledManifest {
@@ -478,6 +494,8 @@ impl CompiledManifest {
             error: compile_all(&m.agent, "error", &m.error)?,
             limited: compile_all(&m.agent, "limited", &m.limited)?,
             waiting_unless: compile_all(&m.agent, "waiting_unless", &m.waiting_unless)?,
+            busy: compile_all(&m.agent, "busy", &m.busy)?,
+            phase: compile_all(&m.agent, "phase", &m.phase)?,
             // `done` and `idle` are siblings: a manifest that
             // already moved to `done:` gets an empty `idle:` list
             // (the field still compiles to a no-op regex vector).
@@ -503,7 +521,7 @@ impl CompiledManifest {
     /// activity is stale scrollback, not done-ness).
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
-    pub fn classify(&self, screen: &str) -> Option<(AgentState, String)> {
+    pub fn classify(&self, screen: &str) -> Option<(AgentState, String, Option<String>)> {
         let mut tail: Vec<&str> = screen.lines().rev().take(15).collect();
         tail.reverse();
         // The veto scans the whole capture, not just the verdict tail:
@@ -517,8 +535,22 @@ impl CompiledManifest {
         let mut work = None;
         let mut need = false;
         let mut fallback = None;
+        // The freshest busy line (a running goal, a live background task)
+        // and the freshest phase line (the agent saying what it is up to).
+        let mut busy = None;
+        let mut phase = None;
         for (i, line) in tail.iter().enumerate() {
-            let is_work = self.working.iter().any(|r| r.is_match(line));
+            // A busy line is working evidence: the agent is still doing
+            // something on its own, even if its own turn has ended.
+            let is_busy = self.busy.iter().any(|r| r.is_match(line))
+                || self.phase.iter().any(|r| r.is_match(line));
+            if is_busy {
+                busy = Some(i);
+            }
+            if self.phase.iter().any(|r| r.is_match(line)) {
+                phase = Some(i);
+            }
+            let is_work = self.working.iter().any(|r| r.is_match(line)) || is_busy;
             if is_work {
                 work = Some(i);
             }
@@ -553,6 +585,17 @@ impl CompiledManifest {
         if veto && matches!(hit, Some((AgentState::Waiting, _))) {
             hit = work.map(|i| (AgentState::Working, i));
         }
+        // A busy line is a veto for the quiet verdicts. A `done` banner
+        // and the returned input box describe a turn that ended; a
+        // running goal or a live background task says the work did not.
+        // Without this, an agent that finished a turn but is still
+        // verifying reads as finished — and the operator sends it a
+        // message into the middle of a running goal.
+        if busy.is_some()
+            && matches!(hit, Some((AgentState::Done | AgentState::Idle, _)))
+        {
+            hit = work.map(|i| (AgentState::Working, i));
+        }
         // Done chrome (input boxes) applies last: never over need (even
         // vetoed need — a live task outranks chrome), never over a banner
         // (which summarizes better), and never over live activity below
@@ -562,7 +605,10 @@ impl CompiledManifest {
         // `Done` (quiet, finished) — the user can promote it with a
         // pattern in the manifest if they want the distinction.
         if let Some(fi) = fallback {
+            // A busy line outranks the chrome: the input box that came
+            // back means the turn ended, not that the work stopped.
             let dominated = need
+                || busy.is_some()
                 || match hit {
                     None => false,
                     Some((AgentState::Waiting | AgentState::Error | AgentState::Limited, _)) => {
@@ -590,7 +636,8 @@ impl CompiledManifest {
                     }
                 }
             }
-            (state, screen_summary_line(line))
+            let phase = phase.map(|pi| screen_summary_line(tail[pi]));
+            (state, screen_summary_line(line), phase)
         })
     }
 }
@@ -887,6 +934,10 @@ pub struct ScreenHit {
     pub agent: Option<String>,
     pub state: AgentState,
     pub summary: String,
+    /// The agent's published activity line, when it publishes one (see
+    /// `Manifest::phase`). Independent of the verdict text: a busy pane
+    /// has no verdict to show, and this is what it is doing instead.
+    pub phase: Option<String>,
 }
 
 /// A raw screen line, cleaned for one-line display: trim, collapse runs
