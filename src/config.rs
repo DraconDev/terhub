@@ -1161,6 +1161,20 @@ pub fn persist_ui_settings_at(path: &std::path::Path, v: &UiPersist) -> anyhow::
 fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     let raw = std::fs::read_to_string(path).unwrap_or_else(|_| default_config_text());
     let text = strip_bom(&raw);
+    // Scan the file once for string state. A line inside a multi-line
+    // string is *content*, not config: a `FOO=1` line in a user's
+    // command template is not a duplicate key, and a `[section]` line
+    // in one is not a section header. The writer scans lines, so it
+    // has to know where the string bodies are — or it rewrites the
+    // user's script behind their back.
+    let mut scan = Scan::Plain;
+    let mut scanned: Vec<(&str, bool)> = Vec::new();
+    for line in text.lines() {
+        let inside = in_multi_line(scan);
+        let (next, _comment) = scan_toml_line(scan, line);
+        scan = next;
+        scanned.push((line, inside));
+    }
     // Self-heal first. A key assigned twice in one section makes the
     // whole file unparseable (TOML: "Cannot overwrite a value"), and a
     // config that won't parse is answered with defaults — which
@@ -1168,12 +1182,18 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     // included. The first assignment wins; later duplicates are
     // dropped before the rewrite pass, so persisting repairs the file
     // instead of carrying the corruption forward.
-    let lines: Vec<&str> = {
+    let lines: Vec<(&str, bool)> = {
         use std::collections::HashSet;
         let mut seen: HashSet<(String, String)> = HashSet::new();
         let mut section = String::new();
-        text.lines()
-            .filter(|line| {
+        scanned
+            .into_iter()
+            .filter(|(line, inside)| {
+                // Inside a multi-line string the line is content: it
+                // is never a header and never a duplicate key.
+                if *inside {
+                    return true;
+                }
                 let t = line.trim_start();
                 // Comment-only lines are never headers (see the main
                 // pass below): `# [ui]` must not open the ui section.
@@ -1206,7 +1226,13 @@ fn persist_ui_settings_to(path: &PathBuf, v: &UiPersist) -> anyhow::Result<()> {
     // The `[ui]` and `[notifications]` section positions, recorded
     // while scanning so missing keys can be inserted in place.
     let (mut ui_at, mut notif_at): (Option<usize>, Option<usize>) = (None, None);
-    for line in lines.iter().copied() {
+    for (line, inside) in lines.iter().copied() {
+        // Content of a multi-line string: kept byte-for-byte. It is
+        // never a header, never a key and never a comment.
+        if inside {
+            out.push(line.to_string());
+            continue;
+        }
         // Refresh our own stale generated header while we're here.
         if line == "# terhub config: keys are single-key bindings, theme is dark or light." {
             out.push("# terhub config: keys are single-key bindings.".to_string());
@@ -1597,12 +1623,133 @@ fn process_alive(pid: i32) -> bool {
     std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
-/// True when the line assigns `key` (ignores comments and lookalikes).
+/// Where a TOML line scanner is inside the file.
+///
+/// TOML strings come in four shapes and the writer has to tell them
+/// apart: a `#` inside a quoted value is part of the value, not a
+/// comment, and the lines between the delimiters of a multi-line
+/// string are *content*, not config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Scan {
+    /// Outside any string.
+    Plain,
+    /// Inside a single-line basic string (`"…"`).
+    Basic,
+    /// Inside a single-line literal string (`'…'`).
+    Literal,
+    /// Inside a multi-line basic string (`"""…"""`).
+    BasicMulti,
+    /// Inside a multi-line literal string (`'''…'''`).
+    LiteralMulti,
+}
+
+/// Whether the scanner is inside a multi-line string, where a line is
+/// content rather than config.
+fn in_multi_line(state: Scan) -> bool {
+    matches!(state, Scan::BasicMulti | Scan::LiteralMulti)
+}
+
+/// Scan one line of TOML.
+///
+/// Returns the string state after the line and the byte offset of the
+/// comment on it (if any). A comment starts at a `#` that is at the
+/// start of the line or preceded by whitespace and is not inside a
+/// string — so `filter = "npm #rust"` keeps its `#` as part of the
+/// value.
+fn scan_toml_line(mut state: Scan, line: &str) -> (Scan, Option<usize>) {
+    let b = line.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        match state {
+            Scan::Plain => {
+                if b[i..].starts_with(b"\"\"\"") {
+                    state = Scan::BasicMulti;
+                    i += 3;
+                } else if b[i..].starts_with(b"'''") {
+                    state = Scan::LiteralMulti;
+                    i += 3;
+                } else if b[i] == b'"' {
+                    state = Scan::Basic;
+                    i += 1;
+                } else if b[i] == b'\'' {
+                    state = Scan::Literal;
+                    i += 1;
+                } else if b[i] == b'#' && (i == 0 || b[i - 1].is_ascii_whitespace()) {
+                    return (state, Some(i));
+                } else {
+                    i += 1;
+                }
+            }
+            Scan::Basic => {
+                if b[i] == b'\\' {
+                    // Escaped character: skip it and the next byte.
+                    i += 2;
+                } else if b[i] == b'"' {
+                    state = Scan::Plain;
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+            Scan::Literal => {
+                if b[i] == b'\'' {
+                    state = Scan::Plain;
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+            Scan::BasicMulti => {
+                if b[i..].starts_with(b"\"\"\"") {
+                    state = Scan::Plain;
+                    i += 3;
+                } else if b[i] == b'\\' {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            Scan::LiteralMulti => {
+                if b[i..].starts_with(b"'''") {
+                    state = Scan::Plain;
+                    i += 3;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+    (state, None)
+}
+
+/// Whether `line` assigns `key`.
+///
+/// TOML allows a quoted key (`"theme" = "dark"`), and the writer has
+/// to see those too: a quoted key it cannot match is a key it
+/// believes is missing, so it inserts its own assignment beside it —
+/// and the file then defines the key twice, which TOML rejects, and
+/// the loader answers with defaults for the *whole* config.
 fn is_key_line(line: &str, key: &str) -> bool {
     let t = line.trim_start();
-    t.strip_prefix(key)
-        .is_some_and(|rest| rest.trim_start().starts_with('='))
-        && !t.starts_with('#')
+    if t.starts_with('#') {
+        return false;
+    }
+    let Some((k, _rest)) = t.split_once('=') else {
+        return false;
+    };
+    let k = k.trim();
+    if k == key {
+        return true;
+    }
+    // A quoted key: the quotes are syntax, not part of the name.
+    let bytes = k.as_bytes();
+    if bytes.len() >= 2 {
+        let q = bytes[0];
+        if (q == b'"' || q == b'\'') && bytes[bytes.len() - 1] == q {
+            return &k[1..k.len() - 1] == key;
+        }
+    }
+    false
 }
 
 /// The assigned key on a TOML assignment line, or `None` for blank
@@ -1638,16 +1785,13 @@ fn strip_bom(text: &str) -> &str {
 /// whitespace + `#`), or `""` if there is none. Used to preserve user
 /// comments when rewriting a key during UI persist.
 fn trailing_comment(line: &str) -> String {
-    // A `#` is a comment only if it's at the start of the line, or
-    // preceded by whitespace (TOML). We scan for `#` and accept the
-    // first one that's whitespace-preceded.
-    let bytes = line.as_bytes();
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'#' && (i == 0 || bytes[i - 1].is_ascii_whitespace()) {
-            return line[i..].to_string();
-        }
-    }
-    String::new()
+    // A `#` is a comment only outside a quoted value (TOML): at the
+    // start of the line, or preceded by whitespace. The scanner knows
+    // about strings, so a `#` inside `filter = "npm #rust"` stays part
+    // of the value instead of being spliced onto the rewritten line as
+    // a comment tail.
+    let (_state, at) = scan_toml_line(Scan::Plain, line);
+    at.map(|i| line[i..].to_string()).unwrap_or_default()
 }
 
 /// Byte-cap a message, flooring to a char boundary. `String::truncate`
@@ -2698,6 +2842,127 @@ mod tests {
         // Still parses (no duplicate keys).
         let (_cfg, problems) = load_config_report(Some(path.clone()));
         assert!(problems.is_empty(), "{problems:?}");
+    }
+
+    #[test]
+    fn persist_keeps_a_multiline_string_intact() {
+        // A user's command template is a legal TOML multi-line string.
+        // Its body is content, not config: the `FOO=1`/`FOO=2` lines are
+        // not duplicate keys and the `[ui]` line is not a section
+        // header. The writer used to read them as config and deleted
+        // the second FOO on every save -- rewriting the user's script.
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("multiline.toml");
+        let body = "[ui]\ntheme = \"dark\"\n\n[[command]]\nname = \"deploy\"\nkey = \"D\"\nrun = \"\"\"\nset -e\nFOO=1\nFOO=2\n[ui]\n\"\"\"\n";
+        std::fs::write(&path, body).unwrap();
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: Some("nord"),
+                density: None,
+                notifications: None,
+                highlight: None,
+                mru_tabs: None,
+                filter: None,
+                saved_filters: None,
+                sort: None,
+                sort_desc: None,
+                hide_shells: None,
+                blur_cols: None,
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("FOO=1"), "the template lost a line:\n{text}");
+        assert!(text.contains("FOO=2"), "the template lost a line:\n{text}");
+        assert!(
+            text.contains("[ui]\n\"\"\""),
+            "the template's [ui] line was eaten as a section header:\n{text}"
+        );
+        // The theme still landed, exactly once.
+        assert_eq!(text.matches("theme = ").count(), 1, "{text}");
+        assert!(text.contains("theme = \"nord\""), "{text}");
+        toml::from_str::<FileConfig>(&text).expect("persist must leave loadable TOML");
+    }
+
+    #[test]
+    fn persist_recognises_a_quoted_ui_key() {
+        // `"theme" = "dark"` is a legal TOML key. The writer used to
+        // match only bare keys, so it believed the key was missing and
+        // inserted its own assignment beside it -- the file then
+        // defined the key twice, TOML rejected the whole file, and the
+        // loader answered with defaults for *every* setting.
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("quoted.toml");
+        std::fs::write(&path, "[ui]\n\"theme\" = \"dark\"\n").unwrap();
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: Some("nord"),
+                density: None,
+                notifications: None,
+                highlight: None,
+                mru_tabs: None,
+                filter: None,
+                saved_filters: None,
+                sort: None,
+                sort_desc: None,
+                hide_shells: None,
+                blur_cols: None,
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text.matches("theme").count(),
+            1,
+            "the key was written twice:\n{text}"
+        );
+        assert!(text.contains("nord"), "the new value did not land:\n{text}");
+        toml::from_str::<FileConfig>(&text).expect("persist must leave loadable TOML");
+        // The file still parses as a whole config -- that is the part
+        // that used to break: a duplicated key made TOML reject the
+        // file and the loader answered with defaults for everything.
+        let cfg = toml::from_str::<FileConfig>(&text).unwrap();
+        assert_eq!(cfg.ui.theme, "nord");
+    }
+
+    #[test]
+    fn a_hash_inside_a_value_is_not_a_comment() {
+        // `filter = "npm #rust"` -- the `#` is part of the value. The
+        // writer spliced the tail onto the rewritten line, turning the
+        // user's value into `filter = "npm #rust"#rust"` and breaking
+        // its promise to preserve everything else byte-for-byte.
+        let dir = test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hash.toml");
+        std::fs::write(&path, "[ui]\nfilter = \"npm #rust\"\n").unwrap();
+        persist_ui_settings_to(
+            &path,
+            &UiPersist {
+                theme: None,
+                density: None,
+                notifications: None,
+                highlight: None,
+                mru_tabs: None,
+                filter: Some("npm #rust"),
+                saved_filters: None,
+                sort: None,
+                sort_desc: None,
+                hide_shells: None,
+                blur_cols: None,
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("filter = \"npm #rust\"\n"),
+            "the value was mangled:\n{text}"
+        );
+        assert!(!text.contains("#rust\"#"), "the value was mangled:\n{text}");
+        toml::from_str::<FileConfig>(&text).expect("persist must leave loadable TOML");
     }
 
     #[test]
