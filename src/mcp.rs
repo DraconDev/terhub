@@ -27,38 +27,11 @@ pub fn run() -> Result<()> {
             Some(Value::Array(batch)) => {
                 // JSON-RPC batch: handle each request and reply with a
                 // JSON array (omitted entirely if every request was a
-                // notification, per the spec).
-                //
-                // Each request gets its own thread, like the
-                // single-request path: a `terhub_wait` (up to 600s)
-                // inside a batch must not hold up the other requests in
-                // it. The batch's single array reply is written once
-                // every request has answered, so the ids still line up
-                // with the array the spec asks for.
-                let handles: Vec<_> = batch
-                    .into_iter()
-                    .map(|req| {
-                        std::thread::spawn(move || {
-                            let mut responses = Vec::new();
-                            if let Some(resp) = handle(&req) {
-                                responses.push(resp);
-                            }
-                            responses
-                        })
-                    })
-                    .collect();
+                // notification, per the spec). The requests run
+                // concurrently -- see handle_batch.
                 std::thread::spawn(move || {
-                    let mut responses = Vec::new();
-                    for h in handles {
-                        match h.join() {
-                            Ok(mut r) => responses.append(&mut r),
-                            // A panicking tool must not take the whole
-                            // batch down with it.
-                            Err(_) => {}
-                        }
-                    }
-                    if !responses.is_empty() {
-                        let _ = write_frame_locked(&Value::Array(responses));
+                    if let Some(resp) = handle_batch(batch) {
+                        let _ = write_frame_locked(&resp);
                     }
                 });
             }
@@ -238,6 +211,47 @@ fn write_frame(value: &Value) -> Result<()> {
     write!(out, "Content-Length: {}\r\n\r\n{body}", body.len())?;
     out.flush()?;
     Ok(())
+}
+
+/// Run `f` over every item on its own thread, collecting the results
+/// in the items' order.
+///
+/// The JSON-RPC batch path goes through here: a `terhub_wait` (up to
+/// 600s) in one request must not hold up the others in the same
+/// batch. A panicking item is dropped rather than taking the whole
+/// batch down with it.
+fn parallel_map<T, R, F>(items: Vec<T>, f: F) -> Vec<R>
+where
+    T: Send + 'static,
+    R: Send + 'static,
+    F: Fn(T) -> R + Send + Sync + 'static,
+{
+    let f = std::sync::Arc::new(f);
+    items
+        .into_iter()
+        .map(|item| {
+            let f = f.clone();
+            std::thread::spawn(move || f(item))
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|h| h.join().ok())
+        .collect()
+}
+
+/// Answer a JSON-RPC batch: every request is handled on its own
+/// thread and the replies are collected into the single array the spec
+/// asks for. A notification (no `id`) gets no reply.
+fn handle_batch(batch: Vec<Value>) -> Option<Value> {
+    let responses: Vec<Value> = parallel_map(batch, |req| handle(&req))
+        .into_iter()
+        .flatten()
+        .collect();
+    if responses.is_empty() {
+        None
+    } else {
+        Some(Value::Array(responses))
+    }
 }
 
 fn handle(req: &Value) -> Option<Value> {
@@ -454,6 +468,37 @@ fn tool_attend() -> Result<String, String> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn a_batch_answers_with_one_array_and_no_notification_replies() {
+        let batch = vec![
+            json!({"jsonrpc":"2.0","id":1,"method":"ping"}),
+            json!({"jsonrpc":"2.0","method":"ping"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"ping"}),
+        ];
+        let resp = handle_batch(batch).expect("the batch answers");
+        let arr = resp.as_array().expect("the reply is an array");
+        assert_eq!(arr.len(), 2, "a notification must not get a reply");
+        let ids: Vec<i64> = arr.iter().map(|r| r["id"].as_i64().unwrap()).collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn the_batch_runs_its_requests_at_the_same_time() {
+        // A `terhub_wait` (up to 600s) inside a batch must not delay the
+        // other requests in it: the batch runs them concurrently.
+        let start = std::time::Instant::now();
+        let out: Vec<u64> = parallel_map(vec![1u64, 2, 3], |n| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            n
+        });
+        let elapsed = start.elapsed();
+        assert_eq!(out, vec![1, 2, 3]);
+        assert!(
+            elapsed < std::time::Duration::from_millis(700),
+            "the requests ran one after another: {elapsed:?}"
+        );
+    }
 
     fn framed(body: &str) -> Vec<u8> {
         format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()

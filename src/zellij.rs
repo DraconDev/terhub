@@ -25,9 +25,12 @@ fn is_executable(p: &std::path::Path) -> bool {
 
 fn zellij_bin() -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("zellij"))
-        .find(|p| is_executable(p))
+    zellij_bin_in(std::env::split_paths(&path))
+}
+
+/// The first PATH entry that holds an executable `zellij`.
+fn zellij_bin_in(dirs: impl Iterator<Item = std::path::PathBuf>) -> Option<std::path::PathBuf> {
+    dirs.map(|d| d.join("zellij")).find(|p| is_executable(p))
 }
 
 pub fn available() -> bool {
@@ -103,6 +106,39 @@ pub fn attach_here(name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_zellij_lookup_skips_non_executable_files() {
+        // A stale artefact named `zellij` (a README, an unpacked build)
+        // must not shadow the real binary: the lookup only accepts a
+        // regular file with the executable bit set, like the tmux and
+        // tray lookups.
+        let base = std::env::temp_dir().join(format!("terhub-zellij-exec-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let shadow = base.join("shadow");
+        let real = base.join("real");
+        std::fs::create_dir_all(&shadow).unwrap();
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(shadow.join("zellij"), "not zellij\n").unwrap();
+        std::fs::write(real.join("zellij"), "#!/bin/sh\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            shadow.join("zellij"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        std::fs::set_permissions(real.join("zellij"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        // Skips the shadow, finds the real one past it.
+        assert_eq!(
+            zellij_bin_in([shadow.clone(), real.clone()].into_iter()),
+            Some(real.join("zellij"))
+        );
+        // Nothing executable anywhere reads as absent.
+        assert_eq!(zellij_bin_in([shadow.clone()].into_iter()), None);
+        assert_eq!(zellij_bin_in([base.join("missing")].into_iter()), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn parses_short_list() {

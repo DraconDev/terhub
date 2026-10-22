@@ -920,8 +920,7 @@ mod tests {
         // that never comes: the call would hang past its own deadline.
         // The readers are detached instead, so the timeout fires.
         let mut cmd = std::process::Command::new("sh");
-        cmd.arg("-c")
-            .arg("setsid sh -c 'sleep 30' & sleep 30");
+        cmd.arg("-c").arg("setsid sh -c 'sleep 30' & sleep 30");
         let start = std::time::Instant::now();
         let res = run_with_timeout(cmd, "escapee", 1);
         let elapsed = start.elapsed();
