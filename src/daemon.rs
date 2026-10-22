@@ -19,6 +19,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -798,6 +799,40 @@ impl Server {
                 }
                 Err(_) => continue, // timeout: loop to check shutdown
             };
+            // Peer-credential check, before a single byte is read.
+            //
+            // The socket is 0600 and the runtime dir 0700, so "only my
+            // own user can open it" is already true — but that is a
+            // property of the filesystem, not a statement about who is
+            // on the other end of an accepted connection. SO_PEERCRED
+            // reports the peer's uid as the kernel saw it at connect
+            // time, so a socket reached through a loosened runtime dir
+            // (a shared TERHUB_RUNTIME_DIR, a filesystem that does not
+            // enforce POSIX modes, an operator who chmod'ed the dir to
+            // share it) still admits nobody but our own uid. The check
+            // happens before the stream is admitted, so a rejected peer
+            // never reaches the registry, never pins a Manual record,
+            // and never gets to send a Shutdown.
+            match peer_uid(&stream) {
+                Ok(Some(uid)) if uid == our_uid() => {}
+                Ok(Some(uid)) => {
+                    eprintln!(
+                        "terhubd: rejected connection from uid {uid} (expected {})",
+                        our_uid()
+                    );
+                    continue;
+                }
+                Ok(None) => {
+                    // This platform cannot report a Unix socket peer;
+                    // the socket's 0600 mode is the only gate.
+                }
+                Err(e) => {
+                    // Fail closed: a credential check that passes when
+                    // it cannot read the credentials is not a check.
+                    eprintln!("terhubd: peer credential check failed: {e}");
+                    continue;
+                }
+            }
             let reg = self.registry.clone();
             let runtime = self.runtime.clone();
             let runtime_guard = self.runtime_guard.clone();
@@ -825,6 +860,51 @@ impl Server {
 /// Max request line the daemon accepts: hook events are small JSON, so
 /// 1MB is vast headroom — anything bigger truncates into "bad request".
 const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
+
+/// The daemon's own effective uid: the uid a peer must match to be
+/// served. The daemon is never setuid, so the effective uid is the
+/// identity that owns the runtime dir and the socket.
+fn our_uid() -> u32 {
+    // SAFETY: geteuid() is always safe and never fails.
+    unsafe { libc::geteuid() }
+}
+
+/// The uid of the peer on the other end of a connected Unix stream.
+///
+/// Linux reports it through `SO_PEERCRED`, which the kernel fills in
+/// from the connecting process's credentials at `connect()` time — it
+/// cannot be forged by the peer. On platforms without `SO_PEERCRED`
+/// there is no equivalent, and `Ok(None)` says so: the caller then
+/// falls back to the socket's own 0600 mode, which is the whole gate
+/// on those systems.
+#[cfg(target_os = "linux")]
+fn peer_uid(stream: &TokioUnixStream) -> std::result::Result<Option<u32>, std::io::Error> {
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: `cred` is a correctly sized, writable `ucred`, and `len`
+    // is its real size; getsockopt writes at most that many bytes.
+    let rc = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut cred as *mut libc::ucred).cast(),
+            &mut len,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(Some(cred.uid))
+}
+
+/// Non-Linux: the kernel offers no way to read a Unix socket peer's
+/// uid, so there is nothing to report. The socket's 0600 mode remains
+/// the gate.
+#[cfg(not(target_os = "linux"))]
+fn peer_uid(_stream: &TokioUnixStream) -> std::result::Result<Option<u32>, std::io::Error> {
+    Ok(None)
+}
 
 /// Max concurrent connection-handler tasks. Hook bursts and TUI polls
 /// are single-digit concurrent; 64 is vast headroom while bounding the
