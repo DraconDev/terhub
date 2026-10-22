@@ -2625,6 +2625,7 @@ where
         (result, snap)
     };
     let (result, snap) = snapshot;
+    let t_save = std::time::Instant::now();
     // Fail-closed: a swapped runtime dir means the save would land in
     // an attacker-chosen location, so skip it (and log) instead of
     // writing. The poll-loop tick check aborts the daemon right after.
@@ -2632,6 +2633,7 @@ where
         Ok(()) => save_registry(path, &snap),
         Err(e) => eprintln!("terhubd: refusing registry save: {e:#}"),
     }
+    eprintln!("terhubd: TIMING registry save {:?}", t_save.elapsed());
     result
 }
 
