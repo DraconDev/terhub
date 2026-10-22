@@ -507,6 +507,8 @@ limited = ["quota", "rate limit", "\\b429\\b"]
 done = ["task complete", "all done"]
 idle_fallback = ["enter send"]
 waiting_unless = ["esc to interrupt"]
+busy = ["background task running"]
+phase = ["working on it"]
 ```
 
 Patterns are case-insensitive regexes; within one line the most specific
@@ -526,8 +528,16 @@ it loses, since scrolled-past output is history). A transition into
 the needs-you notes).
 `waiting_unless` vetoes a waiting verdict when any of its patterns match
 the tail (an input prompt under a live task is an input box, not a plea),
-falling back to the freshest working line or no verdict. Without
-a command match, patterns still yield a
+falling back to the freshest working line or no verdict.
+`busy` and `phase` cover the other half of the problem: work that is
+still in flight after the agent's own turn ended. A `busy` pattern (a
+running goal, a live background task) is working evidence *and* a veto —
+it outranks the quiet verdicts that describe a turn which ended, so a
+pane whose todo list reads `4/4 completed` while its goal is still
+verifying does not read as `done`. A `phase` pattern is the same, plus
+it supplies the Summary text: a busy pane has no verdict to show, and
+the phase (`◎ Goal · Verifying the result · 54min59s active`) is the one
+line that says what the agent is up to. Without a command match, patterns still yield a
 state, but the agent stays unnamed unless the screen mentions it: a bare
 approve prompt plus a live agent process reads as that agent waiting,
 while the same prompt with no process behind it claims nobody. A manifest
