@@ -591,9 +591,7 @@ impl CompiledManifest {
         // Without this, an agent that finished a turn but is still
         // verifying reads as finished — and the operator sends it a
         // message into the middle of a running goal.
-        if busy.is_some()
-            && matches!(hit, Some((AgentState::Done | AgentState::Idle, _)))
-        {
+        if busy.is_some() && matches!(hit, Some((AgentState::Done | AgentState::Idle, _))) {
             hit = work.map(|i| (AgentState::Working, i));
         }
         // Done chrome (input boxes) applies last: never over need (even
@@ -2165,7 +2163,9 @@ mod tests {
         // as waiting either. Both negatives come from real captures so
         // a pattern that fires on live traffic fails here.
         assert_ne!(
-            pi_manifest().classify(PI_FINISHED_SCREEN).map(|(s, _, _)| s),
+            pi_manifest()
+                .classify(PI_FINISHED_SCREEN)
+                .map(|(s, _, _)| s),
             Some(AgentState::Waiting),
             "finished screen must not read as waiting"
         );
@@ -2535,6 +2535,89 @@ mod tests {
             classify_screen(&m, "codex", screen, false, false),
             hit(Some("codex"), AgentState::Error, "Error: socket timeout")
         );
+    }
+
+    /// A live mcode pane whose own turn ended while its goal kept
+    /// running — captured verbatim from the terminal.
+    const MCODE_VERIFYING_SCREEN: &str = "\
+    └ Completed in 15min14s · ⚡ 819 tok/s
+
+    ◎ Goal · Verifying the result · 54min59s active
+  1.1M tokens · 3 turns
+  read pi-session-2026-10-22T08-02-36-824Z_01a162b2-2898-740b-b435-5b68c45985b3.html and uadit · /goal pause · /goal edit · /goal clear
+    ✓ Todo list 4/4 completed
+  ◐ Tasks · 1 agent active · /tasks details
+    Message · Enter send · Ctrl+J newline
+    ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ›  Ask Mcode to do anything
+    ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────";
+
+    #[test]
+    fn a_running_goal_reads_working_with_its_phase() {
+        // The todo list says `4/4 completed` and the input box is back,
+        // but the goal loop is running and a subagent is still active.
+        // Reading that as `done` told the operator the pane was free to
+        // interrupt — it was not.
+        let m = compiled();
+        let hit = classify_screen(&m, "minimax-code", MCODE_VERIFYING_SCREEN, false, false)
+            .expect("a verdict");
+        assert_eq!(
+            hit.state,
+            AgentState::Working,
+            "a running goal is work in flight, not a finished turn"
+        );
+        assert_eq!(
+            hit.phase.as_deref(),
+            Some("◎ Goal · Verifying the result · 54min59s active"),
+            "the phase is the one line that says what the agent is doing"
+        );
+    }
+
+    #[test]
+    fn a_goal_phase_outranks_a_completed_todo_list() {
+        // Without the tasks line the todo banner is fresher than the goal
+        // line, so freshest-wins alone would read `done`. The busy veto
+        // is what keeps the verdict honest.
+        let m = compiled();
+        let screen = "\
+    ◎ Goal · Verifying the result · 54min59s active
+    ✓ Todo list 4/4 completed
+    Message · Enter send · Ctrl+J newline";
+        let hit = classify_screen(&m, "minimax-code", screen, false, false).expect("a verdict");
+        assert_eq!(
+            hit.state,
+            AgentState::Working,
+            "the goal outranks the banner"
+        );
+        assert!(hit.phase.is_some(), "the phase survives the veto");
+    }
+
+    #[test]
+    fn a_stopped_goal_banner_is_not_a_running_goal() {
+        // The goal-loop's stopped banners (`paused by GLLA`, `work
+        // saved`) are not a running goal: no phase, and no busy veto to
+        // override the quiet verdicts underneath them.
+        let m = compiled();
+        let screen = "\
+    ● GOAL · paused by GLLA · RETRY ARMED · 22/26 ▰▰▰▰▱ tasks · age 7h 43m
+    Message · Enter send · Ctrl+J newline";
+        let hit = classify_screen(&m, "minimax-code", screen, false, false).expect("a verdict");
+        assert_ne!(hit.state, AgentState::Working, "a paused goal is not busy");
+        assert!(hit.phase.is_none(), "a stopped banner is not a phase");
+    }
+
+    #[test]
+    fn a_finished_turn_without_a_goal_is_still_done() {
+        // The busy veto must not turn every finished pane busy: with no
+        // goal line and no active tasks, the completed todo list is the
+        // verdict it always was.
+        let m = compiled();
+        let screen = "\
+    ✓ Todo list 9/9 completed
+    Message · Enter send · Ctrl+J newline";
+        let hit = classify_screen(&m, "minimax-code", screen, false, false).expect("a verdict");
+        assert_eq!(hit.state, AgentState::Done);
+        assert!(hit.phase.is_none());
     }
 
     #[test]
