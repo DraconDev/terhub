@@ -98,6 +98,7 @@ impl Default for Tunables {
             stale_secs: HOOK_STALE_SECS,
             quiet_idle_secs: QUIET_IDLE_SECS,
             waiting_idle_secs: WAITING_IDLE_SECS,
+            done_idle_secs: DONE_IDLE_SECS,
         }
     }
 }
@@ -110,6 +111,7 @@ impl Tunables {
             stale_secs: cfg.stale_secs.max(1),
             quiet_idle_secs: cfg.quiet_idle_secs,
             waiting_idle_secs: cfg.waiting_idle_secs,
+            done_idle_secs: cfg.done_idle_secs,
         }
     }
 }
@@ -2001,6 +2003,7 @@ fn merge_record_owned(
     stuck_secs: u64,
     quiet_idle_secs: u64,
     waiting_idle_secs: u64,
+    done_idle_secs: u64,
 ) -> Option<AgentRecord> {
     use AgentState::{Done, Error, Idle, Limited, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
