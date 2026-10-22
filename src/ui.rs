@@ -1042,14 +1042,14 @@ fn quiet_age(rec: Option<&crate::agent::AgentRecord>, activity: u64, now: u64) -
 /// Idle cell: duration text plus the warn tint for a genuinely idle row
 /// (quiet past `idle_flag_secs` — a day-scale idle stops looking fine).
 ///
-/// A `working` row is not idle and never looks like one: it shows `—`
-/// and never tints. A silent working row is a normal long turn (a model
-/// thinking, a tool call that prints nothing), and the age climbing in
-/// the Idle column used to read as "idle" — a working pane painted like
-/// a finished one. Its turn age lives in the `Turn` column, and a hung
-/// agent shows `stuck` in the State column (the daemon's CPU-based
-/// gate), so nothing is lost by keeping idle out of the working row.
-/// Waiting is quiet by nature and only ever shows the age.
+/// The age is shown for every row that has a clock, `working` rows
+/// included: it says how long since the pane last meaningfully changed,
+/// which is the difference between "streaming" and "frozen on the same
+/// frame". What a `working` row must never do is *look* idle, and that
+/// is the tint's job, not the number's — so only a genuinely `idle` row
+/// ever tints, and the age itself is rendered dim like every other
+/// quiet cell. The State column still says `working`, and a hung agent
+/// shows `stuck` (the daemon's CPU-based gate).
 fn idle_cell(
     rec: Option<&crate::agent::AgentRecord>,
     activity: u64,
@@ -1057,9 +1057,6 @@ fn idle_cell(
     cfg: &crate::config::AppConfig,
 ) -> (String, bool) {
     let state = rec.map(|r| r.state);
-    if matches!(state, Some(crate::agent::AgentState::Working)) {
-        return ("—".to_string(), false);
-    }
     let age = quiet_age(rec, activity, now);
     let text = match age {
         Some(a) => crate::history::fmt_dur(a),
