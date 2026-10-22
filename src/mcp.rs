@@ -13,26 +13,75 @@
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::io::{BufRead, Read, Write};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+
+/// How long the server waits for in-flight replies after stdin EOF.
+///
+/// The client is gone, so the server must not linger — but a reply that
+/// was already computed deserves to be written. Two seconds is far
+/// more than the write itself takes (microseconds) and long enough for
+/// a tool that is about to finish. A long `terhub_wait` is still cut
+/// off, which is the point: it must not outlive its client.
+const EOF_GRACE: Duration = Duration::from_secs(2);
 
 pub fn run() -> Result<()> {
     let stdin = std::io::stdin();
     let mut reader = std::io::BufReader::new(stdin.lock());
+    serve(&mut reader, Arc::new(|v| write_frame_locked(v)))
+}
+
+/// The server loop, over an injectable reader and reply sink.
+///
+/// The sink is called from the handler threads, so it must be shareable
+/// between them — the real one serializes stdout under a lock.
+fn serve(
+    reader: &mut impl BufRead,
+    write: Arc<dyn Fn(&Value) -> Result<()> + Send + Sync>,
+) -> Result<()> {
+    // The handlers that have not finished writing their reply yet.
+    let inflight = Arc::new((Mutex::new(0usize), Condvar::new()));
     loop {
-        match read_frame(&mut reader)? {
-            // EOF: the client is gone. Return so the process exits,
-            // which aborts any tool still running on a worker thread
-            // (a 600s terhub_wait must not outlive its client).
-            None => return Ok(()),
+        match read_frame(reader)? {
+            // EOF: the client is gone. Give the replies that are already
+            // on their way a moment to land before the process exits —
+            // otherwise a request answered microseconds before the
+            // disconnect is lost, and the client waits for a reply that
+            // can never come.
+            //
+            // The wait is bounded: a tool that is still running (a 600s
+            // terhub_wait) is cut off rather than outliving its client.
+            None => {
+                let (lock, cv) = &*inflight;
+                let mut n = lock.lock().unwrap_or_else(|e| e.into_inner());
+                let deadline = Instant::now() + EOF_GRACE;
+                while *n > 0 {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        break;
+                    }
+                    let (guard, _) = cv
+                        .wait_timeout(n, deadline - now)
+                        .unwrap_or_else(|e| e.into_inner());
+                    n = guard;
+                }
+                return Ok(());
+            }
             Some(Value::Array(batch)) => {
                 // JSON-RPC batch: handle each request and reply with a
                 // JSON array (omitted entirely if every request was a
                 // notification, per the spec). The requests run
                 // concurrently -- see handle_batch.
+                let inflight = Arc::clone(&inflight);
+                let write = Arc::clone(&write);
+                *inflight.0.lock().unwrap_or_else(|e| e.into_inner()) += 1;
                 std::thread::spawn(move || {
                     if let Some(resp) = handle_batch(batch) {
-                        let _ = write_frame_locked(&resp);
+                        let _ = write(&resp);
                     }
+                    let (lock, cv) = &*inflight;
+                    *lock.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+                    cv.notify_all();
                 });
             }
             // One thread per frame: a long tool (terhub_wait) runs
@@ -40,10 +89,16 @@ pub fn run() -> Result<()> {
             // responsive while it polls. Responses carry ids, so
             // out-of-order completion is spec-fine.
             Some(req) => {
+                let inflight = Arc::clone(&inflight);
+                let write = Arc::clone(&write);
+                *inflight.0.lock().unwrap_or_else(|e| e.into_inner()) += 1;
                 std::thread::spawn(move || {
                     if let Some(resp) = handle(&req) {
-                        let _ = write_frame_locked(&resp);
+                        let _ = write(&resp);
                     }
+                    let (lock, cv) = &*inflight;
+                    *lock.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+                    cv.notify_all();
                 });
             }
         }
@@ -860,6 +915,43 @@ mod tests {
             .collect();
         assert!(names.contains(&"terhub_history".to_string()), "{names:?}");
         assert!(names.contains(&"terhub_status".to_string()), "{names:?}");
+    }
+
+    #[test]
+    fn a_reply_computed_before_eof_still_reaches_the_client() {
+        // The client writes a request and disconnects. The reply was
+        // computed microseconds earlier, so it must still be delivered:
+        // exiting on EOF the instant it is seen drops that reply, and
+        // the client waits forever for an answer that can never come.
+        let mut input = Cursor::new(framed(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#));
+        let replies: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&replies);
+        let write: Arc<dyn Fn(&Value) -> Result<()> + Send + Sync> =
+            Arc::new(move |v| {
+                sink.lock().unwrap_or_else(|e| e.into_inner()).push(v.clone());
+                Ok(())
+            });
+        serve(&mut input, write).expect("the server stops at EOF");
+
+        let replies = replies.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(replies.len(), 1, "the reply was dropped on EOF");
+        assert_eq!(replies[0]["id"], 1);
+    }
+
+    #[test]
+    fn the_server_stops_promptly_at_eof() {
+        // EOF must not leave the server hanging: with nothing in
+        // flight it returns at once, and it never waits out the full
+        // grace period.
+        let mut input = Cursor::new(Vec::new());
+        let write: Arc<dyn Fn(&Value) -> Result<()> + Send + Sync> = Arc::new(|_| Ok(()));
+        let start = std::time::Instant::now();
+        serve(&mut input, write).expect("the server stops at EOF");
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(500),
+            "the server lingered after EOF: {:?}",
+            start.elapsed()
+        );
     }
 
     #[test]
