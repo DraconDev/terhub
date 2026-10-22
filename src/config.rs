@@ -1019,7 +1019,37 @@ pub fn manifests_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("manifests"))
 }
 
+/// Per-thread override for [`config_path`].
+///
+/// `TERHUB_CONFIG` is process-global: a test that points it at a
+/// scratch file changes what *every* thread in the process resolves,
+/// so two tests that each redirect it race, and one test's redirect
+/// can hijack another test's read. A per-thread override gives each
+/// caller its own config path with no shared state at all.
+///
+/// The env var stays the fallback, and the power-user escape hatch: a
+/// thread with no override — a daemon thread, a spawned child — still
+/// resolves the ambient config.
+thread_local! {
+    static CONFIG_PATH_OVERRIDE: std::cell::RefCell<Option<PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Point *this thread's* config resolution at `path`, returning the
+/// previous override so the caller can restore it.
+///
+/// `None` clears the override and hands config resolution back to the
+/// ambient (`TERHUB_CONFIG` / XDG) resolution.
+pub(crate) fn override_config_path(path: Option<PathBuf>) -> Option<PathBuf> {
+    CONFIG_PATH_OVERRIDE.with(|slot| slot.borrow_mut().replace(path))
+}
+
 pub fn config_path() -> PathBuf {
+    // Per-thread override first: it is caller-scoped state that must
+    // not leak across threads (see `override_config_path`).
+    if let Some(p) = CONFIG_PATH_OVERRIDE.with(|slot| slot.borrow().clone()) {
+        return p;
+    }
     // Test seam (and power-user escape hatch): point terhub at any file.
     if let Ok(p) = env::var("TERHUB_CONFIG")
         && !p.is_empty()
