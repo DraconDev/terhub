@@ -541,9 +541,10 @@ impl CompiledManifest {
         let mut phase = None;
         for (i, line) in tail.iter().enumerate() {
             // A busy line is working evidence: the agent is still doing
-            // something on its own, even if its own turn has ended.
-            let is_busy = self.busy.iter().any(|r| r.is_match(line))
-                || self.phase.iter().any(|r| r.is_match(line));
+            // something on its own, even if its own turn has ended. A
+            // phase line is only the summary — the same text can mean
+            // "running" or "paused", and only the busy list knows which.
+            let is_busy = self.busy.iter().any(|r| r.is_match(line));
             if is_busy {
                 busy = Some(i);
             }
@@ -838,7 +839,15 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // `◐ Tasks · 1 agent active · /tasks details`. A pane whose
             // todo list reads `4/4 completed` is not finished — this
             // line is what says so.
-            busy: vec!["tasks? · \\d+ (agents?|background) active".to_string()],
+            busy: vec![
+                "tasks? · \\d+ (agents?|background) active".to_string(),
+                // A *running* goal — the phase list above is looser on
+                // purpose (it only reads the line), so the busy list
+                // names the phases that mean work in flight. A paused
+                // goal (`Goal · Paused · 58min35s active`) is work on
+                // hold, and must not be counted as busy.
+                "goal · (active|verifying|waiting) · .*active".to_string(),
+            ],
         },
         Manifest {
             // pi (this repo's harness). Only attention states are
