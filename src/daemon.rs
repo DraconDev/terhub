@@ -4091,6 +4091,63 @@ mod tests {
     }
 
     #[test]
+    fn a_busy_working_row_shows_its_phase_not_the_spinner() {
+        // The phase is the one line that says what the agent is doing
+        // ("Goal · Verifying the result"). Spinner text is noise, and a
+        // summary carried over from a waiting row is rot — neither
+        // belongs on a working row.
+        let now = 100_000;
+        let hit = Some(ScreenHit {
+            agent: Some("minimax-code".to_string()),
+            state: AgentState::Working,
+            summary: "⠋ Loading 33min23s · ⚡ 478 tok/s".to_string(),
+            phase: Some("Goal · Verifying the result · 54min59s active".to_string()),
+        });
+        let rec = merge_record_owned(
+            None,
+            false,
+            hit,
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        assert_eq!(
+            rec.summary, "Goal · Verifying the result · 54min59s active",
+            "the working row must show what the agent is doing"
+        );
+    }
+
+    #[test]
+    fn a_working_row_without_a_phase_shows_nothing() {
+        // A plain working agent has no phase: the row stays summary-free
+        // rather than wearing the spinner's ticker as its text.
+        let now = 100_000;
+        let rec = merge_record_owned(
+            None,
+            false,
+            screen_hit(Some("minimax-code"), AgentState::Working, "⠋ Loading"),
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working);
+        assert!(rec.summary.is_empty(), "no phase, no summary");
+    }
+
+    #[test]
     fn quiet_idle_below_threshold_stays_working() {
         let now = 100_000;
         let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
