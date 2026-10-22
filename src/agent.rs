@@ -677,6 +677,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         },
         Manifest {
             agent: "codex".to_string(),
@@ -704,6 +706,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         },
         Manifest {
             agent: "gemini".to_string(),
@@ -734,6 +738,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         },
         Manifest {
             // muse keeps its `❯` input box visible under a live task, so
@@ -755,6 +761,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec!["esc to interrupt".to_string()],
+            busy: vec![],
+            phase: vec![],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
                 "traceback".to_string(),
@@ -815,6 +823,24 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\b429\\b".to_string(),
             ],
             waiting_unless: vec![],
+            // The goal loop is still running: `◎ Goal · Verifying the
+            // result · 54min59s active`. This line says *what* the
+            // agent is doing, so it doubles as the Summary text — it is
+            // the one thing an operator wants to read on a pane whose
+            // own turn has ended but whose work has not.
+            //
+            // The pattern is deliberately loose about the phase name
+            // (`Verifying the result`, `Waiting for background tasks`,
+            // `Active`) so a new phase is picked up for free. It does
+            // require the trailing `active`, which is what separates a
+            // running goal from the goal-loop's own stopped banners
+            // (`GOAL · paused by GLLA`, `GOAL · work saved`).
+            phase: vec!["goal · .*active".to_string()],
+            // Background work continues after the turn's own turn ends:
+            // `◐ Tasks · 1 agent active · /tasks details`. A pane whose
+            // todo list reads `4/4 completed` is not finished — this
+            // line is what says so.
+            busy: vec!["tasks? · \\d+ (agents?|background) active".to_string()],
         },
         Manifest {
             // pi (this repo's harness). Only attention states are
@@ -867,6 +893,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "\\b429\\b".to_string(),
             ],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         },
     ]
 }
@@ -1807,6 +1835,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         })
         .unwrap();
         // Without bell: an active "loading" footer reads as Working,
@@ -1850,6 +1880,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         })
         .unwrap();
         let manifests = vec![m];
@@ -1892,6 +1924,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         })
         .unwrap();
         assert_eq!(
@@ -1922,6 +1956,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         })
         .unwrap();
         let state = m
@@ -1952,6 +1988,8 @@ mod tests {
             idle: vec!["all tasks passed".to_string()],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         })
         .unwrap();
         assert_eq!(
@@ -2306,6 +2344,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec!["busy".to_string()],
+            busy: vec![],
+            phase: vec![],
         })
         .unwrap();
         assert_eq!(m.classify("busy doing things\n❯\n"), None);
@@ -2377,6 +2417,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         };
         assert!(CompiledManifest::compile(&m).is_err());
     }
@@ -2803,6 +2845,8 @@ mod tests {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
         });
         let (ok, warnings) = compile_all_lossy(&manifests);
         assert_eq!(ok.len(), builtin_manifests().len());
