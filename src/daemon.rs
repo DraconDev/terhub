@@ -814,17 +814,14 @@ impl Server {
             // never reaches the registry, never pins a Manual record,
             // and never gets to send a Shutdown.
             match peer_uid(&stream) {
-                Ok(Some(uid)) if uid == our_uid() => {}
-                Ok(Some(uid)) => {
-                    eprintln!(
-                        "terhubd: rejected connection from uid {uid} (expected {})",
-                        our_uid()
-                    );
-                    continue;
-                }
-                Ok(None) => {
-                    // This platform cannot report a Unix socket peer;
-                    // the socket's 0600 mode is the only gate.
+                Ok(peer) => {
+                    if !peer_allowed(peer, our_uid()) {
+                        eprintln!(
+                            "terhubd: rejected connection from peer uid {peer:?} (expected {})",
+                            our_uid()
+                        );
+                        continue;
+                    }
                 }
                 Err(e) => {
                     // Fail closed: a credential check that passes when
@@ -867,6 +864,17 @@ const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
 fn our_uid() -> u32 {
     // SAFETY: geteuid() is always safe and never fails.
     unsafe { libc::geteuid() }
+}
+
+/// The peer-credential policy, split out so it can be tested without
+/// privileges.
+///
+/// A peer whose uid the platform reports must be our own uid. A
+/// platform that cannot report a Unix socket peer's uid (`None`)
+/// leaves the socket's 0600 mode as the only gate — the check is
+/// skipped there rather than invented.
+fn peer_allowed(peer: Option<u32>, ours: u32) -> bool {
+    peer.is_none_or(|uid| uid == ours)
 }
 
 /// The uid of the peer on the other end of a connected Unix stream.
@@ -4180,6 +4188,35 @@ mod tests {
         assert_eq!(mode, 0o600, "pid file must be owner-only");
         assert_eq!(std::fs::read_to_string(&pid_file).unwrap(), "12345");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn peer_credential_policy_admits_only_our_uid() {
+        // The policy, split out so it is testable without privileges:
+        // a peer whose uid the platform reports must be our own uid.
+        let ours = 1000;
+        assert!(peer_allowed(Some(1000), ours), "our own uid is admitted");
+        assert!(!peer_allowed(Some(0), ours), "another uid is refused");
+        assert!(!peer_allowed(Some(1001), ours), "another uid is refused");
+        // A platform that cannot report a Unix socket peer leaves the
+        // socket's 0600 mode as the only gate.
+        assert!(peer_allowed(None, ours));
+    }
+
+    #[tokio::test]
+    async fn peer_uid_is_the_kernel_reported_peer() {
+        // SO_PEERCRED reports the *other* end's uid; on a socketpair
+        // that is this process, which is exactly the value the accept
+        // loop compares against our own uid. If this ever stops
+        // reporting, the check fails closed instead of admitting
+        // everyone.
+        let (a, _b) = UnixStream::pair().unwrap();
+        a.set_nonblocking(true).unwrap();
+        let stream = TokioUnixStream::from_std(a).unwrap();
+        let peer = peer_uid(&stream).expect("peer credential read");
+        assert_eq!(peer, Some(our_uid()));
+        // And the policy admits that peer.
+        assert!(peer_allowed(peer, our_uid()));
     }
 
     #[test]
