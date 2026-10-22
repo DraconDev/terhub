@@ -6,9 +6,11 @@
 //! too: it is the part of the daemon that decides what a pane *is*,
 //! and it is worth reading on its own.
 
-use super::{
-    DONE_IDLE_SECS, QUIET_IDLE_SECS, Tunables, WAITING_IDLE_SECS, lock_registry, log_entry,
-};
+use super::{Tunables, lock_registry, log_entry};
+// Only the test-only `merge_record` wrapper reads these; the poller
+// passes them in.
+#[cfg(test)]
+use super::{DONE_IDLE_SECS, QUIET_IDLE_SECS, WAITING_IDLE_SECS};
 use crate::agent::{
     AgentRecord, AgentState, CompiledManifest, HookEvent, ScreenHit, Source, apply_event_to,
     classify_screen, is_harness_command, is_shell_command, now_unix,

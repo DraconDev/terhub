@@ -5,7 +5,7 @@
 //! file that sits under it hides how much of the file is test.
 use super::*;
 use crate::agent::AgentState;
-use crate::agent::ScreenHit;
+use crate::agent::{AgentState, ScreenHit, Source};
 
 /// Process-wide counter for fake-tmux temp dirs. `std::process::id()`
 /// alone made concurrent sibling tests share a dir, so a `screen.txt`

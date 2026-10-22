@@ -4,6 +4,7 @@
 //! module: the implementation is worth reading on its own, and a test
 //! file that sits under it hides how much of the file is test.
 use super::*;
+use crate::app::git::parse_shortstat;
 use crossterm::event::KeyModifiers;
 
 fn press(code: KeyCode) -> KeyEvent {

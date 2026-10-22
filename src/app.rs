@@ -14,7 +14,7 @@ mod git;
 
 pub use commands::{expand_command, spawn_window_name};
 use filter::{LEGEND, pane_matches_excludes, pane_matches_include};
-use git::{git_diff_stat, parse_shortstat};
+use git::git_diff_stat;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     Normal,

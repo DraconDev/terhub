@@ -8,8 +8,8 @@
 mod poll;
 
 use crate::agent::{
-    AgentRecord, AgentState, CompiledManifest, HookEvent, Source, builtin_manifests,
-    compile_all_lossy, load_manifests, now_unix,
+    AgentRecord, AgentState, CompiledManifest, HookEvent, builtin_manifests, compile_all_lossy,
+    load_manifests, now_unix,
 };
 use crate::attend::detect_all_transitions;
 use crate::config;
