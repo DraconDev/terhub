@@ -4200,7 +4200,11 @@ mod tests {
             DONE_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Done, "a fresh completion is still done");
+        assert_eq!(
+            rec.state,
+            AgentState::Done,
+            "a fresh completion is still done"
+        );
     }
 
     #[test]
@@ -4333,7 +4337,11 @@ mod tests {
             DONE_IDLE_SECS,
         )
         .expect("no record");
-        assert_eq!(rec.state, AgentState::Working, "a live agent is not decayed");
+        assert_eq!(
+            rec.state,
+            AgentState::Working,
+            "a live agent is not decayed"
+        );
     }
 
     #[test]
