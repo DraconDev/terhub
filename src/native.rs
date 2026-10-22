@@ -92,11 +92,20 @@ pub fn run_with_timeout(mut cmd: Command, what: &str, secs: u64) -> Result<Outpu
                 let pgid = child.id() as i32;
                 unsafe { libc::killpg(pgid, libc::SIGKILL) };
                 let _ = child.wait();
-                // The pipes are closed now (group is gone), so the
-                // readers will return promptly. Join so a panic in a
-                // reader doesn't go silent.
-                let _ = out_handle.join();
-                let _ = err_handle.join();
+                // Do NOT join the readers here. A join waits for EOF on
+                // the pipe, and EOF only arrives once every writer is
+                // gone: a descendant that escaped the killed group
+                // (setsid, a daemonizing helper) still holds the write
+                // end, so the join would block past the deadline --
+                // the call would hang exactly when the timeout was
+                // supposed to save it. The readers are detached
+                // instead; they end when their pipe closes, and the
+                // straggler holding it open is the very process that
+                // is already past its deadline. The sibling drain
+                // helper (automation::wait_drained_in_group) makes the
+                // same choice for the same reason.
+                drop(out_handle);
+                drop(err_handle);
                 anyhow::bail!("{what} timed out after {secs}s");
             }
             None => std::thread::sleep(Duration::from_millis(10)),
@@ -902,6 +911,26 @@ pub fn proc_cwd(pid: u32) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_grandchild_that_escapes_the_group_cannot_hold_the_timeout() {
+        // The child forks a setsid grandchild that inherits the stdout
+        // pipe and sleeps. The group kill cannot reach it (it left the
+        // group), so joining the pipe readers would wait for an EOF
+        // that never comes: the call would hang past its own deadline.
+        // The readers are detached instead, so the timeout fires.
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c")
+            .arg("setsid sh -c 'sleep 30' & sleep 30");
+        let start = std::time::Instant::now();
+        let res = run_with_timeout(cmd, "escapee", 1);
+        let elapsed = start.elapsed();
+        assert!(res.is_err(), "the call reported success: {res:?}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(8),
+            "the timeout did not fire: {elapsed:?}"
+        );
+    }
 
     #[test]
     fn absent_backend_errors_are_informational() {

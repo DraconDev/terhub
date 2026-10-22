@@ -11,11 +11,23 @@ pub struct ZSession {
     pub name: String,
 }
 
+/// A PATH entry is only usable when it is a regular file with the
+/// executable bit set. A stale artefact named `zellij` (a README, an
+/// unpacked build) would otherwise shadow the real binary and turn
+/// into a confusing "Permission denied" at spawn time.
+fn is_executable(p: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    p.is_file()
+        && p.metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+}
+
 fn zellij_bin() -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)
         .map(|d| d.join("zellij"))
-        .find(|p| p.is_file())
+        .find(|p| is_executable(p))
 }
 
 pub fn available() -> bool {

@@ -607,12 +607,15 @@ fn data_home() -> PathBuf {
 fn refresh_icon_cache() {
     let icons = data_home().join("icons");
     for tool in ["gtk-update-icon-cache", "qt6-update-icon-cache"] {
-        let ok = std::process::Command::new(tool)
-            .arg(&icons)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
+        // Bounded: the cache tool walks the whole icon tree, and a slow
+        // one would stall the tray's poll loop (and the startup before
+        // the status icon is even registered). Two seconds is plenty
+        // for a cache refresh and short enough that a wedged tool
+        // cannot hold the tray hostage.
+        let mut cmd = std::process::Command::new(tool);
+        cmd.arg(&icons).stdin(Stdio::null());
+        let ok = crate::native::run_with_timeout(cmd, tool, 2)
+            .map(|o| o.status.success())
             .unwrap_or(false);
         if ok {
             return;

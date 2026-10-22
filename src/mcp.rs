@@ -28,11 +28,33 @@ pub fn run() -> Result<()> {
                 // JSON-RPC batch: handle each request and reply with a
                 // JSON array (omitted entirely if every request was a
                 // notification, per the spec).
+                //
+                // Each request gets its own thread, like the
+                // single-request path: a `terhub_wait` (up to 600s)
+                // inside a batch must not hold up the other requests in
+                // it. The batch's single array reply is written once
+                // every request has answered, so the ids still line up
+                // with the array the spec asks for.
+                let handles: Vec<_> = batch
+                    .into_iter()
+                    .map(|req| {
+                        std::thread::spawn(move || {
+                            let mut responses = Vec::new();
+                            if let Some(resp) = handle(&req) {
+                                responses.push(resp);
+                            }
+                            responses
+                        })
+                    })
+                    .collect();
                 std::thread::spawn(move || {
-                    let mut responses = Vec::with_capacity(batch.len());
-                    for req in batch {
-                        if let Some(resp) = handle(&req) {
-                            responses.push(resp);
+                    let mut responses = Vec::new();
+                    for h in handles {
+                        match h.join() {
+                            Ok(mut r) => responses.append(&mut r),
+                            // A panicking tool must not take the whole
+                            // batch down with it.
+                            Err(_) => {}
                         }
                     }
                     if !responses.is_empty() {
