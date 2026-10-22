@@ -834,8 +834,11 @@ each agent carries `pane`, `agent`, `state`, `state_since`, `waiting_secs`,
 `pane`, `agent` and `needs_attention`, caps the list with `limit`, and
 `{"format": "text"}` brings back the old one-line-per-agent form.
 
-`terhub_history` returns `{"count": N, "since": <ts>, "entries": [...]}`.
-`since` takes the same words as the CLI (`today`, `yesterday`, `week`,
+`terhub_attend` answers in the same shape — `{"attending": {...} | null,
+"agents": N}` — so one reader parses both. `{"format": "text"}` gives the old
+one-liner.
+
+`terhub_history` returns `{"count": N, "since": <ts>, "entries": [...]}`.`since` takes the same words as the CLI (`today`, `yesterday`, `week`,
 `month`, `all`, `24h`, `7d`, `YYYY-MM-DD`; default `today`), and `kind`,
 `pane` and `session` narrow the set. `{"prompts": true}` returns the recent
 prompts instead of the transitions, and `{"stats": true}` adds the

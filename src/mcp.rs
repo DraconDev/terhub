@@ -25,20 +25,23 @@ use std::time::{Duration, Instant};
 /// off, which is the point: it must not outlive its client.
 const EOF_GRACE: Duration = Duration::from_secs(2);
 
+/// Where a reply goes.
+///
+/// Called from the handler threads, so it must be shareable between
+/// them — the real sink serializes stdout under a lock.
+type ReplySink = Arc<dyn Fn(&Value) -> Result<()> + Send + Sync>;
+
 pub fn run() -> Result<()> {
     let stdin = std::io::stdin();
     let mut reader = std::io::BufReader::new(stdin.lock());
-    serve(&mut reader, Arc::new(|v| write_frame_locked(v)))
+    serve(&mut reader, Arc::new(write_frame_locked))
 }
 
 /// The server loop, over an injectable reader and reply sink.
 ///
 /// The sink is called from the handler threads, so it must be shareable
 /// between them — the real one serializes stdout under a lock.
-fn serve(
-    reader: &mut impl BufRead,
-    write: Arc<dyn Fn(&Value) -> Result<()> + Send + Sync>,
-) -> Result<()> {
+fn serve(reader: &mut impl BufRead, write: ReplySink) -> Result<()> {
     // The handlers that have not finished writing their reply yet.
     let inflight = Arc::new((Mutex::new(0usize), Condvar::new()));
     loop {
@@ -383,8 +386,9 @@ fn tools() -> Value {
         {"name": "terhub_wait", "description": "Wait until a pane (or any agent) reaches a state. Times out with an error.",
          "inputSchema": {"type": "object", "properties": {
              "pane": {"type": "string"}, "state": {"type": "string"}, "timeout_secs": {"type": "number"}}}},
-        {"name": "terhub_attend", "description": "Longest-waiting agent needing attention.",
-         "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "terhub_attend", "description": "Longest-waiting agent needing attention. Returns JSON.",
+         "inputSchema": {"type": "object", "properties": {
+             "format": {"type": "string", "description": "json (default) or text (the legacy one-liner)"}}}},
     ])
 }
 
@@ -404,7 +408,7 @@ fn tool_result(name: &str, args: &Value) -> Result<String, String> {
         "terhub_capture" => tool_capture(args),
         "terhub_send" => tool_send(args),
         "terhub_wait" => tool_wait(args),
-        "terhub_attend" => tool_attend(),
+        "terhub_attend" => tool_attend(args),
         _ => Err(format!("unknown tool: {name}")),
     }
 }
@@ -777,19 +781,37 @@ fn tool_wait(args: &Value) -> Result<String, String> {
     }
 }
 
-fn tool_attend() -> Result<String, String> {
+/// The agent that needs the human most.
+///
+/// The same JSON shape as `terhub_status` — one reader for both — and
+/// `format: "text"` for the old one-liner.
+fn tool_attend(args: &Value) -> Result<String, String> {
+    let as_text = args
+        .get("format")
+        .and_then(|f| f.as_str())
+        .map(|f| f.trim().eq_ignore_ascii_case("text"))
+        .unwrap_or(false);
     let snap = snapshot().map_err(|e| e.message())?;
-    match crate::attend::pick_attend(&snap.agents, None) {
-        Some(a) => Ok(format!(
-            "{} {} {} {} {}",
-            a.pane,
-            a.agent,
-            a.state.label(),
-            a.session,
-            a.summary
-        )),
-        None => Ok(format!("all clear ({} agents)", snap.agents.len())),
+    let attending = crate::attend::pick_attend(&snap.agents, None);
+    if as_text {
+        return Ok(match &attending {
+            Some(a) => format!(
+                "{} {} {} {} {}",
+                a.pane,
+                a.agent,
+                a.state.label(),
+                a.session,
+                a.summary
+            ),
+            None => format!("all clear ({} agents)", snap.agents.len()),
+        });
     }
+    let now = crate::agent::now_unix();
+    let doc = json!({
+        "attending": attending.as_ref().map(|a| agent_json(a, now)),
+        "agents": snap.agents.len(),
+    });
+    serde_json::to_string_pretty(&doc).map_err(|e| format!("cannot render attend: {e}"))
 }
 
 #[cfg(test)]
@@ -926,11 +948,12 @@ mod tests {
         let mut input = Cursor::new(framed(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#));
         let replies: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&replies);
-        let write: Arc<dyn Fn(&Value) -> Result<()> + Send + Sync> =
-            Arc::new(move |v| {
-                sink.lock().unwrap_or_else(|e| e.into_inner()).push(v.clone());
-                Ok(())
-            });
+        let write: ReplySink = Arc::new(move |v| {
+            sink.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(v.clone());
+            Ok(())
+        });
         serve(&mut input, write).expect("the server stops at EOF");
 
         let replies = replies.lock().unwrap_or_else(|e| e.into_inner());
@@ -944,7 +967,7 @@ mod tests {
         // flight it returns at once, and it never waits out the full
         // grace period.
         let mut input = Cursor::new(Vec::new());
-        let write: Arc<dyn Fn(&Value) -> Result<()> + Send + Sync> = Arc::new(|_| Ok(()));
+        let write: ReplySink = Arc::new(|_| Ok(()));
         let start = std::time::Instant::now();
         serve(&mut input, write).expect("the server stops at EOF");
         assert!(

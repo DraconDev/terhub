@@ -277,6 +277,23 @@ fn mcp_conversation_without_and_with_daemon() {
         json!({"name": "terhub_attend", "arguments": {}}),
     );
     assert_eq!(attend["result"].get("isError"), None);
+    // The agent records all come back in one shape, so a client parses
+    // status and attend with the same reader.
+    let text = attend["result"]["content"][0]["text"].as_str().unwrap();
+    let doc: Value =
+        serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
+    assert!(doc["agents"].as_u64().is_some(), "no agent count:\n{text}");
+    match &doc["attending"] {
+        Value::Null => {}
+        row => {
+            for field in ["pane", "agent", "state", "waiting_secs", "session"] {
+                assert!(
+                    row.get(field).is_some(),
+                    "attending row missing {field}: {row}"
+                );
+            }
+        }
+    }
 
     // A pending terhub_wait must not wedge the server: ping answers
     // while the 20s wait is still pending. (Single-threaded server:
