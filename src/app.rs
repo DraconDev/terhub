@@ -4999,7 +4999,7 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
 
@@ -6896,7 +6896,12 @@ mod tests {
     /// Point the config file at a scratch dir for persist tests. Holds a
     /// process-wide lock: two such tests must never interleave env swaps,
     /// or one could persist into the real config file.
-    static SCRATCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    ///
+    /// `pub(crate)` because the lock is process-wide, not module-wide:
+    /// every lib test that redirects config resolution (`TERHUB_CONFIG`)
+    /// has to take the *same* lock, or a concurrent setter in another
+    /// module can hijack this test's reads.
+    pub(crate) static SCRATCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     /// Hands out distinct scratch config paths, one per `ScopedConfig`.
     static NEXT_CFG: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 

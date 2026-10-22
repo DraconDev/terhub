@@ -10,7 +10,7 @@ use crate::agent::{
     builtin_manifests, classify_screen, compile_all_lossy, is_harness_command, is_shell_command,
     load_manifests, now_unix,
 };
-use crate::attend::{detect_all_transitions, notify_transition};
+use crate::attend::detect_all_transitions;
 use crate::config;
 use crate::history;
 use crate::proc::is_editor_name as is_editor_command;
@@ -1045,16 +1045,17 @@ async fn handle_conn(
                     (t, now)
                 },
             );
-            emit_transitions(&transitions, now);
+            emit_transitions(&transitions, now).await;
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
             if !event.prompt.trim().is_empty() {
-                log_entry(&history::Entry::prompt(
+                log_entry(history::Entry::prompt(
                     now,
                     &event.pane,
                     &crate::proc::canonical_agent(&event.agent),
                     &event.prompt,
-                ));
+                ))
+                .await;
             }
             Response::ok()
         }
@@ -1243,7 +1244,7 @@ async fn poll_loop(
                     t
                 };
                 let now = now_unix();
-                emit_transitions(&transitions, now);
+                emit_transitions(&transitions, now).await;
                 // Outage: sessions/foreground unknown — skip diffing AND the
                 // prev update, so recovery diffs against last-known-good and
                 // neither direction logs phantoms.
@@ -1252,16 +1253,16 @@ async fn poll_loop(
                         sessions.into_iter().collect();
                     if let Some(prev) = prev_sessions.replace(sessions.clone()) {
                         for opened in sessions.difference(&prev) {
-                            log_entry(&history::Entry::session_event(now, opened, true));
+                            log_entry(history::Entry::session_event(now, opened, true)).await;
                         }
                         for closed in prev.difference(&sessions) {
-                            log_entry(&history::Entry::session_event(now, closed, false));
+                            log_entry(history::Entry::session_event(now, closed, false)).await;
                         }
                     }
                     if let Some(prev) = prev_foreground.replace(foreground.clone())
                         && prev != foreground
                     {
-                        log_entry(&history::Entry::human_focus(now, foreground.as_deref()));
+                        log_entry(history::Entry::human_focus(now, foreground.as_deref())).await;
                     }
                 }
                 // Automation runs detached so a slow shell action can't stall
@@ -1287,8 +1288,21 @@ async fn poll_loop(
     }
 }
 
-fn log_entry(entry: &history::Entry) {
-    let _ = history::append_entry(&history::ledger_path(), entry);
+/// Append one entry to the activity ledger.
+///
+/// The ledger write takes an exclusive `flock` and fsyncs, so it is
+/// blocking I/O: on a tokio worker it parks that worker for the
+/// duration — and for the whole of an hourly prune, which holds that
+/// same lock while it rewrites the ledger. `spawn_blocking` keeps the
+/// worker free; the callers await it, so the ledger order still
+/// matches the event order.
+async fn log_entry(entry: history::Entry) {
+    let path = history::ledger_path();
+    match tokio::task::spawn_blocking(move || history::append_entry(&path, &entry)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => eprintln!("terhubd: ledger append failed ({e})"),
+        Err(e) => eprintln!("terhubd: ledger append task failed ({e})"),
+    }
 }
 
 /// The pause clock carried in from the previous poll, if the record was
@@ -1458,14 +1472,35 @@ fn apply_hook_event(
 /// notification for attention states, a one-shot note for completions.
 /// Runs WITHOUT the registry lock — a slow notify-send must never stall
 /// polls or snapshots.
-fn emit_transitions(transitions: &[crate::attend::Transition], now: u64) {
+/// Fire the notification for one transition, detached.
+///
+/// The notifier is a subprocess (`notify-send`) with a 5s bound. Waiting
+/// for it inline parked the tokio worker that ran it — stretching the
+/// poll cycle by 5s for every attention transition. On the blocking
+/// pool, detached, the poll moves on and the toast still goes out.
+fn notify_detached(t: &crate::attend::Transition) {
+    let t = t.clone();
+    if t.to.needs_attention() {
+        drop(tokio::task::spawn_blocking(move || {
+            crate::attend::notify_transition(&t)
+        }));
+    } else if crate::attend::is_completion(t.from, t.to) {
+        drop(tokio::task::spawn_blocking(move || {
+            crate::attend::notify_done(&t)
+        }));
+    }
+}
+
+/// Log the transitions and fire the notifications.
+///
+/// The ledger write is awaited — the ledger's order is the record of
+/// what happened, so it must not be reordered by a detached task. The
+/// notification is not: it runs detached (see [`notify_detached`]), so
+/// a slow notifier cannot stall polls or snapshots.
+async fn emit_transitions(transitions: &[crate::attend::Transition], now: u64) {
     for t in transitions {
-        log_entry(&history::Entry::transition(now, t));
-        if t.to.needs_attention() {
-            notify_transition(t);
-        } else if crate::attend::is_completion(t.from, t.to) {
-            crate::attend::notify_done(t);
-        }
+        log_entry(history::Entry::transition(now, t)).await;
+        notify_detached(t);
     }
 }
 
@@ -4281,6 +4316,85 @@ mod tests {
         assert!(
             text.contains("first run") && text.contains("second run"),
             "the respawn truncated the previous run's log: {text}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_slow_notifier_does_not_stall_the_caller() {
+        // The notifier is a desktop subprocess with a 5s bound. Waiting
+        // for it inline parked the tokio worker that ran it and
+        // stretched the poll cycle by 5s per attention transition.
+        // The detached dispatch must return immediately.
+        //
+        // The lock is the process-wide config scratch lock: this test
+        // redirects TERHUB_CONFIG and PATH, and a concurrent setter in
+        // another module would hijack either.
+        let _lock = crate::app::tests::SCRATCH_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("terhub-notify-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A fake notify-send that takes 2s: the real one is a desktop
+        // service that can wedge exactly like this.
+        let fake = dir.join("notify-send");
+        std::fs::write(&fake, "#!/bin/sh\nsleep 2\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let cfg = dir.join("config.toml");
+        std::fs::write(&cfg, "[notifications]\nenabled = true\n").unwrap();
+        let old_path = std::env::var("PATH").ok();
+        let old_cfg = std::env::var("TERHUB_CONFIG").ok();
+        // SAFETY: the scratch lock is held, so no other lib test is
+        // reading these.
+        unsafe {
+            std::env::set_var(
+                "PATH",
+                format!("{}:{}", dir.display(), old_path.clone().unwrap_or_default()),
+            );
+            std::env::set_var("TERHUB_CONFIG", &cfg);
+        }
+        struct Restore {
+            path: Option<String>,
+            cfg: Option<String>,
+        }
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                // SAFETY: the scratch lock is still held (the guard
+                // outlives this struct: it is declared first).
+                unsafe {
+                    match self.path.take() {
+                        Some(p) => std::env::set_var("PATH", p),
+                        None => std::env::remove_var("PATH"),
+                    }
+                    match self.cfg.take() {
+                        Some(c) => std::env::set_var("TERHUB_CONFIG", c),
+                        None => std::env::remove_var("TERHUB_CONFIG"),
+                    }
+                }
+            }
+        }
+        let _restore = Restore {
+            path: old_path,
+            cfg: old_cfg,
+        };
+
+        let t = crate::attend::Transition {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            from: AgentState::Working,
+            to: AgentState::Waiting,
+            session: "s".to_string(),
+            window: "w".to_string(),
+            summary: "needs input".to_string(),
+        };
+        let start = std::time::Instant::now();
+        notify_detached(&t);
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "the notifier was awaited inline: {elapsed:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
