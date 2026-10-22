@@ -1019,17 +1019,17 @@ pub fn manifests_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("manifests"))
 }
 
-/// Per-thread override for [`config_path`].
-///
-/// `TERHUB_CONFIG` is process-global: a test that points it at a
-/// scratch file changes what *every* thread in the process resolves,
-/// so two tests that each redirect it race, and one test's redirect
-/// can hijack another test's read. A per-thread override gives each
-/// caller its own config path with no shared state at all.
-///
-/// The env var stays the fallback, and the power-user escape hatch: a
-/// thread with no override — a daemon thread, a spawned child — still
-/// resolves the ambient config.
+// Per-thread override for `config_path`.
+//
+// `TERHUB_CONFIG` is process-global: a test that points it at a
+// scratch file changes what *every* thread in the process resolves, so
+// two tests that each redirect it race, and one test's redirect can
+// hijack another test's read. A per-thread override gives each caller
+// its own config path with no shared state at all.
+//
+// The env var stays the fallback, and the power-user escape hatch: a
+// thread with no override — a daemon thread, a spawned child — still
+// resolves the ambient config.
 thread_local! {
     static CONFIG_PATH_OVERRIDE: std::cell::RefCell<Option<PathBuf>> =
         const { std::cell::RefCell::new(None) };
@@ -1041,7 +1041,10 @@ thread_local! {
 /// `None` clears the override and hands config resolution back to the
 /// ambient (`TERHUB_CONFIG` / XDG) resolution.
 pub(crate) fn override_config_path(path: Option<PathBuf>) -> Option<PathBuf> {
-    CONFIG_PATH_OVERRIDE.with(|slot| slot.borrow_mut().replace(path))
+    CONFIG_PATH_OVERRIDE.with(|slot| {
+        let mut inner = slot.borrow_mut();
+        std::mem::replace(&mut *inner, path)
+    })
 }
 
 pub fn config_path() -> PathBuf {
@@ -2285,6 +2288,50 @@ mod tests {
             .expect("open");
         let times = std::fs::FileTimes::new().set_modified(when);
         file.set_times(times).expect("set mtime");
+    }
+
+    /// The config-path override is per-thread, not per-process.
+    ///
+    /// The `TERHUB_CONFIG` env var it replaced was process-global: a
+    /// test that redirected it changed what every other thread in the
+    /// process resolved, so two config tests could read each other's
+    /// scratch file. This pins the property that makes the scratch
+    /// files trustworthy: an override on this thread is invisible to
+    /// any other thread.
+    #[test]
+    fn a_config_path_override_is_thread_local() {
+        let dir = std::env::temp_dir().join(format!("terhub-cfg-override-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mine = dir.join("mine.toml");
+
+        // No override yet: this thread resolves the ambient config.
+        let ambient = config_path();
+        assert_ne!(ambient, mine);
+
+        let previous = override_config_path(Some(mine.clone()));
+        assert_eq!(previous, None, "the first override has nothing to restore");
+        assert_eq!(config_path(), mine);
+
+        // Another thread must not see this thread's override.
+        let seen = std::thread::spawn(config_path).join().unwrap();
+        assert_ne!(seen, mine, "the override leaked to another thread");
+
+        // Restoring hands resolution back to the ambient path.
+        let restored = override_config_path(None);
+        assert_eq!(restored, Some(mine.clone()));
+        assert_eq!(config_path(), ambient);
+
+        // A nested override restores the outer one, not the ambient.
+        let outer = dir.join("outer.toml");
+        override_config_path(Some(outer.clone()));
+        let inner = dir.join("inner.toml");
+        override_config_path(Some(inner.clone()));
+        assert_eq!(config_path(), inner);
+        assert_eq!(override_config_path(Some(outer.clone())), Some(inner));
+        assert_eq!(config_path(), outer);
+        override_config_path(None);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

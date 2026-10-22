@@ -6950,14 +6950,18 @@ pub(crate) mod tests {
         assert!(!app.config.compact());
     }
 
-    /// Point the config file at a scratch dir for persist tests. Holds a
-    /// process-wide lock: two such tests must never interleave env swaps,
-    /// or one could persist into the real config file.
+    /// Serialises every lib test that mutates a *process-global* input.
+    ///
+    /// `PATH` is the only one left: the config path moved to a
+    /// per-thread override (see `crate::config::override_config_path`),
+    /// so config tests no longer touch shared state at all. `PATH` is
+    /// still process-global, so a test that repoints it must not
+    /// overlap another that resolves a program through it.
     ///
     /// `pub(crate)` because the lock is process-wide, not module-wide:
-    /// every lib test that redirects config resolution (`TERHUB_CONFIG`)
-    /// has to take the *same* lock, or a concurrent setter in another
-    /// module can hijack this test's reads.
+    /// every lib test that redirects `PATH` has to take the *same*
+    /// lock, or a concurrent setter in another module can hijack a
+    /// sibling's program lookup.
     pub(crate) static SCRATCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     /// Hands out distinct scratch config paths, one per `ScopedConfig`.
     static NEXT_CFG: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -7507,14 +7511,6 @@ pub(crate) mod tests {
     #[test]
     fn stale_instance_cannot_revert_a_newer_instances_filter() {
         use crate::config::ViewChanges;
-        // Serialize with every other env-mutating lib test; the lock
-        // is held for the whole mutation window. SCRATCH_LOCK is the
-        // shared seam for every test that redirects config resolution
-        // (`ScopedConfig` included): without it a parallel save would
-        // land in this test's scratch file.
-        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
-        let saved = std::env::var("TERHUB_CONFIG").ok();
         let dir = std::env::temp_dir().join(format!("terhub-viewclobber-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("cfg.toml");
@@ -7523,9 +7519,7 @@ pub(crate) mod tests {
             "[ui]\ntheme = \"dark\"\nfilter = \"!bash\"\nsort = \"Idle\"\nsort_desc = true\nhide_shells = false\n",
         )
         .unwrap();
-        unsafe {
-            std::env::set_var("TERHUB_CONFIG", &path);
-        }
+        let _cfg = ConfigAt::new(&path);
         // Instance B opens first and holds the file as it stands.
         let cfg = crate::config::load_config(None);
         let mut b = App::new(cfg.clone());
@@ -7552,30 +7546,16 @@ pub(crate) mod tests {
             text.contains("sort = \"Idle\""),
             "untouched sort key was rewritten:\n{text}"
         );
-        unsafe {
-            match saved {
-                Some(v) => std::env::set_var("TERHUB_CONFIG", v),
-                None => std::env::remove_var("TERHUB_CONFIG"),
-            }
-        }
     }
 
     #[test]
     fn enter_in_search_never_persists() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        // Serialize with every other env-mutating lib test (hosts modal
-        // resolves its fleet file through TERHUB_CONFIG too); the lock
-        // is held for the whole mutation window.
-        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
-        let saved = std::env::var("TERHUB_CONFIG").ok();
         let dir = std::env::temp_dir().join(format!("terhub-search-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("search-nopersist.toml");
         std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
-        unsafe {
-            std::env::set_var("TERHUB_CONFIG", &path);
-        }
+        let _cfg = ConfigAt::new(&path);
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
         app.open_filter();
@@ -7591,12 +7571,6 @@ pub(crate) mod tests {
             !text.contains("filter = "),
             "search leaked into config:\n{text}"
         );
-        unsafe {
-            match saved {
-                Some(v) => std::env::set_var("TERHUB_CONFIG", v),
-                None => std::env::remove_var("TERHUB_CONFIG"),
-            }
-        }
         std::fs::remove_file(path).ok();
     }
 
@@ -7702,16 +7676,11 @@ pub(crate) mod tests {
     #[test]
     fn standing_editor_enter_persists_and_reloads() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        let _lock = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // SAFETY: lock-held; no other thread reads TERHUB_CONFIG now.
-        let saved = std::env::var("TERHUB_CONFIG").ok();
         let dir = std::env::temp_dir().join(format!("terhub-standing-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("standing-persist.toml");
         std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
-        unsafe {
-            std::env::set_var("TERHUB_CONFIG", &path);
-        }
+        let _cfg = ConfigAt::new(&path);
         let mut app = app_with(&["a"]);
         let tmux = Tmux::new().unwrap();
         // The settings row opens the same prompt in standing mode.
@@ -7732,12 +7701,6 @@ pub(crate) mod tests {
         // And the saved exclusion reloads through the normal loader.
         let (cfg, _) = crate::config::load_config_report(Some(path.clone()));
         assert_eq!(cfg.filter, "!zsh");
-        unsafe {
-            match saved {
-                Some(v) => std::env::set_var("TERHUB_CONFIG", v),
-                None => std::env::remove_var("TERHUB_CONFIG"),
-            }
-        }
         std::fs::remove_file(path).ok();
     }
 
@@ -8256,30 +8219,49 @@ pub(crate) mod tests {
         );
     }
 
-    /// Point config reads/writes at one scratch file (the `TERHUB_CONFIG`
-    /// seam), so saved-filter persistence is asserted against a real
-    /// round-trip without touching the user's config.
+    /// Point *this thread's* config resolution at an existing file, and
+    /// restore it on drop.
+    ///
+    /// The per-thread override (not the `TERHUB_CONFIG` env var) is
+    /// what makes this safe: the env var is process-global, so a test
+    /// that redirected it changed what every other thread in the
+    /// process read, and two such tests raced.
+    struct ConfigAt {
+        old: Option<std::path::PathBuf>,
+    }
+
+    impl ConfigAt {
+        fn new(path: &std::path::Path) -> Self {
+            let old = crate::config::override_config_path(Some(path.to_path_buf()));
+            ConfigAt { old }
+        }
+    }
+
+    impl Drop for ConfigAt {
+        fn drop(&mut self) {
+            crate::config::override_config_path(self.old.take());
+        }
+    }
+
+    /// Point config reads/writes at one scratch file (the per-thread
+    /// config-path override), so saved-filter persistence is asserted
+    /// against a real round-trip without touching the user's config.
+    ///
+    /// The override is thread-local, not process-global: two tests that
+    /// each want their own scratch config no longer race, and neither
+    /// can hijack the other's read.
     struct ScopedConfig {
         // The path the test wrote to. Storing it (instead of re-reading
-        // `TERHUB_CONFIG` at load time) means the assertion can never
-        // see a different file than the test wrote to, even if some
-        // unrelated code path races the env-var restore.
+        // the override at load time) means the assertion can never see
+        // a different file than the test wrote to.
         path: std::path::PathBuf,
-        // The env value before we took over; restored on drop so a
-        // nested scope (CI, parent test) keeps its own TERHUB_CONFIG.
-        old: Option<String>,
-        // Lock guard last so its Drop runs *first* on scope exit,
-        // releasing SCRATCH_LOCK before the env-var restore below.
-        _guard: std::sync::MutexGuard<'static, ()>,
+        // The override before we took over; restored on drop so a
+        // nested scope keeps its own config path.
+        old: Option<std::path::PathBuf>,
     }
 
     impl ScopedConfig {
         fn new() -> Self {
-            // SCRATCH_LOCK is the established lock for every lib test
-            // that redirects config resolution. Sharing it matters:
-            // `config_path()` prefers TERHUB_CONFIG, so a concurrent
-            // setter would otherwise hijack this test's reads.
-            let guard = SCRATCH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             // A fresh file per instance (not per process): tests that
             // persist must not write through each other's scratch state,
             // and a per-pid path made every such test share one file.
@@ -8287,41 +8269,25 @@ pub(crate) mod tests {
             let path = std::env::temp_dir()
                 .join(format!("terhub-cfg-{}-{n}", std::process::id()))
                 .with_extension("toml");
-            let old = std::env::var("TERHUB_CONFIG").ok();
-            // SAFETY: lock-held; no other lib test writes TERHUB_CONFIG.
-            unsafe { std::env::set_var("TERHUB_CONFIG", &path) };
-            ScopedConfig {
-                path,
-                old,
-                _guard: guard,
-            }
+            let old = crate::config::override_config_path(Some(path.clone()));
+            ScopedConfig { path, old }
         }
 
         fn load(&self) -> (AppConfig, Vec<String>) {
             // Read from the path we wrote to, not from `config_path()`:
-            // that resolves through TERHUB_CONFIG afresh, which is fine
-            // while we hold the lock but couples the assertion to
-            // env-var state we don't strictly control. Using the
-            // captured path removes the only way the read could see a
-            // different file than the test wrote to.
+            // that resolves the override afresh, which is fine while the
+            // scope is live but couples the assertion to state we don't
+            // strictly control. Using the captured path removes the only
+            // way the read could see a different file than the test
+            // wrote to.
             crate::config::load_config_report(Some(self.path.clone()))
         }
     }
 
     impl Drop for ScopedConfig {
         fn drop(&mut self) {
-            // Restore the env value the parent scope had. Field drop
-            // order is reverse-declaration, so `_guard` has already
-            // released SCRATCH_LOCK by the time we get here — no other
-            // lib test can be writing this var concurrently.
-            //
-            // SAFETY: same confined var, restored before any other reader.
-            unsafe {
-                match &self.old {
-                    Some(v) => std::env::set_var("TERHUB_CONFIG", v),
-                    None => std::env::remove_var("TERHUB_CONFIG"),
-                }
-            }
+            // Restore the override the parent scope had.
+            crate::config::override_config_path(self.old.take());
         }
     }
 

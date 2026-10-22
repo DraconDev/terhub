@@ -332,40 +332,54 @@ pub fn is_completion(from: AgentState, to: AgentState) -> bool {
     to == AgentState::Idle && !matches!(from, AgentState::Unknown | AgentState::Idle)
 }
 
-/// One desktop note for a finished agent (done, not needy: no badge,
-/// no attend). Same toggle as attention notes.
-pub fn notify_done(t: &Transition) {
-    if !crate::config::load_config(None).notifications_enabled {
-        return;
-    }
-    let title = format!("terhub: {} done", t.agent);
-    let mut body = format!("{}:{} · {}", t.session, t.window, t.pane);
-    if !t.summary.is_empty() {
-        body.push_str(&format!(" — {}", truncate(&t.summary, 80)));
-    }
-    let _ = run_notifier("notify-send", &[title.as_str(), body.as_str()]);
+/// Whether desktop notifications are enabled right now.
+///
+/// The caller asks this on the thread that *noticed* the transition,
+/// not on the notifier's own thread: a detached notifier runs later,
+/// and a config read there answers a question about a moment that has
+/// already passed.
+pub fn notifications_enabled() -> bool {
+    crate::config::load_config(None).notifications_enabled
 }
 
-pub fn notify_transition(t: &Transition) {
-    if !crate::config::load_config(None).notifications_enabled {
-        return;
-    }
+/// Spawn the notifier for an agent that needs the human, without
+/// waiting for it.
+///
+/// Spawning is cheap; waiting for a wedged desktop service is not.
+/// The child is spawned on the *caller's* thread so the program is
+/// resolved against the environment the dispatcher meant to use, and
+/// the detached task only has to wait for it.
+pub fn spawn_transition_notifier(t: &Transition) -> Option<std::process::Child> {
     let title = format!("terhub: {} needs you ({})", t.agent, t.to.label());
     let mut body = format!("{}:{} · {}", t.session, t.window, t.pane);
     if !t.summary.is_empty() {
         body.push_str(&format!(" — {}", truncate(&t.summary, 80)));
     }
-    let _ = run_notifier("notify-send", &[title.as_str(), body.as_str()]);
+    spawn_notifier("notify-send", &[title.as_str(), body.as_str()])
 }
 
-fn run_notifier(cmd: &str, args: &[&str]) -> Result<()> {
-    run_notifier_timeout(cmd, args, Duration::from_secs(5))
+/// Spawn the notifier for a finished agent (done, not needy: no badge,
+/// no attend). Same toggle as attention notes.
+pub fn spawn_done_notifier(t: &Transition) -> Option<std::process::Child> {
+    let title = format!("terhub: {} done", t.agent);
+    let mut body = format!("{}:{} · {}", t.session, t.window, t.pane);
+    if !t.summary.is_empty() {
+        body.push_str(&format!(" — {}", truncate(&t.summary, 80)));
+    }
+    spawn_notifier("notify-send", &[title.as_str(), body.as_str()])
 }
 
-/// Run the notifier with a bounded wait: a hung notify-send is killed and
-/// reported instead of stalling the poll loop forever.
-fn run_notifier_timeout(cmd: &str, args: &[&str], timeout: Duration) -> Result<()> {
-    let mut child = std::process::Command::new(cmd).args(args).spawn()?;
+fn spawn_notifier(cmd: &str, args: &[&str]) -> Option<std::process::Child> {
+    std::process::Command::new(cmd).args(args).spawn().ok()
+}
+
+/// Wait for a spawned notifier, bounded: a hung notify-send is killed
+/// rather than holding the task open forever.
+pub fn wait_notifier(child: std::process::Child) {
+    let _ = wait_notifier_timeout(child, Duration::from_secs(5));
+}
+
+fn wait_notifier_timeout(mut child: std::process::Child, timeout: Duration) -> Result<()> {
     let start = std::time::Instant::now();
     loop {
         match child.try_wait()? {
@@ -379,6 +393,17 @@ fn run_notifier_timeout(cmd: &str, args: &[&str], timeout: Duration) -> Result<(
             None => std::thread::sleep(Duration::from_millis(20)),
         }
     }
+}
+
+fn run_notifier(cmd: &str, args: &[&str]) -> Result<()> {
+    run_notifier_timeout(cmd, args, Duration::from_secs(5))
+}
+
+/// Run the notifier with a bounded wait: a hung notify-send is killed and
+/// reported instead of stalling the poll loop forever.
+fn run_notifier_timeout(cmd: &str, args: &[&str], timeout: Duration) -> Result<()> {
+    let child = std::process::Command::new(cmd).args(args).spawn()?;
+    wait_notifier_timeout(child, timeout)
 }
 
 #[cfg(test)]

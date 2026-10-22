@@ -1497,13 +1497,27 @@ fn apply_hook_event(
 /// pool, detached, the poll moves on and the toast still goes out.
 fn notify_detached(t: &crate::attend::Transition) {
     let t = t.clone();
-    if t.to.needs_attention() {
-        drop(tokio::task::spawn_blocking(move || {
-            crate::attend::notify_transition(&t)
-        }));
+    // Decide *here*, on the thread that noticed the transition. The
+    // notifier itself runs detached on a blocking thread, and a config
+    // read there would answer for a moment that has already passed —
+    // and, in the test suite, on a thread that cannot see the test's
+    // own config at all.
+    if !crate::attend::notifications_enabled() {
+        return;
+    }
+    // Spawn the child here too: resolving the program against the
+    // dispatcher's PATH cannot then be undone by a PATH change that
+    // lands before the detached task gets to run.
+    let child = if t.to.needs_attention() {
+        crate::attend::spawn_transition_notifier(&t)
     } else if crate::attend::is_completion(t.from, t.to) {
+        crate::attend::spawn_done_notifier(&t)
+    } else {
+        None
+    };
+    if let Some(child) = child {
         drop(tokio::task::spawn_blocking(move || {
-            crate::attend::notify_done(&t)
+            crate::attend::wait_notifier(child);
         }));
     }
 }
@@ -4743,9 +4757,9 @@ mod tests {
         // stretched the poll cycle by 5s per attention transition.
         // The detached dispatch must return immediately.
         //
-        // The lock is the process-wide config scratch lock: this test
-        // redirects TERHUB_CONFIG and PATH, and a concurrent setter in
-        // another module would hijack either.
+        // The lock is the process-wide env scratch lock: this test
+        // redirects PATH, and a concurrent setter in another module
+        // would hijack the program lookup.
         let _lock = crate::app::tests::SCRATCH_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -4753,27 +4767,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // A fake notify-send that takes 2s: the real one is a desktop
-        // service that can wedge exactly like this.
+        // service that can wedge exactly like this. It leaves a marker
+        // so the test can prove the child really ran — a notifier that
+        // never started would make the timing assertion vacuous.
         let fake = dir.join("notify-send");
-        std::fs::write(&fake, "#!/bin/sh\nsleep 2\n").unwrap();
+        let marker = dir.join("notified");
+        std::fs::write(
+            &fake,
+            format!("#!/bin/sh\ntouch '{}'\nsleep 2\n", marker.display()),
+        )
+        .unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
         let cfg = dir.join("config.toml");
         std::fs::write(&cfg, "[notifications]\nenabled = true\n").unwrap();
+        // The config path is per-thread, so this test's "notifications
+        // on" cannot leak into a sibling test's view of the config.
+        let _cfg = crate::config::override_config_path(Some(cfg));
         let old_path = std::env::var("PATH").ok();
-        let old_cfg = std::env::var("TERHUB_CONFIG").ok();
         // SAFETY: the scratch lock is held, so no other lib test is
-        // reading these.
+        // rewriting PATH.
         unsafe {
             std::env::set_var(
                 "PATH",
                 format!("{}:{}", dir.display(), old_path.clone().unwrap_or_default()),
             );
-            std::env::set_var("TERHUB_CONFIG", &cfg);
         }
         struct Restore {
             path: Option<String>,
-            cfg: Option<String>,
         }
         impl Drop for Restore {
             fn drop(&mut self) {
@@ -4784,17 +4805,10 @@ mod tests {
                         Some(p) => std::env::set_var("PATH", p),
                         None => std::env::remove_var("PATH"),
                     }
-                    match self.cfg.take() {
-                        Some(c) => std::env::set_var("TERHUB_CONFIG", c),
-                        None => std::env::remove_var("TERHUB_CONFIG"),
-                    }
                 }
             }
         }
-        let _restore = Restore {
-            path: old_path,
-            cfg: old_cfg,
-        };
+        let _restore = Restore { path: old_path };
 
         let t = crate::attend::Transition {
             pane: "%1".to_string(),
@@ -4812,6 +4826,21 @@ mod tests {
             elapsed < std::time::Duration::from_millis(500),
             "the notifier was awaited inline: {elapsed:?}"
         );
+        // The notifier really ran: it is spawned eagerly on the
+        // dispatching thread, so the child exists by the time the
+        // dispatch returns — and it is this thread's config that
+        // decided notifications were on at all. The marker is written
+        // by the child, so wait for it rather than assume it has
+        // already run.
+        let mut started = false;
+        for _ in 0..200 {
+            if marker.exists() {
+                started = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(started, "the notifier never started");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
