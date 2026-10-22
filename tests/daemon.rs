@@ -109,8 +109,12 @@ fn daemon_hook_snapshot_expire_shutdown() {
         model: String::new(),
         ctx: None,
     };
+    let t0 = std::time::Instant::now();
     daemon::send_event(&ev, Duration::from_secs(2)).unwrap();
+    let t1 = std::time::Instant::now();
     let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
+    let t2 = std::time::Instant::now();
+    eprintln!("TIMING send={:?} fetch={:?} agents={:?}", t1 - t0, t2 - t1, snap.agents.iter().map(|a| a.pane.clone()).collect::<Vec<_>>());
     let rec = snap
         .agents
         .iter()
