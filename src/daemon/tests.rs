@@ -5,6 +5,7 @@
 //! file that sits under it hides how much of the file is test.
 use super::*;
 use crate::agent::AgentState;
+use crate::agent::ScreenHit;
 
 /// Process-wide counter for fake-tmux temp dirs. `std::process::id()`
 /// alone made concurrent sibling tests share a dir, so a `screen.txt`
@@ -430,8 +431,7 @@ fn manual_pin_tracks_reg_pid_cpu() {
             .expect("spawn sleep")
     };
     let pid = child.id();
-    let dir =
-        std::env::temp_dir().join(format!("terhub-poll-manualpid-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("terhub-poll-manualpid-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let tmux = fake_tmux_one_sleep_pane(&dir, pid);
@@ -608,8 +608,7 @@ fn replacement_does_not_inherit_predecessor_metadata() {
 fn manual_pin_drops_when_reg_pid_dead() {
     // The pinned process is gone: the pin drops even though the pane
     // is alive (pid 999999999 cannot exist: over the kernel maximum).
-    let dir =
-        std::env::temp_dir().join(format!("terhub-poll-manualdead-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("terhub-poll-manualdead-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let tmux = fake_tmux_one_sleep_pane(&dir, 999_999_999);
@@ -660,8 +659,7 @@ fn digit_only_error_step_keeps_hash_but_resets_quiet() {
     let manifests = builtin_compiled();
     let screen = dir.join("screen.txt");
     std::fs::write(&screen, "Error: 1 failed\n$ \n").unwrap();
-    let (next, _, _, _, _) =
-        poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+    let (next, _, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
     let first = next.get("%50").expect("error record").clone();
     assert_eq!(first.summary, "Error: 1 failed");
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -692,8 +690,7 @@ fn spinner_frames_do_not_restart_quiet() {
     let manifests = builtin_compiled();
     let screen = dir.join("screen.txt");
     std::fs::write(&screen, "⠙ Running 13min40s\n$ \n").unwrap();
-    let (next, _, _, _, _) =
-        poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+    let (next, _, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
     let first = next.get("%50").expect("working record").clone();
     assert_eq!(first.state, AgentState::Working);
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -720,8 +717,7 @@ fn tip_rotation_does_not_restart_quiet() {
     let manifests = builtin_compiled();
     let screen = dir.join("screen.txt");
     std::fs::write(&screen, "Error: static\nTip: /context shows budget\n$ \n").unwrap();
-    let (next, _, _, _, _) =
-        poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
+    let (next, _, _, _, _) = poll_sync_with(&tmux, HashMap::new(), &manifests, Tunables::default());
     let first = next.get("%50").expect("error record").clone();
     assert_eq!(first.state, AgentState::Error);
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -1832,8 +1828,7 @@ async fn oversize_request_rejected_without_oom() {
     let reg = registry.clone();
     let rt = dir.clone();
     let guard = ensure_runtime_dir(&dir).unwrap();
-    let handle =
-        tokio::spawn(async move { handle_conn(server, reg, rt, guard, shutdown).await });
+    let handle = tokio::spawn(async move { handle_conn(server, reg, rt, guard, shutdown).await });
     let big = serde_json::to_string(&Request::Event {
         event: crate::agent::HookEvent {
             pane: "%1".to_string(),
@@ -2469,8 +2464,8 @@ fn editor_foreground_with_agent_means_waiting() {
     // pi summoned $EDITOR (micro foreground): awaiting input, not working.
     let mut ed = test_pane();
     ed.command = "micro".to_string();
-    let rec = merge_record(None, false, None, Some(("pi", 50)), &ed, now, STUCK_SECS)
-        .expect("no record");
+    let rec =
+        merge_record(None, false, None, Some(("pi", 50)), &ed, now, STUCK_SECS).expect("no record");
     assert_eq!(rec.agent, "pi");
     assert_eq!(rec.state, AgentState::Waiting);
     assert_eq!(rec.source, Source::Proc);

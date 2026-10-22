@@ -37,11 +37,7 @@ const CAPTURE_LINES: u32 = 30;
 /// A capture that fails for one pane does not affect the others: each
 /// worker owns its own child, and a failed capture is dropped rather
 /// than propagated.
-pub fn capture_screens(
-    tmux: &Tmux,
-    panes: &[Pane],
-    wanted: &[usize],
-) -> HashMap<String, String> {
+pub fn capture_screens(tmux: &Tmux, panes: &[Pane], wanted: &[usize]) -> HashMap<String, String> {
     let mut out: HashMap<String, String> = HashMap::new();
     if wanted.is_empty() {
         return out;
@@ -56,8 +52,9 @@ pub fn capture_screens(
     }
     // One slot per capture, so results come back in request order and
     // no two workers write the same place.
-    let slots: Vec<std::sync::Mutex<Option<(String, String)>>> =
-        (0..wanted.len()).map(|_| std::sync::Mutex::new(None)).collect();
+    let slots: Vec<std::sync::Mutex<Option<(String, String)>>> = (0..wanted.len())
+        .map(|_| std::sync::Mutex::new(None))
+        .collect();
     let next = std::sync::Mutex::new(0usize);
     std::thread::scope(|s| {
         for _ in 0..wanted.len().min(CAPTURE_FANOUT) {
@@ -172,7 +169,10 @@ mod tests {
 
         let screens = capture_screens(&tmux, &panes, &wanted);
 
-        assert!(!screens.contains_key("%0"), "a failed capture must not appear");
+        assert!(
+            !screens.contains_key("%0"),
+            "a failed capture must not appear"
+        );
         assert_eq!(screens.get("%1").map(String::as_str), Some("screen for %1"));
         let _ = std::fs::remove_dir_all(&dir);
     }

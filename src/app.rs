@@ -13,7 +13,7 @@ mod filter;
 mod git;
 
 pub use commands::{expand_command, spawn_window_name};
-use filter::{pane_matches_excludes, pane_matches_include, LEGEND};
+use filter::{LEGEND, pane_matches_excludes, pane_matches_include};
 use git::{git_diff_stat, parse_shortstat};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {

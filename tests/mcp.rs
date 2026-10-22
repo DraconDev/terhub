@@ -197,7 +197,8 @@ fn mcp_conversation_without_and_with_daemon() {
     assert_eq!(status["result"].get("isError"), None);
     let text = status["result"]["content"][0]["text"].as_str().unwrap();
     // The status is JSON: a caller must not have to parse a prose blob.
-    let doc: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
+    let doc: Value =
+        serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
     assert!(doc["agents"].is_array(), "no agents array:\n{text}");
     let rows = doc["agents"].as_array().unwrap();
     let probe = rows
@@ -209,7 +210,14 @@ fn mcp_conversation_without_and_with_daemon() {
     assert_eq!(probe["summary"], "mcp probe");
     // Every row carries the fields a caller acts on.
     for row in rows {
-        for field in ["pane", "agent", "state", "waiting_secs", "session", "source"] {
+        for field in [
+            "pane",
+            "agent",
+            "state",
+            "waiting_secs",
+            "session",
+            "source",
+        ] {
             assert!(row.get(field).is_some(), "row missing {field}: {row}");
         }
     }
@@ -250,7 +258,8 @@ fn mcp_conversation_without_and_with_daemon() {
     );
     assert_eq!(history["result"].get("isError"), None);
     let text = history["result"]["content"][0]["text"].as_str().unwrap();
-    let doc: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
+    let doc: Value =
+        serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}):\n{text}"));
     assert!(doc["entries"].is_array(), "no entries array:\n{text}");
     assert!(doc["count"].as_u64().is_some(), "no count:\n{text}");
 

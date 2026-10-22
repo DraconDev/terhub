@@ -580,7 +580,10 @@ fn tool_history(args: &Value) -> Result<String, String> {
     };
     let kind = optional_str(args, "kind")?.map(|k| k.trim().to_lowercase());
     if let Some(k) = &kind
-        && !matches!(k.as_str(), "agent" | "session" | "rule" | "human" | "prompt")
+        && !matches!(
+            k.as_str(),
+            "agent" | "session" | "rule" | "human" | "prompt"
+        )
     {
         return Err("bad kind (agent|session|rule|human|prompt)".to_string());
     }
@@ -590,10 +593,7 @@ fn tool_history(args: &Value) -> Result<String, String> {
         .get("prompts")
         .and_then(|p| p.as_bool())
         .unwrap_or(false);
-    let want_stats = args
-        .get("stats")
-        .and_then(|s| s.as_bool())
-        .unwrap_or(false);
+    let want_stats = args.get("stats").and_then(|s| s.as_bool()).unwrap_or(false);
 
     let path = crate::history::ledger_path();
     // Windowed: the entries inside the window, plus the anchors that
@@ -742,7 +742,12 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    fn record(pane: &str, agent: &str, state: crate::agent::AgentState, session: &str) -> crate::agent::AgentRecord {
+    fn record(
+        pane: &str,
+        agent: &str,
+        state: crate::agent::AgentState,
+        session: &str,
+    ) -> crate::agent::AgentRecord {
         crate::agent::AgentRecord {
             pane: pane.to_string(),
             agent: agent.to_string(),
