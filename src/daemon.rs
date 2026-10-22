@@ -1468,10 +1468,6 @@ fn apply_hook_event(
     detect_all_transitions(&before, reg)
 }
 
-/// Emit transition side effects: ledger lines always, a desktop
-/// notification for attention states, a one-shot note for completions.
-/// Runs WITHOUT the registry lock — a slow notify-send must never stall
-/// polls or snapshots.
 /// Fire the notification for one transition, detached.
 ///
 /// The notifier is a subprocess (`notify-send`) with a 5s bound. Waiting
@@ -1491,7 +1487,10 @@ fn notify_detached(t: &crate::attend::Transition) {
     }
 }
 
-/// Log the transitions and fire the notifications.
+/// Emit transition side effects: ledger lines always, a desktop
+/// notification for attention states, a one-shot note for completions.
+/// Runs WITHOUT the registry lock — a slow notify-send must never stall
+/// polls or snapshots.
 ///
 /// The ledger write is awaited — the ledger's order is the record of
 /// what happened, so it must not be reordered by a detached task. The

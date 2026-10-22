@@ -100,8 +100,24 @@ fn daemon_hook_snapshot_expire_shutdown() {
     boot.new_session(&boot_name, None, None).unwrap();
 
     // Hook event round-trips into the snapshot.
+    //
+    // The pane has to be one tmux lists. A hook record for a pane the
+    // poll never saw is a ghost -- a dead pane's last event, or a
+    // forged one -- and the poll drops it on sight (that is the
+    // documented behaviour, and `mid_poll_hook_for_unlisted_pane_is_a_ghost`
+    // covers it). A fake pane id here would therefore be a race
+    // against the next poll, not a deterministic round trip: the
+    // ghost case below is the one that belongs in this test.
+    let tmux = terhub::tmux::Tmux::new().unwrap();
+    let live = tmux
+        .list_all_panes()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|p| p.session == boot_name)
+        .map(|p| p.id)
+        .expect("the bootstrapped session has a pane");
     let ev = HookEvent {
-        pane: "%999999".to_string(),
+        pane: live.clone(),
         agent: "claude".to_string(),
         state: AgentState::Waiting,
         summary: "needs input".to_string(),
@@ -109,16 +125,12 @@ fn daemon_hook_snapshot_expire_shutdown() {
         model: String::new(),
         ctx: None,
     };
-    let t0 = std::time::Instant::now();
     daemon::send_event(&ev, Duration::from_secs(2)).unwrap();
-    let t1 = std::time::Instant::now();
     let snap = daemon::fetch_snapshot(Duration::from_secs(2)).unwrap();
-    let t2 = std::time::Instant::now();
-    eprintln!("TIMING send={:?} fetch={:?} agents={:?}", t1 - t0, t2 - t1, snap.agents.iter().map(|a| a.pane.clone()).collect::<Vec<_>>());
     let rec = snap
         .agents
         .iter()
-        .find(|a| a.pane == "%999999")
+        .find(|a| a.pane == live)
         .expect("hook record present");
     assert_eq!(rec.agent, "claude");
     assert_eq!(rec.state, AgentState::Waiting);
@@ -133,7 +145,7 @@ fn daemon_hook_snapshot_expire_shutdown() {
     let ledger = data.join("activity.jsonl");
     assert!(ledger.is_file(), "ledger missing");
     let text = std::fs::read_to_string(&ledger).unwrap();
-    assert!(text.contains("%999999"), "ledger lacks hook:\n{text}");
+    assert!(text.contains(&live), "ledger lacks hook:\n{text}");
     assert!(
         text.contains("\"to\":\"waiting\""),
         "ledger lacks state:\n{text}"
@@ -147,7 +159,6 @@ fn daemon_hook_snapshot_expire_shutdown() {
 
     // Manual pins round-trip on a real pane (skipped when tmux has
     // no panes at all — the daemon unit tests cover the logic).
-    let tmux = terhub::tmux::Tmux::new().unwrap();
     let pinned: Option<String> = tmux
         .list_all_panes()
         .unwrap_or_default()
@@ -176,6 +187,19 @@ fn daemon_hook_snapshot_expire_shutdown() {
         assert_eq!(rec.handle, "@myagent");
     }
 
+    // A hook event for a pane that does not exist is a ghost, and the
+    // poll drops it: the daemon must not keep a dead pane's last
+    // event (or a forged one) alive for the whole stale window.
+    let ghost = HookEvent {
+        pane: "%999999".to_string(),
+        agent: "claude".to_string(),
+        state: AgentState::Waiting,
+        summary: "needs input".to_string(),
+        prompt: String::new(),
+        model: String::new(),
+        ctx: None,
+    };
+    daemon::send_event(&ghost, Duration::from_secs(2)).unwrap();
     // The poll notices %999999 is not a real pane and expires it.
     assert!(
         wait_for(
