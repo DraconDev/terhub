@@ -818,11 +818,28 @@ after 60 seconds so a hanging command can't stall the daemon. Every firing
 agents can observe and drive the hub. Tools:
 
 - `terhub_status` — agent states: which panes run agents, who waits/errors.
+- `terhub_history` — the activity ledger: state transitions, prompts, session
+  events and rule fires.
 - `terhub_capture` — recent screen content of a pane.
 - `terhub_send` — type text into a pane (submits with Enter by default).
 - `terhub_wait` — block until a pane (or any agent) reaches a state; times
   out with an error instead of hanging forever.
 - `terhub_attend` — the longest-waiting agent needing attention.
+
+`terhub_status` and `terhub_history` answer with JSON, so a caller never has
+to parse prose. `terhub_status` returns `{"count": N, "agents": [...]}` where
+each agent carries `pane`, `agent`, `state`, `state_since`, `waiting_secs`,
+`session`, `window`, `handle`, `model`, `ctx_pct`, `last_turn_secs`,
+`summary`, `source` and `needs_attention`. It filters on `state`, `session`,
+`pane`, `agent` and `needs_attention`, caps the list with `limit`, and
+`{"format": "text"}` brings back the old one-line-per-agent form.
+
+`terhub_history` returns `{"count": N, "since": <ts>, "entries": [...]}`.
+`since` takes the same words as the CLI (`today`, `yesterday`, `week`,
+`month`, `all`, `24h`, `7d`, `YYYY-MM-DD`; default `today`), and `kind`,
+`pane` and `session` narrow the set. `{"prompts": true}` returns the recent
+prompts instead of the transitions, and `{"stats": true}` adds the
+per-agent time-in-state totals.
 
 Point any MCP-capable client at the command; no config needed beyond a
 running daemon for state tools (`capture`/`send` talk to tmux directly).

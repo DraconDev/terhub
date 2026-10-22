@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn the_status_filters_narrow_the_agent_set() {
-        let agents = vec![
+        let agents = [
             record("%1", "claude", crate::agent::AgentState::Waiting, "work"),
             record("%2", "codex", crate::agent::AgentState::Working, "work"),
             record("%3", "claude", crate::agent::AgentState::Working, "play"),

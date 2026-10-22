@@ -260,6 +260,16 @@ fn socket_args(socket: &str) -> Vec<String> {
 /// Bound for every tmux CLI call (see `run`).
 const TMUX_CMD_TIMEOUT_SECS: u64 = 5;
 
+/// Bound for the calls that *change* the tmux server's state.
+///
+/// Creating a session is not an observation: the server forks the
+/// shell, starts the window and settles before it answers, and on a
+/// loaded machine that can take longer than a capture does. A
+/// five-second bound turned "the machine is busy" into "the session
+/// was never created" — the user's work lost, rather than delayed.
+/// These calls are not on the poll's hot path, so they can wait.
+const TMUX_WRITE_TIMEOUT_SECS: u64 = 20;
+
 pub struct Tmux {
     bin: PathBuf,
     socket: Option<String>,
@@ -310,13 +320,23 @@ impl Tmux {
         // returns when the popup closes. It is a one-shot CLI path
         // (`terhub peek`), never the TUI or the daemon poll, and
         // bounding it would kill the user's picker mid-read.
+        self.run_with(args, TMUX_CMD_TIMEOUT_SECS)
+    }
+
+    /// Run a tmux command with its own budget.
+    ///
+    /// The state-changing calls use the longer [`TMUX_WRITE_TIMEOUT_SECS`]:
+    /// they are not on the poll's hot path, and giving them the
+    /// observation budget made a busy machine look like a failed
+    /// command.
+    fn run_with(&self, args: &[&str], timeout_secs: u64) -> Result<String> {
         let mut cmd = Command::new(&self.bin);
         if let Some(s) = &self.socket {
             cmd.args(socket_args(s));
         }
         cmd.args(args);
         let what = format!("tmux {}", args.first().unwrap_or(&"?"));
-        let out = crate::native::run_with_timeout(cmd, &what, TMUX_CMD_TIMEOUT_SECS)
+        let out = crate::native::run_with_timeout(cmd, &what, timeout_secs)
             .context("failed to run tmux")?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
@@ -373,7 +393,7 @@ impl Tmux {
         if let Some(w) = window_name {
             args.extend(["-n", w]);
         }
-        self.run(&args)?;
+        self.run_with(&args, TMUX_WRITE_TIMEOUT_SECS)?;
         Ok(self
             .list_sessions()?
             .into_iter()
@@ -388,7 +408,8 @@ impl Tmux {
     }
 
     pub fn kill_session(&self, name: &str) -> Result<()> {
-        self.run(&["kill-session", "-t", name]).map(|_| ())
+        self.run_with(&["kill-session", "-t", name], TMUX_WRITE_TIMEOUT_SECS)
+            .map(|_| ())
     }
 
     /// Open a window in `session` running `command`, printing the new pane
@@ -422,7 +443,10 @@ impl Tmux {
             }
             _ => &args,
         };
-        Ok(self.run(slice)?.trim().to_string())
+        Ok(self
+            .run_with(slice, TMUX_WRITE_TIMEOUT_SECS)?
+            .trim()
+            .to_string())
     }
 
     /// Split the active pane of `session` horizontally, returning the new
@@ -434,7 +458,10 @@ impl Tmux {
             bail!("session must not be empty");
         }
         Ok(self
-            .run(&["split-window", "-t", session, "-P", "-F", "#{pane_id}"])?
+            .run_with(
+                &["split-window", "-t", session, "-P", "-F", "#{pane_id}"],
+                TMUX_WRITE_TIMEOUT_SECS,
+            )?
             .trim()
             .to_string())
     }
@@ -445,29 +472,37 @@ impl Tmux {
         if command.trim().is_empty() {
             bail!("respawn command must not be empty");
         }
-        self.run(&["respawn-pane", "-k", "-t", pane, command])
-            .map(|_| ())
+        self.run_with(
+            &["respawn-pane", "-k", "-t", pane, command],
+            TMUX_WRITE_TIMEOUT_SECS,
+        )
+        .map(|_| ())
     }
 
     /// Type literal text into a pane, optionally submitting with Enter.
     pub fn send_keys(&self, pane: &str, text: &str, submit: bool) -> Result<()> {
-        self.run(&["send-keys", "-l", "-t", pane, "--", text])?;
+        self.run_with(
+            &["send-keys", "-l", "-t", pane, "--", text],
+            TMUX_WRITE_TIMEOUT_SECS,
+        )?;
         if submit {
-            self.run(&["send-keys", "-t", pane, "Enter"])?;
+            self.run_with(&["send-keys", "-t", pane, "Enter"], TMUX_WRITE_TIMEOUT_SECS)?;
         }
         Ok(())
     }
 
     /// Interrupt whatever runs in a pane (Ctrl-C).
     pub fn interrupt(&self, pane: &str) -> Result<()> {
-        self.run(&["send-keys", "-t", pane, "C-c"]).map(|_| ())
+        self.run_with(&["send-keys", "-t", pane, "C-c"], TMUX_WRITE_TIMEOUT_SECS)
+            .map(|_| ())
     }
 
     pub fn rename_session(&self, old: &str, new: &str) -> Result<()> {
         if new.trim().is_empty() {
             bail!("new name must not be empty");
         }
-        self.run(&["rename-session", "-t", old, new]).map(|_| ())
+        self.run_with(&["rename-session", "-t", old, new], TMUX_WRITE_TIMEOUT_SECS)
+            .map(|_| ())
     }
 
     /// Open a popup running `command` (a shell string, quoted by the
@@ -566,11 +601,13 @@ impl Tmux {
     }
 
     pub fn kill_pane(&self, pane: &str) -> Result<()> {
-        self.run(&["kill-pane", "-t", pane]).map(|_| ())
+        self.run_with(&["kill-pane", "-t", pane], TMUX_WRITE_TIMEOUT_SECS)
+            .map(|_| ())
     }
 
     pub fn swap_panes(&self, a: &str, b: &str) -> Result<()> {
-        self.run(&["swap-pane", "-s", a, "-t", b]).map(|_| ())
+        self.run_with(&["swap-pane", "-s", a, "-t", b], TMUX_WRITE_TIMEOUT_SECS)
+            .map(|_| ())
     }
 
     /// Foreground pane of the active client, if any client is attached.
