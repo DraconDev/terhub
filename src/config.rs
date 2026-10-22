@@ -2197,12 +2197,14 @@ pub fn default_config_text() -> String {
     out.push_str("\n[notifications]\nenabled = true\n");
     out.push_str(&format!(
         "\n[daemon]\n# Restart the daemon to apply. stuck_secs = 0 disables stuck detection.\n# quiet_idle_secs = 0 disables frozen-screen → idle;
-# waiting_idle_secs = 0 keeps an untouched waiting prompt flagged.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\nquiet_idle_secs = {}\nwaiting_idle_secs = {}\n",
+# waiting_idle_secs = 0 keeps an untouched waiting prompt flagged.
+# done_idle_secs = 0 keeps a finished agent reading `done` forever.\npoll_secs = {}\nstuck_secs = {}\nstale_secs = {}\nquiet_idle_secs = {}\nwaiting_idle_secs = {}\ndone_idle_secs = {}\n",
         crate::daemon::POLL_SECS,
         crate::daemon::STUCK_SECS,
         crate::daemon::HOOK_STALE_SECS,
         crate::daemon::QUIET_IDLE_SECS,
-        crate::daemon::WAITING_IDLE_SECS
+        crate::daemon::WAITING_IDLE_SECS,
+        crate::daemon::DONE_IDLE_SECS
     ));
     out.push_str(
         "\n# Custom pane commands (key must not collide with a built-in):\n# [[command]]\n# name = \"git status\"\n# key = \"G\"\n# run = \"git -C {dir} status -sb\"\n",
