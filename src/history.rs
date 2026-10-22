@@ -747,6 +747,12 @@ pub fn repair_quarantine(path: &std::path::Path) -> Result<RepairReport, String>
     // Archive the lines, with the timestamp they carried recovered
     // from the preserved head.
     let archive = quarantine_path(path);
+    // The ledger's own directory is owner-only (the append path
+    // enforces it); the repair path has to enforce it too, or it can
+    // leave the archive readable by every local account.
+    if let Some(parent) = path.parent() {
+        ensure_private_dir(parent).map_err(|e| format!("repair ledger dir failed: {e}"))?;
+    }
     let mut body = String::new();
     for mut q in quarantined {
         if q.t == 0 {
@@ -798,11 +804,17 @@ pub fn archived_count(path: &std::path::Path) -> usize {
 }
 
 /// Append lines to a file, creating it if needed.
+///
+/// Owner-only (0600): the archive holds the preserved head of every
+/// torn ledger line, which is prompt and summary text. Creation
+/// inherits the umask otherwise, so the mode is set explicitly.
 fn append_lines(path: &std::path::Path, body: &str) -> Result<(), String> {
     use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
+        .mode(0o600)
         .open(path)
         .map_err(|e| format!("open {}: {e}", path.display()))?;
     file.write_all(body.as_bytes())
@@ -1672,6 +1684,34 @@ mod tests {
     }
 
     #[test]
+    fn the_quarantine_archive_is_owner_only() {
+        // The archive holds the preserved head of every torn ledger
+        // line -- prompt and summary text. It was created with the
+        // umask default (0644), so every local account could read the
+        // user's prompts; the ledger next to it is 0600 for the same
+        // reason.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("terhub-archive-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("activity.jsonl");
+        append_entry(&path, &Entry::prompt(100, "%1", "pi", "keep me")).unwrap();
+        append_raw(
+            &path,
+            "{\"t\":200,\"kind\":\"prompt\",\"pane\":\"%2\",\"summ",
+        );
+        prune(&path, 100 + 90 * 86400, 90).unwrap();
+        repair_quarantine(&path).unwrap();
+        let archive = quarantine_path(&path);
+        assert!(archive.is_file(), "no archive was written");
+        let mode = std::fs::metadata(&archive).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the archive must be owner-only");
+        let dmode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dmode, 0o700, "the ledger dir must be owner-only");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn prune_quarantines_torn_lines_and_keeps_them() {
         // A torn line (truncated crash) must not be silently dropped:
         // it is tagged __corrupt__, the raw head is preserved in
@@ -1909,6 +1949,15 @@ mod tests {
     fn prune_reports_a_write_failure_instead_of_claiming_success() {
         // A prune that could not write has not pruned anything, and
         // saying otherwise hides the ledger growing without bound.
+        //
+        // Root bypasses directory write permissions, so the failure
+        // this test provokes cannot happen for a root user: the write
+        // succeeds and the assertion would fail for the wrong reason.
+        // Skip it there rather than red-flagging the suite.
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("skipping: root bypasses directory write permissions");
+            return;
+        }
         let dir = std::env::temp_dir().join(format!("terhub-prune-ro-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();

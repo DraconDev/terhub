@@ -284,12 +284,18 @@ impl Tmux {
     }
 
     fn run(&self, args: &[&str]) -> Result<String> {
-        // Every tmux CLI call is bounded: a wedged server (or a hung
-        // socket) surfaces as a timeout error instead of freezing the
-        // TUI or the daemon poll, which run these calls on their hot
-        // paths. Same budget as the native probes; the timeout error
-        // matches no empty-server string, so it keeps the warning
-        // treatment instead of reading as "no sessions".
+        // Every tmux *observation* call is bounded: a wedged server (or
+        // a hung socket) surfaces as a timeout error instead of
+        // freezing the TUI or the daemon poll, which run these calls
+        // on their hot paths. Same budget as the native probes; the
+        // timeout error matches no empty-server string, so it keeps
+        // the warning treatment instead of reading as "no sessions".
+        //
+        // The one exception is `display_popup`, which is deliberately
+        // blocking: it runs an interactive picker inside the popup and
+        // returns when the popup closes. It is a one-shot CLI path
+        // (`terhub peek`), never the TUI or the daemon poll, and
+        // bounding it would kill the user's picker mid-read.
         let mut cmd = Command::new(&self.bin);
         if let Some(s) = &self.socket {
             cmd.args(socket_args(s));

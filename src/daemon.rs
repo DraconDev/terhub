@@ -4110,7 +4110,7 @@ mod tests {
     #[test]
     fn finished_quiet_pane_reads_idle_not_stuck() {
         // The `samai` report: a pane whose screen has been quiet for
-        // longer than `quiet_idle_secs` (300s) and whose process has
+        // longer than `quiet_idle_secs` (900s) and whose process has
         // not burned CPU for longer than `stuck_secs` (600s). The
         // agent's REPL is still alive, so `still` keeps counting —
         // but the long-quiet screen is the stronger signal: the pane

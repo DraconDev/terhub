@@ -1506,7 +1506,16 @@ pub(crate) fn atomic_write(path: &std::path::Path, text: &str) -> std::io::Resul
             "config path has no parent directory",
         )
     })?;
-    std::fs::create_dir_all(parent)?;
+    // Owner-only directory: the files written here hold the user's
+    // prompts, filters and key bindings. The umask default would
+    // leave a fresh directory readable by every local account.
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent)?;
+    }
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
