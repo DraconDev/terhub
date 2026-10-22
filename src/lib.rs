@@ -35,6 +35,7 @@ pub mod agent;
 pub mod app;
 pub mod attend;
 pub mod automation;
+pub mod capture;
 pub mod config;
 pub mod daemon;
 pub mod fleet;

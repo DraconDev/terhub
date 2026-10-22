@@ -395,12 +395,14 @@ fn wait_notifier_timeout(mut child: std::process::Child, timeout: Duration) -> R
     }
 }
 
+#[cfg(test)]
 fn run_notifier(cmd: &str, args: &[&str]) -> Result<()> {
     run_notifier_timeout(cmd, args, Duration::from_secs(5))
 }
 
 /// Run the notifier with a bounded wait: a hung notify-send is killed and
 /// reported instead of stalling the poll loop forever.
+#[cfg(test)]
 fn run_notifier_timeout(cmd: &str, args: &[&str], timeout: Duration) -> Result<()> {
     let child = std::process::Command::new(cmd).args(args).spawn()?;
     wait_notifier_timeout(child, timeout)

@@ -2397,6 +2397,23 @@ fn fork_guard() -> std::sync::MutexGuard<'static, ()> {
     FORK_GUARD.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The cheap per-pane facts a poll needs before it can classify
+/// anything.
+///
+/// They are computed in one pass over the pane list so the screen
+/// captures — the slow part, one `tmux capture-pane` child per pane —
+/// can start before the classification loop that consumes them.
+struct PanePrelude<'a> {
+    /// The last known record for this pane, if it is still fresh.
+    old: Option<&'a AgentRecord>,
+    /// The last known record, but past its hook freshness window.
+    stale: Option<&'a AgentRecord>,
+    /// The live agent process tree under the pane, if any.
+    proc_hit: Option<crate::proc::AgentHit>,
+    /// The pane's agent process is stopped on purpose.
+    paused: bool,
+}
+
 fn poll_sync_with(
     tmux: &Tmux,
     prev: HashMap<String, AgentRecord>,
@@ -2404,7 +2421,8 @@ fn poll_sync_with(
     tune: Tunables,
 ) -> PollOutput {
     // Guarded: the fake tmux is a script this calls exec, and every fork
-    // must not land inside a concurrent flock assertion.
+    // must not land inside a concurrent flock assertion. The capture
+    // workers fork too, but they do it while this guard is still held.
     let _guard = fork_guard();
     let now = now_unix();
     // One process view shared by every pane: /proc is walked once per
@@ -2415,8 +2433,13 @@ fn poll_sync_with(
         Ok(p) => p,
         Err(_) => return outage_result(prev),
     };
-    let mut next = HashMap::new();
-    for pane in &panes {
+    // One cheap pass over the panes first. The captures are what a poll
+    // actually waits on, so they are all started together instead of
+    // one after another — and this pass decides which panes deserve a
+    // capture at all.
+    let mut preludes: Vec<Option<PanePrelude<'_>>> = Vec::with_capacity(panes.len());
+    let mut wanted: Vec<usize> = Vec::new();
+    for (i, pane) in panes.iter().enumerate() {
         let (old, stale) = split_prev(prev.get(&pane.id), now, tune.stale_secs);
         let proc_hit = snap.detect_agent(pane.pid);
         // The pauser registry: a pane whose agent process is *stopped*
@@ -2433,12 +2456,35 @@ fn poll_sync_with(
         // Skip idle shells nobody has claimed yet — unless a process hit
         // claims them (an agent behind a shell prompt is still an agent).
         if old.is_none() && proc_hit.is_none() && is_shell_command(&pane.command) {
+            preludes.push(None);
             continue;
         }
+        wanted.push(i);
+        preludes.push(Some(PanePrelude {
+            old,
+            stale,
+            proc_hit,
+            paused,
+        }));
+    }
+    // Every screen that matters, captured at once.
+    let screens = crate::capture::capture_screens(tmux, &panes, &wanted);
+    let mut next = HashMap::new();
+    for (i, pane) in panes.iter().enumerate() {
+        let Some(PanePrelude {
+            old,
+            stale,
+            proc_hit,
+            paused,
+        }) = preludes[i].take()
+        else {
+            continue;
+        };
         // One capture feeds classification and the visible-quiet clock.
         // Harness dashboards get hash-only: their screens name agents
         // without running them, but their pixels still go quiet.
-        let screen = tmux.capture_pane(&pane.id, 30).ok();
+        // A pane whose capture failed has no screen, exactly as before.
+        let screen = screens.get(&pane.id).cloned();
         let hash = screen.as_ref().map(|s| screen_hash(s));
         // Hook and manual records stay authoritative; poll only refreshes
         // their metadata. The one exception is a hook whose agent is no

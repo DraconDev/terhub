@@ -1040,6 +1040,7 @@ thread_local! {
 ///
 /// `None` clears the override and hands config resolution back to the
 /// ambient (`TERHUB_CONFIG` / XDG) resolution.
+#[cfg(test)]
 pub(crate) fn override_config_path(path: Option<PathBuf>) -> Option<PathBuf> {
     CONFIG_PATH_OVERRIDE.with(|slot| {
         let mut inner = slot.borrow_mut();
