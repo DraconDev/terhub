@@ -5263,6 +5263,7 @@ mod tests {
             agent: agent.map(str::to_string),
             state,
             summary: summary.to_string(),
+            phase: None,
         })
     }
 

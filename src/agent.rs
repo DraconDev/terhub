@@ -1016,16 +1016,17 @@ pub fn classify_screen(
     let clean = strip_tip_lines(screen);
     let screen = clean.as_str();
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
-        let hit = m.classify(screen).map(|(state, summary)| ScreenHit {
+        let hit = m.classify(screen).map(|(state, summary, phase)| ScreenHit {
             agent: Some(m.agent.clone()),
             state,
             summary,
+            phase,
         });
         return park_annotate(bell_override(hit, bell), parked);
     }
     let flat = screen.to_lowercase();
     for m in manifests {
-        if let Some((state, summary)) = m.classify(screen) {
+        if let Some((state, summary, phase)) = m.classify(screen) {
             let agent = flat
                 .contains(m.agent.to_lowercase().as_str())
                 .then(|| m.agent.clone());
@@ -1033,6 +1034,7 @@ pub fn classify_screen(
                 agent,
                 state,
                 summary,
+                phase,
             });
             return park_annotate(bell_override(hit, bell), parked);
         }
@@ -1647,6 +1649,7 @@ mod tests {
             agent: agent.map(str::to_string),
             state,
             summary: summary.to_string(),
+            phase: None,
         })
     }
 
