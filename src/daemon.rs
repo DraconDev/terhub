@@ -58,6 +58,23 @@ pub const QUIET_IDLE_SECS: u64 = 900;
 /// something must keep flagging, even if you stepped away for a minute.
 pub const WAITING_IDLE_SECS: u64 = 1800;
 
+/// A finished agent that has stopped producing output is waiting for its
+/// next prompt — that is idle, not a permanent `done`.
+///
+/// `done` is a transient FYI: it floats above the idle mass when the table
+/// is sorted by state, so a completion you missed still surfaces. It is
+/// not a resting state. Without this decay the completion banner stays in
+/// the scrollback, the classifier re-matches it on every poll, and the row
+/// reads `done` forever — so it never counts towards the `N idle` summary
+/// and the operator cannot tell a finished agent that is ready for input
+/// from one that is mid-turn.
+///
+/// Shorter than [`QUIET_IDLE_SECS`] on purpose: a `done` banner is positive
+/// evidence that the turn ended, while a frozen screen is a guess that has
+/// to wait out a false positive. The summary is kept, so the completion
+/// itself is not lost — only the state label decays. `0` disables it.
+pub const DONE_IDLE_SECS: u64 = 300;
+
 /// Daemon timing knobs from the `[daemon]` config section (restart to
 /// apply). `stuck_secs = 0` disables stuck detection entirely.
 #[derive(Debug, Clone, Copy)]
@@ -69,6 +86,8 @@ pub struct Tunables {
     pub quiet_idle_secs: u64,
     /// Untouched-waiting → Idle threshold (`0` disables).
     pub waiting_idle_secs: u64,
+    /// Stale-completion → Idle threshold (`0` disables).
+    pub done_idle_secs: u64,
 }
 
 impl Default for Tunables {
@@ -1954,6 +1973,7 @@ fn merge_record(
         stuck_secs,
         QUIET_IDLE_SECS,
         WAITING_IDLE_SECS,
+        DONE_IDLE_SECS,
     )
 }
 
@@ -2511,6 +2531,7 @@ fn poll_sync_with(
             tune.stuck_secs,
             tune.quiet_idle_secs,
             tune.waiting_idle_secs,
+            tune.done_idle_secs,
         ) {
             (rec.screen_hash, rec.quiet_since) = refresh_quiet(carried, hash, &rec, now);
             // Bell is reset-each-pass: mirror this poll's flag, never carry.
@@ -3654,6 +3675,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "muse");
@@ -3815,6 +3837,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state_since, now - 600);
@@ -3841,6 +3864,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle, "frozen screen read as busy");
@@ -3873,6 +3897,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle);
@@ -3900,6 +3925,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -3924,6 +3950,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec3.state, AgentState::Idle);
@@ -3957,6 +3984,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -3990,6 +4018,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(demoted.state, AgentState::Idle);
@@ -4021,6 +4050,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Working);
@@ -4043,6 +4073,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -4092,6 +4123,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Idle, "stale prompt still nagging");
@@ -4116,6 +4148,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.state, AgentState::Waiting);
@@ -4172,6 +4205,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -4205,6 +4239,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -4228,6 +4263,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -4250,6 +4286,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(
@@ -5279,6 +5316,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -5303,6 +5341,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.agent, "pi");
@@ -5328,6 +5367,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
@@ -5352,6 +5392,7 @@ mod tests {
             STUCK_SECS,
             QUIET_IDLE_SECS,
             WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
         )
         .expect("no record");
         assert_eq!(rec.cpu_ticks, 50);
