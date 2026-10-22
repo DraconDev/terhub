@@ -911,6 +911,37 @@ mod tests {
     }
 
     #[test]
+    fn tmux_34_output_parses() {
+        // Captured verbatim from tmux 3.4 (what ubuntu-24.04 ships):
+        //   %0\037@0        <- the old 0x1f separator, escaped by tmux
+        //   %0|~|@0|~|bash  <- the printable separator, passed through
+        // The old one collapsed every field into the first, which is why
+        // the whole listing degraded to one broken pane per line.
+        let line =
+            "%0|~|@0|~|bash|~|1|~|0|~|bash|~|/|~|1|~|120|~|40|~|probe1|~|1792684598|~|214|~|0";
+        let panes = parse_panes(line);
+        assert_eq!(panes.len(), 1);
+        assert_eq!(panes[0].id, "%0");
+        assert_eq!(panes[0].window_id, "@0");
+        assert_eq!(panes[0].window_name, "bash");
+        assert_eq!(panes[0].command, "bash");
+        assert_eq!(panes[0].path, "/");
+        assert_eq!(panes[0].width, 120);
+        assert_eq!(panes[0].height, 40);
+        assert_eq!(panes[0].session, "probe1");
+        assert_eq!(panes[0].activity, 1792684598);
+        assert_eq!(panes[0].pid, 214);
+
+        let sessions =
+            parse_sessions("probe1|~|1|~|0|~|Thu Oct 22 15:56:38 2026|~|Thu Oct 22 15:56:38 2026");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].name, "probe1");
+        assert_eq!(sessions[0].windows, 1);
+        assert!(!sessions[0].attached);
+        assert_eq!(sessions[0].created, "Thu Oct 22 15:56:38 2026");
+    }
+
+    #[test]
     fn a_separator_inside_a_field_fails_closed() {
         // The sentinel is printable, so a field can in principle contain
         // it. It must fail closed — the pane is dropped, never parsed
