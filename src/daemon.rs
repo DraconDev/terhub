@@ -4134,6 +4134,209 @@ mod tests {
     }
 
     #[test]
+    fn done_decays_to_idle_once_the_completion_is_old_news() {
+        // A finished agent whose screen has been quiet past `done_idle_secs`
+        // is waiting for its next prompt — that is idle. Without this decay
+        // the completion banner stays in the scrollback, the classifier
+        // re-matches it on every poll, and the row reads `done` forever: it
+        // never counts towards the idle summary, and to anyone scanning the
+        // column it is indistinguishable from an agent mid-turn.
+        let now = 100_000;
+        let mut old = carried("minimax-code", AgentState::Done, 500, now - 4, now - 900);
+        old.quiet_since = now - (DONE_IDLE_SECS + 300);
+        old.summary = "✓ Todo list 6/6 completed".to_string();
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(
+                Some("minimax-code"),
+                AgentState::Done,
+                "✓ Todo list 6/6 completed",
+            ),
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(
+            rec.state,
+            AgentState::Idle,
+            "a stale completion must read idle, not done"
+        );
+        assert_eq!(
+            rec.summary, "✓ Todo list 6/6 completed",
+            "the completion itself is not lost when the label decays"
+        );
+    }
+
+    #[test]
+    fn done_below_the_threshold_stays_done() {
+        // The decay is a decay, not a demotion on sight: a fresh
+        // completion is still news and must keep its own label — that is
+        // what lets it float above the idle mass when sorted by state.
+        let now = 100_000;
+        let mut old = carried("minimax-code", AgentState::Done, 500, now - 4, now - 900);
+        old.quiet_since = now - (DONE_IDLE_SECS - 60);
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(
+                Some("minimax-code"),
+                AgentState::Done,
+                "✓ Todo list 6/6 completed",
+            ),
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Done, "a fresh completion is still done");
+    }
+
+    #[test]
+    fn done_idle_zero_disables_the_decay() {
+        let now = 100_000;
+        let mut old = carried("minimax-code", AgentState::Done, 500, now - 4, now - 900);
+        old.quiet_since = now - 100_000;
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(
+                Some("minimax-code"),
+                AgentState::Done,
+                "✓ Todo list 6/6 completed",
+            ),
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            0,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Done, "0 must disable the decay");
+    }
+
+    #[test]
+    fn done_decay_survives_the_poll_loop() {
+        // The merge alone is not the feature: the classifier re-derives
+        // `done` from the same unchanged screen on every poll, so the
+        // demotion has to be sticky. If the idle clock restarted on each
+        // poll the row would flicker between `done` and `idle` forever.
+        let now = 100_000;
+        let mut old = carried("minimax-code", AgentState::Done, 500, now - 4, now - 900);
+        old.quiet_since = now - (DONE_IDLE_SECS + 300);
+        old.summary = "✓ Todo list 6/6 completed".to_string();
+        let h = 0xABCD_1234_u64; // screen has not moved across all polls
+        old.screen_hash = h;
+
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(
+                Some("minimax-code"),
+                AgentState::Done,
+                "✓ Todo list 6/6 completed",
+            ),
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Idle);
+
+        // What the poller does next, verbatim. The completion summary is
+        // stable, so it must not read as fresh activity and reset the very
+        // quiet clock the decay just measured.
+        let (nh, nq) = refresh_quiet(Some(&old), Some(h), &rec, now);
+        assert_eq!(
+            nq,
+            now - (DONE_IDLE_SECS + 300),
+            "the completion summary reset the quiet clock"
+        );
+
+        // Poll 2: the unchanged screen still classifies as done, but the
+        // row is already idle — it must stay idle, and its clock must not
+        // restart.
+        let mut carried2 = rec.clone();
+        carried2.screen_hash = nh;
+        carried2.quiet_since = nq;
+        let rec2 = merge_record_owned(
+            Some(&carried2),
+            false,
+            screen_hit(
+                Some("minimax-code"),
+                AgentState::Done,
+                "✓ Todo list 6/6 completed",
+            ),
+            Some(("minimax-code", 500, 100)),
+            &test_pane(),
+            false,
+            now + 2,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(
+            rec2.state,
+            AgentState::Idle,
+            "flickered back to done after one poll"
+        );
+        assert_eq!(rec2.state_since, now, "idle clock must not restart");
+        assert_eq!(
+            rec2.summary, "✓ Todo list 6/6 completed",
+            "the completion survives the decay"
+        );
+    }
+
+    #[test]
+    fn a_working_row_is_never_decayed_by_the_done_rule() {
+        // The decay is scoped to `done`. A pane that is working must not
+        // be demoted by it, however old its last completion was — the
+        // quiet clock says "the screen has not moved", and a live agent
+        // that has not moved is handled by the working flip, not this one.
+        let now = 100_000;
+        let mut old = carried("minimax-code", AgentState::Done, 500, now - 4, now - 900);
+        // Past the done threshold but short of the working flip, so the
+        // working rule stays out of it too.
+        old.quiet_since = now - (DONE_IDLE_SECS + 300);
+        let rec = merge_record_owned(
+            Some(&old),
+            false,
+            screen_hit(Some("minimax-code"), AgentState::Working, ""),
+            Some(("minimax-code", 900, 100)),
+            &test_pane(),
+            false,
+            now,
+            STUCK_SECS,
+            QUIET_IDLE_SECS,
+            WAITING_IDLE_SECS,
+            DONE_IDLE_SECS,
+        )
+        .expect("no record");
+        assert_eq!(rec.state, AgentState::Working, "a live agent is not decayed");
+    }
+
+    #[test]
     fn long_untouched_waiting_prompt_becomes_idle() {
         let now = 100_000;
         // gemini's finished turn: the screen ends on a bare `>` that the
