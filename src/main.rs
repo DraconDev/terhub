@@ -1637,7 +1637,12 @@ fn run_timeline_tui(spans: Vec<terhub::history::Span>, heatmap: bool) -> Result<
         if !event::poll(Duration::from_millis(250))? {
             continue;
         }
-        let max_scroll = line_count(&view).saturating_sub(1);
+        // The bottom of the timeline is the last *page*, not the last
+        // line: the view draws `page_h` lines at a time, so scrolling
+        // to line_count - 1 put the last line at the top of an
+        // otherwise empty screen. The open position below uses the same
+        // count, so End lands where the reader started.
+        let max_scroll = timeline_max_scroll(line_count(&view), page_h);
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                 crossterm::event::KeyCode::Char('q') | crossterm::event::KeyCode::Esc => {
@@ -1660,6 +1665,15 @@ fn run_timeline_tui(spans: Vec<terhub::history::Span>, heatmap: bool) -> Result<
             _ => {}
         }
     }
+}
+
+/// The furthest the timeline can scroll.
+///
+/// The timeline draws `page_h` lines at a time, so the bottom is the
+/// last *page*: scrolling to the last *line* put it at the top of an
+/// otherwise empty screen.
+fn timeline_max_scroll(lines: usize, page_h: usize) -> usize {
+    lines.saturating_sub(page_h)
 }
 
 fn cmd_automation(action: &AutomationAction) -> i32 {
@@ -2403,8 +2417,8 @@ fn run_tui() -> Result<Option<TuiExit>> {
                 // dead because this branch `continue`d on every kind).
                 if app.mode == terhub::app::Mode::Settings {
                     match mouse.kind {
-                        MouseEventKind::ScrollUp => app.on_wheel(true),
-                        MouseEventKind::ScrollDown => app.on_wheel(false),
+                        MouseEventKind::ScrollUp => app.on_wheel(true, &tmux),
+                        MouseEventKind::ScrollDown => app.on_wheel(false, &tmux),
                         MouseEventKind::Down(MouseButton::Left) => {
                             // Sidebar first: jump sections. Content rows
                             // apply as before (row = scroll + y offset).
@@ -2546,10 +2560,10 @@ fn run_tui() -> Result<Option<TuiExit>> {
                         };
                     }
                     MouseEventKind::ScrollUp => {
-                        app.on_wheel(true);
+                        app.on_wheel(true, &tmux);
                     }
                     MouseEventKind::ScrollDown => {
-                        app.on_wheel(false);
+                        app.on_wheel(false, &tmux);
                     }
                     // Drags, releases, horizontal scrolls: no surface for them.
                     _ => {}
@@ -2687,4 +2701,20 @@ fn real_main() -> i32 {
 
 fn main() {
     std::process::exit(real_main());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_timeline_scrolls_to_the_last_page_not_the_last_line() {
+        // The view draws `page_h` lines at a time, so the bottom of the
+        // timeline is the last page. Scrolling to line_count - 1 put
+        // the last line at the top of an otherwise empty screen.
+        assert_eq!(timeline_max_scroll(100, 10), 90);
+        assert_eq!(timeline_max_scroll(10, 10), 0);
+        assert_eq!(timeline_max_scroll(3, 10), 0);
+        assert_eq!(timeline_max_scroll(0, 10), 0);
+    }
 }

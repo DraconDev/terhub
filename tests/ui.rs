@@ -2600,3 +2600,38 @@ fn blur_cell_leaves_dash_and_blank_alone() {
     assert!(text.contains("—"), "dashes must survive blur:\n{text}");
     assert!(!text.contains("bash"), "command still leaks:\n{text}");
 }
+
+#[test]
+fn the_selected_pane_stays_visible_when_the_filter_chip_takes_its_own_row() {
+    // The filter chip drops onto its own row on a narrow terminal, and
+    // the table shrinks by that row. The scroll window has to be sized
+    // from the height the table actually draws: asking for the pre-chip
+    // height left the selected pane one row below the last drawn row --
+    // invisible, with nothing on screen to say where it went.
+    let mut app = app_with(&["alpha"]);
+    // Two-character ids: on a narrow terminal the pane column is
+    // squeezed to two cells, so the ids have to stay tellable apart
+    // there.
+    app.panes = (0..20)
+        .map(|i| {
+            pane(
+                &format!("%{}", (b'a' + i as u8) as char),
+                "alpha",
+                "w",
+                "sh",
+            )
+        })
+        .collect();
+    app.filter = "sh".to_string();
+    app.refresh_filtered();
+    app.focus = terhub::app::Focus::Panes;
+    app.pane_selected = app.filtered.len() - 1;
+    let last = format!("%{}", (b'a' + (app.filtered.len() - 1) as u8) as char);
+    // Narrow enough that the chip cannot ride the title line.
+    let lines = render_lines(&mut app, 60, 14);
+    assert!(
+        lines.iter().any(|l| l.contains(&last)),
+        "the selected pane {last} is below the visible window:\n{}",
+        lines.join("\n")
+    );
+}

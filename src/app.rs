@@ -4147,7 +4147,7 @@ impl App {
     /// reader, the output popup, the settings list, or the table/sidebar
     /// selection (scroll follows via the existing ensure-visible paths).
     /// Prompts and confirms eat it.
-    pub fn on_wheel(&mut self, up: bool) {
+    pub fn on_wheel(&mut self, up: bool, tmux: &Tmux) {
         if self.show_preview && matches!(self.mode, Mode::Normal) {
             self.scroll_preview(if up { -3 } else { 3 });
             return;
@@ -4183,6 +4183,15 @@ impl App {
             } else {
                 self.move_down();
             }
+            if !panes {
+                // The sidebar selection decides which session the table
+                // shows. Moving it without re-filtering left the table
+                // listing the *previous* session's panes until the next
+                // tick rebuilt it -- the keyboard path re-filters on
+                // every move, and the wheel is the same gesture.
+                self.refresh_filtered();
+            }
+            self.follow_preview(tmux);
         }
     }
 
@@ -6622,46 +6631,84 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn wheel_over_the_session_bar_refilters_the_pane_table() {
+        // The sidebar selection decides which session the table shows.
+        // The wheel is the same gesture as the arrow keys, so it has to
+        // re-filter: without it the table kept listing the previous
+        // session's panes until the next tick rebuilt it.
+        let tmux = Tmux::new().unwrap();
+        let mut app = app_with(&["a", "b"]);
+        let mut p1 = Pane::test("%1", "editor", "nvim");
+        p1.session = "a".to_string();
+        let mut p2 = Pane::test("%2", "editor", "bash");
+        p2.session = "b".to_string();
+        app.panes = vec![p1, p2];
+        app.refresh_filtered();
+        app.focus = Focus::Sessions;
+        // "All sessions" is row 0, so row 1 is session "a".
+        app.selected = 1;
+        app.refresh_filtered();
+        assert_eq!(app.filtered.len(), 1);
+        assert_eq!(app.filtered[0].session, "a");
+        // One wheel notch down moves to session "b" ...
+        app.on_wheel(false, &tmux);
+        assert_eq!(app.selected, 2);
+        // ... and the table follows it.
+        assert_eq!(
+            app.filtered.len(),
+            1,
+            "the table still lists the old session"
+        );
+        assert_eq!(app.filtered[0].session, "b");
+        // And back again.
+        app.on_wheel(true, &tmux);
+        assert_eq!(app.selected, 1);
+        assert_eq!(app.filtered[0].session, "a");
+    }
+
+    #[test]
     fn wheel_scrolls_output_popup() {
+        let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.mode = Mode::CommandOutput {
             name: "out".to_string(),
             lines: (0..20).map(|i| format!("line {i}")).collect(),
             scroll: 10,
         };
-        app.on_wheel(true);
+        app.on_wheel(true, &tmux);
         assert_eq!(output_scroll(&app), 7);
-        app.on_wheel(false);
+        app.on_wheel(false, &tmux);
         assert_eq!(output_scroll(&app), 10);
         // Clamps at both ends.
         for _ in 0..20 {
-            app.on_wheel(true);
+            app.on_wheel(true, &tmux);
         }
         assert_eq!(output_scroll(&app), 0);
         for _ in 0..30 {
-            app.on_wheel(false);
+            app.on_wheel(false, &tmux);
         }
         assert_eq!(output_scroll(&app), 19);
     }
 
     #[test]
     fn wheel_moves_table_and_settings_selection() {
+        let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.focus = Focus::Panes;
         assert_eq!(app.pane_selected, 0);
-        app.on_wheel(false);
+        app.on_wheel(false, &tmux);
         assert_eq!(app.pane_selected, 1);
-        app.on_wheel(true);
+        app.on_wheel(true, &tmux);
         assert_eq!(app.pane_selected, 0);
         app.open_settings();
         assert_eq!(app.settings_selected, 0);
-        app.on_wheel(false);
+        app.on_wheel(false, &tmux);
         assert_eq!(app.settings_selected, 1);
-        app.on_wheel(true);
+        app.on_wheel(true, &tmux);
         assert_eq!(app.settings_selected, 0);
         // Prompts eat the wheel.
         app.open_filter();
-        app.on_wheel(false);
+        app.on_wheel(false, &tmux);
         assert_eq!(app.mode, Mode::PromptFilter);
     }
 
@@ -8092,6 +8139,7 @@ pub(crate) mod tests {
 
     #[test]
     fn preview_wheel_scrolls_content_not_selection() {
+        let tmux = Tmux::new().unwrap();
         let mut app = app_with_panes();
         app.show_preview = true;
         app.preview = (0..100)
@@ -8099,10 +8147,10 @@ pub(crate) mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         app.select_pane(1);
-        app.on_wheel(false);
+        app.on_wheel(false, &tmux);
         assert_eq!(app.preview_scroll, 3);
         assert_eq!(app.pane_selected, 1);
-        app.on_wheel(true);
+        app.on_wheel(true, &tmux);
         assert_eq!(app.preview_scroll, 0);
     }
 

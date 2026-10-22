@@ -426,7 +426,6 @@ pub fn render(frame: &mut Frame, app: &mut App) -> ClickAreas {
     // The selector bar manages its own horizontal scroll; the table body is
     // the area minus top/bottom borders minus the header row.
     let (sessions_area, segments) = render_selector(frame, app, &pal, chunks[0]);
-    app.ensure_visible(chunks[1].height.saturating_sub(3) as usize);
     let (panes_area, header_hits) = render_table(frame, app, &pal, chunks[1]);
 
     let (status, style) = match &app.status {
@@ -1075,7 +1074,12 @@ fn idle_cell(
     (text, warn)
 }
 
-fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rect, Vec<HeaderHit>) {
+fn render_table(
+    frame: &mut Frame,
+    app: &mut App,
+    pal: &Palette,
+    area: Rect,
+) -> (Rect, Vec<HeaderHit>) {
     let compact = app.config.compact();
     // Filtered to one session: its column would repeat on every row.
     let show_session = app.side_session().is_none();
@@ -1177,6 +1181,12 @@ fn render_table(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) -> (Rec
         area
     };
     let visible = area.height.saturating_sub(3) as usize;
+    // Scroll the selection into the window this table actually draws.
+    // The window is one row shorter when the filter chip takes its own
+    // row, so the count has to be the one the rows below use: asking
+    // for the pre-chip height left the selected pane one row below the
+    // last row drawn (and therefore invisible).
+    app.ensure_visible(visible);
     // Window sizes come from the full pane list: stable under filtering,
     // so a suffix never flickers when a sibling is filtered out.
     let counts = window_pane_counts(&app.panes);
@@ -2064,8 +2074,8 @@ fn render_modal(frame: &mut Frame, app: &App, pal: &Palette, area: Rect) {
         let cx = inner.x + (plen as u16) + (app.cursor as u16);
         let cx = cx.min(inner.x + inner.width.saturating_sub(1));
         // Two-line prompt: the active line is always the top row
-        // (the parked line goes below it). The popup is 6 tall
-        // (inner 4 rows), so both lines fit without clipping
+        // (the parked line goes below it). The popup is 5 tall
+        // (inner 3 rows), so both lines fit without clipping
         // the bottom border.
         frame.set_cursor_position(ratatui::layout::Position::new(cx, inner.y));
     }
