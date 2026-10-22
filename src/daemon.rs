@@ -1034,7 +1034,6 @@ async fn handle_conn(
             Response::snapshot(snapshot)
         }
         Request::Event { event } => {
-            let ev_t0 = std::time::Instant::now();
             // Mutation + save without holding the lock across disk IO.
             let (transitions, now) = mutate_and_save(
                 &registry,
@@ -1046,9 +1045,7 @@ async fn handle_conn(
                     (t, now)
                 },
             );
-            eprintln!("terhubd: TIMING after mutate_and_save {:?}", ev_t0.elapsed());
             emit_transitions(&transitions, now).await;
-            eprintln!("terhubd: TIMING after emit_transitions {:?}", ev_t0.elapsed());
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
             if !event.prompt.trim().is_empty() {
@@ -1060,7 +1057,6 @@ async fn handle_conn(
                 ))
                 .await;
             }
-            eprintln!("terhubd: TIMING after prompt log {:?}", ev_t0.elapsed());
             Response::ok()
         }
         Request::Register {
@@ -2625,7 +2621,6 @@ where
         (result, snap)
     };
     let (result, snap) = snapshot;
-    let t_save = std::time::Instant::now();
     // Fail-closed: a swapped runtime dir means the save would land in
     // an attacker-chosen location, so skip it (and log) instead of
     // writing. The poll-loop tick check aborts the daemon right after.
@@ -2633,7 +2628,6 @@ where
         Ok(()) => save_registry(path, &snap),
         Err(e) => eprintln!("terhubd: refusing registry save: {e:#}"),
     }
-    eprintln!("terhubd: TIMING registry save {:?}", t_save.elapsed());
     result
 }
 
@@ -2730,10 +2724,16 @@ fn save_registry(path: &Path, registry: &HashMap<String, AgentRecord>) {
                     let _ = std::fs::remove_file(&tmp);
                     return Err(e);
                 }
-                if let Err(e) = f.sync_all() {
-                    let _ = std::fs::remove_file(&tmp);
-                    return Err(e);
-                }
+                // No fsync: the registry is a derived cache (the poll
+                // rebuilds it every 2s) whose only non-derivable
+                // content is a manual pin, and the write is atomic
+                // anyway (tmp + rename), so a reader never sees a torn
+                // file. The fsync cost a disk flush per poll -- over a
+                // second on a loaded machine -- which made the daemon
+                // answer its clients later than their deadlines. The
+                // data still survives a process crash; only a machine
+                // crash loses it, and the ledger (the real history)
+                // keeps its own fsync.
                 drop(f);
                 return std::fs::rename(&tmp, path);
             }
