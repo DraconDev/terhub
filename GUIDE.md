@@ -452,7 +452,19 @@ Per pane it merges three signals:
    long after you walked away. The longer threshold is deliberate —
    stepping away for a few minutes must not silence a real question —
    and the summary is kept, since that is what you came back to read.
-   Both `0` disable their flip. Fresh hooks are never second-guessed this
+   A `done` row decays the same way, and faster: `done_idle_secs` (default
+   5 minutes). `done` is the transient FYI for a finished turn — it floats
+   above the idle mass when the table is sorted by state, so a completion
+   you missed still surfaces. It is not a resting state. The verdict comes
+   from a banner that stays in the scrollback, so without the decay the
+   classifier re-matches it on every poll and the row reads `done` forever:
+   it never counts towards the `N idle` summary, and to anyone scanning
+   the column it looks like an agent mid-turn. The shorter threshold is
+   deliberate — a completion banner is positive evidence that the turn
+   ended, where a frozen screen is a guess that has to wait out a false
+   positive — and the summary is kept, so the completion itself is not
+   lost; only the label decays.
+   Each `0` disables its flip. Fresh hooks are never second-guessed this
    way.
 3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse
    match the pane's command and recent screen text. The freshest matching

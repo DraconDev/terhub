@@ -2612,6 +2612,7 @@ mod tests {
         assert_eq!(cfg.stale_secs, crate::daemon::HOOK_STALE_SECS);
         assert_eq!(cfg.quiet_idle_secs, crate::daemon::QUIET_IDLE_SECS);
         assert_eq!(cfg.waiting_idle_secs, crate::daemon::WAITING_IDLE_SECS);
+        assert_eq!(cfg.done_idle_secs, crate::daemon::DONE_IDLE_SECS);
         std::fs::remove_file(path).ok();
     }
 
