@@ -846,7 +846,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 // names the phases that mean work in flight. A paused
                 // goal (`Goal · Paused · 58min35s active`) is work on
                 // hold, and must not be counted as busy.
-                "goal · (active|verifying|waiting) · .*active".to_string(),
+                "goal · (active|verifying|waiting)[^·]* · .*active".to_string(),
             ],
         },
         Manifest {
@@ -2613,6 +2613,25 @@ mod tests {
         let hit = classify_screen(&m, "minimax-code", screen, false, false).expect("a verdict");
         assert_ne!(hit.state, AgentState::Working, "a paused goal is not busy");
         assert!(hit.phase.is_none(), "a stopped banner is not a phase");
+    }
+
+    #[test]
+    fn a_paused_goal_is_not_busy_but_still_says_so() {
+        // The `◎ Goal · Paused · 58min35s active` form: the goal is on
+        // hold. It must not read as busy — but it is still the one line
+        // that says what the agent is up to, so the phase shows.
+        let m = compiled();
+        let screen = "\
+    ◎ Goal · Paused · 58min35s active
+  792K tokens · 2 turns
+    Message · Enter send · Ctrl+J newline";
+        let hit = classify_screen(&m, "minimax-code", screen, false, false).expect("a verdict");
+        assert_ne!(hit.state, AgentState::Working, "a paused goal is not busy");
+        assert_eq!(
+            hit.phase.as_deref(),
+            Some("◎ Goal · Paused · 58min35s active"),
+            "the phase still says what the agent is up to"
+        );
     }
 
     #[test]
