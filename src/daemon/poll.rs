@@ -1040,7 +1040,7 @@ pub(crate) fn outage_result(prev: HashMap<String, AgentRecord>) -> PollOutput {
 /// Take the single-instance flock for `runtime` (non-blocking). The
 /// returned file must be kept alive for the daemon's whole run; the
 /// lock releases when it drops (exit, crash, or shutdown alike).
-pub(crate) fn acquire_daemon_lock(runtime: &std::path::Path) -> Result<std::fs::File> {
+pub fn acquire_daemon_lock(runtime: &std::path::Path) -> Result<std::fs::File> {
     use std::os::unix::io::AsRawFd;
     let lock_path = runtime.join("terhubd.lock");
     let file = std::fs::OpenOptions::new()

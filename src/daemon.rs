@@ -15,6 +15,7 @@ use crate::attend::detect_all_transitions;
 use crate::config;
 use crate::history;
 use anyhow::{Context, Result};
+pub use poll::acquire_daemon_lock;
 pub(crate) use poll::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
