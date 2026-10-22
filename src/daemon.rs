@@ -1034,6 +1034,7 @@ async fn handle_conn(
             Response::snapshot(snapshot)
         }
         Request::Event { event } => {
+            let ev_t0 = std::time::Instant::now();
             // Mutation + save without holding the lock across disk IO.
             let (transitions, now) = mutate_and_save(
                 &registry,
@@ -1045,7 +1046,9 @@ async fn handle_conn(
                     (t, now)
                 },
             );
+            eprintln!("terhubd: TIMING after mutate_and_save {:?}", ev_t0.elapsed());
             emit_transitions(&transitions, now).await;
+            eprintln!("terhubd: TIMING after emit_transitions {:?}", ev_t0.elapsed());
             // Prompts log even when the state didn't move: asking again is
             // itself the event the recap reads back.
             if !event.prompt.trim().is_empty() {
@@ -1057,6 +1060,7 @@ async fn handle_conn(
                 ))
                 .await;
             }
+            eprintln!("terhubd: TIMING after prompt log {:?}", ev_t0.elapsed());
             Response::ok()
         }
         Request::Register {
@@ -2789,6 +2793,13 @@ pub enum DaemonError {
         daemon_build: Option<String>,
         detail: String,
     },
+    /// The daemon is there but did not answer within the timeout.
+    ///
+    /// Not the same as "not running": the daemon answered other
+    /// requests (or was mid-write) and this one outran its deadline.
+    /// Reporting that as "daemon not running" is a lie the user acts
+    /// on -- they start a second daemon -- so it gets its own answer.
+    Slow { detail: String },
 }
 
 impl DaemonError {
@@ -2801,6 +2812,9 @@ impl DaemonError {
         match self {
             DaemonError::Unreachable { detail } => {
                 format!("daemon not running (terhub daemon start): {detail}")
+            }
+            DaemonError::Slow { detail } => {
+                format!("daemon too slow to answer (terhub daemon start): {detail}")
             }
             DaemonError::Unreadable { detail } => {
                 format!("daemon running but the response could not be read ({detail})")
@@ -2861,8 +2875,19 @@ pub fn build_label() -> String {
 /// The error type distinguishes "no daemon" from "a daemon I cannot
 /// understand" — the distinction the whole protocol work exists for.
 pub fn send_request(req: &Request, timeout: Duration) -> Result<Response, DaemonError> {
-    let sock = socket_path();
-    let mut stream = UnixStream::connect(&sock).map_err(|e| DaemonError::Unreachable {
+    send_request_at(&socket_path(), req, timeout)
+}
+
+/// [`send_request`] against an explicit socket path.
+///
+/// The path is a parameter so the timeout behaviour can be tested
+/// against a peer that accepts the connection and then says nothing.
+fn send_request_at(
+    sock: &std::path::Path,
+    req: &Request,
+    timeout: Duration,
+) -> Result<Response, DaemonError> {
+    let mut stream = UnixStream::connect(sock).map_err(|e| DaemonError::Unreachable {
         detail: format!("connect {}: {e}", sock.display()),
     })?;
     stream
@@ -2884,8 +2909,22 @@ pub fn send_request(req: &Request, timeout: Duration) -> Result<Response, Daemon
         })?;
     let mut reader = BufReader::new(stream);
     let raw = read_capped_line(&mut reader, MAX_RESPONSE_BYTES).map_err(|e| {
-        DaemonError::Unreachable {
-            detail: format!("read response: {e}"),
+        // A read that outran the socket's receive timeout surfaces as
+        // EAGAIN on Linux (that is how SO_RCVTIMEO expiry is reported),
+        // which is "the daemon is too slow right now" -- not "the
+        // daemon is gone". The two deserve different answers: the
+        // first is worth retrying, the second means start one.
+        let timed_out = e
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::WouldBlock);
+        if timed_out {
+            DaemonError::Slow {
+                detail: format!("read response timed out: {e}"),
+            }
+        } else {
+            DaemonError::Unreachable {
+                detail: format!("read response: {e}"),
+            }
         }
     })?;
     decode_response(&raw)
@@ -4285,6 +4324,38 @@ mod tests {
         assert_eq!(peer, Some(our_uid()));
         // And the policy admits that peer.
         assert!(peer_allowed(peer, our_uid()));
+    }
+
+    #[test]
+    fn a_daemon_that_answers_too_late_is_slow_not_missing() {
+        // A peer that accepts the connection and then says nothing: the
+        // read runs into the socket's receive timeout. That is "the
+        // daemon is too slow right now", not "the daemon is gone" --
+        // reporting it as missing would send the user off to start a
+        // second daemon.
+        let dir = std::env::temp_dir().join(format!("terhub-slow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("slow.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let _acceptor = std::thread::spawn(move || {
+            if let Ok((_conn, _)) = listener.accept() {
+                // Accept and stay silent: the client's read times out.
+                std::thread::sleep(Duration::from_secs(30));
+            }
+        });
+        let err = send_request_at(&sock, &Request::Ping, Duration::from_millis(300))
+            .expect_err("the silent peer must not answer");
+        assert!(
+            matches!(err, DaemonError::Slow { .. }),
+            "a timed-out read must not be reported as a missing daemon: {err:?}"
+        );
+        assert!(
+            err.message().contains("too slow"),
+            "the message must say the daemon is slow: {}",
+            err.message()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

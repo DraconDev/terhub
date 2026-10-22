@@ -338,8 +338,8 @@ fn tool_result(name: &str, args: &Value) -> Result<String, String> {
     }
 }
 
-fn snapshot() -> Result<crate::daemon::Snapshot, String> {
-    crate::daemon::fetch_snapshot(Duration::from_secs(2)).map_err(|e| e.message())
+fn snapshot() -> Result<crate::daemon::Snapshot, crate::daemon::DaemonError> {
+    crate::daemon::fetch_snapshot(Duration::from_secs(2))
 }
 
 /// Optional `state` argument: absent means unfiltered, but a present
@@ -355,7 +355,7 @@ fn state_filter(args: &Value) -> Result<Option<crate::agent::AgentState>, String
 
 fn tool_status(args: &Value) -> Result<String, String> {
     let filter = state_filter(args)?;
-    let snap = snapshot()?;
+    let snap = snapshot().map_err(|e| e.message())?;
     let mut agents = snap.agents;
     if let Some(f) = filter {
         agents.retain(|a| a.state == f);
@@ -426,7 +426,23 @@ fn tool_wait(args: &Value) -> Result<String, String> {
         .clamp(1, 600);
     let deadline = Instant::now() + Duration::from_secs(timeout);
     loop {
-        let snap = snapshot()?;
+        // A daemon that is merely slow must not abort the wait: the
+        // wait has a deadline of its own, and one slow poll (the
+        // daemon is mid-write, the disk is busy) is not the answer
+        // "nothing happened yet". A daemon that is *gone* still is:
+        // that one is worth reporting straight away.
+        let snap = match snapshot() {
+            Ok(s) => s,
+            Err(e @ crate::daemon::DaemonError::Slow { .. }) => {
+                let _ = e;
+                if Instant::now() >= deadline {
+                    return Err(format!("timeout after {timeout}s"));
+                }
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+            Err(e) => return Err(e.message()),
+        };
         let hit = match pane {
             Some(p) => snap
                 .agents
@@ -450,7 +466,7 @@ fn tool_wait(args: &Value) -> Result<String, String> {
 }
 
 fn tool_attend() -> Result<String, String> {
-    let snap = snapshot()?;
+    let snap = snapshot().map_err(|e| e.message())?;
     match crate::attend::pick_attend(&snap.agents, None) {
         Some(a) => Ok(format!(
             "{} {} {} {} {}",
