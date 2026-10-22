@@ -2056,11 +2056,16 @@ fn merge_record_owned(
     {
         summary = hit.summary.clone();
     }
-    // Working rows stay summary-free even across carries: a prompt line
-    // borrowed while waiting is rot once the agent works again (and
-    // pre-gate summaries must not ride the carry forever).
+    // Working rows show the agent's published phase — the one line that
+    // says what it is doing right now ("Goal · Verifying the result").
+    // Spinner text is noise and a carried summary is rot, so neither
+    // survives; the phase is re-derived from this poll's screen, so it
+    // can never ride the carry from a state it no longer belongs to.
     if state == Working {
-        summary = String::new();
+        summary = screen
+            .as_ref()
+            .and_then(|hit| hit.phase.clone())
+            .unwrap_or_default();
     }
     let (ticks, still, astart) = match proc_hit {
         Some((pa, t, s)) => carried
