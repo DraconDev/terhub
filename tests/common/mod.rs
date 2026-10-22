@@ -139,7 +139,7 @@ impl TestDaemon {
         let child = Command::new(env!("CARGO_BIN_EXE_terhubd"))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(std::fs::File::create("/tmp/terhub-mcp-daemon.log").unwrap())
+            .stderr(Stdio::null())
             .spawn()
             .expect("spawn terhubd");
         assert!(

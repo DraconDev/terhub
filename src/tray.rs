@@ -712,6 +712,16 @@ fn read_session_file() -> Option<HubSession> {
 }
 
 fn read_session_file_at(path: &Path) -> Option<HubSession> {
+    read_session_file_at_with_delay(path, HUB_SESSION_RETRY_DELAY)
+}
+
+/// [`read_session_file_at`] with an explicit retry beat.
+///
+/// The beat is a parameter so a test can give a helper thread the
+/// room it needs to land its write on a loaded machine, without
+/// changing the production window (which
+/// `retry_delay_only_fires_on_parse_failure` pins).
+fn read_session_file_at_with_delay(path: &Path, delay: Duration) -> Option<HubSession> {
     let raw = std::fs::read_to_string(path).ok()?;
     if let Ok(s) = serde_json::from_str::<HubSession>(&raw) {
         return process_alive(s.pid).then_some(s);
@@ -720,7 +730,7 @@ fn read_session_file_at(path: &Path) -> Option<HubSession> {
     // once after a beat; only still-unparseable input reads as absent.
     // (The caller deletes on absence, so a single glance must never
     // condemn a file that heals.)
-    std::thread::sleep(HUB_SESSION_RETRY_DELAY);
+    std::thread::sleep(delay);
     let raw = std::fs::read_to_string(path).ok()?;
     serde_json::from_str::<HubSession>(&raw)
         .ok()
@@ -1770,27 +1780,47 @@ mod tests {
         // A torn concurrent write must read as the healed file, not as
         // absent (absent is what the caller deletes — deleting a live
         // hub's advertisement spawns a duplicate TUI). Hermetic: the
-        // path-level helper has no env or /proc-scan dependencies. The
-        // fixer heals at 10ms and keeps rewriting, so even a delayed
-        // thread start lands inside the 50ms retry window.
+        // path-level helper has no env or /proc-scan dependencies.
+        // A generous beat: the heal has to be *scheduled* by the OS
+        // too, and on a busy machine (this suite runs hundreds of
+        // tests in parallel) a 50ms window is not always enough for a
+        // second thread to be woken and land its write. The production
+        // window is pinned by retry_delay_only_fires_on_parse_failure;
+        // what this test proves is that a torn read is re-read and
+        // finds the healed file instead of condemning it.
+        let beat = std::time::Duration::from_secs(2);
         let dir = std::env::temp_dir().join(format!("terhub-hub-torn-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(crate::tray::HUB_SESSION_FILE);
-        std::fs::write(&path, "{torn").unwrap();
         let me = std::process::id();
+        // The healer starts before the torn file exists and waits for a
+        // signal, so the only thing it still has to do inside the
+        // reader's 50ms window is wake up and rename. A thread
+        // created at that moment was sometimes not even scheduled
+        // inside the window on a busy machine, and the test then
+        // failed on its own setup rather than on the torn read it set
+        // out to reproduce.
+        let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
         let heal = path.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            for _ in 0..40 {
-                let _ = std::fs::write(
-                    &heal,
-                    serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
-                );
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
+        let healer = std::thread::spawn(move || {
+            let _ = go_rx.recv();
+            // Atomic, like the real publisher: tmp + rename. A plain
+            // write truncates and rewrites, so the reader could catch
+            // the *heal* half-written and read it as torn again.
+            let tmp = heal.with_extension("heal.tmp");
+            let _ = std::fs::write(
+                &tmp,
+                serde_json::json!({"pid": me, "pane": null, "tty": null}).to_string(),
+            );
+            let _ = std::fs::rename(&tmp, &heal);
         });
-        let found = super::read_session_file_at(&path);
+        std::fs::write(&path, "{torn").unwrap();
+        // Open the reader's window: the heal lands inside the retry
+        // beat, whichever side of the first read it wins.
+        let _ = go_tx.send(());
+        let found = super::read_session_file_at_with_delay(&path, beat);
+        let _ = healer.join();
         assert!(
             found.as_ref().is_some_and(|s| s.pid == me),
             "torn read lost the live advertisement: {found:?}"
