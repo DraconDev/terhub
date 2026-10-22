@@ -2139,6 +2139,31 @@ fn merge_record_owned(
         // fills the cell with the last screen line instead.
         summary = String::new();
     }
+    // A completion that stopped being news is idle. The `done` verdict
+    // comes from a banner that stays in the scrollback, so the classifier
+    // re-matches it on every poll and the row would read `done` forever —
+    // never counting towards the idle summary, and indistinguishable from
+    // a mid-turn agent to anyone scanning the column. Once the screen has
+    // been quiet past `done_idle_secs` the turn is over and the agent is
+    // waiting for its next prompt: that is idle.
+    //
+    // The summary is kept, unlike the working flip above: it is the
+    // completion line itself ("✓ Todo list 6/6 completed"), it is stable,
+    // and being stable it does not feed the quiet clock. What decays is
+    // the state label, not the information.
+    //
+    // The carried clock is preserved when the row was already idle, so the
+    // demotion does not restart the idle duration on every poll — the
+    // classifier re-derives `done` from the same unchanged screen, and a
+    // `since = now` here would leave the row flickering between the two
+    // labels forever.
+    if final_state == Done && done_idle_secs > 0 && quiet_for >= done_idle_secs {
+        final_state = Idle;
+        since = match carried {
+            Some(o) if o.state == Idle => o.state_since,
+            _ => now,
+        };
+    }
     // A prompt nobody has touched for a long time is no longer urgent.
     // Agents whose CLI ends every turn with a bare `>` (gemini, and
     // anything with the same shape) classify as `waiting` forever once

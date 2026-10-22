@@ -169,6 +169,10 @@ pub struct AppConfig {
     /// `quiet_idle_secs` on purpose: a fresh question must keep flagging
     /// even when you step away briefly.
     pub waiting_idle_secs: u64,
+    /// Stale-completion → Idle threshold (`0` disables). A finished agent
+    /// that has stopped producing output is waiting for its next prompt,
+    /// so it reads idle once its completion banner is old news.
+    pub done_idle_secs: u64,
     /// Validated `[[command]]` entries (invalid ones become problems).
     pub commands: Vec<CustomCommand>,
     /// Validated `[[profile]]` spawn entries; builtins when none given.
@@ -217,6 +221,7 @@ impl Default for AppConfig {
             stale_secs: crate::daemon::HOOK_STALE_SECS,
             quiet_idle_secs: crate::daemon::QUIET_IDLE_SECS,
             waiting_idle_secs: crate::daemon::WAITING_IDLE_SECS,
+            done_idle_secs: crate::daemon::DONE_IDLE_SECS,
             commands: Vec::new(),
             profiles: builtin_profiles(),
             templates: builtin_templates(),
@@ -922,6 +927,8 @@ struct DaemonSection {
     quiet_idle_secs: u64,
     #[serde(default = "default_waiting_idle_secs")]
     waiting_idle_secs: u64,
+    #[serde(default = "default_done_idle_secs")]
+    done_idle_secs: u64,
     #[serde(flatten)]
     unknown: BTreeMap<String, toml::Value>,
 }
@@ -934,6 +941,7 @@ impl Default for DaemonSection {
             stale_secs: default_stale_secs(),
             quiet_idle_secs: default_quiet_idle_secs(),
             waiting_idle_secs: default_waiting_idle_secs(),
+            done_idle_secs: default_done_idle_secs(),
             unknown: BTreeMap::new(),
         }
     }
@@ -957,6 +965,10 @@ fn default_quiet_idle_secs() -> u64 {
 
 fn default_waiting_idle_secs() -> u64 {
     crate::daemon::WAITING_IDLE_SECS
+}
+
+fn default_done_idle_secs() -> u64 {
+    crate::daemon::DONE_IDLE_SECS
 }
 
 #[derive(Debug, Deserialize)]
@@ -1974,6 +1986,7 @@ pub fn load_config_report(path: Option<PathBuf>) -> (AppConfig, Vec<String>) {
     cfg.stuck_secs = file.daemon.stuck_secs;
     cfg.quiet_idle_secs = file.daemon.quiet_idle_secs;
     cfg.waiting_idle_secs = file.daemon.waiting_idle_secs;
+    cfg.done_idle_secs = file.daemon.done_idle_secs;
     cfg.stale_secs = file.daemon.stale_secs;
     if cfg.stale_secs == 0 {
         problems.push(format!(
