@@ -1184,7 +1184,17 @@ impl App {
                     crate::proc::parked_in_tty_read(tab.pid),
                 );
                 let (state, summary, source) = match classified {
-                    Some(h) => (h.state, h.summary, Source::Screen),
+                    Some(h) => {
+                        // A working row shows the agent's published phase,
+                        // the same way the daemon shows it — the spinner's
+                        // ticker is noise, not information.
+                        let summary = if h.state == crate::agent::AgentState::Working {
+                            h.phase.clone().unwrap_or_default()
+                        } else {
+                            h.summary
+                        };
+                        (h.state, summary, Source::Screen)
+                    }
                     None if editor_wait => (
                         crate::agent::AgentState::Waiting,
                         "editor in foreground".to_string(),
