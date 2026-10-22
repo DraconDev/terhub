@@ -308,6 +308,7 @@ stuck_secs = 600     # still-CPU → stuck (0 disables)
 stale_secs = 1800    # evidence staleness for carry + hook lapse
 quiet_idle_secs = 900 # frozen screen → idle (0 disables)
 waiting_idle_secs = 1800 # untouched prompt → idle (0 disables)
+done_idle_secs = 300 # stale completion → idle (0 disables)
 
 [style]
 color_agents = true  # hash-color Agent cells so one agent reads as a group
