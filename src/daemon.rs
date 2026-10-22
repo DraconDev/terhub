@@ -237,15 +237,7 @@ fn now_ms() -> u64 {
 /// process group dies with the terminal's SIGHUP, which is how the tray
 /// and every TUI end up showing "daemon down" minutes later.
 pub fn spawn_daemon() -> Result<()> {
-    // Owner-only log file (0600): daemon stderr may contain prompt
-    // text. File::create would inherit a permissive umask, so set
-    // the mode explicitly at creation.
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(log_path());
+    let log_file = open_daemon_log(&runtime_dir());
     let bin = daemon_bin().context("no safe daemon binary to spawn")?;
     let mut cmd = std::process::Command::new(&bin);
     // Own process group: never share the launcher's SIGHUP fate.
@@ -259,7 +251,10 @@ pub fn spawn_daemon() -> Result<()> {
         Ok(f) => {
             cmd.stderr(f);
         }
-        Err(_) => {
+        Err(e) => {
+            // Say why the log is not there instead of dropping the
+            // daemon's stderr on the floor silently.
+            eprintln!("terhub: {e}");
             cmd.stderr(std::process::Stdio::null());
         }
     }
@@ -639,6 +634,41 @@ fn ensure_runtime_dir(path: &Path) -> Result<RuntimeDirGuard> {
         dev: meta.dev(),
         ino: meta.ino(),
     })
+}
+
+/// Open the daemon's stderr log inside `dir`, creating the runtime dir
+/// when it does not exist yet.
+///
+/// The log lives inside the runtime dir, and on a first install that
+/// dir does not exist yet: the daemon creates it in the child
+/// (`Server::load` -> `ensure_runtime_dir`), which is *after* the
+/// stderr redirect is set up by the parent. Opening the log first
+/// failed with ENOENT, and the fallback sent the daemon's stderr to
+/// /dev/null — losing the manifest warnings, bind errors and panics
+/// the log exists to keep, and leaving the failure message pointing
+/// at a file that was never created.
+///
+/// Owner-only (0600): daemon stderr may contain prompt text. Append,
+/// not truncate: a respawn must not wipe the previous run's stderr —
+/// that is where a crash or a failed bind is explained.
+fn open_daemon_log(dir: &Path) -> std::result::Result<std::fs::File, String> {
+    // Same 0700 mode the daemon uses for the dir itself. A failure is
+    // not fatal here: the child creates the dir itself and reports the
+    // real error.
+    if let Err(e) = ensure_runtime_dir(dir) {
+        eprintln!("terhub: runtime dir not ready ({e})");
+    }
+    let path = dir.join("terhubd.log");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("cannot open daemon log {}: {e}", path.display()))?;
+    // An existing log from an older build keeps its old mode; tighten
+    // it like every other runtime file.
+    let _ = set_owner_only(&path);
+    Ok(file)
 }
 
 /// Tighten an already-created runtime file (socket, pid, log) to
@@ -4217,6 +4247,42 @@ mod tests {
         assert_eq!(peer, Some(our_uid()));
         // And the policy admits that peer.
         assert!(peer_allowed(peer, our_uid()));
+    }
+
+    #[test]
+    fn daemon_log_survives_a_missing_runtime_dir_and_is_appended_to() {
+        use std::os::unix::fs::PermissionsExt;
+        // The fresh-install case: the runtime dir does not exist when
+        // the log is opened. The log must still be there afterwards —
+        // a daemon whose stderr has nowhere to go loses its manifest
+        // warnings, bind errors and panics.
+        let dir = std::env::temp_dir().join(format!("terhub-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!dir.exists(), "the dir must not exist yet");
+        let mut f = open_daemon_log(&dir).expect("the log opens on a fresh install");
+        use std::io::Write;
+        f.write_all(b"first run\n").unwrap();
+        drop(f);
+        let log = dir.join("terhubd.log");
+        assert!(log.is_file(), "the log was not created");
+        // Owner-only, like every other runtime file: daemon stderr can
+        // carry prompt text.
+        let mode = std::fs::metadata(&log).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the log must be owner-only");
+        // The runtime dir is created with the daemon's 0700 mode.
+        let dmode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dmode, 0o700, "the runtime dir must be owner-only");
+        // A respawn appends: the previous run's stderr is where a
+        // crash or a failed bind is explained.
+        let mut f = open_daemon_log(&dir).expect("the log reopens");
+        f.write_all(b"second run\n").unwrap();
+        drop(f);
+        let text = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            text.contains("first run") && text.contains("second run"),
+            "the respawn truncated the previous run's log: {text}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
