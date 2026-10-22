@@ -190,12 +190,20 @@ pub struct AgentRecord {
     /// upgraded a manifest hit on it. Together with `bell_reason` it
     /// composes the needs-you evidence: `bell` is the kernel's
     /// yes/no, `bell_reason` is what the screen showed when the bell
-    /// rang (so the chip can show "🔔 Y/N" instead of just "🔔").
+    /// rang.
+    ///
+    /// The user-visible bell is the classifier's "🔔 …" summary prefix
+    /// in the pane row; these two fields are the daemon-side evidence
+    /// behind it (the tmux flag alone is not enough — a bare bell in
+    /// the text is shell noise), and they travel to machine consumers
+    /// through the JSON snapshot (`terhub status --json`).
     #[serde(default)]
     pub bell: bool,
     /// Short human label for the bell event: "bell", "y/N", "press
     /// enter", etc. Empty when no bell has fired since reset. Set
-    /// in lockstep with `bell`; cleared together.
+    /// in lockstep with `bell`; cleared together. It is the
+    /// classifier's summary minus its "🔔 " prefix, so it says what
+    /// the screen showed when the bell rang.
     #[serde(default)]
     pub bell_reason: String,
     /// Pre-trip state saved when the stuck gate fires on a Hook|Manual
@@ -1031,6 +1039,27 @@ fn bell_override(hit: Option<ScreenHit>, bell: bool) -> Option<ScreenHit> {
     }
 }
 
+/// The source a record keeps after a hook event lands on it.
+///
+/// A manual pin (`terhub register`) is deliberate human state: it
+/// never lapses (`split_prev` keeps it), the poll merge leaves it
+/// alone ("manual pins are exempt"), and `terhub unregister` is the
+/// only thing that removes it. A hook event about the *same* agent
+/// updates the pin's content — state, summary, prompt — without
+/// demoting it to a hook record: the demotion would silently hand the
+/// record to the hook's 30-minute freshness clock and make
+/// `unregister` refuse to remove it ("no manual pin on {pane}").
+///
+/// A hook event about a *different* agent is the pane being repurposed
+/// (the exit-pi/start-muse case the poll merge already reasons about);
+/// it replaces the pin outright.
+fn source_after_hook(old: Option<&AgentRecord>, agent: &str) -> Source {
+    match old {
+        Some(r) if r.source == Source::Manual && r.agent == agent => Source::Manual,
+        _ => Source::Hook,
+    }
+}
+
 /// Merge helper for tests and the daemon: fold hook events over a registry.
 /// The hook label canonicalizes first (`claude-code` → `claude`), so hook
 /// records compare equal to proc/screen records in every downstream check.
@@ -1039,7 +1068,7 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
     match registry.get(&ev.pane) {
         Some(old) if old.state == ev.state && old.agent == agent => {
             let mut rec = old.clone();
-            rec.source = Source::Hook;
+            rec.source = source_after_hook(Some(old), &agent);
             rec.summary = ev.summary.clone();
             rec.updated_at = now;
             if !ev.prompt.is_empty() {
@@ -1075,13 +1104,16 @@ pub fn apply_event_to(registry: &mut HashMap<String, AgentRecord>, ev: &HookEven
             // instead of the previous stillness.
             let fresh_work =
                 ev.state == AgentState::Working || old.map(|r| r.agent != agent).unwrap_or(true);
+            // Resolved before the record is built: the agent name moves
+            // into the record below.
+            let source = source_after_hook(old, &agent);
             registry.insert(
                 ev.pane.clone(),
                 AgentRecord {
                     pane: ev.pane.clone(),
                     agent,
                     state: ev.state,
-                    source: Source::Hook,
+                    source,
                     summary: ev.summary.clone(),
                     handle,
                     // Model/ctx/pid ride along when the event knows them,
@@ -1285,6 +1317,103 @@ mod tests {
         assert_eq!(resolve_handle(&recs, "@pi-wez"), Some("%1".to_string()));
         assert_eq!(resolve_handle(&recs, "@pi-other"), None);
         assert_eq!(resolve_handle(&recs, "%1"), None);
+    }
+
+    #[test]
+    fn a_hook_event_does_not_demote_a_manual_pin() {
+        // A manual pin (`terhub register`) is deliberate human state:
+        // it never lapses, the poll merge leaves it alone, and
+        // `terhub unregister` is the only thing that removes it. A hook
+        // event about the same agent updates the pin's content but must
+        // not re-label it as a hook record: the demotion hands the
+        // record to the hook's 30-minute freshness clock and makes
+        // unregister refuse to remove it.
+        let mut reg = HashMap::new();
+        let mut pinned = AgentRecord {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Waiting,
+            source: Source::Manual,
+            summary: String::new(),
+            handle: String::new(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 4242,
+            session: String::new(),
+            window: String::new(),
+            command: String::new(),
+            updated_at: 100,
+            state_since: 100,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            bell: false,
+            bell_reason: String::new(),
+            stuck_base: None,
+        };
+        pinned.summary = "needs input".to_string();
+        reg.insert("%1".to_string(), pinned);
+
+        // Same state, same agent: the pin keeps its source, and the
+        // hook's fresh summary still lands.
+        let ev = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Waiting,
+            summary: "needs input".to_string(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &ev, 200);
+        assert_eq!(
+            reg["%1"].source,
+            Source::Manual,
+            "the hook event demoted the manual pin"
+        );
+        assert_eq!(reg["%1"].reg_pid, 4242, "the pin lost its pid");
+
+        // A different state, same agent: still the human's pin.
+        let ev = HookEvent {
+            pane: "%1".to_string(),
+            agent: "pi".to_string(),
+            state: AgentState::Working,
+            summary: "working".to_string(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &ev, 300);
+        assert_eq!(
+            reg["%1"].source,
+            Source::Manual,
+            "a state change demoted the manual pin"
+        );
+
+        // A different agent is the pane being repurposed: the hook
+        // replaces the pin outright (the poll merge reasons the same
+        // way about exit-pi/start-muse).
+        let ev = HookEvent {
+            pane: "%1".to_string(),
+            agent: "claude".to_string(),
+            state: AgentState::Working,
+            summary: String::new(),
+            prompt: String::new(),
+            model: String::new(),
+            ctx: None,
+        };
+        apply_event_to(&mut reg, &ev, 400);
+        assert_eq!(
+            reg["%1"].source,
+            Source::Hook,
+            "a different agent must take the pane over"
+        );
+        assert_eq!(reg["%1"].agent, "claude");
     }
 
     #[test]

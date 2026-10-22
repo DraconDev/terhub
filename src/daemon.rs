@@ -2184,8 +2184,12 @@ fn merge_record_owned(
         // but only for the same agent (see `last_prompt` above).
         last_prompt_at,
         last_prompt,
-        bell: carried.map(|o| o.bell).unwrap_or(false),
-        bell_reason: carried.map(|o| o.bell_reason.clone()).unwrap_or_default(),
+        // Bell evidence is re-derived every poll (see `bell_evidence`),
+        // never carried: a bell that rang in an earlier poll must not
+        // keep claiming the pane is ringing now. The poll overwrites
+        // both fields with the fresh evidence right after the merge.
+        bell: false,
+        bell_reason: String::new(),
         // Merge re-derives state every poll: no trip base survives it.
         stuck_base: None,
     })
@@ -5782,6 +5786,33 @@ mod tests {
         apply_hook_stuck_gate(&mut claimed, true, now, STUCK_SECS, 3600);
         assert_eq!(claimed.state, AgentState::Stuck);
         assert_eq!(claimed.stuck_base, None);
+    }
+
+    #[test]
+    fn the_merge_never_carries_bell_evidence() {
+        // The contract on the field is "reset every poll (never
+        // carried)": the bell is re-derived from the fresh screen
+        // evidence, so a bell that rang in an earlier poll must not
+        // keep claiming the pane is ringing now.
+        let mut old = carried("pi", AgentState::Waiting, 10, 90, 50);
+        old.bell = true;
+        old.bell_reason = "y/N".to_string();
+        let rec = merge_record(
+            Some(&old),
+            false,
+            None,
+            Some(("pi", 10)),
+            &test_pane(),
+            100,
+            300,
+        )
+        .expect("proc hit claims the pane");
+        assert!(!rec.bell, "the merge carried a stale bell");
+        assert!(
+            rec.bell_reason.is_empty(),
+            "the merge carried a stale bell reason: {:?}",
+            rec.bell_reason
+        );
     }
 
     #[test]
