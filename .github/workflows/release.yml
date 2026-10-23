@@ -29,8 +29,8 @@ jobs:
       # linting or testing anything.
       - name: fetch dependencies
         run: cargo fetch --locked
-      # The tag is the release identity: v0.2.3 must point at the
-      # commit whose Cargo.toml says 0.2.3. cargo metadata --no-deps
+      # The tag is the release identity: v0.3.0 must point at the
+      # commit whose Cargo.toml says 0.3.0. cargo metadata --no-deps
       # reads the manifest without touching the network.
       - name: tag matches Cargo.toml version
         run: |
