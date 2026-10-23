@@ -78,8 +78,10 @@ except small popups:
   over the pane's last 500 lines with its own ANSI colors, live CPU, and —
   in git repos — branch plus diff shortstat.
 - **Filters.** `f` searches (or just start typing); `!` excludes. The
-  standing exclusion from `[ui] filter` is always on. Name multi-token
-  filters in settings (`s` → Filters) and cycle them with `ctrl+f`.
+  standing exclusion from `[ui] filter` is always on. A query that is
+  only exclusions is *remembered*: it merges into the standing filter and
+  is saved, so it survives the next launch. Name multi-token filters in
+  settings (`s` → Filters) and cycle them with `ctrl+f`.
 - **Marks & bulk.** `Space` marks rows file-manager style; `x`/`a` act on
   the whole marked set under one confirmation.
 - **Record/share mode.** Settings (`s` → Toggles → *blur columns*) fills
