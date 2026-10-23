@@ -1048,18 +1048,11 @@ pub(crate) fn override_config_path(path: Option<PathBuf>) -> Option<PathBuf> {
     })
 }
 
-pub fn config_path() -> PathBuf {
-    // Per-thread override first: it is caller-scoped state that must
-    // not leak across threads (see `override_config_path`).
-    if let Some(p) = CONFIG_PATH_OVERRIDE.with(|slot| slot.borrow().clone()) {
-        return p;
-    }
-    // Test seam (and power-user escape hatch): point terhub at any file.
-    if let Ok(p) = env::var("TERHUB_CONFIG")
-        && !p.is_empty()
-    {
-        return PathBuf::from(p);
-    }
+/// The config file a user expects terhub to keep.
+///
+/// The XDG config home when it is set, else `$HOME/.config`, plus
+/// `terhub/config.toml`.
+fn user_config_path() -> PathBuf {
     let base = env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .ok()
@@ -1072,6 +1065,71 @@ pub fn config_path() -> PathBuf {
         })
         .unwrap_or_else(|| PathBuf::from("."));
     base.join("terhub").join("config.toml")
+}
+
+/// Where a config write lands when the caller named no file.
+///
+/// In a test build this is **never** the user's real config. A test
+/// that persists without a scoped override — a standing filter
+/// committed, a theme flipped — would otherwise rewrite the
+/// developer's own settings, and the damage is silent: the file is
+/// still valid TOML, it just no longer holds what the user chose.
+/// The ambient path is redirected to scratch instead, so a test can
+/// only reach a specific config by naming it: `TERHUB_CONFIG`, the
+/// per-thread override, or `persist_ui_settings_at`.
+///
+/// The scratch file is per-thread, so one test's stray write cannot
+/// be read back by another, and it lives in a per-process directory
+/// so the fleet and automation files derived from this path stay
+/// out of the way of anything else on the machine.
+#[cfg(test)]
+fn ambient_config_path() -> PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    thread_local! {
+        static PATH: std::cell::RefCell<Option<PathBuf>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    PATH.with(|slot| {
+        let mut inner = slot.borrow_mut();
+        if inner.is_none() {
+            let n = NEXT.fetch_add(1, Ordering::SeqCst);
+            let dir = std::env::temp_dir()
+                .join(format!("terhub-test-ambient-{}", std::process::id()));
+            *inner = Some(dir.join(format!("config-{n}.toml")));
+        }
+        inner.clone().unwrap()
+    })
+}
+
+/// Where a config write lands when the caller named no file.
+///
+/// In production this is the user's own config: the whole point of
+/// the remembered filter is that it survives the next launch.
+#[cfg(not(test))]
+fn ambient_config_path() -> PathBuf {
+    user_config_path()
+}
+
+/// The config file this process reads and writes.
+///
+/// Resolution order: the per-thread override, then `TERHUB_CONFIG`,
+/// then the ambient path. Only the first two can name a specific
+/// file; the ambient path is the user's own config in production and
+/// scratch in a test build (see `ambient_config_path`).
+pub fn config_path() -> PathBuf {
+    // Per-thread override first: it is caller-scoped state that must
+    // not leak across threads (see `override_config_path`).
+    if let Some(p) = CONFIG_PATH_OVERRIDE.with(|slot| slot.borrow().clone()) {
+        return p;
+    }
+    // Test seam (and power-user escape hatch): point terhub at any file.
+    if let Ok(p) = env::var("TERHUB_CONFIG")
+        && !p.is_empty()
+    {
+        return PathBuf::from(p);
+    }
+    ambient_config_path()
 }
 
 pub fn load_config(path: Option<PathBuf>) -> AppConfig {
