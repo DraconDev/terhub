@@ -16,6 +16,7 @@ exclude = [
     ".pytest_cache/",
     "assets/",
     "conversation-*.txt",
+    "pi-session-*.html",
     "RESEARCH.md",
     "AUDIT.md",
     "TASKS.md",
