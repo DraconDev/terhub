@@ -1,6 +1,6 @@
 name: release
 # Release gate: pushing a `v*` tag (the project's release flow — tags
-# v0.1.0..v0.2.3) must prove the tagged commit is shippable. This
+# v0.1.0..v0.3.0) must prove the tagged commit is shippable. This
 # workflow never publishes to crates.io itself: that step needs a
 # registry token and the owner's explicit call, so it stays manual.
 # What it does prove, on the exact tagged commit:
