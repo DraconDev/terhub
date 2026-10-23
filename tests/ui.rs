@@ -406,9 +406,17 @@ fn a_working_row_shows_its_quiet_age_but_is_never_tinted() {
         .map(|row| row.iter().map(|(s, _, _)| s.as_str()).collect::<String>())
         .collect();
     let row = text.iter().position(|l| l.contains("%1")).unwrap();
-    let idle = &grid[row][idle_column_index(&text)];
-    assert_eq!(idle.0, "1h0m", "working row hides its quiet age:\n{text:?}");
-    assert_ne!(idle.1, Color::Red, "working row tinted as idle:\n{text:?}");
+    let ix = idle_column_index(&text);
+    assert_eq!(
+        cell_text(&grid, row, ix),
+        "1h0m",
+        "working row hides its quiet age:\n{text:?}"
+    );
+    assert_ne!(
+        grid[row][ix].1,
+        Color::Red,
+        "working row tinted as idle:\n{text:?}"
+    );
     // The turn age still tells the story — it lives in the Turn column.
     assert!(text[row].contains("1h"), "turn age missing:\n{text:?}");
 }
@@ -418,6 +426,17 @@ fn a_working_row_shows_its_quiet_age_but_is_never_tinted() {
 fn idle_column_index(text: &[String]) -> usize {
     let hdr = text.iter().find(|l| l.contains("Idle")).unwrap();
     hdr[..hdr.find("Idle").unwrap()].chars().count()
+}
+
+/// Full text of the cell at `ix` in `row`. The grid holds one symbol
+/// per cell, so a cell's text is the run of non-blank symbols that
+/// starts at its column — ratatui pads the cell to the column width.
+fn cell_text(grid: &[Vec<(String, Color, Modifier)>], row: usize, ix: usize) -> String {
+    grid[row][ix..]
+        .iter()
+        .take_while(|(s, _, _)| !s.trim().is_empty())
+        .map(|(s, _, _)| s.as_str())
+        .collect()
 }
 
 fn waiting_record(pane: &str, session: &str, summary: &str) -> terhub::agent::AgentRecord {
@@ -594,9 +613,14 @@ fn agent_color_reaches_cells_and_working_rows_stay_untinted() {
     let ix = hdr[..hdr.find("Idle").unwrap()].chars().count();
     let row = text.iter().position(|l| l.contains("%1")).unwrap();
     assert_eq!(grid[row][ax].1, Color::Red, "agent override color missing");
-    // A working row is not idle: no age, no warn tint — however long the
-    // screen has been quiet.
-    assert_eq!(grid[row][ix].0, "—", "working row shows an idle age");
+    // A working row is not idle: it never tints, however long the
+    // screen has been quiet. It does show the quiet age — that number
+    // is what separates "streaming" from "frozen on the same frame".
+    assert_eq!(
+        cell_text(&grid, row, ix),
+        "1h0m",
+        "working row hides its quiet age"
+    );
     assert_ne!(grid[row][ix].1, Color::Red, "working row tinted as idle");
     assert!(
         !grid[row][ix].2.contains(Modifier::BOLD),
