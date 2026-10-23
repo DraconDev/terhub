@@ -975,7 +975,7 @@ automation are tmux-backed.
 ## Backend parity
 
 The same TUI runs against every backend, but only tmux is fully wired
-through. The matrix below is the honest state of v0.2.3; anything marked
+through. The matrix below is the honest state of v0.3.0; anything marked
 "–" is on the roadmap and tracked in the project notes, not silently
 broken.
 
