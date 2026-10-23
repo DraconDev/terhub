@@ -362,12 +362,14 @@ fn idle_column_prefers_visible_quiet_over_tmux_activity() {
 }
 
 #[test]
-fn working_row_never_shows_an_idle_age() {
+fn a_working_row_shows_its_quiet_age_but_is_never_tinted() {
     use terhub::agent::{AgentRecord, AgentState, Source, now_unix};
     let mut app = app_with_panes();
     let now = now_unix();
-    // A working agent whose screen has been frozen for an hour is a long
-    // turn, not an idle pane: the Idle cell stays blank and untinted.
+    // A working agent whose screen has been frozen for an hour shows how
+    // long ago that was — the difference between "streaming" and "frozen
+    // on the same frame" — but it is never tinted: a working pane must
+    // not be painted like a finished one.
     app.agents.insert(
         "%1".to_string(),
         AgentRecord {
@@ -405,7 +407,7 @@ fn working_row_never_shows_an_idle_age() {
         .collect();
     let row = text.iter().position(|l| l.contains("%1")).unwrap();
     let idle = &grid[row][idle_column_index(&text)];
-    assert_eq!(idle.0, "—", "working row shows an idle age:\n{text:?}");
+    assert_eq!(idle.0, "1h0m", "working row hides its quiet age:\n{text:?}");
     assert_ne!(idle.1, Color::Red, "working row tinted as idle:\n{text:?}");
     // The turn age still tells the story — it lives in the Turn column.
     assert!(text[row].contains("1h"), "turn age missing:\n{text:?}");

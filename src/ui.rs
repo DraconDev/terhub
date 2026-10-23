@@ -2209,7 +2209,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_cell_never_marks_a_working_row_idle() {
+    fn a_working_row_shows_its_quiet_age_but_never_tints() {
         use crate::agent::{AgentRecord, AgentState, Source};
         use crate::config::AppConfig;
         let cfg = AppConfig::default();
@@ -2241,16 +2241,30 @@ mod tests {
             bell_reason: String::new(),
             stuck_base: None,
         };
-        // Working is not idle: no age in the cell, no tint — however long
-        // the screen has been frozen. A silent working row is a long turn.
+        // A working row shows how long since the screen last changed:
+        // the difference between "streaming" and "frozen on the same
+        // frame". It never tints — a working pane must not be painted
+        // like a finished one.
         let r = rec(AgentState::Working, now - 3600);
-        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("—".to_string(), false));
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &cfg),
+            ("1h0m".to_string(), false)
+        );
         let r = rec(AgentState::Working, now - 5);
-        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("—".to_string(), false));
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &cfg),
+            ("5s".to_string(), false)
+        );
         // A working row falls back to window activity for nothing either.
         let r = rec(AgentState::Working, 0);
         assert_eq!(
             idle_cell(Some(&r), now - 3600, now, &cfg),
+            ("1h0m".to_string(), false)
+        );
+        // Nothing to go on at all → no number, no tint.
+        let r = rec(AgentState::Working, 0);
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &cfg),
             ("—".to_string(), false)
         );
         // Waiting is quiet by nature → the age shows, never a tint.
@@ -2273,6 +2287,13 @@ mod tests {
         assert_eq!(
             idle_cell(Some(&r), 0, now, &flag),
             ("1m".to_string(), false)
+        );
+        // A working row never tints, however long it has been quiet:
+        // the tint is reserved for a genuinely idle row.
+        let r = rec(AgentState::Working, now - 3600);
+        assert_eq!(
+            idle_cell(Some(&r), 0, now, &flag),
+            ("1h0m".to_string(), false)
         );
         // No quiet clock → window activity age, still untinted.
         let r = rec(AgentState::Waiting, 0);

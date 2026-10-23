@@ -243,14 +243,16 @@ status bar, no modes except small popups:
   screen meaningfully changed — spinner frames, footer-tip carousels, and
   counter ticks (elapsed times, token rates) don't count, so a spinner
   can't look busy forever; a changed summary line still resets it.
-  Unclaimed panes fall back to tmux's window-activity age. A `working`
-  row shows `—` there: it is not idle, and a long quiet turn (a model
-  thinking, a tool call that prints nothing) is not an idle one — its
-  age lives in the `Turn` column, and a hung agent shows `stuck` in the
-  State column. Agent cells share one color per agent name (see
-  `[style]`), and `Idle` tints when a row is `idle` but quiet past
-  `idle_flag_secs` (default 6h, `0` disables), without relabeling the
-  state.
+  Unclaimed panes fall back to tmux's window-activity age. Every row
+  shows that age, `working` rows included: it is what separates
+  "streaming" from "frozen on the same frame". A `working` row is never
+  *tinted*, though — a long quiet turn (a model thinking, a tool call
+  that prints nothing) is not an idle one, so only a genuinely `idle`
+  row tints; its turn age also lives in the `Turn` column, and a hung
+  agent shows `stuck` in the State column. Agent cells share one color
+  per agent name (see `[style]`), and `Idle` tints when a row is `idle`
+  but quiet past `idle_flag_secs` (default 6h, `0` disables), without
+  relabeling the state.
 
 Everything except arrows/mouse/Tab/Esc/Alt+digits is rebindable (see
 [Configuration](#configuration)); the `?` help always shows your current
