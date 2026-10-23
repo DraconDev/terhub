@@ -394,8 +394,8 @@ error is never hidden — it is just repaired too.
 ```sh
 $ terhub daemon status
 running (/run/user/1000/terhub/terhubd.sock)
-daemon build 0.3.0+1196a1687bfda34a (proto 1)
-client build 0.3.0+1196a1687bfda34a (proto 1)
+daemon build 0.3.0+9b94a9702aa0d75f (proto 1)
+client build 0.3.0+9b94a9702aa0d75f (proto 1)
 ```
 
 The *build* is a fingerprint of the sources the binary was built from
