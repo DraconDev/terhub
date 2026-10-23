@@ -2251,10 +2251,7 @@ mod tests {
             ("1h0m".to_string(), false)
         );
         let r = rec(AgentState::Working, now - 5);
-        assert_eq!(
-            idle_cell(Some(&r), 0, now, &cfg),
-            ("5s".to_string(), false)
-        );
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("5s".to_string(), false));
         // A working row falls back to window activity for nothing either.
         let r = rec(AgentState::Working, 0);
         assert_eq!(
@@ -2263,10 +2260,7 @@ mod tests {
         );
         // Nothing to go on at all → no number, no tint.
         let r = rec(AgentState::Working, 0);
-        assert_eq!(
-            idle_cell(Some(&r), 0, now, &cfg),
-            ("—".to_string(), false)
-        );
+        assert_eq!(idle_cell(Some(&r), 0, now, &cfg), ("—".to_string(), false));
         // Waiting is quiet by nature → the age shows, never a tint.
         let r = rec(AgentState::Waiting, now - 3600);
         assert_eq!(
