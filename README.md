@@ -128,8 +128,8 @@ up before it bites:
 ```sh
 $ terhub daemon status
 running (/run/user/1000/terhub/terhubd.sock)
-daemon build 0.2.3+3f2a1b0c9d8e7f60 (proto 1)
-client build 0.2.3+3f2a1b0c9d8e7f60 (proto 1)
+daemon build 0.3.0+1196a1687bfda34a (proto 1)
+client build 0.3.0+1196a1687bfda34a (proto 1)
 ```
 
 Different builds are reported by name (`daemon build incompatible: client
