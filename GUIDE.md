@@ -1070,6 +1070,11 @@ runs the whole suite on an isolated server (start one if you like; a
 missing socket reads as zero sessions). Never `tmux kill-server` the
 default one to "isolate" a test: it destroys live sessions.
 
+The config file is safe the same way: a test build resolves the ambient
+config to a scratch file under the temp dir, so `cargo test` can never
+rewrite your keys, theme or standing filter. A test that wants a
+specific config names one — `TERHUB_CONFIG`, or the per-thread override.
+
 ## Troubleshooting
 
 - **"daemon not running"**: `terhub daemon start`. Only one daemon per

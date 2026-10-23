@@ -1052,7 +1052,7 @@ pub(crate) fn override_config_path(path: Option<PathBuf>) -> Option<PathBuf> {
 ///
 /// The XDG config home when it is set, else `$HOME/.config`, plus
 /// `terhub/config.toml`.
-fn user_config_path() -> PathBuf {
+pub(crate) fn user_config_path() -> PathBuf {
     let base = env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .ok()
@@ -1094,8 +1094,8 @@ fn ambient_config_path() -> PathBuf {
         let mut inner = slot.borrow_mut();
         if inner.is_none() {
             let n = NEXT.fetch_add(1, Ordering::SeqCst);
-            let dir = std::env::temp_dir()
-                .join(format!("terhub-test-ambient-{}", std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("terhub-test-ambient-{}", std::process::id()));
             *inner = Some(dir.join(format!("config-{n}.toml")));
         }
         inner.clone().unwrap()
@@ -2347,6 +2347,57 @@ mod tests {
             .expect("open");
         let times = std::fs::FileTimes::new().set_modified(when);
         file.set_times(times).expect("set mtime");
+    }
+
+    /// A test build must never resolve to the user's real config.
+    ///
+    /// The ambient path is where a write lands when the caller named
+    /// no file. In production that is the user's own config; in a
+    /// test build it is scratch, so a test that persists without a
+    /// scoped override cannot rewrite the developer's settings.
+    #[test]
+    fn a_test_build_never_resolves_to_the_users_config() {
+        let user = user_config_path();
+        let ambient = ambient_config_path();
+        assert_ne!(
+            ambient, user,
+            "the ambient config path is the user's real file"
+        );
+        assert!(
+            ambient.starts_with(std::env::temp_dir()),
+            "the ambient config path is not scratch: {}",
+            ambient.display()
+        );
+    }
+
+    /// Persisting through the real write funnel must not reach the
+    /// user's config.
+    ///
+    /// This is the write that cost the user their standing filter: a
+    /// test committed an exclusion and the developer's own filter was
+    /// overwritten with it. The file stays valid TOML either way, so
+    /// nothing announces the damage — only this check does.
+    #[test]
+    fn persisting_without_an_override_never_touches_the_users_config() {
+        let user = user_config_path();
+        // Check the guard *before* the write: a test that proves it
+        // cannot clobber the config by clobbering it is not a test.
+        assert_ne!(
+            ambient_config_path(),
+            user,
+            "the ambient config path is the user's real file"
+        );
+        let before = std::fs::read(&user).ok();
+        let patch = UiPersist {
+            theme: Some("dracula"),
+            ..Default::default()
+        };
+        persist_ui_settings(&patch).unwrap();
+        assert_eq!(
+            std::fs::read(&user).ok(),
+            before,
+            "the user's config was written by a test"
+        );
     }
 
     /// The config-path override is per-thread, not per-process.

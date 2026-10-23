@@ -2800,6 +2800,10 @@ fn standing_editor_prefills_existing_and_filters_live() {
     // hides rows live; Enter keeps the bare-token form (the
     // on-disk file gets a `!` re-added for back-compat).
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    // Enter commits the standing filter to disk, so this test needs
+    // its own config: without the guard it would write the developer's
+    // real one.
+    let _scratch = ScopedConfig::new();
     let mut app = app_with_panes(); // %1 nvim, %2 bash
     let tmux = Tmux::new().unwrap();
     app.open_standing_editor();
@@ -2815,6 +2819,41 @@ fn standing_editor_prefills_existing_and_filters_live() {
     assert_eq!(ids(&app), vec!["%1"]);
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tmux);
     assert_eq!(app.exclude, "bash");
+}
+
+/// The regression that cost the user their standing filter.
+///
+/// Committing the standing filter writes to the config. That write
+/// has to land on scratch: the user's file stays valid TOML either
+/// way, so a test that overwrites it is silent — the developer's own
+/// filter is simply gone the next time terhub starts.
+#[test]
+fn committing_the_standing_filter_never_touches_the_users_config() {
+    // Check the guard *before* the write. A test that proves it
+    // cannot clobber the config by clobbering it is not a test.
+    let user = crate::config::user_config_path();
+    assert_ne!(
+        crate::config::config_path(),
+        user,
+        "the ambient config path is the user's real file"
+    );
+    let before = std::fs::read(&user).ok();
+
+    // No scoped config on purpose: this is the path that clobbered.
+    let mut app = app_with_panes();
+    let tmux = Tmux::new().unwrap();
+    app.open_standing_editor();
+    for c in "bash".chars() {
+        app.on_key(press(KeyCode::Char(c)), &tmux);
+    }
+    app.on_key(press(KeyCode::Enter), &tmux);
+    assert_eq!(app.exclude, "bash");
+
+    assert_eq!(
+        std::fs::read(&user).ok(),
+        before,
+        "the standing filter commit wrote the user's config"
+    );
 }
 
 #[test]
@@ -2961,6 +3000,9 @@ fn filter_history_cycles() {
 /// preserves the exclusion marker (the `!` form).
 #[test]
 fn filter_history_shared_with_standing_editor() {
+    // The standing commit below persists, so the test writes to its
+    // own config rather than the developer's.
+    let _scratch = ScopedConfig::new();
     let tmux = Tmux::new().unwrap();
     let mut app = app_with_panes();
     app.focus = Focus::Panes;
