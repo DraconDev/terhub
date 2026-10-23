@@ -68,8 +68,9 @@ except small popups:
   `*` focused, `✓` already seen), pane id, session, window, command, repo
   dir, agent, state, source (`hook` = agent-reported fact, `proc` = binary
   found, `scr` = screen guess), time in state, last turn, idle age
-  (blank on working rows — a working agent is not idle), and a
-  summary carrying the prompt or error line that decided the state.
+  (every row shows it, `working` included — it separates "streaming"
+  from "frozen on the same frame"; only a truly `idle` row tints), and
+  a summary carrying the prompt or error line that decided the state.
 - **States that matter are red.** Waiting, error, stuck, and quota-limited
   rows shout; working/idle/paused are quiet. The filter chip (`◼`) names every
   filter hiding rows so one is never silently active.
