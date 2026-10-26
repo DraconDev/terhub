@@ -1880,7 +1880,51 @@ mod tests {
         // A pane with a matching manifest agent whose tmux
         // `window_bell_flag` flipped since the last tick must
         // classify as Waiting with a `🔔` reason in the summary —
-        // even if the screen doesn't currently show a prompt shape.
+        // the bell is the only "look at me" evidence on a screen that
+        // shows a finished turn and nothing else.
+        let m = CompiledManifest::compile(&Manifest {
+            agent: "x".to_string(),
+            commands: vec!["x".to_string()],
+            working: vec!["loading".to_string()],
+            waiting: vec!["^❯".to_string()],
+            error: vec![],
+            limited: vec![],
+            done: vec!["^✓".to_string()],
+            idle: vec![],
+            idle_fallback: vec![],
+            waiting_unless: vec![],
+            busy: vec![],
+            phase: vec![],
+        })
+        .unwrap();
+        let manifests = vec![m];
+        // A finished turn reads as Done; the bell turns it into the
+        // "needs you" verdict, and the summary carries the `🔔` reason
+        // so the chip can render it.
+        let finished_screen = "✓ todo list 6/6 completed\n";
+        assert_eq!(
+            classify_screen(&manifests, "x", finished_screen, false, false).map(|h| h.state),
+            Some(AgentState::Done)
+        );
+        let hit = classify_screen(&manifests, "x", finished_screen, true, false).unwrap();
+        assert_eq!(
+            hit.state,
+            AgentState::Waiting,
+            "bell didn't upgrade to Waiting"
+        );
+        assert!(
+            hit.summary.contains("🔔"),
+            "summary missing bell reason: {hit:?}"
+        );
+    }
+
+    #[test]
+    fn bell_never_outranks_live_work() {
+        // The bell is a notification, and tmux's flag is sticky: it
+        // stays on until the window is visited. An agent that is
+        // demonstrably mid-work keeps that verdict — the Gemini CLI
+        // rings the bell when a subagent finishes, and reading that as
+        // "needs you" pinned busy panes in `waiting` forever.
         let m = CompiledManifest::compile(&Manifest {
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
@@ -1896,25 +1940,22 @@ mod tests {
             phase: vec![],
         })
         .unwrap();
-        // Without bell: an active "loading" footer reads as Working,
-        // and the prompt alone (no other content) doesn't trigger.
         let manifests = vec![m];
-        let quiet_screen = "loading 0.1\n";
+        let working_screen = "loading 0.1\n";
         assert_eq!(
-            classify_screen(&manifests, "x", quiet_screen, false, false).map(|h| h.state),
+            classify_screen(&manifests, "x", working_screen, false, false).map(|h| h.state),
             Some(AgentState::Working)
         );
-        // With bell: same screen upgrades to Waiting, summary
-        // carries the `🔔` reason so the chip can render it.
-        let hit = classify_screen(&manifests, "x", quiet_screen, true, false).unwrap();
+        // With bell: the screen's verdict stands.
+        let hit = classify_screen(&manifests, "x", working_screen, true, false).unwrap();
         assert_eq!(
             hit.state,
-            AgentState::Waiting,
-            "bell didn't upgrade to Waiting"
+            AgentState::Working,
+            "bell overrode live work: {hit:?}"
         );
         assert!(
-            hit.summary.contains("🔔"),
-            "summary missing bell reason: {hit:?}"
+            !hit.summary.contains("🔔"),
+            "a working row must not wear a bell chip: {hit:?}"
         );
     }
 
