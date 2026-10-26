@@ -759,9 +759,10 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // the agent is done — it is chrome, exactly like the `❯` box
             // muse keeps under a live task. What the CLI publishes
             // instead is the agent bar below the box: one row per
-            // *running* subagent —
+            // running subagent or background task —
             //
             //   `● Agent(id: title)  <activity> · <elapsed>`
+            //   `● [HH:MM:SS] <command> running`
             //
             // Those rows are the CLI's own "work in flight" marker
             // ("Show active subagents and background tasks below the
@@ -771,11 +772,17 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // waiting. When the last subagent finishes the bar goes with
             // it, and the prompt becomes the freshest match again —
             // which is the honest "your turn" signal.
-            busy: vec!["^\\s*●\\s+Agent\\(".to_string()],
-            // The same line doubles as the phase: for a working row the
+            busy: vec![
+                "^\\s*●\\s+Agent\\(".to_string(),
+                "^\\s*●\\s+\\[.*\\brunning\\b".to_string(),
+            ],
+            // The same lines double as the phase: for a working row the
             // Summary shows what the agent is doing (which subagent,
             // what it is doing, for how long) instead of a spinner.
-            phase: vec!["^\\s*●\\s+Agent\\(".to_string()],
+            phase: vec![
+                "^\\s*●\\s+Agent\\(".to_string(),
+                "^\\s*●\\s+\\[.*\\brunning\\b".to_string(),
+            ],
         },
         Manifest {
             // muse keeps its `❯` input box visible under a live task, so
@@ -2633,6 +2640,27 @@ mod tests {
             got.state,
             AgentState::Waiting,
             "a finished turn waits for the human: {got:?}"
+        );
+        // A background task row is the same signal: the bar lists
+        // running background tasks next to the subagents.
+        let task = r"  ○ Checking 1 task (task-660) (ctrl+o to expand)
+⣾  Managing tasks...
+>
+────────────────────────────────────────────────────────────
+  ● [01:57:02] node scripts/audit-surfaces.mjs running
+────────────────────────────────────────────────────────────
+esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
+";
+        let got = classify_screen(&m, "agy", task, false, false)
+            .expect("an agy screen with a task row must classify");
+        assert_eq!(
+            got.state,
+            AgentState::Working,
+            "a running background task is work in flight: {got:?}"
+        );
+        assert!(
+            got.phase.as_deref().unwrap_or_default().contains("audit-surfaces"),
+            "phase should name the running task: {got:?}"
         );
     }
 
