@@ -754,8 +754,28 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             idle: vec![],
             idle_fallback: vec![],
             waiting_unless: vec![],
-            busy: vec![],
-            phase: vec![],
+            // The Gemini CLI keeps its input box (`>`) on screen for the
+            // whole turn, so the prompt above says nothing about whether
+            // the agent is done — it is chrome, exactly like the `❯` box
+            // muse keeps under a live task. What the CLI publishes
+            // instead is the agent bar below the box: one row per
+            // *running* subagent —
+            //
+            //   `● Agent(id: title)  <activity> · <elapsed>`
+            //
+            // Those rows are the CLI's own "work in flight" marker
+            // ("Show active subagents and background tasks below the
+            // input box"), and they live below the prompt, so the
+            // freshest-line rule reads them as the latest word on the
+            // screen: a pane whose bar is populated is working, not
+            // waiting. When the last subagent finishes the bar goes with
+            // it, and the prompt becomes the freshest match again —
+            // which is the honest "your turn" signal.
+            busy: vec!["^\\s*●\\s+Agent\\(".to_string()],
+            // The same line doubles as the phase: for a working row the
+            // Summary shows what the agent is doing (which subagent,
+            // what it is doing, for how long) instead of a spinner.
+            phase: vec!["^\\s*●\\s+Agent\\(".to_string()],
         },
         Manifest {
             // muse keeps its `❯` input box visible under a live task, so
