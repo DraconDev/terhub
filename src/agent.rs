@@ -1137,6 +1137,17 @@ fn park_annotate(hit: Option<ScreenHit>, parked: bool) -> Option<ScreenHit> {
 /// `bell` in the summary the reason chip reads). A bare bell with no
 /// manifest match — e.g. a shell that beeped on completion — is
 /// dropped: it was noise, not a plea for input.
+///
+/// The bell never outranks work the screen proves is happening. A
+/// terminal bell is a *notification* ("something happened"), and
+/// tmux's flag is sticky — it stays on until the window is visited —
+/// so a flag that fired minutes ago says nothing about this poll. An
+/// agent that is demonstrably mid-work (a spinner, a running subagent
+/// bar) stays Working: the Gemini CLI rings the bell when a subagent
+/// finishes, and reading that as "needs you" pinned six busy panes
+/// in `waiting` forever. This is the same rule the park annotation
+/// already follows: a kernel signal annotates the verdict, it does not
+/// manufacture one.
 fn bell_override(hit: Option<ScreenHit>, bell: bool) -> Option<ScreenHit> {
     if !bell {
         return hit;
@@ -1148,9 +1159,11 @@ fn bell_override(hit: Option<ScreenHit>, bell: bool) -> Option<ScreenHit> {
             // waiting line matched. If the underlying state is
             // already attention (Error/Stuck/Limited) we keep that
             // — a bell during a crashed agent is redundant noise.
+            // Working is kept too: the screen says the agent is busy,
+            // and the bell cannot argue with that.
             if matches!(
                 h.state,
-                AgentState::Waiting | AgentState::Working | AgentState::Idle | AgentState::Done
+                AgentState::Waiting | AgentState::Idle | AgentState::Done
             ) {
                 h.state = AgentState::Waiting;
                 h.summary = format!("🔔 {}", h.summary);
