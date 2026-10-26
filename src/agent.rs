@@ -2587,6 +2587,56 @@ mod tests {
     }
 
     #[test]
+    fn gemini_agent_bar_means_working_not_waiting() {
+        // Live (Gemini CLI, the `agy` frontend): the input box stays on
+        // screen for the whole turn, so the `>` above says nothing about
+        // whether the agent is done. The agent bar below it lists the
+        // running subagents, and its presence means the work is still in
+        // flight — a pane whose bar is populated is working.
+        let m = compiled();
+        let screen = r"  The team is executing the unblocking tasks.
+────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────
+  ● Agent(teamwork_preview_swe: SWE Light Orchestrator)  Generating · 8m56s
+  ● Agent(teamwork_preview: Teamwork Multi-Agent System)  Generating · 8m47s
+────────────────────────────────────────────────────────────
+? for shortcuts  Gemini 3.8 Flash · high · 2 subagent(s)
+";
+        let got = classify_screen(&m, "agy", screen, false, false)
+            .expect("an agy screen with an agent bar must classify");
+        assert_eq!(got.agent.as_deref(), Some("gemini"));
+        assert_eq!(
+            got.state,
+            AgentState::Working,
+            "live subagents are work in flight, not a plea: {got:?}"
+        );
+        // The phase names what is running, so a working row says more
+        // than "busy".
+        let phase = got.phase.clone().unwrap_or_default();
+        assert!(
+            phase.contains("Agent(") && phase.contains("Generating"),
+            "phase should name the running subagent: {got:?}"
+        );
+        // Same screen once the last subagent finished: the bar is gone,
+        // the prompt is the freshest match again, and the agent's turn
+        // is over — the human's move is next.
+        let finished = r"  The team is executing the unblocking tasks.
+────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────
+? for shortcuts  Gemini 3.8 Flash · high
+";
+        let got = classify_screen(&m, "agy", finished, false, false)
+            .expect("an agy screen at the prompt must classify");
+        assert_eq!(
+            got.state,
+            AgentState::Waiting,
+            "a finished turn waits for the human: {got:?}"
+        );
+    }
+
+    #[test]
     fn error_substring_is_not_an_error() {
         let m = compiled();
         // "errors"/"errorhandler" must not trip whole-word error patterns.
