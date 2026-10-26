@@ -55,16 +55,29 @@ fn done_pattern_promotes_matching_tail() {
 #[test]
 fn bell_flag_promotes_to_waiting() {
     let m = vec![make_manifest("all tasks passed")];
-    let quiet = "loading 0.1\n";
-    // Without bell: a screen showing only the "loading" footer
-    // reads as Working (the manifest's working pattern matches).
-    let plain = terhub::agent::classify_screen(&m, "x", quiet, false, false).unwrap();
-    assert_eq!(plain.state, AgentState::Working);
-    // With bell: the same screen upgrades to Waiting, summary
-    // surfaces `🔔` so the row chip can render the reason.
-    let ringed = terhub::agent::classify_screen(&m, "x", quiet, true, false).unwrap();
+    // A finished turn reads as Done; the bell is what turns it into a
+    // needs-you verdict, and the summary surfaces `🔔` so the row chip
+    // can render the reason.
+    let finished = "all tasks passed · 0 failed\n";
+    let plain = terhub::agent::classify_screen(&m, "x", finished, false, false).unwrap();
+    assert_eq!(plain.state, AgentState::Done);
+    let ringed = terhub::agent::classify_screen(&m, "x", finished, true, false).unwrap();
     assert_eq!(ringed.state, AgentState::Waiting);
     assert!(ringed.summary.contains("🔔"));
+}
+
+#[test]
+fn bell_flag_never_overrides_live_work() {
+    // The bell is a notification, and tmux's flag is sticky: it stays
+    // on until the window is visited. A screen that proves the agent is
+    // mid-work keeps that verdict — the Gemini CLI rings the bell when
+    // a subagent finishes, and reading that as "needs you" pinned busy
+    // panes in `waiting` forever.
+    let m = vec![make_manifest("all tasks passed")];
+    let busy = "loading 0.1\n";
+    let ringed = terhub::agent::classify_screen(&m, "x", busy, true, false).unwrap();
+    assert_eq!(ringed.state, AgentState::Working);
+    assert!(!ringed.summary.contains("🔔"));
 }
 
 #[test]
