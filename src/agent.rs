@@ -2697,6 +2697,61 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
     }
 
     #[test]
+    fn pi_live_markers_mean_working_not_idle() {
+        // Live (pi): `agent_end` fires when the main turn ends, but
+        // retry loops, detached audit workers, and background
+        // subagents keep going after it. These markers are live-only
+        // UI — each one clears when its work ends — so a match means
+        // the pane is still grinding, not finished.
+        let m = compiled();
+        // Spinner bar above the GLLA status.
+        let screen = "── ⠴ Working ──\n● GOAL · working · RETRY ARMED · age 54m\n● Chrome Bridge (indefinite)\n";
+        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+            .expect("pi spinner bar must classify");
+        assert_eq!(got.state, AgentState::Working, "spinner bar: {got:?}");
+        assert!(
+            got.phase.as_deref().unwrap_or_default().contains("Working"),
+            "phase should name the live work: {got:?}"
+        );
+        // Automatic retry loop after a quota failure.
+        let screen = "Error: 429 quota exceeded\n── ⠸ Retrying (11/15) in 59s... (escape to cancel) ──\n● Chrome Bridge (indefinite)\n";
+        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+            .expect("pi retry loop must classify");
+        assert_eq!(
+            got.state,
+            AgentState::Working,
+            "a retry countdown is work in flight, not idleness: {got:?}"
+        );
+        // Detached audit worker outliving the main turn.
+        let screen = "● list item · auditing · RUNNING · age 6h 49m\n├─ Audit running · thinking… · detached worker\n│ last action: read → background.ts · 10s ago\n● Chrome Bridge (indefinite)\n";
+        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+            .expect("pi audit worker must classify");
+        assert_eq!(
+            got.state,
+            AgentState::Working,
+            "a running audit worker is work in flight: {got:?}"
+        );
+        // Revived background subagent.
+        let screen = "async subagent · background\n  ⠏ scout [fresh] · running (minimax/MiniMax-M3.1-Flash · thinking low)\n● GOAL · working · RETRY ARMED · age 54m\n● Chrome Bridge (indefinite)\n";
+        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+            .expect("pi background subagent must classify");
+        assert_eq!(
+            got.state,
+            AgentState::Working,
+            "a running background subagent is work in flight: {got:?}"
+        );
+        // A finished turn shows none of the markers: completed
+        // transcript plus the identical chrome. No working verdict —
+        // finish detection stays with the hook and the quiet clock.
+        let finished = "• completion audit approved.\n● Chrome Bridge (indefinite) glla: IDLE · idle · no action\n";
+        assert_eq!(
+            classify_screen(&m, "systemd-inhibit", finished, false, false),
+            None,
+            "a finished pi turn must not pin working"
+        );
+    }
+
+    #[test]
     fn error_substring_is_not_an_error() {
         let m = compiled();
         // "errors"/"errorhandler" must not trip whole-word error patterns.
