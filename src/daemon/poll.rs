@@ -1245,6 +1245,47 @@ pub(crate) fn poll_sync_with(
             && !replaced_by_live_agent
         {
             let mut r = rec.clone();
+            // A hook `idle` is defeasible: pi's `agent_end` fires when
+            // the main turn ends, but retry loops, detached audit
+            // workers, and background subagents keep going after it
+            // (the screen keeps showing a Working spinner, a Retrying
+            // countdown, or RUNNING audit rows). If the live screen
+            // proves same-agent work — or a needs-you verdict — the
+            // hook's verdict is stale and the screen wins. Manual pins
+            // are exempt: a human named that agent precisely because
+            // detection missed it.
+            //
+            // Anonymous screen hits only count with a live process
+            // behind them (otherwise a micro `>` bar would
+            // impersonate an agent — the same rule the merge uses).
+            // Hook `working` stays authoritative and is never demoted
+            // here: `turn_start` means the user prompted, while
+            // `agent_end` can fire early.
+            if r.source == Source::Hook
+                && r.state == AgentState::Idle
+                && let Some(hit) = screen_hit.as_ref()
+                && matches!(
+                    hit.state,
+                    AgentState::Working
+                        | AgentState::Waiting
+                        | AgentState::Error
+                        | AgentState::Limited
+                )
+                && hit.agent.as_ref().is_none_or(|a| a.eq_ignore_ascii_case(&r.agent))
+                && (hit.agent.as_ref().is_some_and(|a| a.eq_ignore_ascii_case(&r.agent))
+                    || proc_hit
+                        .as_ref()
+                        .is_some_and(|h| h.agent.eq_ignore_ascii_case(&r.agent)))
+            {
+                r.state = hit.state;
+                r.state_since = now;
+                r.stuck_base = None;
+                r.summary = if hit.state == AgentState::Working {
+                    hit.phase.clone().unwrap_or_default()
+                } else {
+                    hit.summary.clone()
+                };
+            }
             // A pane that was paused and is running again must not
             // inherit the freeze's silence: the still-clock measured
             // the pause, not the agent's work.
