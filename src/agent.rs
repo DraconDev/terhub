@@ -2704,10 +2704,14 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         // UI — each one clears when its work ends — so a match means
         // the pane is still grinding, not finished.
         let m = compiled();
+        // NOTE: the pane command is the terhub-labelled one (`pi`),
+        // not tmux's raw `systemd-inhibit` — labelling pins the pi
+        // manifest, so the verdict carries the pi name and phase.
         // Spinner bar above the GLLA status.
         let screen = "── ⠴ Working ──\n● GOAL · working · RETRY ARMED · age 54m\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+        let got = classify_screen(&m, "pi", screen, false, false)
             .expect("pi spinner bar must classify");
+        assert_eq!(got.agent.as_deref(), Some("pi"));
         assert_eq!(got.state, AgentState::Working, "spinner bar: {got:?}");
         assert!(
             got.phase.as_deref().unwrap_or_default().contains("Working"),
@@ -2715,7 +2719,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         );
         // Automatic retry loop after a quota failure.
         let screen = "Error: 429 quota exceeded\n── ⠸ Retrying (11/15) in 59s... (escape to cancel) ──\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+        let got = classify_screen(&m, "pi", screen, false, false)
             .expect("pi retry loop must classify");
         assert_eq!(
             got.state,
@@ -2724,7 +2728,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         );
         // Detached audit worker outliving the main turn.
         let screen = "● list item · auditing · RUNNING · age 6h 49m\n├─ Audit running · thinking… · detached worker\n│ last action: read → background.ts · 10s ago\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+        let got = classify_screen(&m, "pi", screen, false, false)
             .expect("pi audit worker must classify");
         assert_eq!(
             got.state,
