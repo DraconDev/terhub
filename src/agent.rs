@@ -2749,7 +2749,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         // finish detection stays with the hook and the quiet clock.
         let finished = "• completion audit approved.\n● Chrome Bridge (indefinite) glla: IDLE · idle · no action\n";
         assert_eq!(
-            classify_screen(&m, "systemd-inhibit", finished, false, false),
+            classify_screen(&m, "pi", finished, false, false),
             None,
             "a finished pi turn must not pin working"
         );
