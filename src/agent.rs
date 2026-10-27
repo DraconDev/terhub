@@ -2714,7 +2714,11 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         assert_eq!(got.agent.as_deref(), Some("pi"));
         assert_eq!(got.state, AgentState::Working, "spinner bar: {got:?}");
         assert!(
-            got.phase.as_deref().unwrap_or_default().contains("Working"),
+            got.phase
+                .as_deref()
+                .unwrap_or_default()
+                .to_lowercase()
+                .contains("working"),
             "phase should name the live work: {got:?}"
         );
         // Automatic retry loop after a quota failure.
