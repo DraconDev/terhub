@@ -3147,6 +3147,82 @@ fn bell_evidence_mirrors_actionable_flag_only() {
 }
 
 #[test]
+fn hook_idle_yields_to_live_screen_evidence() {
+    // Live bug: pi's `agent_end` fires when the main turn ends, but
+    // retry loops, detached audit workers, and background subagents
+    // keep going after it. A hook idle with a live Working screen
+    // (same agent, process-confirmed) promotes instead of carrying
+    // idle forward.
+    use crate::daemon::poll::hook_idle_promotion;
+    let now = 100_000;
+    let mut idle_hook = hook_record(now - 60);
+    idle_hook.agent = "pi".to_string();
+    idle_hook.state = AgentState::Idle;
+    idle_hook.source = Source::Hook;
+    // Anonymous Working hit + same-agent process: promote, and the
+    // working summary is the phase (what it is doing), not a spinner.
+    let mut hit = screen_hit(None, AgentState::Working, "── ⠴ Working ──");
+    hit.as_mut().unwrap().phase = Some("── ⠴ Working ──".to_string());
+    let got = hook_idle_promotion(&idle_hook, hit.as_ref(), Some("pi"), now);
+    assert_eq!(
+        got,
+        Some((
+            AgentState::Working,
+            now,
+            "── ⠴ Working ──".to_string()
+        )),
+        "live work must override a stale hook idle"
+    );
+    // Attention verdicts promote with their own line as the summary.
+    let hit = screen_hit(None, AgentState::Limited, "Error: 429 quota exceeded");
+    let got = hook_idle_promotion(&idle_hook, hit.as_ref(), Some("pi"), now);
+    assert_eq!(
+        got.map(|(s, _, _)| s),
+        Some(AgentState::Limited),
+        "a quota wall must not hide behind hook idle"
+    );
+    // No process behind an anonymous hit: no promotion (a micro `>`
+    // bar must never impersonate an agent).
+    let hit = screen_hit(None, AgentState::Working, "── ⠴ Working ──");
+    assert_eq!(
+        hook_idle_promotion(&idle_hook, hit.as_ref(), None, now),
+        None,
+        "anonymous work without a process must not promote"
+    );
+    // A named hit for the same agent promotes without a process.
+    let hit = screen_hit(Some("pi"), AgentState::Working, "── ⠴ Working ──");
+    assert!(
+        hook_idle_promotion(&idle_hook, hit.as_ref(), None, now).is_some(),
+        "a named same-agent hit is self-confirming"
+    );
+    // A hit naming a different agent never promotes (replacement
+    // handling owns that case, not this one).
+    let hit = screen_hit(Some("claude"), AgentState::Working, "loading");
+    assert_eq!(
+        hook_idle_promotion(&idle_hook, hit.as_ref(), Some("pi"), now),
+        None,
+        "a foreign-agent hit must not promote a pi idle"
+    );
+    // Non-idle hooks are untouched: `turn_start` working stays
+    // authoritative even over a quiet screen.
+    let mut working_hook = idle_hook.clone();
+    working_hook.state = AgentState::Working;
+    let hit = screen_hit(None, AgentState::Idle, "done");
+    assert_eq!(
+        hook_idle_promotion(&working_hook, hit.as_ref(), Some("pi"), now),
+        None,
+        "hook working must never demote here"
+    );
+    // Idle/Done screens never promote (nothing to promote to).
+    let hit = screen_hit(None, AgentState::Idle, "done");
+    assert_eq!(
+        hook_idle_promotion(&idle_hook, hit.as_ref(), Some("pi"), now),
+        None
+    );
+    assert_eq!(hook_idle_promotion(&idle_hook, None, Some("pi"), now), None);
+}
+
+#[test]
 fn custom_stuck_threshold_honored() {
     // 601s of stillness trips at 600 but not at 3600.
     let now = 100_000;
