@@ -894,23 +894,44 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
         },
         Manifest {
-            // pi (this repo's harness). Only attention states are
-            // claimed, because pi's screen has no working/idle marker
-            // to match: the bottom chrome (git line, the ↑/↓/cost
-            // stats line, the Chrome Bridge line) renders identically
-            // while the model streams and after the transcript stops.
-            // A `working` list built on that chrome would pin finished
-            // panes as busy, and an `idle_fallback` on it would mark
-            // live ones idle — so both states stay where the evidence
-            // lives: the process tree (`working` while the leaf runs)
-            // and the quiet clock (`idle` after the screen stops
-            // moving). Before this manifest existed, pi panes only
-            // classified through `classify_screen`'s cross-manifest
-            // fallback — i.e. a `waiting` verdict came from claude's
-            // `^❯` happening to match, which is luck, not a contract.
+            // pi (this repo's harness). Attention states are always
+            // claimed; working states are claimed through live-only
+            // markers — lines the UI shows while work is in flight
+            // and clears when the turn ends. The bottom chrome (git
+            // line, the ↑/↓/cost stats line, the Chrome Bridge line)
+            // renders identically while the model streams and after
+            // the transcript stops, so chrome is deliberately NOT
+            // matched: a `working` list built on it would pin
+            // finished panes as busy. The markers below all vanish on
+            // completion (the spinner bar clears, the retry line goes
+            // with the loop, the audit worker rows disappear, the
+            // GLLA status flips to IDLE/COMPLETE) — so a match means
+            // live work, not stale scrollback. Before this manifest
+            // existed, pi panes only classified through
+            // `classify_screen`'s cross-manifest fallback — i.e. a
+            // `waiting` verdict came from claude's `^❯` happening to
+            // match, which is luck, not a contract.
             agent: "pi".to_string(),
             commands: vec!["pi".to_string()],
-            working: vec![],
+            working: vec![
+                // Live spinner bar (`── ⠦ Working ──`).
+                "──.*Working".to_string(),
+                // Automatic retry loop after a quota failure
+                // (`── ⠸ Retrying (11/15) in 59s...`).
+                "Retrying \\(\\d+/\\d+\\)".to_string(),
+                // Detached GLLA audit worker still grinding after the
+                // main turn ended (`Audit running · thinking…`).
+                "Audit running".to_string(),
+                // Revived background subagent (`async subagent ·
+                // background ... running`).
+                "async subagent.*running".to_string(),
+                // GLLA status rows for live work (`● list item ·
+                // auditing · RUNNING`, `● GOAL · working · RETRY
+                // ARMED`). Finished rows read IDLE/COMPLETE/paused
+                // instead, so these never pin a done pane.
+                "· RUNNING ·".to_string(),
+                "goal · working".to_string(),
+            ],
             waiting: vec![
                 // The blocking question UI (ask_user_question /
                 // questionnaire). These lines exist only while pi is
