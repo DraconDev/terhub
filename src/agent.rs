@@ -966,7 +966,18 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
             waiting_unless: vec![],
             busy: vec![],
-            phase: vec![],
+            // Working rows show what the agent is doing instead of a
+            // spinner: the retry count, the audit worker's live line,
+            // the GLLA status row. Same live-only lines as `working`
+            // above, so the summary can never ride stale scrollback.
+            phase: vec![
+                "──.*Working".to_string(),
+                "Retrying \\(\\d+/\\d+\\)".to_string(),
+                "Audit running".to_string(),
+                "async subagent.*running".to_string(),
+                "· RUNNING ·".to_string(),
+                "goal · working".to_string(),
+            ],
         },
     ]
 }
