@@ -651,6 +651,70 @@ pub(crate) fn apply_hook_stuck_gate(
     }
 }
 
+/// A hook `idle` is defeasible: pi's `agent_end` fires when the main
+/// turn ends, but retry loops, detached audit workers, and background
+/// subagents keep going after it. When the live screen proves
+/// same-agent work (Working) or a needs-you verdict
+/// (Waiting/Error/Limited), the hook's verdict is stale and the screen
+/// wins. Returns the promoted (state, since, summary) or None to carry
+/// idle forward.
+///
+/// Anonymous screen hits only count with a live process behind them
+/// (otherwise a micro `>` bar would impersonate an agent — the same
+/// rule the merge uses). Hook `working` is never demoted here:
+/// `turn_start` means the user prompted, while `agent_end` can fire
+/// early. Manual pins are never promoted (the caller checks source).
+///
+/// Working rows take the screen's phase as the summary (what the agent
+/// is doing); attention rows take the matched line itself (the prompt,
+/// error, or quota text the operator must read). A promotion clears
+/// `stuck_base`: fresh evidence overrides a latched trip.
+///
+/// `proc_agent` is the live process tree's agent name for this pane
+/// (None = no agent process); it confirms anonymous screen hits.
+///
+/// Test seam: the poller calls this from the hook branch with the live
+/// hit and process evidence.
+///
+pub(crate) fn hook_idle_promotion(
+    rec: &AgentRecord,
+    screen_hit: Option<&ScreenHit>,
+    proc_agent: Option<&str>,
+    now: u64,
+) -> Option<(AgentState, u64, String)> {
+    if rec.state != AgentState::Idle {
+        return None;
+    }
+    let hit = screen_hit?;
+    if !matches!(
+        hit.state,
+        AgentState::Working | AgentState::Waiting | AgentState::Error | AgentState::Limited
+    ) {
+        return None;
+    }
+    if !hit
+        .agent
+        .as_ref()
+        .is_none_or(|a| a.eq_ignore_ascii_case(&rec.agent))
+    {
+        return None;
+    }
+    let confirmed = hit
+        .agent
+        .as_ref()
+        .is_some_and(|a| a.eq_ignore_ascii_case(&rec.agent))
+        || proc_agent.is_some_and(|pa| pa.eq_ignore_ascii_case(&rec.agent));
+    if !confirmed {
+        return None;
+    }
+    let summary = if hit.state == AgentState::Working {
+        hit.phase.clone().unwrap_or_default()
+    } else {
+        hit.summary.clone()
+    };
+    Some((hit.state, now, summary))
+}
+
 /// Reset-each-pass bell evidence: mirror this poll's tmux bell flag onto
 /// the record, never carry it. The flag is actionable only when the
 /// classifier's bell_override fired — a manifest hit upgraded to Waiting
@@ -1262,29 +1326,17 @@ pub(crate) fn poll_sync_with(
             // here: `turn_start` means the user prompted, while
             // `agent_end` can fire early.
             if r.source == Source::Hook
-                && r.state == AgentState::Idle
-                && let Some(hit) = screen_hit.as_ref()
-                && matches!(
-                    hit.state,
-                    AgentState::Working
-                        | AgentState::Waiting
-                        | AgentState::Error
-                        | AgentState::Limited
+                && let Some((state, since, summary)) = hook_idle_promotion(
+                    &r,
+                    screen_hit.as_ref(),
+                    proc_hit.as_ref().map(|h| h.agent.as_str()),
+                    now,
                 )
-                && hit.agent.as_ref().is_none_or(|a| a.eq_ignore_ascii_case(&r.agent))
-                && (hit.agent.as_ref().is_some_and(|a| a.eq_ignore_ascii_case(&r.agent))
-                    || proc_hit
-                        .as_ref()
-                        .is_some_and(|h| h.agent.eq_ignore_ascii_case(&r.agent)))
             {
-                r.state = hit.state;
-                r.state_since = now;
+                r.state = state;
+                r.state_since = since;
                 r.stuck_base = None;
-                r.summary = if hit.state == AgentState::Working {
-                    hit.phase.clone().unwrap_or_default()
-                } else {
-                    hit.summary.clone()
-                };
+                r.summary = summary;
             }
             // A pane that was paused and is running again must not
             // inherit the freeze's silence: the still-clock measured
