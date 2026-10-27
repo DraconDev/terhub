@@ -2737,7 +2737,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         );
         // Revived background subagent.
         let screen = "async subagent · background\n  ⠏ scout [fresh] · running (minimax/MiniMax-M3.1-Flash · thinking low)\n● GOAL · working · RETRY ARMED · age 54m\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "systemd-inhibit", screen, false, false)
+        let got = classify_screen(&m, "pi", screen, false, false)
             .expect("pi background subagent must classify");
         assert_eq!(
             got.state,
