@@ -714,7 +714,7 @@ impl CompiledManifest {
             // number — when it comes back — is what they do.
             if state == AgentState::Limited {
                 let phase = phase.map(|pi| screen_summary_line(tail[pi]));
-                return (state, limited_summary(&line), phase);
+                return (state, limited_summary(line), phase);
             }
             // A bare prompt ("❯") says nothing: show the nearest line
             // above it with actual text — usually the question or the
@@ -2838,8 +2838,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // The wall is old news; the box below it now asks something with
         // words in it ("retry now?"). That is a plea, and it outranks
         // the wall — the human can act on it.
-        let screen =
-            format!("⚠ Individual quota reached. Resets in 1h23m57s.\n> retry now (y/n)\n");
+        let screen = "⚠ Individual quota reached. Resets in 1h23m57s.\n> retry now (y/n)\n";
         let got = classify_screen(&m, "agy", &screen, false, false);
         assert_eq!(
             got,
