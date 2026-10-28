@@ -1169,10 +1169,13 @@ pub fn is_quota_wall(line: &str) -> bool {
         "quota reached",
     ];
     // Past-tense statements of a limit that was hit.
-    const SPENT: [&str; 8] = [
+    const SPENT: [&str; 11] = [
         "ran out",
         "run out",
         "used up",
+        "exhausted",
+        "depleted",
+        "maxed out",
         "hit the limit",
         "reached the limit",
         "out of quota",
@@ -2866,17 +2869,18 @@ mod tests {
                 "Error: rate limit reached"
             )
         );
-        // The %23 case: quota prose under an unknown command reads as
-        // anonymous limited, pairable with process identity.
+        // The %23 case, corrected: this line only *mentions* quota. It
+        // is the agent narrating what it will do "the moment quota
+        // returns" — a working pane, not a wall. It used to read as
+        // anonymous limited and fire a needs-you alarm; live panes hit
+        // the same false positive on prose like "ready to run the moment
+        // either quota resets".
         let screen =
             "- Three of the four asset groups are ready to generate the moment quota returns.\n";
         assert_eq!(
             classify_screen(&m, "node", screen, false, false),
-            hit(
-                None,
-                AgentState::Limited,
-                "- Three of the four asset groups are ready to generate the moment quota returns."
-            )
+            None,
+            "prose about a quota is not a quota wall"
         );
         // Bare 429 likewise.
         assert_eq!(
@@ -2884,6 +2888,55 @@ mod tests {
             hit(None, AgentState::Limited, "HTTP 429 slow down")
         );
         assert!(AgentState::Limited.needs_attention());
+    }
+
+    #[test]
+    fn quota_prose_is_not_a_quota_wall() {
+        // Both lines were live: agents narrating a limit they were
+        // waiting out. Tagging them `quota` raised a needs-you alarm for
+        // panes that were working — the alarm has to be earned by an
+        // actual wall.
+        let m = compiled();
+        for screen in [
+            concat!(
+                "one pushed bright. The plain-prompt version is ready to run ",
+                "the moment either quota resets.\n"
+            ),
+            concat!(
+                "Next action for you: run /goal resume once Codex or MMX ",
+                "quota is back and I'll generate the plain-prompt set.\n"
+            ),
+            concat!(
+                "To see the quality improvements, the rate limit needs to ",
+                "clear (or you can raise the budget in Settings → Usage). ",
+                "Would you like me to reload?\n"
+            ),
+            "The page is being rate-limited by the provider right now: 228 spans\n",
+            "1,429 spans were processed\n",
+            "cost 429 tokens so far\n",
+        ] {
+            let got = classify_screen(&m, "pi", screen, false, false);
+            assert_ne!(
+                got.as_ref().map(|h| h.state),
+                Some(AgentState::Limited),
+                "prose tagged as a wall: {screen}{got:?}"
+            );
+        }
+        // …while a real wall still lands, including the shapes that do
+        // not use the word "limit" at all.
+        for screen in [
+            "⚠ Individual quota reached. Please upgrade. Resets in 2h5m35s.\n",
+            "Error: Retry failed after 15 attempts: 429 {\"type\":\"error\"}\n",
+            "upstream quota exhausted for this account\n",
+            "Quota exhausted\nWeekly Limit Remaining\n",
+        ] {
+            let got = classify_screen(&m, "pi", screen, false, false);
+            assert_eq!(
+                got.as_ref().map(|h| h.state),
+                Some(AgentState::Limited),
+                "wall not detected: {screen}{got:?}"
+            );
+        }
     }
 
     /// The live shape from a gemini/agy pane out of quota: the wall's
