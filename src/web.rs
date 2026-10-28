@@ -416,10 +416,14 @@ async function refresh() {
     // frozen, so it is never one of them.
     const needy = ag.filter(a => ["waiting", "error", "stuck", "limited"].includes(a.state)).length;
     document.getElementById("counts").textContent = ag.length + " agents · " + needy + " need you";
+    // The wire name is `limited`; the table says `quota`, like the TUI
+    // and the CLI. The class stays the wire name so the red styling and
+    // the needy count above keep matching.
+    const stateText = s => s === "limited" ? "quota" : s;
     let h = "<table><tr><th>pane</th><th>agent</th><th>state</th><th>for</th><th>session</th><th>summary</th></tr>";
     const now = Math.floor(Date.now()/1000);
     for (const a of ag) {
-      h += `<tr data-p="${esc(a.pane)}" class="${a.pane===sel?"sel":""}"><td>${esc(a.pane)}</td><td>${esc(a.agent)}</td><td class="${esc(a.state)}">${esc(a.state)}</td><td>${age(now-(a.state_since||now))}</td><td>${esc(a.session)}</td><td>${esc(a.summary)}</td></tr>`;
+      h += `<tr data-p="${esc(a.pane)}" class="${a.pane===sel?"sel":""}"><td>${esc(a.pane)}</td><td>${esc(a.agent)}</td><td class="${esc(a.state)}">${esc(stateText(a.state))}</td><td>${age(now-(a.state_since||now))}</td><td>${esc(a.session)}</td><td>${esc(a.summary)}</td></tr>`;
     }
     document.getElementById("agents").innerHTML = h + "</table>";
     document.querySelectorAll("#agents tr[data-p]").forEach(tr => tr.onclick = () => { sel = tr.dataset.p; refreshCap(); });
@@ -433,7 +437,7 @@ async function refresh() {
   try {
     const spans = await jget("/api/timeline?since=today&limit=30");
     let h = "";
-    for (const s of spans.slice().reverse()) h += `<div><span class="${esc(s.state)}">${esc(s.state)}</span> ${esc(s.agent)} ${esc(s.pane)} ${esc(s.session)} ${esc(s.summary||"")}</div>`;
+    for (const s of spans.slice().reverse()) h += `<div><span class="${esc(s.state)}">${esc(s.state === "limited" ? "quota" : s.state)}</span> ${esc(s.agent)} ${esc(s.pane)} ${esc(s.session)} ${esc(s.summary||"")}</div>`;
     document.getElementById("tl").innerHTML = h || "(empty)";
   } catch (e) {}
 }

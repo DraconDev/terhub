@@ -359,7 +359,7 @@ fn tools() -> Value {
     json!([
         {"name": "terhub_status", "description": "Agent states: which panes run agents, who is waiting or errored. Returns JSON.",
          "inputSchema": {"type": "object", "properties": {
-             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|done|stuck|limited|paused"},
+             "state": {"type": "string", "description": "Filter: working|waiting|error|idle|done|stuck|limited (quota)|paused"},
              "session": {"type": "string", "description": "Filter: only this tmux session"},
              "pane": {"type": "string", "description": "Filter: only this pane (e.g. %3)"},
              "agent": {"type": "string", "description": "Filter: only this agent (e.g. claude)"},
@@ -423,7 +423,7 @@ fn state_filter(args: &Value) -> Result<Option<crate::agent::AgentState>, String
     match args.get("state").and_then(|s| s.as_str()) {
         None => Ok(None),
         Some(s) => crate::agent::AgentState::parse(s).map(Some).ok_or_else(|| {
-            "bad state (working|waiting|error|idle|done|stuck|limited|paused)".to_string()
+            "bad state (working|waiting|error|idle|done|stuck|limited|quota|paused)".to_string()
         }),
     }
 }
@@ -543,7 +543,7 @@ fn status_text(agents: &[crate::agent::AgentRecord]) -> String {
             "{} {} {} {}s {} {}\n",
             a.pane,
             a.agent,
-            a.state.label(),
+            a.state.display_label(),
             a.waiting_secs(now),
             a.session,
             a.summary,

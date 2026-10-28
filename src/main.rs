@@ -77,7 +77,8 @@ enum Cmd {
         agent: String,
         #[arg(long)]
         pane: String,
-        /// working|waiting|error|idle|stuck|limited|unknown (aliases accepted).
+        /// working|waiting|error|idle|stuck|limited|unknown (aliases accepted;
+        /// `quota` is an alias for `limited`).
         #[arg(long)]
         state: String,
         #[arg(long)]
@@ -758,7 +759,7 @@ fn cmd_hook(
     ctx: Option<&str>,
 ) -> i32 {
     let Some(state) = AgentState::parse(state) else {
-        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
+        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)");
         return 1;
     };
     let ctx: Option<u8> = match ctx {
@@ -811,7 +812,7 @@ fn cmd_register(pane: &str, agent: &str, pid: Option<u32>, state: &str) -> i32 {
         return 1;
     }
     let Some(state) = AgentState::parse(state) else {
-        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|unknown)");
+        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)");
         return 1;
     };
     let pid = pid.unwrap_or(0);
