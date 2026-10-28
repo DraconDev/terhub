@@ -72,6 +72,11 @@ impl AgentState {
         }
     }
 
+    /// The canonical state name — the spelling the wire uses.
+    ///
+    /// This is the machine name: it is what the JSON snapshot carries,
+    /// what `AgentState::parse` accepts, and what a rule's `on = ...`
+    /// is matched against. Keep it in step with the serde spelling.
     pub fn label(self) -> &'static str {
         match self {
             AgentState::Unknown => "unknown",
@@ -83,6 +88,26 @@ impl AgentState {
             AgentState::Stuck => "stuck",
             AgentState::Limited => "limited",
             AgentState::Paused => "paused",
+        }
+    }
+
+    /// The name a human reads.
+    ///
+    /// `limited` shows as **quota**: the state means "the agent hit a
+    /// usage wall and is waiting the limit out", and `quota` says
+    /// that in one word. `limited` on its own reads like a priority
+    /// ("this one is less important") rather than a wall, and the
+    /// whole point of the state is that the row is *not* asking the
+    /// operator for anything.
+    ///
+    /// The wire keeps `limited` (see the serde spelling), so an older
+    /// TUI, MCP client or remote `terhub` still decodes a snapshot
+    /// from a newer daemon. `AgentState::parse` accepts both names,
+    /// so `--state quota` and `--state limited` both work.
+    pub fn display_label(self) -> &'static str {
+        match self {
+            AgentState::Limited => "quota",
+            other => other.label(),
         }
     }
 
@@ -552,6 +577,11 @@ impl CompiledManifest {
         let mut work = None;
         let mut need = false;
         let mut fallback = None;
+        // The freshest quota wall in the tail, and the freshest waiting
+        // hit that actually said something (a bare input box says
+        // nothing — see `is_prompt_chrome`).
+        let mut limited_at = None;
+        let mut asked_at = None;
         // The freshest busy line (a running goal, a live background task)
         // and the freshest phase line (the agent saying what it is up to).
         let mut busy = None;
@@ -574,12 +604,16 @@ impl CompiledManifest {
             }
             if self.limited.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Limited, i));
+                limited_at = Some(i);
                 need = true;
             } else if self.error.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Error, i));
                 need = true;
             } else if self.waiting.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Waiting, i));
+                if !is_prompt_chrome(line) {
+                    asked_at = Some(i);
+                }
                 need = true;
             } else if is_work {
                 hit = Some((AgentState::Working, i));
@@ -596,6 +630,37 @@ impl CompiledManifest {
             if self.idle_fallback.iter().any(|r| r.is_match(line)) {
                 fallback = Some(i);
             }
+        }
+        // A quota wall outranks the input box under it.
+        //
+        // The freshest-line rule hands the verdict to whatever sits
+        // lowest on the screen, and the lowest thing on an agent's
+        // screen is its input box — `>` for gemini, `❯` for claude.
+        // The box is chrome: it carries no words, it is there before
+        // the turn and after it. But the box is also the *only* line
+        // the operator can act on, so a pane whose agent is out of
+        // quota and retrying every minute used to read as `waiting` —
+        // "needs you" — for an agent nobody can unblock before the
+        // limit resets. The wall above the box is the news: the agent
+        // is out of quota, and it will keep saying so until the reset.
+        //
+        // Three things keep this honest:
+        //   - the wall must be *older* than the box (the freshest line
+        //     still wins),
+        //   - the box must be bare chrome (a question with words in it
+        //     is a real plea and keeps the `waiting` verdict),
+        //   - and no work may have happened below the wall (a live
+        //     task under it means the agent moved on, and the wall is
+        //     history).
+        if let Some(li) = limited_at
+            && let Some((AgentState::Waiting, wi)) = hit
+            && wi > li
+            && is_prompt_chrome(tail[wi])
+            && asked_at.is_none_or(|a| a < li)
+            && work.is_none_or(|w| w <= li)
+            && busy.is_none_or(|b| b <= li)
+        {
+            hit = Some((AgentState::Limited, li));
         }
         // A vetoed prompt is an input box under a live task, not a plea:
         // fall back to the freshest working line, or no verdict at all
@@ -641,6 +706,16 @@ impl CompiledManifest {
         }
         hit.map(|(state, i)| {
             let mut line = tail[i];
+            // A quota wall summarizes as the wall's own words: the
+            // count-down it publishes ("quota · resets in 1h23m57s") if
+            // it published one, else the line as printed. The wall's
+            // marketing ("Please upgrade your subscription…") is what
+            // the operator does *not* need in a 40-column row; the
+            // number — when it comes back — is what they do.
+            if state == AgentState::Limited {
+                let phase = phase.map(|pi| screen_summary_line(tail[pi]));
+                return (state, limited_summary(&line), phase);
+            }
             // A bare prompt ("❯") says nothing: show the nearest line
             // above it with actual text — usually the question or the
             // current task. Box rules and blanks carry no meaning.
