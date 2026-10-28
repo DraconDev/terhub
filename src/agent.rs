@@ -1267,13 +1267,21 @@ fn limited_summary(line: &str) -> String {
 /// The `"message"` field of a JSON error body, when the line carries
 /// one. Escapes are left alone: the message is display text, and a
 /// wall that escapes its own prose is still readable as printed.
+///
+/// An unterminated quote is normal — the terminal wraps the wall's own
+/// JSON across lines, so the closing quote usually lives on the next
+/// one. In that case the message is taken to the end of the line, and
+/// the sentence split that follows does the trimming.
 fn json_message(line: &str) -> Option<String> {
     let start = line.find("\"message\"")? + "\"message\"".len();
     let rest = line[start..].trim_start();
     let rest = rest.strip_prefix(':')?.trim_start();
     let rest = rest.strip_prefix('"')?;
-    let end = rest.find('"')?;
-    let msg = rest[..end].trim();
+    let msg = match rest.find('"') {
+        Some(end) => &rest[..end],
+        None => rest,
+    }
+    .trim();
     (!msg.is_empty()).then(|| msg.to_string())
 }
 
