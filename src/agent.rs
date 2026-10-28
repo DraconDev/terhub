@@ -2718,6 +2718,135 @@ mod tests {
         assert!(AgentState::Limited.needs_attention());
     }
 
+    /// The live shape from a gemini/agy pane out of quota: the wall's
+    /// message repeated every retry, and the `>` input box glued under
+    /// it. The box is the freshest line on screen, so the freshest-line
+    /// rule used to hand it the verdict and the pane read `waiting` —
+    /// "needs you" — for an agent nobody can unblock until the reset.
+    const AGY_QUOTA_SCREEN: &str = "\
+⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h23m57s.\n\
+Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-227\n\
+\n\
+⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h23m57s.\n\
+Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
+───────────────────────────────────────────────────────────────────────────────\n\
+>\n\
+───────────────────────────────────────────────────────────────────────────────\n\
+? for shortcuts                                                                              Gemini 3.8 Flash · high\n";
+
+    #[test]
+    fn a_bare_input_box_under_a_quota_wall_does_not_outrank_it() {
+        let m = compiled();
+        // The verdict is the wall, not the box — and the summary carries
+        // the reset, so the operator reads when the agent comes back
+        // instead of a request id.
+        assert_eq!(
+            classify_screen(&m, "agy", AGY_QUOTA_SCREEN, false, false),
+            hit(
+                Some("gemini"),
+                AgentState::Limited,
+                "quota · resets in 1h23m57s"
+            )
+        );
+    }
+
+    #[test]
+    fn a_real_question_under_a_quota_wall_keeps_the_waiting_verdict() {
+        let m = compiled();
+        // The wall is old news; the box below it now asks something with
+        // words in it ("retry now?"). That is a plea, and it outranks
+        // the wall — the human can act on it.
+        let screen = format!(
+            "⚠ Individual quota reached. Resets in 1h23m57s.\n> retry now (y/n)\n"
+        );
+        let got = classify_screen(&m, "agy", &screen, false, false);
+        assert_eq!(
+            got,
+            hit(Some("gemini"), AgentState::Waiting, "retry now (y/n)")
+        );
+    }
+
+    #[test]
+    fn work_below_a_quota_wall_means_the_wall_is_history() {
+        let m = compiled();
+        // The wall scrolled up; the agent is running a background task
+        // under its box. A stale wall must not veto live work.
+        let screen = "⚠ Individual quota reached. Resets in 1h23m57s.\n\
+● Agent(teamwork: Lead) Generating · 20s\n>\n";
+        let got = classify_screen(&m, "agy", screen, false, false);
+        assert_eq!(got.map(|h| h.state), Some(AgentState::Working));
+    }
+
+    #[test]
+    fn quota_summary_keeps_the_wall_when_it_publishes_no_countdown() {
+        let m = compiled();
+        // No clock in the message: the wall's own line stands, so the
+        // evidence the agent printed is never replaced by a guess.
+        assert_eq!(
+            classify_screen(&m, "codex", "Error: rate limit reached\n", false, false),
+            hit(
+                Some("codex"),
+                AgentState::Limited,
+                "Error: rate limit reached"
+            )
+        );
+    }
+
+    #[test]
+    fn quota_countdown_is_read_only_when_it_carries_a_duration() {
+        // Prose that mentions quota and a clock word but no duration is
+        // not a countdown — the classifier must not rewrite it into one.
+        assert_eq!(quota_countdown("quota returns when the limit resets"), None);
+        assert_eq!(
+            quota_countdown("Resets in 2h1m27s.").as_deref(),
+            Some("Resets in 2h1m27s")
+        );
+        assert_eq!(
+            quota_countdown("Usage limit hit. Try again in 45 minutes.").as_deref(),
+            Some("Try again in 45 minutes")
+        );
+        // A date is not a duration.
+        assert_eq!(quota_countdown("Resets on 2026-10-28"), None);
+    }
+
+    #[test]
+    fn quota_displays_as_quota_and_wire_stays_limited() {
+        // Humans read `quota`; the wire keeps `limited`, so a snapshot
+        // from a newer daemon still decodes on an older client.
+        assert_eq!(AgentState::Limited.display_label(), "quota");
+        assert_eq!(AgentState::Limited.label(), "limited");
+        assert_eq!(
+            serde_json::to_string(&AgentState::Limited).unwrap(),
+            "\"limited\""
+        );
+        // Both names are filters.
+        assert_eq!(AgentState::parse("quota"), Some(AgentState::Limited));
+        assert_eq!(AgentState::parse("limited"), Some(AgentState::Limited));
+        // Every other state keeps one name.
+        for s in [
+            AgentState::Working,
+            AgentState::Waiting,
+            AgentState::Error,
+            AgentState::Idle,
+            AgentState::Done,
+            AgentState::Stuck,
+            AgentState::Paused,
+            AgentState::Unknown,
+        ] {
+            assert_eq!(s.display_label(), s.label(), "{s:?} has two names");
+        }
+    }
+
+    #[test]
+    fn bare_prompt_chrome_is_recognized_and_words_are_not() {
+        assert!(is_prompt_chrome(">"));
+        assert!(is_prompt_chrome("❯"));
+        assert!(is_prompt_chrome("  │ > │  "));
+        assert!(is_prompt_chrome(""));
+        assert!(!is_prompt_chrome("> retry now (y/n)"));
+        assert!(!is_prompt_chrome("❯ Try asking me to build something"));
+    }
+
     #[test]
     fn plain_shell_screen_is_unknown() {
         let m = compiled();
