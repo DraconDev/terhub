@@ -65,8 +65,9 @@ from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
   nine states: `working`, `waiting` (needs you), `error` (needs you),
   `idle`, `done` (finished — a completion banner was seen; never needs
   you), `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
-  you: quota/rate wall, paused until reset — never a crash), `paused`
-  (you stopped it — never needs you), `unknown`.
+  you: quota/rate wall, paused until reset — never a crash; the table
+  shows it as **quota**, the JSON keeps `limited`), `paused` (you
+  stopped it — never needs you), `unknown`.
 - **Daemon (`terhubd`)** holds the live agent registry. Hook events from
   agents are authoritative; agent identity comes from the process tree and
   states from screen patterns, re-polled every 2 seconds.
@@ -522,8 +523,14 @@ phase = ["working on it"]
 Patterns are case-insensitive regexes; within one line the most specific
 signal wins (limited beats error beats waiting beats working beats done),
 and the freshest matching line wins across lines. A `limited` list holds
-quota/rate-limit language so a quota wall never reads as a crash. A
-`done` list holds completion language (completion banners, all-tasks
+quota/rate-limit language so a quota wall never reads as a crash — the
+state is shown as **quota**, and its Summary carries the reset clause the
+wall published (`quota · resets in 1h23m57s`) so the row answers "when
+does it come back" instead of "when did it stop". Because an agent's
+input box (`>`, `❯`) is the freshest line on its screen, a quota wall
+above a *bare* box is what decides the state: chrome does not outrank the
+wall, while a box with words in it ("retry now (y/n)") is a real plea and
+keeps `waiting`. A `done` list holds completion language (completion banners, all-tasks
 verdicts) so a finished agent reads `done` instead of badging as
 `waiting` — and only `waiting` means "blocked on you". (The legacy
 `idle` list is still accepted as an alias for `done` when no `done`
@@ -616,6 +623,8 @@ terhub hook --agent pi --pane %2 --state working --prompt "fix the parser"
 ```
 
 - `--state` accepts `working|waiting|error|idle|stuck|limited|paused|unknown`
+  (`quota` is an alias for `limited`; every human-facing surface prints
+  `quota`, the JSON keeps `limited` so older clients still decode it)
   plus aliases: `work/busy/running/start`, `wait/input/attention/blocked/
   needs-input/stop`, `failed/fail`, `done/complete/completed`, `hung`,
   `limit/quota/capped`, `paused/stopped/frozen/suspended`.
