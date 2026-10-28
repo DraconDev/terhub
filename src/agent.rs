@@ -1186,17 +1186,35 @@ pub fn is_quota_wall(line: &str) -> bool {
     if SPENT.iter().any(|m| lower.contains(m)) {
         return true;
     }
-    // A bare HTTP status is the transport stating the wall: `429` on a
-    // line with no other prose is the provider's own answer. Guarded
-    // against a number inside a sentence ("cost 429 tokens").
-    if let Some(rest) = lower.split("429").next()
-        && (rest.trim().is_empty() || rest.trim().ends_with(|c: char| !c.is_alphanumeric()))
-        && lower
-            .split("429")
-            .nth(1)
-            .is_none_or(|after| after.trim().is_empty() || !after.trim_start().starts_with(|c: char| c.is_alphanumeric()))
-    {
+    // A bare HTTP status is the transport stating the wall: `429` as its
+    // own token. Guarded so a number inside prose ("cost 429 tokens")
+    // does not count — that still has words on both sides.
+    if contains_token(&lower, "429") {
         return true;
+    }
+    false
+}
+
+/// Is `needle` present as its own token — not glued to letters or
+/// digits on either side? `"error 429"` and `"(429)"` contain it;
+/// `"1429"` and `"4290 tokens"` do not.
+fn contains_token(haystack: &str, needle: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = haystack[from..].find(needle) {
+        let start = from + at;
+        let end = start + needle.len();
+        let before_ok = haystack[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric());
+        let after_ok = haystack[end..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
+        if before_ok && after_ok {
+            return true;
+        }
+        from = end;
     }
     false
 }
