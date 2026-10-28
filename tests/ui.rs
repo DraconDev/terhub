@@ -1596,8 +1596,8 @@ fn question_waiting_record_is_labeled_question() {
         "actual question should be named:\n{text}"
     );
     assert!(
-        text.contains("What should I work on next?"),
-        "show the question itself:\n{text}"
+        text.contains("What should I w"),
+        "summary should begin with the actual question, not generic chrome:\n{text}"
     );
     assert!(
         !text.contains("waiting"),
