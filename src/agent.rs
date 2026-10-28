@@ -1137,6 +1137,115 @@ pub fn screen_summary_line(line: &str) -> String {
     flat.chars().take(MAX.saturating_sub(1)).collect::<String>() + "…"
 }
 
+/// A line with no words on it — `>`, `❯`, `│ > │` — is the agent's
+/// input box, not a plea.
+///
+/// The box is chrome: it sits at the bottom of the screen before the
+/// turn, during it and after it, and it never says anything. The
+/// classifier must not read it as "the agent needs you" when the
+/// screen underneath it says something else (a quota wall), and the
+/// summary builder must not print it as the row's evidence.
+pub fn is_prompt_chrome(line: &str) -> bool {
+    let flat = screen_summary_line(line);
+    !flat.is_empty() && !flat.chars().any(|c| c.is_alphanumeric())
+}
+
+/// The count-down a quota wall publishes, when it publishes one.
+///
+/// A wall that says when it lifts ("Resets in 1h23m57s", "try again
+/// in 30s") hands the operator the one number that matters. The
+/// clause is taken from the wall's own words — no guessing, no
+/// pattern list per vendor — and only a clause that carries both a
+/// clock word and a duration counts, so prose that merely mentions
+/// quota ("ready to generate the moment quota returns") is not
+/// mistaken for a count-down.
+fn quota_countdown(line: &str) -> Option<String> {
+    const CLOCK_WORDS: [&str; 9] = [
+        "reset", "resets", "available", "retry", "retries", "retrying", "try again", "resume",
+        "expire",
+    ];
+    let mut found = None;
+    // Sentences, not lines: the wall's own message is one line with
+    // several sentences in it, and only one of them is the clock.
+    for sentence in line.split(". ") {
+        let sentence = sentence.trim().trim_end_matches(['.', '!', '?']).trim();
+        if sentence.is_empty() {
+            continue;
+        }
+        let lower = sentence.to_lowercase();
+        if !CLOCK_WORDS.iter().any(|w| lower.contains(w)) {
+            continue;
+        }
+        if !has_duration(&lower) {
+            continue;
+        }
+        // The last count-down wins: a wall that repeats itself prints
+        // a shrinking timer, and the newest one is the truth.
+        found = Some(sentence.to_string());
+    }
+    found
+}
+
+/// Does this text carry a duration — `1h23m57s`, `30s`, `3pm`,
+/// `45 minutes`? A digit run followed by a time unit.
+fn has_duration(text: &str) -> bool {
+    const UNITS: [&str; 16] = [
+        "hours", "hour", "minutes", "minute", "seconds", "second", "days", "day", "hrs", "hr",
+        "mins", "min", "secs", "sec", "am", "pm",
+    ];
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if !chars[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        while i < chars.len() && chars[i].is_ascii_digit() {
+            i += 1;
+        }
+        let mut j = i;
+        if j < chars.len() && chars[j] == ' ' {
+            j += 1;
+        }
+        let unit: String = chars[j..]
+            .iter()
+            .take_while(|c| c.is_ascii_alphabetic())
+            .collect::<String>();
+        if UNITS.contains(&unit.as_str()) {
+            return true;
+        }
+        // Bare unit letter: `1h23m57s`, `30s`, `5m`. Only a letter
+        // directly after the digits counts, so `2026-10-28` and a
+        // word like `2 assets` do not.
+        if j < chars.len() && matches!(chars[j], 'h' | 'm' | 's' | 'd') {
+            return true;
+        }
+    }
+    false
+}
+
+/// The Summary line for a quota wall.
+///
+/// The wall's own count-down when it has one — `quota · resets in
+/// 1h23m57s` — because that is what the operator wants from a 40
+/// column row: not that the agent is stuck, but when it comes back.
+/// Without a count-down the wall's line stands as printed, so the
+/// evidence the agent gave is never lost.
+fn limited_summary(line: &str) -> String {
+    match quota_countdown(line) {
+        Some(clause) => {
+            let mut clause = clause;
+            // Lower the first letter: the summary reads as a phrase
+            // after the middot, not as the start of a sentence.
+            if let Some(first) = clause.get_mut(..1) {
+                first.make_ascii_lowercase();
+            }
+            screen_summary_line(&format!("quota · {clause}"))
+        }
+        None => screen_summary_line(line),
+    }
+}
+
 /// Identify the agent for a pane and classify its screen. A command match
 /// pins the agent; otherwise patterns still yield a state, but the agent
 /// stays unnamed unless the screen mentions it — a bare spinner is a
