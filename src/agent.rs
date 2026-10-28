@@ -1236,22 +1236,45 @@ fn has_duration(text: &str) -> bool {
 /// no summary at all. Without either, the wall's line stands as
 /// printed, so the evidence the agent gave is never lost.
 fn limited_summary(line: &str) -> String {
-    if let Some(clause) = quota_countdown(line) {
-        return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
+    // A 429 wall often wraps its sentence in a JSON error body, where
+    // the only human words live in `"message"`. Read those when they
+    // are there; fall back to the line as printed.
+    let inner = json_message(line);
+    for src in [inner.as_deref(), Some(line)].into_iter().flatten() {
+        if let Some(clause) = quota_countdown(src) {
+            return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
+        }
+    }
+    if let Some(inner) = inner {
+        // Inside a JSON body the sentence *is* the summary, even when
+        // it survives on its own: the wrapper around it is noise.
+        let clause = quota_limit_clause(&inner).unwrap_or(inner);
+        return screen_summary_line(&format!("quota · {}", lower_first(clause.trim())));
     }
     if let Some(clause) = quota_limit_clause(line) {
         // Only rewrite when the row would otherwise cut the clause off:
         // `Error: rate limit reached` is already the best possible
-        // summary, while a 429 wrapper buries it under 200 characters
-        // of JSON — and "quota · rate limit reached" beats a row of
-        // braces. If the clause survives the truncation, keep the
-        // line exactly as the agent printed it.
+        // summary, while a long wrapper buries it. If the clause
+        // survives the truncation, keep the line exactly as printed.
         let shown = screen_summary_line(line);
         if !shown.contains(&clause) {
             return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
         }
     }
     screen_summary_line(line)
+}
+
+/// The `"message"` field of a JSON error body, when the line carries
+/// one. Escapes are left alone: the message is display text, and a
+/// wall that escapes its own prose is still readable as printed.
+fn json_message(line: &str) -> Option<String> {
+    let start = line.find("\"message\"")? + "\"message\"".len();
+    let rest = line[start..].trim_start();
+    let rest = rest.strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    let msg = rest[..end].trim();
+    (!msg.is_empty()).then(|| msg.to_string())
 }
 
 /// Lower the first letter: a clause reads as a phrase after the
