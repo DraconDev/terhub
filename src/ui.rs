@@ -1231,10 +1231,7 @@ fn render_table(
             // and Src columns still read `—` so the row clearly has no
             // agent — this is "dormant shell", not "finished agent".
             let (state, state_style) = match rec {
-                Some(r) => (
-                    r.display_label().to_string(),
-                    state_style(r.state, pal),
-                ),
+                Some(r) => (r.display_label().to_string(), state_style(r.state, pal)),
                 None if is_quiet_shell(None, p.activity, now) => ("idle".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };

@@ -1529,10 +1529,7 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
             ));
         } else {
             let from = e.from.map(|s| s.display_label()).unwrap_or("?");
-            let to = e
-                .to
-                .map(|s| s.display_label_for(&e.summary))
-                .unwrap_or("?");
+            let to = e.to.map(|s| s.display_label_for(&e.summary)).unwrap_or("?");
             print_out(&format!(
                 "{when} {} {} {from}->{to} {}:{} {}",
                 e.pane, e.agent, e.session, e.window, e.summary,

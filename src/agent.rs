@@ -733,8 +733,7 @@ impl CompiledManifest {
             // "Enter to select" is not a useful answer to "what is it
             // asking me?".
             if state == AgentState::Waiting
-                && let Some(question) =
-                    question_from_menu(&all_lines, tail_offset + i)
+                && let Some(question) = question_from_menu(&all_lines, tail_offset + i)
             {
                 let phase = phase.map(|pi| screen_summary_line(tail[pi]));
                 return (state, question, phase);
@@ -1213,8 +1212,7 @@ fn is_choice_line(line: &str) -> bool {
     let line = line.trim_start();
     let line = line.strip_prefix("❯ ").unwrap_or(line);
     let digits = line.chars().take_while(char::is_ascii_digit).count();
-    (digits > 0 && line[digits..].starts_with(". "))
-        || line.starts_with("Type something.")
+    (digits > 0 && line[digits..].starts_with(". ")) || line.starts_with("Type something.")
 }
 
 /// Is this line a quota *wall*, or an agent merely talking about one?
@@ -2714,7 +2712,10 @@ mod tests {
         assert_eq!(hit.0, AgentState::Waiting, "{hit:?}");
         assert_eq!(hit.1, "What should I work on in football-forever?");
         assert_eq!(hit.0.display_label_for(&hit.1), "question");
-        assert_eq!(AgentState::Waiting.display_label_for("waiting on custom"), "waiting");
+        assert_eq!(
+            AgentState::Waiting.display_label_for("waiting on custom"),
+            "waiting"
+        );
     }
 
     #[test]

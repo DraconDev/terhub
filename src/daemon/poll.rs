@@ -684,8 +684,7 @@ pub(crate) fn hook_question_summary<'a>(
         return None;
     }
     let hit = screen_hit?;
-    (hit.state == AgentState::Waiting
-        && hit.state.display_label_for(&hit.summary) == "question")
+    (hit.state == AgentState::Waiting && hit.state.display_label_for(&hit.summary) == "question")
         .then_some(hit.summary.as_str())
 }
 

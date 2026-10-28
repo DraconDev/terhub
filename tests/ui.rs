@@ -1591,9 +1591,18 @@ fn question_waiting_record_is_labeled_question() {
     r.summary = "What should I work on next?".to_string();
     app.agents.insert("%1".to_string(), r);
     let text = render_lines(&mut app, 140, 20).join("\n");
-    assert!(text.contains("question"), "actual question should be named:\n{text}");
-    assert!(text.contains("What should I work on next?"), "show the question itself:\n{text}");
-    assert!(!text.contains("waiting"), "generic label should yield to question:\n{text}");
+    assert!(
+        text.contains("question"),
+        "actual question should be named:\n{text}"
+    );
+    assert!(
+        text.contains("What should I work on next?"),
+        "show the question itself:\n{text}"
+    );
+    assert!(
+        !text.contains("waiting"),
+        "generic label should yield to question:\n{text}"
+    );
 }
 
 #[test]
