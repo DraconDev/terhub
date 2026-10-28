@@ -22,7 +22,7 @@ fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
         || hit(&p.command)
         || hit(&p.path)
         || rec.is_some_and(|r| {
-            hit(&r.agent) || hit(r.state.label()) || hit(r.state.display_label()) || hit(&r.summary)
+            hit(&r.agent) || hit(r.state.label()) || hit(r.display_label()) || hit(&r.summary)
         })
 }
 

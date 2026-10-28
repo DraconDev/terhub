@@ -2705,18 +2705,16 @@ mod tests {
 
     #[test]
     fn pi_manifest_classifies_real_question_menu_as_waiting() {
-        // Contract: a real captured question menu reads Waiting, and
-        // the row's summary points at the question so the human can
-        // tell which evidence fired.
+        // The wire state remains Waiting, but the human-facing label and
+        // summary are specific: this pane is asking this question, not
+        // merely waiting in the abstract.
         let hit = pi_manifest()
             .classify(PI_QUESTION_SCREEN)
             .expect("question menu must classify");
         assert_eq!(hit.0, AgentState::Waiting, "{hit:?}");
-        assert!(
-            hit.1.contains("Enter to select") || hit.1.contains("Run the next SPEC"),
-            "summary should name the question, got {:?}",
-            hit.1
-        );
+        assert_eq!(hit.1, "What should I work on in football-forever?");
+        assert_eq!(hit.0.display_label_for(&hit.1), "question");
+        assert_eq!(AgentState::Waiting.display_label_for("waiting on custom"), "waiting");
     }
 
     #[test]

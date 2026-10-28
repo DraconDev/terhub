@@ -1232,7 +1232,7 @@ fn render_table(
             // agent — this is "dormant shell", not "finished agent".
             let (state, state_style) = match rec {
                 Some(r) => (
-                    r.state.display_label().to_string(),
+                    r.display_label().to_string(),
                     state_style(r.state, pal),
                 ),
                 None if is_quiet_shell(None, p.activity, now) => ("idle".to_string(), pal.dim),
@@ -1530,7 +1530,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, pal: &Palette, area: Rect) {
         .map(|r| r.agent.as_str())
         .filter(|s| !s.is_empty())
         .unwrap_or("—");
-    let state = rec.map(|r| r.state.display_label()).unwrap_or("—");
+    let state = rec.map(|r| r.display_label()).unwrap_or("—");
     let now = crate::agent::now_unix();
     // The preview is a per-pane detail, not the triage column: it shows
     // the quiet age for every state, working included — "how long has

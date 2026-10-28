@@ -1319,7 +1319,7 @@ pub fn render_timeline(
             s.agent, s.pane
         ))];
         spans.push(TSpan::styled(
-            format!("{:<7}", s.state.display_label()),
+            format!("{:<7}", s.state.display_label_for(&s.summary)),
             state_style(s.state),
         ));
         spans.push(TSpan::raw(format!(" {}:{}", s.session, s.window)));

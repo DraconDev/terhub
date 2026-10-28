@@ -131,7 +131,7 @@ pub fn peek_report(
         let (agent, state, age, summary) = match &row.agent {
             Some(a) => (
                 a.agent.clone(),
-                a.state.display_label().to_string(),
+                a.display_label().to_string(),
                 fmt_dur(a.waiting_secs(now)),
                 truncate(&a.summary, 40),
             ),
@@ -187,7 +187,7 @@ pub fn status_line(snapshot: &[AgentRecord], pane: Option<&str>) -> String {
         Some(id) => match snapshot.iter().find(|a| a.pane == id) {
             Some(a) => {
                 let age = fmt_dur(a.waiting_secs(now_unix()));
-                format!("{}:{} {}", a.agent, a.state.display_label(), age)
+                format!("{}:{} {}", a.agent, a.display_label(), age)
             }
             None => "terhub: -".to_string(),
         },
@@ -251,7 +251,7 @@ pub fn status_table(agents: &[AgentRecord], now: u64) -> String {
             a.pane,
             truncate(handle, 12),
             a.agent,
-            a.state.display_label(),
+            a.display_label(),
             src,
             fmt_dur(a.waiting_secs(now)),
             turn,
@@ -350,7 +350,11 @@ pub fn notifications_enabled() -> bool {
 /// resolved against the environment the dispatcher meant to use, and
 /// the detached task only has to wait for it.
 pub fn spawn_transition_notifier(t: &Transition) -> Option<std::process::Child> {
-    let title = format!("terhub: {} needs you ({})", t.agent, t.to.display_label());
+    let title = format!(
+        "terhub: {} needs you ({})",
+        t.agent,
+        t.to.display_label_for(&t.summary)
+    );
     let mut body = format!("{}:{} · {}", t.session, t.window, t.pane);
     if !t.summary.is_empty() {
         body.push_str(&format!(" — {}", truncate(&t.summary, 80)));

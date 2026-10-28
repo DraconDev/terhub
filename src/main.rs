@@ -1190,7 +1190,7 @@ fn cmd_attend(cycle: bool, list: bool) -> i32 {
                 "{} {} {} {} {} {}",
                 a.pane,
                 a.agent,
-                a.state.display_label(),
+                a.display_label(),
                 fmt_dur(a.waiting_secs(now)),
                 a.session,
                 a.summary,
@@ -1209,7 +1209,7 @@ fn cmd_attend(cycle: bool, list: bool) -> i32 {
                 "{} {} {} ({})",
                 a.pane,
                 a.agent,
-                a.state.display_label(),
+                a.display_label(),
                 a.session
             );
             at::write_last_attend(&a.pane);
@@ -1529,7 +1529,10 @@ fn cmd_activity(since: &str, kind: &str, json: bool) -> i32 {
             ));
         } else {
             let from = e.from.map(|s| s.display_label()).unwrap_or("?");
-            let to = e.to.map(|s| s.display_label()).unwrap_or("?");
+            let to = e
+                .to
+                .map(|s| s.display_label_for(&e.summary))
+                .unwrap_or("?");
             print_out(&format!(
                 "{when} {} {} {from}->{to} {}:{} {}",
                 e.pane, e.agent, e.session, e.window, e.summary,
@@ -2038,7 +2041,7 @@ fn cmd_fleet(action: &FleetAction) -> i32 {
                                 "  {} {} {} {} {}",
                                 a.pane,
                                 a.agent,
-                                a.state.display_label(),
+                                a.display_label(),
                                 a.session,
                                 a.summary,
                             ));

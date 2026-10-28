@@ -543,7 +543,7 @@ fn status_text(agents: &[crate::agent::AgentRecord]) -> String {
             "{} {} {} {}s {} {}\n",
             a.pane,
             a.agent,
-            a.state.display_label(),
+            a.display_label(),
             a.waiting_secs(now),
             a.session,
             a.summary,
