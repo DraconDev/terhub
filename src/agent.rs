@@ -1229,21 +1229,56 @@ fn has_duration(text: &str) -> bool {
 /// The wall's own count-down when it has one — `quota · resets in
 /// 1h23m57s` — because that is what the operator wants from a 40
 /// column row: not that the agent is stuck, but when it comes back.
-/// Without a count-down the wall's line stands as printed, so the
-/// evidence the agent gave is never lost.
+/// Failing a count-down, the clause that names the limit ("The usage
+/// limit has been reached") rather than the head of the line: a 429
+/// wrapper puts 40 columns of JSON before the sentence a human can
+/// use, and a Summary column that starts with `{"type":"error"` is
+/// no summary at all. Without either, the wall's line stands as
+/// printed, so the evidence the agent gave is never lost.
 fn limited_summary(line: &str) -> String {
-    match quota_countdown(line) {
-        Some(clause) => {
-            let mut clause = clause;
-            // Lower the first letter: the summary reads as a phrase
-            // after the middot, not as the start of a sentence.
-            if let Some(first) = clause.get_mut(..1) {
-                first.make_ascii_lowercase();
-            }
-            screen_summary_line(&format!("quota · {clause}"))
-        }
-        None => screen_summary_line(line),
+    if let Some(clause) = quota_countdown(line) {
+        return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
     }
+    if let Some(clause) = quota_limit_clause(line) {
+        return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
+    }
+    screen_summary_line(line)
+}
+
+/// Lower the first letter: a clause reads as a phrase after the
+/// middot, not as the start of a sentence.
+fn lower_first(s: &str) -> String {
+    let mut out = s.to_string();
+    if let Some(first) = out.get_mut(..1) {
+        first.make_ascii_lowercase();
+    }
+    out
+}
+
+/// The sentence of a quota wall that names the wall itself — the part
+/// a human can read — skipping the transport noise around it.
+fn quota_limit_clause(line: &str) -> Option<String> {
+    const LIMIT_WORDS: [&str; 8] = [
+        "usage limit",
+        "quota",
+        "rate limit",
+        "rate_limit",
+        "limit has been reached",
+        "limit reached",
+        "credits",
+        "429",
+    ];
+    for sentence in line.split(". ") {
+        let sentence = sentence.trim().trim_end_matches(['.', '!', '?']).trim();
+        if sentence.is_empty() {
+            continue;
+        }
+        let lower = sentence.to_lowercase();
+        if LIMIT_WORDS.iter().any(|w| lower.contains(w)) {
+            return Some(sentence.to_string());
+        }
+    }
+    None
 }
 
 /// Identify the agent for a pane and classify its screen. A command match
