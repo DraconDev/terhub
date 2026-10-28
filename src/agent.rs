@@ -1186,18 +1186,22 @@ pub fn is_quota_wall(line: &str) -> bool {
     if SPENT.iter().any(|m| lower.contains(m)) {
         return true;
     }
-    // A bare HTTP status is the transport stating the wall: `429` as its
-    // own token. Guarded so a number inside prose ("cost 429 tokens")
-    // does not count — that still has words on both sides.
+    // A number alone is not a wall: `1,429 spans were processed` and
+    // `cost 429 tokens` both contain it. A 429 is a *status code*, so
+    // it needs its transport context (an `error`/`http`/`status` word
+    // beside it) or its canonical reason phrase.
     if contains_token(&lower, "429") {
-        return true;
+        const STATUS_CONTEXT: [&str; 5] = ["http", "status", "code", "error", "429 too many"];
+        if STATUS_CONTEXT.iter().any(|c| lower.contains(c)) {
+            return true;
+        }
     }
     false
 }
 
 /// Is `needle` present as its own token — not glued to letters or
 /// digits on either side? `"error 429"` and `"(429)"` contain it;
-/// `"1429"` and `"4290 tokens"` do not.
+/// `"1429"` does not.
 fn contains_token(haystack: &str, needle: &str) -> bool {
     let mut from = 0;
     while let Some(at) = haystack[from..].find(needle) {
