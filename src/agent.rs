@@ -1240,7 +1240,16 @@ fn limited_summary(line: &str) -> String {
         return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
     }
     if let Some(clause) = quota_limit_clause(line) {
-        return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
+        // Only rewrite when the row would otherwise cut the clause off:
+        // `Error: rate limit reached` is already the best possible
+        // summary, while a 429 wrapper buries it under 200 characters
+        // of JSON — and "quota · rate limit reached" beats a row of
+        // braces. If the clause survives the truncation, keep the
+        // line exactly as the agent printed it.
+        let shown = screen_summary_line(line);
+        if !shown.contains(&clause) {
+            return screen_summary_line(&format!("quota · {}", lower_first(&clause)));
+        }
     }
     screen_summary_line(line)
 }
