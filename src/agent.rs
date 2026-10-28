@@ -2870,6 +2870,31 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn a_429_wrapped_in_json_summarizes_as_its_message() {
+        let m = compiled();
+        // The live shape from a `pi` pane that burned its retries: the
+        // human sentence is inside the provider's JSON error body, and
+        // the terminal wraps that body across lines — so the closing
+        // quote is not on this line. Without unwrapping it, a 40-column
+        // Summary reads `{"type":"error","error":{"ty…`.
+        let screen = concat!(
+            "Error: Retry failed after 15 attempts: 429 {\"type\":\"error\",",
+            "\"error\":{\"type\":\"rate_limit_error\",\"message\":\"The Token Plan ",
+            "usage limit has been reached. To avoid interruption, please upgrade\n",
+            "\n",
+            ">\n",
+        );
+        assert_eq!(
+            classify_screen(&m, "pi", screen, false, false),
+            hit(
+                Some("pi"),
+                AgentState::Limited,
+                "quota · the Token Plan usage limit has been reached"
+            )
+        );
+    }
+
+    #[test]
     fn quota_countdown_is_read_only_when_it_carries_a_duration() {
         // Prose that mentions quota and a clock word but no duration is
         // not a countdown — the classifier must not rewrite it into one.
