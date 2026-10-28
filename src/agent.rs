@@ -1161,7 +1161,14 @@ pub fn is_prompt_chrome(line: &str) -> bool {
 /// mistaken for a count-down.
 fn quota_countdown(line: &str) -> Option<String> {
     const CLOCK_WORDS: [&str; 9] = [
-        "reset", "resets", "available", "retry", "retries", "retrying", "try again", "resume",
+        "reset",
+        "resets",
+        "available",
+        "retry",
+        "retries",
+        "retrying",
+        "try again",
+        "resume",
         "expire",
     ];
     let mut found = None;
@@ -2831,9 +2838,8 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // The wall is old news; the box below it now asks something with
         // words in it ("retry now?"). That is a plea, and it outranks
         // the wall — the human can act on it.
-        let screen = format!(
-            "⚠ Individual quota reached. Resets in 1h23m57s.\n> retry now (y/n)\n"
-        );
+        let screen =
+            format!("⚠ Individual quota reached. Resets in 1h23m57s.\n> retry now (y/n)\n");
         let got = classify_screen(&m, "agy", &screen, false, false);
         assert_eq!(
             got,
@@ -3109,7 +3115,10 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
             "a running background task is work in flight: {got:?}"
         );
         assert!(
-            got.phase.as_deref().unwrap_or_default().contains("audit-surfaces"),
+            got.phase
+                .as_deref()
+                .unwrap_or_default()
+                .contains("audit-surfaces"),
             "phase should name the running task: {got:?}"
         );
     }
@@ -3127,8 +3136,8 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         // manifest, so the verdict carries the pi name and phase.
         // Spinner bar above the GLLA status.
         let screen = "── ⠴ Working ──\n● GOAL · working · RETRY ARMED · age 54m\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "pi", screen, false, false)
-            .expect("pi spinner bar must classify");
+        let got =
+            classify_screen(&m, "pi", screen, false, false).expect("pi spinner bar must classify");
         assert_eq!(got.agent.as_deref(), Some("pi"));
         assert_eq!(got.state, AgentState::Working, "spinner bar: {got:?}");
         assert!(
@@ -3141,8 +3150,8 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         );
         // Automatic retry loop after a quota failure.
         let screen = "Error: 429 quota exceeded\n── ⠸ Retrying (11/15) in 59s... (escape to cancel) ──\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "pi", screen, false, false)
-            .expect("pi retry loop must classify");
+        let got =
+            classify_screen(&m, "pi", screen, false, false).expect("pi retry loop must classify");
         assert_eq!(
             got.state,
             AgentState::Working,
@@ -3150,8 +3159,8 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         );
         // Detached audit worker outliving the main turn.
         let screen = "● list item · auditing · RUNNING · age 6h 49m\n├─ Audit running · thinking… · detached worker\n│ last action: read → background.ts · 10s ago\n● Chrome Bridge (indefinite)\n";
-        let got = classify_screen(&m, "pi", screen, false, false)
-            .expect("pi audit worker must classify");
+        let got =
+            classify_screen(&m, "pi", screen, false, false).expect("pi audit worker must classify");
         assert_eq!(
             got.state,
             AgentState::Working,

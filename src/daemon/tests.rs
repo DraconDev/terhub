@@ -3166,11 +3166,7 @@ fn hook_idle_yields_to_live_screen_evidence() {
     let got = hook_idle_promotion(&idle_hook, hit.as_ref(), Some("pi"), now);
     assert_eq!(
         got,
-        Some((
-            AgentState::Working,
-            now,
-            "── ⠴ Working ──".to_string()
-        )),
+        Some((AgentState::Working, now, "── ⠴ Working ──".to_string())),
         "live work must override a stale hook idle"
     );
     // Attention verdicts promote with their own line as the summary.

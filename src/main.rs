@@ -759,7 +759,9 @@ fn cmd_hook(
     ctx: Option<&str>,
 ) -> i32 {
     let Some(state) = AgentState::parse(state) else {
-        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)");
+        eprintln!(
+            "terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)"
+        );
         return 1;
     };
     let ctx: Option<u8> = match ctx {
@@ -812,7 +814,9 @@ fn cmd_register(pane: &str, agent: &str, pid: Option<u32>, state: &str) -> i32 {
         return 1;
     }
     let Some(state) = AgentState::parse(state) else {
-        eprintln!("terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)");
+        eprintln!(
+            "terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)"
+        );
         return 1;
     };
     let pid = pid.unwrap_or(0);
@@ -1201,7 +1205,13 @@ fn cmd_attend(cycle: bool, list: bool) -> i32 {
             0
         }
         Some(a) => {
-            println!("{} {} {} ({})", a.pane, a.agent, a.state.display_label(), a.session);
+            println!(
+                "{} {} {} ({})",
+                a.pane,
+                a.agent,
+                a.state.display_label(),
+                a.session
+            );
             at::write_last_attend(&a.pane);
             cmd_focus(&a.pane)
         }
