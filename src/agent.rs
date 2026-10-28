@@ -2769,10 +2769,12 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     #[test]
     fn work_below_a_quota_wall_means_the_wall_is_history() {
         let m = compiled();
-        // The wall scrolled up; the agent is running a background task
-        // under its box. A stale wall must not veto live work.
+        // The wall scrolled up and the CLI's own live-task bar sits under
+        // the box (the layout the gemini manifest documents). A stale
+        // wall must not be resurrected as `quota` over live work.
         let screen = "⚠ Individual quota reached. Resets in 1h23m57s.\n\
-● Agent(teamwork: Lead) Generating · 20s\n>\n";
+>\n\
+● Agent(teamwork: Lead) Generating · 20s\n";
         let got = classify_screen(&m, "agy", screen, false, false);
         assert_eq!(got.map(|h| h.state), Some(AgentState::Working));
     }
