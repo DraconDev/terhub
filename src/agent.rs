@@ -582,8 +582,10 @@ impl CompiledManifest {
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String, Option<String>)> {
-        let mut tail: Vec<&str> = screen.lines().rev().take(15).collect();
+        let all_lines: Vec<&str> = screen.lines().collect();
+        let mut tail: Vec<&str> = all_lines.iter().rev().take(15).copied().collect();
         tail.reverse();
+        let tail_offset = all_lines.len().saturating_sub(tail.len());
         // The veto scans the whole capture, not just the verdict tail:
         // tall status regions (task lists, goal panels) can push the
         // live-task line above the freshest 15 while the prompt stays
@@ -724,6 +726,19 @@ impl CompiledManifest {
         }
         hit.map(|(state, i)| {
             let mut line = tail[i];
+            // A blocking questionnaire is still the canonical `waiting`
+            // state on the wire, but when we can see the actual prompt,
+            // show that question in Summary. The `question` display tag
+            // is derived from that text; instruction chrome such as
+            // "Enter to select" is not a useful answer to "what is it
+            // asking me?".
+            if state == AgentState::Waiting
+                && let Some(question) =
+                    question_from_menu(&all_lines, tail_offset + i)
+            {
+                let phase = phase.map(|pi| screen_summary_line(tail[pi]));
+                return (state, question, phase);
+            }
             // A quota wall summarizes as the wall's own words: the
             // count-down it publishes ("quota · resets in 1h23m57s") if
             // it published one, else the line as printed. The wall's
@@ -1153,6 +1168,53 @@ pub fn screen_summary_line(line: &str) -> String {
         return flat;
     }
     flat.chars().take(MAX.saturating_sub(1)).collect::<String>() + "…"
+}
+
+/// Whether a summary is an actual question text suitable for the
+/// human-facing `question` tag. The wire state remains `waiting`.
+fn is_question_text(summary: &str) -> bool {
+    let text = summary.trim().trim_end_matches(['\"', '\'', '”', '’', ')']);
+    text.ends_with('?') && text.chars().any(char::is_alphanumeric)
+}
+
+/// Find the question heading above a blocking numbered-choice menu.
+///
+/// Only a recognized question-menu footer (or one of its selected
+/// numbered options) opens the search, and the heading has to have
+/// actual choices between it and the waiting marker. That keeps an old
+/// question in the transcript from renaming a generic wait.
+fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
+    let wait_line = *lines.get(waiting_at)?;
+    let lower = wait_line.to_lowercase();
+    let menu_marker = lower.contains("enter to select")
+        || lower.contains("tab to switch questions")
+        || lower.contains("type something")
+        || is_choice_line(wait_line);
+    if !menu_marker {
+        return None;
+    }
+    let start = waiting_at.saturating_sub(40);
+    for question_at in (start..waiting_at).rev() {
+        let question = lines[question_at].trim();
+        if !is_question_text(question) {
+            continue;
+        }
+        if lines[question_at + 1..=waiting_at]
+            .iter()
+            .any(|line| is_choice_line(line))
+        {
+            return Some(screen_summary_line(question));
+        }
+    }
+    None
+}
+
+fn is_choice_line(line: &str) -> bool {
+    let line = line.trim_start();
+    let line = line.strip_prefix("❯ ").unwrap_or(line);
+    let digits = line.chars().take_while(char::is_ascii_digit).count();
+    (digits > 0 && line[digits..].starts_with(". "))
+        || line.starts_with("Type something.")
 }
 
 /// Is this line a quota *wall*, or an agent merely talking about one?
