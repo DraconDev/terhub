@@ -1556,6 +1556,31 @@ fn kill_pane_modal_renders() {
 }
 
 #[test]
+fn quota_state_renders_as_quota_not_limited() {
+    // The state column is the one place the operator reads the verdict.
+    // `limited` there reads like a priority; the pane is out of quota and
+    // waiting for the reset, so the column says so. `limited` stays the
+    // wire name — the JSON in the same app still carries it.
+    use terhub::agent::AgentState;
+    let mut app = app_with_panes();
+    let mut r = rec("%1", "alpha", AgentState::Limited);
+    r.summary = "quota · resets in 1h23m57s".to_string();
+    app.agents.insert("%1".to_string(), r);
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(text.contains("quota"), "state column must read quota:\n{text}");
+    assert!(
+        !text.contains("limited"),
+        "the wire name must not leak into the table:\n{text}"
+    );
+    assert!(
+        text.contains("resets in 1h23m57s"),
+        "the reset countdown is the point of the row:\n{text}"
+    );
+    // Still an attention row: the title counts it.
+    assert!(text.contains("1 need you"), "quota is still needy:\n{text}");
+}
+
+#[test]
 fn agent_state_renders_in_table() {
     use terhub::agent::{AgentRecord, AgentState, Source};
     let mut app = app_with_panes();
