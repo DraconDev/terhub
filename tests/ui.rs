@@ -1567,7 +1567,10 @@ fn quota_state_renders_as_quota_not_limited() {
     r.summary = "quota · resets in 1h23m57s".to_string();
     app.agents.insert("%1".to_string(), r);
     let text = render_lines(&mut app, 140, 20).join("\n");
-    assert!(text.contains("quota"), "state column must read quota:\n{text}");
+    assert!(
+        text.contains("quota"),
+        "state column must read quota:\n{text}"
+    );
     assert!(
         !text.contains("limited"),
         "the wire name must not leak into the table:\n{text}"
