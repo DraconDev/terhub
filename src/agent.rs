@@ -2839,7 +2839,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // words in it ("retry now?"). That is a plea, and it outranks
         // the wall — the human can act on it.
         let screen = "⚠ Individual quota reached. Resets in 1h23m57s.\n> retry now (y/n)\n";
-        let got = classify_screen(&m, "agy", &screen, false, false);
+        let got = classify_screen(&m, "agy", screen, false, false);
         assert_eq!(
             got,
             hit(Some("gemini"), AgentState::Waiting, "> retry now (y/n)")
