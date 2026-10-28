@@ -602,7 +602,7 @@ impl CompiledManifest {
             if is_work {
                 work = Some(i);
             }
-            if self.limited.iter().any(|r| r.is_match(line)) {
+            if self.limited.iter().any(|r| r.is_match(line)) && is_quota_wall(line) {
                 hit = Some((AgentState::Limited, i));
                 limited_at = Some(i);
                 need = true;
@@ -1135,6 +1135,70 @@ pub fn screen_summary_line(line: &str) -> String {
         return flat;
     }
     flat.chars().take(MAX.saturating_sub(1)).collect::<String>() + "…"
+}
+
+/// Is this line a quota *wall*, or an agent merely talking about one?
+///
+/// A `limited` pattern matches the word, and agents write about quota
+/// constantly — "ready to run the moment either quota resets", "the
+/// rate limit needs to clear". Those are status reports about someone
+/// else's limit (or the operator's own budget), and tagging them
+/// `quota` fires a needs-you alarm for a pane that is working fine.
+///
+/// A wall announces itself, so a wall line has to look like an
+/// announcement: it carries a wall marker (a warning glyph, an
+/// `Error:`, an HTTP status) or it states the limit in the past tense
+/// ("has been reached", "exceeded", "ran out"). Prose that *plans*
+/// around a limit ("once it resets", "needs to clear", "would you
+/// like") never does either.
+///
+/// Deliberately not a keyword blacklist: the missing signal is the
+/// positive one — an agent narrating a limit rarely says "exceeded".
+pub fn is_quota_wall(line: &str) -> bool {
+    // Markers that only appear when something actually failed.
+    const WALL_MARKERS: [&str; 10] = [
+        "⚠",
+        "⛔",
+        "error:",
+        "error ",
+        "failed",
+        "exceeded",
+        "has been reached",
+        "have been reached",
+        "limit reached",
+        "quota reached",
+    ];
+    // Past-tense statements of a limit that was hit.
+    const SPENT: [&str; 8] = [
+        "ran out",
+        "run out",
+        "used up",
+        "hit the limit",
+        "reached the limit",
+        "out of quota",
+        "out of credits",
+        "no credits",
+    ];
+    let lower = line.to_lowercase();
+    if WALL_MARKERS.iter().any(|m| lower.contains(m)) {
+        return true;
+    }
+    if SPENT.iter().any(|m| lower.contains(m)) {
+        return true;
+    }
+    // A bare HTTP status is the transport stating the wall: `429` on a
+    // line with no other prose is the provider's own answer. Guarded
+    // against a number inside a sentence ("cost 429 tokens").
+    if let Some(rest) = lower.split("429").next()
+        && (rest.trim().is_empty() || rest.trim().ends_with(|c: char| !c.is_alphanumeric()))
+        && lower
+            .split("429")
+            .nth(1)
+            .is_none_or(|after| after.trim().is_empty() || !after.trim_start().starts_with(|c: char| c.is_alphanumeric()))
+    {
+        return true;
+    }
+    false
 }
 
 /// A line with no words on it — `>`, `❯`, `│ > │` — is the agent's
