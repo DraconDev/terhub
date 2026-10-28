@@ -9,6 +9,10 @@ use crate::tmux::Pane;
 /// True when `q` (already lowercased) appears in any of the visible
 /// columns of the row. Shared by the multi-token include and
 /// standing-filter helpers.
+///
+/// The state matches under both of its names: the canonical one
+/// (`limited`) and the one the table shows (`quota`), so a search
+/// finds a quota wall by either word.
 fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
     let hit = |s: &str| s.to_lowercase().contains(q);
     hit(&p.id)
@@ -17,7 +21,12 @@ fn pane_match_any(p: &Pane, rec: Option<&AgentRecord>, q: &str) -> bool {
         || p.index.to_string().contains(q)
         || hit(&p.command)
         || hit(&p.path)
-        || rec.is_some_and(|r| hit(&r.agent) || hit(r.state.label()) || hit(&r.summary))
+        || rec.is_some_and(|r| {
+            hit(&r.agent)
+                || hit(r.state.label())
+                || hit(r.state.display_label())
+                || hit(&r.summary)
+        })
 }
 
 /// Multi-token OR-combined include: a row is kept when it matches
