@@ -2762,7 +2762,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         let got = classify_screen(&m, "agy", &screen, false, false);
         assert_eq!(
             got,
-            hit(Some("gemini"), AgentState::Waiting, "retry now (y/n)")
+            hit(Some("gemini"), AgentState::Waiting, "> retry now (y/n)")
         );
     }
 
@@ -2842,7 +2842,10 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         assert!(is_prompt_chrome(">"));
         assert!(is_prompt_chrome("❯"));
         assert!(is_prompt_chrome("  │ > │  "));
-        assert!(is_prompt_chrome(""));
+        // Empty is not chrome either way: nothing on the line means
+        // nothing to read, and the caller must not treat a blank as a
+        // box it should suppress.
+        assert!(!is_prompt_chrome(""));
         assert!(!is_prompt_chrome("> retry now (y/n)"));
         assert!(!is_prompt_chrome("❯ Try asking me to build something"));
     }
