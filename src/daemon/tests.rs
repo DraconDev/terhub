@@ -2225,6 +2225,29 @@ fn screen_hit(agent: Option<&str>, state: AgentState, summary: &str) -> Option<S
 }
 
 #[test]
+fn hook_waiting_summary_is_enriched_with_the_live_question() {
+    let mut rec = carried("pi", AgentState::Waiting, 0, 0, 10);
+    rec.source = Source::Hook;
+    rec.summary = "waiting on custom".to_string();
+    let question = screen_hit(
+        Some("pi"),
+        AgentState::Waiting,
+        "Should this be a comparison document only?",
+    );
+    assert_eq!(
+        hook_question_summary(&rec, question.as_ref()),
+        Some("Should this be a comparison document only?")
+    );
+
+    // No prompt text from the screen, or a different state/source, must
+    // not replace the hook's own summary.
+    let generic = screen_hit(Some("pi"), AgentState::Waiting, "Enter to select");
+    assert_eq!(hook_question_summary(&rec, generic.as_ref()), None);
+    rec.source = Source::Proc;
+    assert_eq!(hook_question_summary(&rec, question.as_ref()), None);
+}
+
+#[test]
 fn idle_verdict_keeps_its_completion_line() {
     // Done rows show what finished ("✓ Todo list…"), like waiting
     // rows show the plea — not a blank. And a done screen beats a

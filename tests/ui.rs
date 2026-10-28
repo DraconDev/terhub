@@ -1584,6 +1584,19 @@ fn quota_state_renders_as_quota_not_limited() {
 }
 
 #[test]
+fn question_waiting_record_is_labeled_question() {
+    use terhub::agent::AgentState;
+    let mut app = app_with_panes();
+    let mut r = rec("%1", "alpha", AgentState::Waiting);
+    r.summary = "What should I work on next?".to_string();
+    app.agents.insert("%1".to_string(), r);
+    let text = render_lines(&mut app, 140, 20).join("\n");
+    assert!(text.contains("question"), "actual question should be named:\n{text}");
+    assert!(text.contains("What should I work on next?"), "show the question itself:\n{text}");
+    assert!(!text.contains("waiting"), "generic label should yield to question:\n{text}");
+}
+
+#[test]
 fn agent_state_renders_in_table() {
     use terhub::agent::{AgentRecord, AgentState, Source};
     let mut app = app_with_panes();

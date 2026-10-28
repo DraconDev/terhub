@@ -676,6 +676,19 @@ pub(crate) fn apply_hook_stuck_gate(
 /// Test seam: the poller calls this from the hook branch with the live
 /// hit and process evidence.
 ///
+pub(crate) fn hook_question_summary<'a>(
+    rec: &AgentRecord,
+    screen_hit: Option<&'a ScreenHit>,
+) -> Option<&'a str> {
+    if rec.source != Source::Hook || rec.state != AgentState::Waiting {
+        return None;
+    }
+    let hit = screen_hit?;
+    (hit.state == AgentState::Waiting
+        && hit.state.display_label_for(&hit.summary) == "question")
+        .then_some(hit.summary.as_str())
+}
+
 pub(crate) fn hook_idle_promotion(
     rec: &AgentRecord,
     screen_hit: Option<&ScreenHit>,
@@ -1337,6 +1350,15 @@ pub(crate) fn poll_sync_with(
                 r.state_since = since;
                 r.stuck_base = None;
                 r.summary = summary;
+            }
+            // Lifecycle hooks know that a turn is waiting but often only
+            // send the generic `waiting on custom` summary. When the
+            // current screen is a blocking question menu, its prompt is
+            // more useful than that generic event: preserve the wire
+            // state/source, but carry the actual question so the UI can
+            // label this row `question` and show what needs answering.
+            if let Some(summary) = hook_question_summary(&r, screen_hit.as_ref()) {
+                r.summary = summary.to_string();
             }
             // A pane that was paused and is running again must not
             // inherit the freeze's silence: the still-clock measured
