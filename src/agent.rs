@@ -111,6 +111,20 @@ impl AgentState {
         }
     }
 
+    /// The human-facing label when the summary gives enough context.
+    ///
+    /// `waiting` is the protocol state; `question` is the more useful
+    /// description when the waiting summary is the actual question being
+    /// put to the operator. Generic input prompts and hook-only
+    /// `waiting on custom` records remain `waiting`.
+    pub fn display_label_for(self, summary: &str) -> &'static str {
+        if self == AgentState::Waiting && is_question_text(summary) {
+            "question"
+        } else {
+            self.display_label()
+        }
+    }
+
     /// States where the human should look at the pane.
     pub fn needs_attention(self) -> bool {
         matches!(
@@ -377,6 +391,10 @@ pub fn turn_ended(from: AgentState, to: AgentState) -> bool {
 impl AgentRecord {
     pub fn waiting_secs(&self, now: u64) -> u64 {
         now.saturating_sub(self.state_since)
+    }
+
+    pub fn display_label(&self) -> &'static str {
+        self.state.display_label_for(&self.summary)
     }
 }
 
