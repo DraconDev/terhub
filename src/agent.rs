@@ -732,6 +732,10 @@ impl CompiledManifest {
             // is derived from that text; instruction chrome such as
             // "Enter to select" is not a useful answer to "what is it
             // asking me?".
+            if state == AgentState::Waiting && is_question_text(line) {
+                let phase = phase.map(|pi| screen_summary_line(tail[pi]));
+                return (state, screen_question_summary(line), phase);
+            }
             if state == AgentState::Waiting
                 && let Some(question) = question_from_menu(&all_lines, tail_offset + i)
             {
@@ -1176,6 +1180,17 @@ fn is_question_text(summary: &str) -> bool {
     text.ends_with('?') && text.chars().any(char::is_alphanumeric)
 }
 
+/// Trim a question for the one-line Summary column without trimming
+/// away the question mark that drives the more-specific display tag.
+fn screen_question_summary(line: &str) -> String {
+    const MAX: usize = 80;
+    let flat = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= MAX {
+        return flat;
+    }
+    flat.chars().take(MAX.saturating_sub(2)).collect::<String>() + "…?"
+}
+
 /// Find the question heading above a blocking numbered-choice menu.
 ///
 /// Only a recognized question-menu footer (or one of its selected
@@ -1202,7 +1217,7 @@ fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
             .iter()
             .any(|line| is_choice_line(line))
         {
-            return Some(screen_summary_line(question));
+            return Some(screen_question_summary(question));
         }
     }
     None
