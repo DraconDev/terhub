@@ -123,6 +123,10 @@ fn web_dashboard_and_apis() {
     assert_eq!(code, 200);
     assert!(body.contains("<title>terhub</title>"), "no dashboard");
     assert!(body.contains("api/status"), "no api wiring");
+    assert!(
+        body.contains("decision needed") && body.contains("#58a6ff"),
+        "decision pickers should render as blue questions"
+    );
     // Stored-XSS guard on the served bytes (not just the const): the
     // dashboard renders untrusted fleet snapshot strings with
     // innerHTML, so the esc() sink must encode quotes as well as

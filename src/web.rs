@@ -421,7 +421,11 @@ async function refresh() {
     // The wire name is `limited`; the table says `quota`, like the TUI
     // and the CLI. The class stays the wire name so the red styling and
     // the needy count above keep matching.
-    const isQuestion = (s, summary) => s === "waiting" && /\?\s*[\"'”’)]*\s*$/.test(summary || "");
+    const isQuestion = (s, summary) => {
+      const text = (summary || "").trim();
+      return s === "waiting" && (/\?\s*[\"'”’)]*\s*$/.test(text)
+        || /^(?:your decision is needed|decision needed)\b/i.test(text));
+    };
     const stateText = (s, summary) => s === "limited" ? "quota"
       : isQuestion(s, summary) ? "question" : s;
     const stateClass = (s, summary) => isQuestion(s, summary) ? "question" : s;
