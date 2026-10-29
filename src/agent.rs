@@ -118,7 +118,7 @@ impl AgentState {
     /// put to the operator. Generic input prompts and hook-only
     /// `waiting on custom` records remain `waiting`.
     pub fn display_label_for(self, summary: &str) -> &'static str {
-        if self == AgentState::Waiting && is_question_text(summary) {
+        if self == AgentState::Waiting && is_question_summary(summary) {
             "question"
         } else {
             self.display_label()
@@ -1054,6 +1054,10 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "enter to select".to_string(),
                 "esc to cancel".to_string(),
                 "tab to switch questions".to_string(),
+                // GLLA's non-numbered decision picker:
+                // `↑↓ navigate  enter select  escape/ctrl+c cancel`.
+                "↑↓ navigate".to_string(),
+                "enter select".to_string(),
                 r"^❯ \d+\.".to_string(),
                 "type something".to_string(),
             ],
@@ -1175,6 +1179,14 @@ pub fn screen_summary_line(line: &str) -> String {
 
 /// Whether a summary is an actual question text suitable for the
 /// human-facing `question` tag. The wire state remains `waiting`.
+fn is_question_summary(summary: &str) -> bool {
+    let text = summary.trim().trim_end_matches(['"', '\'', '”', '’', ')']);
+    let lower = text.to_lowercase();
+    is_question_text(text)
+        || lower.starts_with("decision needed")
+        || lower.starts_with("your decision is needed")
+}
+
 fn is_question_text(summary: &str) -> bool {
     let text = summary.trim().trim_end_matches(['\"', '\'', '”', '’', ')']);
     text.ends_with('?') && text.chars().any(char::is_alphanumeric)
@@ -1203,6 +1215,9 @@ fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
     let menu_marker = lower.contains("enter to select")
         || lower.contains("tab to switch questions")
         || lower.contains("type something")
+        || lower.contains("↑↓ navigate")
+        || lower.contains("enter select")
+        || lower.contains("escape/ctrl+c cancel")
         || is_choice_line(wait_line);
     if !menu_marker {
         return None;
@@ -1210,14 +1225,18 @@ fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
     let start = waiting_at.saturating_sub(40);
     for question_at in (start..waiting_at).rev() {
         let question = lines[question_at].trim();
-        if !is_question_text(question) {
+        if !is_question_summary(question) {
             continue;
         }
         if lines[question_at + 1..=waiting_at]
             .iter()
             .any(|line| is_choice_line(line))
         {
-            return Some(screen_question_summary(question));
+            return Some(if is_question_text(question) {
+                screen_question_summary(question)
+            } else {
+                screen_summary_line(question)
+            });
         }
     }
     None
