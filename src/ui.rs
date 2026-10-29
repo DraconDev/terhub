@@ -999,7 +999,7 @@ fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
 fn state_style_for(state: crate::agent::AgentState, summary: &str, pal: &Palette) -> Style {
     if state.display_label_for(summary) == "question" {
         Style::default()
-            .fg(Color::Cyan)
+            .fg(Color::LightBlue)
             .add_modifier(Modifier::BOLD)
     } else {
         state_style(state, pal)
