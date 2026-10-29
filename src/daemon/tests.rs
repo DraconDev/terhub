@@ -2243,6 +2243,21 @@ fn hook_waiting_summary_is_enriched_with_the_live_question() {
     // not replace the hook's own summary.
     let generic = screen_hit(Some("pi"), AgentState::Waiting, "Enter to select");
     assert_eq!(hook_question_summary(&rec, generic.as_ref()), None);
+
+    // An explicit GLLA picker overrides a stale `turn started` hook too:
+    // the picker is blocking even if the hook's current state is Working.
+    let mut working = carried("pi", AgentState::Working, 0, 0, 10);
+    working.source = Source::Hook;
+    let decision = screen_hit(
+        Some("pi"),
+        AgentState::Waiting,
+        "Decision needed — Refresh docs/turso-surface-gap.md",
+    );
+    assert_eq!(
+        hook_question_summary(&working, decision.as_ref()),
+        Some("Decision needed — Refresh docs/turso-surface-gap.md")
+    );
+
     rec.source = Source::Proc;
     assert_eq!(hook_question_summary(&rec, question.as_ref()), None);
 }
