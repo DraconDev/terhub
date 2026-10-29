@@ -994,7 +994,7 @@ fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
 }
 
 /// State style with the summary-sensitive display distinction. A specific
-/// question stays an attention row, but cyan separates it from the red
+/// question stays an attention row, but blue separates it from the red
 /// states that say "something went wrong" or "quota is blocked".
 fn state_style_for(state: crate::agent::AgentState, summary: &str, pal: &Palette) -> Style {
     if state.display_label_for(summary) == "question" {

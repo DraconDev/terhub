@@ -1584,7 +1584,7 @@ fn quota_state_renders_as_quota_not_limited() {
 }
 
 #[test]
-fn question_waiting_record_is_labeled_question_and_cyan() {
+fn question_waiting_record_is_labeled_question_and_blue() {
     use terhub::agent::AgentState;
     let mut app = app_with_panes();
     let mut r = rec("%1", "alpha", AgentState::Waiting);
