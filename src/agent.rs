@@ -1246,7 +1246,11 @@ fn is_choice_line(line: &str) -> bool {
     let line = line.trim_start();
     let line = line.strip_prefix("❯ ").unwrap_or(line);
     let digits = line.chars().take_while(char::is_ascii_digit).count();
-    (digits > 0 && line[digits..].starts_with(". ")) || line.starts_with("Type something.")
+    (digits > 0 && line[digits..].starts_with(". "))
+        || line.starts_with("Type something.")
+        || line.starts_with("→ ")
+        || line.starts_with("/goal tweak ")
+        || line.starts_with("/list tweak ")
 }
 
 /// Is this line a quota *wall*, or an agent merely talking about one?
