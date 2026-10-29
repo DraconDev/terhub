@@ -2734,6 +2734,21 @@ mod tests {
     }
 
     #[test]
+    fn long_question_keeps_question_label_after_summary_truncation() {
+        let question = "Which approach should I use for this long-running task when the initial plan is incomplete and the remaining options have different tradeoffs?";
+        assert!(question.chars().count() > 80);
+        let screen = format!(
+            "{question}\n❯ 1. Continue with the recommended plan\n  2. Pause and ask for more context\nEnter to select · ↑/↓ to navigate\n"
+        );
+        let hit = pi_manifest()
+            .classify(&screen)
+            .expect("question menu must classify");
+        assert_eq!(hit.0, AgentState::Waiting);
+        assert!(hit.1.ends_with('?'), "truncation dropped question mark: {hit:?}");
+        assert_eq!(hit.0.display_label_for(&hit.1), "question");
+    }
+
+    #[test]
     fn pi_manifest_leaves_real_working_screen_alone() {
         // Contract: a real mid-work screen must NOT read waiting. The
         // chrome is present here exactly as on a finished pane, which

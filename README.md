@@ -71,9 +71,11 @@ except small popups:
   (every row shows it, `working` included — it separates "streaming"
   from "frozen on the same frame"; only a truly `idle` row tints), and
   a summary carrying the prompt or error line that decided the state.
-- **States that matter are red.** Waiting, error, stuck, and quota
-  (`limited`) rows shout; working/idle/paused are quiet. The filter chip (`◼`) names every
-  filter hiding rows so one is never silently active.
+  When the actual prompt is a question, the State column says `question`
+  (the JSON/wire state remains `waiting`).
+- **States that matter are red.** Questions, waiting, error, stuck, and quota
+  (`limited`) rows shout; working/idle/paused are quiet. The filter chip (`◼`)
+  names every filter hiding rows so one is never silently active.
 - **Preview on demand.** Right-click or `p`: fullscreen scrollable reader
   over the pane's last 500 lines with its own ANSI colors, live CPU, and —
   in git repos — branch plus diff shortstat.
