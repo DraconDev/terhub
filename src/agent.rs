@@ -2772,7 +2772,10 @@ mod tests {
             .classify(screen)
             .expect("decision picker must classify");
         assert_eq!(hit.0, AgentState::Waiting);
-        assert_eq!(hit.1, "Decision needed — Refresh docs/turso-surface-gap.md as a current comparison");
+        assert_eq!(
+            hit.1,
+            "Decision needed — Refresh docs/turso-surface-gap.md as a current comparison"
+        );
         assert_eq!(hit.0.display_label_for(&hit.1), "question");
 
         // Once the decision overlay is gone and the live spinner is back,

@@ -366,7 +366,7 @@ tr.sel td { background: #1c3a4a; }
 tr:hover td { background: #1c2a3a; }
 .waiting, .error, .stuck, .limited { color: #ff7b72; font-weight: bold; }
 /* A specific operator question is attention-worthy, but distinct from a wall/error. */
-.question { color: #79c0ff; font-weight: bold; }
+.question { color: #58a6ff; font-weight: bold; }
 .working { color: #3fb950; }
 .done { color: #56d364; font-weight: bold; }
 /* Paused: deliberately frozen — dim, like idle. Never alarming. */

@@ -680,8 +680,7 @@ pub(crate) fn hook_question_summary<'a>(
     rec: &AgentRecord,
     screen_hit: Option<&'a ScreenHit>,
 ) -> Option<&'a str> {
-    if rec.source != Source::Hook
-        || !matches!(rec.state, AgentState::Waiting | AgentState::Working)
+    if rec.source != Source::Hook || !matches!(rec.state, AgentState::Waiting | AgentState::Working)
     {
         return None;
     }

@@ -1605,7 +1605,11 @@ fn question_waiting_record_is_labeled_question_and_cyan() {
     );
     let grid = render_grid(&mut app, 140, 20);
     let (question_fg, question_mods) = cell_at(&grid, "%1", "State");
-    assert_eq!(question_fg, Color::Cyan, "question tag needs its own color");
+    assert_eq!(
+        question_fg,
+        Color::LightBlue,
+        "question tag needs its own blue color"
+    );
     assert!(question_mods.contains(Modifier::BOLD));
 
     let mut generic = app_with_panes();
