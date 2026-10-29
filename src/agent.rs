@@ -2757,6 +2757,34 @@ mod tests {
     }
 
     #[test]
+    fn glla_decision_picker_is_a_question_not_working() {
+        // Screenshot shape: GLLA offers `/goal tweak` choices in its own
+        // arrow-key picker. It is not pi's numbered `❯ 1.` menu, but the
+        // footer still makes clear that the operator must choose.
+        let screen = concat!(
+            "Decision needed — Refresh docs/turso-surface-gap.md as a current comparison\n",
+            "→ /goal tweak \\\"Permit the credential-leak repair...\\\"\n",
+            "  /goal tweak \\\"Keep strict document-only scope...\\\"\n",
+            "  /goal tweak \\\"Keep the repair as-is...\\\"\n",
+            "↑↓ navigate   enter select   escape/ctrl+c cancel\n",
+        );
+        let hit = pi_manifest()
+            .classify(screen)
+            .expect("decision picker must classify");
+        assert_eq!(hit.0, AgentState::Waiting);
+        assert_eq!(hit.1, "Decision needed — Refresh docs/turso-surface-gap.md as a current comparison");
+        assert_eq!(hit.0.display_label_for(&hit.1), "question");
+
+        // Once the decision overlay is gone and the live spinner is back,
+        // stale picker text must not keep the pane in question.
+        let screen = format!("{screen}── ⠙ Working ──\n");
+        assert_eq!(
+            pi_manifest().classify(&screen).map(|hit| hit.0),
+            Some(AgentState::Working)
+        );
+    }
+
+    #[test]
     fn long_question_keeps_question_label_after_summary_truncation() {
         let question = "Which approach should I use for this long-running task when the initial plan is incomplete and the remaining options have different tradeoffs?";
         assert!(question.chars().count() > 80);

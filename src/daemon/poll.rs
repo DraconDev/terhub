@@ -680,12 +680,22 @@ pub(crate) fn hook_question_summary<'a>(
     rec: &AgentRecord,
     screen_hit: Option<&'a ScreenHit>,
 ) -> Option<&'a str> {
-    if rec.source != Source::Hook || rec.state != AgentState::Waiting {
+    if rec.source != Source::Hook
+        || !matches!(rec.state, AgentState::Waiting | AgentState::Working)
+    {
         return None;
     }
     let hit = screen_hit?;
-    (hit.state == AgentState::Waiting && hit.state.display_label_for(&hit.summary) == "question")
-        .then_some(hit.summary.as_str())
+    if hit.state != AgentState::Waiting
+        || hit.state.display_label_for(&hit.summary) != "question"
+        || !hit
+            .agent
+            .as_ref()
+            .is_some_and(|agent| agent.eq_ignore_ascii_case(&rec.agent))
+    {
+        return None;
+    }
+    Some(hit.summary.as_str())
 }
 
 pub(crate) fn hook_idle_promotion(
@@ -1334,9 +1344,10 @@ pub(crate) fn poll_sync_with(
             // Anonymous screen hits only count with a live process
             // behind them (otherwise a micro `>` bar would
             // impersonate an agent — the same rule the merge uses).
-            // Hook `working` stays authoritative and is never demoted
-            // here: `turn_start` means the user prompted, while
-            // `agent_end` can fire early.
+            // Hook `working` normally stays authoritative: `turn_start`
+            // means the user prompted, while `agent_end` can fire early.
+            // The explicit blocking-question picker below is the one
+            // screen verdict strong enough to override it.
             if r.source == Source::Hook
                 && let Some((state, since, summary)) = hook_idle_promotion(
                     &r,
@@ -1351,12 +1362,19 @@ pub(crate) fn poll_sync_with(
                 r.summary = summary;
             }
             // Lifecycle hooks know that a turn is waiting but often only
-            // send the generic `waiting on custom` summary. When the
-            // current screen is a blocking question menu, its prompt is
-            // more useful than that generic event: preserve the wire
-            // state/source, but carry the actual question so the UI can
-            // label this row `question` and show what needs answering.
+            // send the generic `waiting on custom` summary. A question
+            // picker is stronger evidence than `turn_start`: it blocks
+            // the agent on the operator, even when the last hook still
+            // says `working`. Carry the actual question and promote that
+            // hook record to Waiting so the row reads `question` rather
+            // than silently blending into active work.
             if let Some(summary) = hook_question_summary(&r, screen_hit.as_ref()) {
+                if r.state == AgentState::Working {
+                    r.last_turn_secs = now.saturating_sub(r.state_since);
+                    r.state_since = now;
+                    r.state = AgentState::Waiting;
+                    r.stuck_base = None;
+                }
                 r.summary = summary.to_string();
             }
             // A pane that was paused and is running again must not
