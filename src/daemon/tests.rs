@@ -2225,7 +2225,7 @@ fn screen_hit(agent: Option<&str>, state: AgentState, summary: &str) -> Option<S
 }
 
 #[test]
-fn hook_waiting_summary_is_enriched_with_the_live_question() {
+fn hook_summary_is_enriched_and_working_hook_promoted_for_a_question() {
     let mut rec = carried("pi", AgentState::Waiting, 0, 0, 10);
     rec.source = Source::Hook;
     rec.summary = "waiting on custom".to_string();

@@ -71,8 +71,8 @@ except small popups:
   (every row shows it, `working` included — it separates "streaming"
   from "frozen on the same frame"; only a truly `idle` row tints), and
   a summary carrying the prompt or error line that decided the state.
-  When the actual prompt is a question, the State column says `question`
-  (the JSON/wire state remains `waiting`).
+  When the actual prompt is a question or decision picker, the State column
+  says `question` (the JSON/wire state remains `waiting`).
 - **States that matter are red.** Questions, waiting, error, stuck, and quota
   (`limited`) rows shout; working/idle/paused are quiet. The filter chip (`◼`)
   names every filter hiding rows so one is never silently active.

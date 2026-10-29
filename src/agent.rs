@@ -1203,12 +1203,12 @@ fn screen_question_summary(line: &str) -> String {
     flat.chars().take(MAX.saturating_sub(2)).collect::<String>() + "…?"
 }
 
-/// Find the question heading above a blocking numbered-choice menu.
+/// Find the question/decision heading above a blocking choice menu.
 ///
-/// Only a recognized question-menu footer (or one of its selected
-/// numbered options) opens the search, and the heading has to have
-/// actual choices between it and the waiting marker. That keeps an old
-/// question in the transcript from renaming a generic wait.
+/// Only a recognized menu footer (or one of its selected options) opens
+/// the search, and the heading has to have actual choices between it and
+/// the waiting marker. That keeps an old question in the transcript from
+/// renaming a generic wait.
 fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
     let wait_line = *lines.get(waiting_at)?;
     let lower = wait_line.to_lowercase();

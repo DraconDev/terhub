@@ -63,7 +63,7 @@ from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
 - **Agent** is anything running in a pane that behaves like a coding agent
   (claude, codex, gemini, pi, …). terhub tracks each agent pane in one of
   nine wire states: `working`, `waiting` (needs you; shown as **question**
-  when the actual question text is known), `error` (needs you),
+  when a question or decision picker is visible), `error` (needs you),
   `idle`, `done` (finished — a completion banner was seen; never needs
   you), `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
   you: quota/rate wall, paused until reset — never a crash; the table
