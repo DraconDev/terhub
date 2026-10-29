@@ -2744,7 +2744,10 @@ mod tests {
             .classify(&screen)
             .expect("question menu must classify");
         assert_eq!(hit.0, AgentState::Waiting);
-        assert!(hit.1.ends_with('?'), "truncation dropped question mark: {hit:?}");
+        assert!(
+            hit.1.ends_with('?'),
+            "truncation dropped question mark: {hit:?}"
+        );
         assert_eq!(hit.0.display_label_for(&hit.1), "question");
     }
 
