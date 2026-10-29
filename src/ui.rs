@@ -993,6 +993,23 @@ fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
     }
 }
 
+/// State style with the summary-sensitive display distinction. A specific
+/// question stays an attention row, but cyan separates it from the red
+/// states that say "something went wrong" or "quota is blocked".
+fn state_style_for(
+    state: crate::agent::AgentState,
+    summary: &str,
+    pal: &Palette,
+) -> Style {
+    if state.display_label_for(summary) == "question" {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        state_style(state, pal)
+    }
+}
+
 /// Agent cell text style: per-agent override wins, else the name hashes
 /// into the palette (custom or theme default) so the same agent reads as
 /// a group; unnamed or disabled falls back to `dim`.
@@ -1231,7 +1248,10 @@ fn render_table(
             // and Src columns still read `—` so the row clearly has no
             // agent — this is "dormant shell", not "finished agent".
             let (state, state_style) = match rec {
-                Some(r) => (r.display_label().to_string(), state_style(r.state, pal)),
+                Some(r) => (
+                    r.display_label().to_string(),
+                    state_style_for(r.state, &r.summary, pal),
+                ),
                 None if is_quiet_shell(None, p.activity, now) => ("idle".to_string(), pal.dim),
                 None => ("—".to_string(), pal.dim),
             };

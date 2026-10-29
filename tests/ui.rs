@@ -1584,7 +1584,7 @@ fn quota_state_renders_as_quota_not_limited() {
 }
 
 #[test]
-fn question_waiting_record_is_labeled_question() {
+fn question_waiting_record_is_labeled_question_and_cyan() {
     use terhub::agent::AgentState;
     let mut app = app_with_panes();
     let mut r = rec("%1", "alpha", AgentState::Waiting);
@@ -1602,6 +1602,21 @@ fn question_waiting_record_is_labeled_question() {
     assert!(
         !text.contains("waiting"),
         "generic label should yield to question:\n{text}"
+    );
+    let grid = render_grid(&mut app, 140, 20);
+    let (question_fg, question_mods) = cell_at(&grid, "%1", "State");
+    assert_eq!(question_fg, Color::Cyan, "question tag needs its own color");
+    assert!(question_mods.contains(Modifier::BOLD));
+
+    let mut generic = app_with_panes();
+    let mut waiting = rec("%1", "alpha", AgentState::Waiting);
+    waiting.summary = "waiting on custom".to_string();
+    generic.agents.insert("%1".to_string(), waiting);
+    let grid = render_grid(&mut generic, 140, 20);
+    assert_eq!(
+        cell_at(&grid, "%1", "State").0,
+        Color::Red,
+        "generic waiting keeps the attention color"
     );
 }
 

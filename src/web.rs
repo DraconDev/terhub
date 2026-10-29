@@ -365,6 +365,8 @@ td { padding: 3px 6px; border-top: 1px solid #21262d; cursor: pointer; }
 tr.sel td { background: #1c3a4a; }
 tr:hover td { background: #1c2a3a; }
 .waiting, .error, .stuck, .limited { color: #ff7b72; font-weight: bold; }
+/* A specific operator question is attention-worthy, but distinct from a wall/error. */
+.question { color: #79c0ff; font-weight: bold; }
 .working { color: #3fb950; }
 .done { color: #56d364; font-weight: bold; }
 /* Paused: deliberately frozen — dim, like idle. Never alarming. */
@@ -419,12 +421,14 @@ async function refresh() {
     // The wire name is `limited`; the table says `quota`, like the TUI
     // and the CLI. The class stays the wire name so the red styling and
     // the needy count above keep matching.
+    const isQuestion = (s, summary) => s === "waiting" && /\?\s*[\"'”’)]*\s*$/.test(summary || "");
     const stateText = (s, summary) => s === "limited" ? "quota"
-      : s === "waiting" && /\?\s*[\"'”’)]*\s*$/.test(summary || "") ? "question" : s;
+      : isQuestion(s, summary) ? "question" : s;
+    const stateClass = (s, summary) => isQuestion(s, summary) ? "question" : s;
     let h = "<table><tr><th>pane</th><th>agent</th><th>state</th><th>for</th><th>session</th><th>summary</th></tr>";
     const now = Math.floor(Date.now()/1000);
     for (const a of ag) {
-      h += `<tr data-p="${esc(a.pane)}" class="${a.pane===sel?"sel":""}"><td>${esc(a.pane)}</td><td>${esc(a.agent)}</td><td class="${esc(a.state)}">${esc(stateText(a.state, a.summary))}</td><td>${age(now-(a.state_since||now))}</td><td>${esc(a.session)}</td><td>${esc(a.summary)}</td></tr>`;
+      h += `<tr data-p="${esc(a.pane)}" class="${a.pane===sel?"sel":""}"><td>${esc(a.pane)}</td><td>${esc(a.agent)}</td><td class="${esc(stateClass(a.state, a.summary))}">${esc(stateText(a.state, a.summary))}</td><td>${age(now-(a.state_since||now))}</td><td>${esc(a.session)}</td><td>${esc(a.summary)}</td></tr>`;
     }
     document.getElementById("agents").innerHTML = h + "</table>";
     document.querySelectorAll("#agents tr[data-p]").forEach(tr => tr.onclick = () => { sel = tr.dataset.p; refreshCap(); });
@@ -438,7 +442,7 @@ async function refresh() {
   try {
     const spans = await jget("/api/timeline?since=today&limit=30");
     let h = "";
-    for (const s of spans.slice().reverse()) h += `<div><span class="${esc(s.state)}">${esc(stateText(s.state, s.summary))}</span> ${esc(s.agent)} ${esc(s.pane)} ${esc(s.session)} ${esc(s.summary||"")}</div>`;
+    for (const s of spans.slice().reverse()) h += `<div><span class="${esc(stateClass(s.state, s.summary))}">${esc(stateText(s.state, s.summary))}</span> ${esc(s.agent)} ${esc(s.pane)} ${esc(s.session)} ${esc(s.summary||"")}</div>`;
     document.getElementById("tl").innerHTML = h || "(empty)";
   } catch (e) {}
 }
