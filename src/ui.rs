@@ -1045,7 +1045,7 @@ fn agent_palette_index(name: &str, len: usize) -> usize {
 /// Truecolor hexes — any agent gets a distinct-ish hue, and the
 /// residual "two names in the same bucket" case is what `[style.agents]`
 /// exists for.
-fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&'static str> {
+fn agent_palette<'a>(cfg: &'a crate::config::AppConfig) -> Vec<&'a str> {
     if !cfg.agent_palette.is_empty() {
         return cfg.agent_palette.iter().map(String::as_str).collect();
     }

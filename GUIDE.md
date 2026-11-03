@@ -322,7 +322,7 @@ done_idle_secs = 300 # stale completion → idle (0 disables)
 
 [style]
 color_agents = true  # hash-color Agent cells so one agent reads as a group
-agent_palette = []   # style specs for the hash; empty = theme default
+agent_palette = []   # style specs for the hash; empty = theme default (16 hues)
 idle_warn = true     # tint the Idle cell of a long-idle row
 idle_warn_style = "bold yellow"
 idle_flag_secs = 21600  # tint Idle when idle + quiet past this (0 disables)
