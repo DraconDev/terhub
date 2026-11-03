@@ -2665,8 +2665,10 @@ fn loading_a_registry_rewrites_session_bearing_handles() {
     let loaded = load_registry(&path);
     assert_eq!(loaded["%1"].handle, "@pi-2");
     assert_eq!(loaded["%2"].handle, "@pi");
-    // Loading again is a no-op: the migrated handles no longer look
-    // like the old mint, so nothing is rewritten twice.
+    // Once the migrated registry is written back, loading it again
+    // changes nothing: the sessionless handles no longer look like
+    // the old mint, so nothing is rewritten twice.
+    save_registry(&path, &loaded);
     let again = load_registry(&path);
     assert_eq!(again["%1"].handle, "@pi-2");
     assert_eq!(again["%2"].handle, "@pi");
