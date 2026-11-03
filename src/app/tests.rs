@@ -3246,20 +3246,20 @@ fn preview_open_resets_scroll() {
 fn native_handles_avoid_daemon_issued() {
     use crate::agent::AgentState;
     let mut app = app_with_panes();
-    // Daemon already owns @pi-konsole (a tmux session of that name).
+    // Daemon already minted @pi (a tmux session of any name).
     let mut d = record("%1", "pi", AgentState::Working, 10);
-    d.handle = "@pi-konsole".to_string();
+    d.handle = "@pi".to_string();
     app.agents.insert("%1".to_string(), d);
     let mut n = record("konsole:999:6", "pi", AgentState::Working, 10);
     n.session = "konsole".to_string();
     app.native_agents = vec![n];
     app.assign_native_handles();
-    assert_eq!(app.native_agents[0].handle, "@pi-konsole-2");
+    assert_eq!(app.native_agents[0].handle, "@pi-2");
     // Without the collision the bare handle mints.
     app.agents.clear();
     app.native_agents[0].handle.clear();
     app.assign_native_handles();
-    assert_eq!(app.native_agents[0].handle, "@pi-konsole");
+    assert_eq!(app.native_agents[0].handle, "@pi");
 }
 
 #[test]
