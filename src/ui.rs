@@ -2250,6 +2250,22 @@ mod tests {
     }
 
     #[test]
+    fn default_palette_separates_common_agents() {
+        use crate::config::AppConfig;
+        let cfg = AppConfig::default();
+        let dim = Style::default().fg(Color::DarkGray);
+        // The whole point of the 16-hue default: same name, same
+        // colour — and the agents that share screens land in
+        // different buckets instead of all piling onto bright-blue.
+        let style = |n: &str| agent_text_style(n, &cfg, dim);
+        assert_ne!(style("pi"), style("opencode"));
+        assert_ne!(style("pi"), style("muse"));
+        assert_ne!(style("opencode"), style("muse"));
+        // Mixing is stable and case-insensitive.
+        assert_eq!(style("OpenCode"), style("OPENCODE"));
+    }
+
+    #[test]
     fn a_working_row_shows_its_quiet_age_but_never_tints() {
         use crate::agent::{AgentRecord, AgentState, Source};
         use crate::config::AppConfig;

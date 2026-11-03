@@ -496,14 +496,16 @@ Per pane it merges three signals:
 The table's `Src` column tells you which signal each row stands on.
 
 Every agent record also carries a **handle**: a stable local name minted
-once (`@pi-wez`, `-2`/`-3`… on collision), surviving pane churn inside
-the session (pane ids don't). Handles persist across daemon restarts,
-follow the agent when it changes (a new agent in the pane mints fresh),
-and show in the table's `Handle` column (sortable), `status`, and
+once (`@pi`, `-2`/`-3`… on collision), surviving pane churn inside the
+session (pane ids don't). Handles persist across daemon restarts, follow
+the agent when it changes (a new agent in the pane mints fresh), and
+show in the table's `Handle` column (sortable), `status`, and
 `status --json`. Any command taking a pane id also takes a handle:
-`focus @pi-wez`, `send @pi-wez "go"`, `capture @pi-2`, `recap --pane
-@pi-wez`. Native tabs mint theirs against the same namespace
-(`@pi-konsole`); fleet rows carry none — handles are local-only.
+`focus @pi`, `send @pi "go"`, `capture @pi-2`, `recap --pane
+@pi`. Native tabs mint theirs against the same namespace; fleet rows
+carry none — handles are local-only. (Daemons upgrading from the old
+session-bearing scheme rewrite `@pi-wez`-style handles to the
+sessionless form on first load.)
 
 Custom agents go in `~/.config/terhub/manifests/*.toml`:
 
