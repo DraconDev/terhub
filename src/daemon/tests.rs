@@ -2638,6 +2638,42 @@ fn same_process_keeps_still_clock() {
 }
 
 #[test]
+fn loading_a_registry_rewrites_session_bearing_handles() {
+    // A daemon upgrading from the old scheme finds `@agent-session`
+    // handles on disk. They have to come back sessionless, or the
+    // Handle column keeps showing the session the user asked to drop.
+    let dir = std::env::temp_dir().join(format!("terhub-reg-migrate-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("registry.json");
+    let mut legacy = carried("pi", AgentState::Working, 1, 2, 100);
+    legacy.session = "wez".to_string();
+    legacy.handle = "@pi-wez".to_string();
+    let mut already = carried("pi", AgentState::Working, 1, 2, 100);
+    already.pane = "%2".to_string();
+    already.session = "wez".to_string();
+    already.handle = "@pi".to_string();
+    std::fs::write(
+        &path,
+        format!(
+            "[{}, {}]",
+            serde_json::to_string(&legacy).unwrap(),
+            serde_json::to_string(&already).unwrap()
+        ),
+    )
+    .unwrap();
+    let loaded = load_registry(&path);
+    assert_eq!(loaded["%1"].handle, "@pi-2");
+    assert_eq!(loaded["%2"].handle, "@pi");
+    // Loading again is a no-op: the migrated handles no longer look
+    // like the old mint, so nothing is rewritten twice.
+    let again = load_registry(&path);
+    assert_eq!(again["%1"].handle, "@pi-2");
+    assert_eq!(again["%2"].handle, "@pi");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn registry_round_trip_is_atomic_and_tolerant() {
     let dir = std::env::temp_dir().join(format!("terhub-reg-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
