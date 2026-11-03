@@ -343,16 +343,58 @@ pub fn ensure_handles(registry: &mut std::collections::HashMap<String, AgentReco
         .collect();
     panes.sort();
     for pane in panes {
-        let (agent, session) = match registry.get(&pane) {
-            Some(r) => (r.agent.clone(), r.session.clone()),
+        let agent = match registry.get(&pane) {
+            Some(r) => r.agent.clone(),
             None => continue,
         };
-        let handle = mint_handle(&used, &agent, &session);
+        let handle = mint_handle(&used, &agent);
         used.insert(handle.clone());
         if let Some(r) = registry.get_mut(&pane) {
             r.handle = handle;
         }
     }
+}
+
+/// Rewrite persisted handles minted by the old session-bearing scheme
+/// (`@agent-session`, `@agent-session-N`) into the sessionless one:
+/// matching records are cleared so the next [`ensure_handles`] pass
+/// re-mints them. Handles that don't look like the old mint exactly
+/// (e.g. `@claude-s`, or `@agent` with no session part) are left alone.
+/// Runs once per daemon load; new-format handles never match again.
+///
+/// The one exception worth naming: a session that slugs to pure digits
+/// (`2`) makes its handle indistinguishable from a mint suffix, so it
+/// is rewritten on every load. The rewrite is deterministic, so the
+/// assignment comes back the same each time — it just isn't the
+/// no-op the other records get.
+pub fn strip_legacy_handles(registry: &mut std::collections::HashMap<String, AgentRecord>) -> usize {
+    let mut stale: Vec<String> = Vec::new();
+    for (pane, r) in registry.iter() {
+        if r.handle.is_empty() || r.agent.is_empty() {
+            continue;
+        }
+        let base = format!(
+            "@{}-{}",
+            slug_handle_part(&r.agent),
+            slug_handle_part(&r.session)
+        );
+        let legacy = r.handle == base
+            || r.handle
+                .strip_prefix(&format!("{base}-"))
+                .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+        // session.is_empty() would mint a base of `@agent-`, which no
+        // real handle can start with — skip it rather than rely on that.
+        if legacy && !slug_handle_part(&r.session).is_empty() {
+            stale.push(pane.clone());
+        }
+    }
+    let stripped = stale.len();
+    for pane in stale {
+        if let Some(r) = registry.get_mut(&pane) {
+            r.handle.clear();
+        }
+    }
+    stripped
 }
 
 /// Resolve a `@handle` CLI arg to its pane id (exact match only).
