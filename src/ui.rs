@@ -1017,26 +1017,51 @@ fn agent_text_style(name: &str, cfg: &crate::config::AppConfig, dim: Style) -> S
         return crate::config::parse_style_spec(spec);
     }
     let palette = agent_palette(cfg);
-    let idx = crate::fnv1a(&name.to_lowercase()) as usize % palette.len();
+    let idx = agent_palette_index(&name.to_lowercase(), palette.len());
     crate::config::parse_style_spec(palette[idx])
 }
 
-/// Palette the agent hash picks from: custom list, else brights on dark
-/// themes (only `light` needs the dark set).
-fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&str> {
+/// Index into the agent palette. FNV-1a spreads its entropy into the
+/// high bits, so the bare hash mod a small bucket count clusters
+/// (every lowercase name landed in a handful of slots); a murmur3
+/// fmix64 finalizer avalanches every bit down into the low ones,
+/// which is what the modulo actually reads.
+fn agent_palette_index(name: &str, len: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let mut z = crate::fnv1a(name);
+    z ^= z >> 33;
+    z = z.wrapping_mul(0xff51_afd7_ed55_8ccd);
+    z ^= z >> 33;
+    z = z.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+    z ^= z >> 33;
+    (z % len as u64) as usize
+}
+
+/// Palette the agent hash picks from: custom list, else 16 hues spread
+/// evenly around the wheel at a lightness tuned per theme (bright
+/// enough to read on the background, saturated enough to tell apart).
+/// Truecolor hexes — any agent gets a distinct-ish hue, and the
+/// residual "two names in the same bucket" case is what `[style.agents]`
+/// exists for.
+fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&'static str> {
     if !cfg.agent_palette.is_empty() {
         return cfg.agent_palette.iter().map(String::as_str).collect();
     }
     if cfg.palette() == "light" {
-        vec!["red", "green", "blue", "magenta", "cyan", "black"]
+        vec![
+            "#bb381b", "#bb741b", "#bbb11b", "#8abb1b",
+            "#4ebb1b", "#1bbb24", "#1bbb60", "#1bbb9d",
+            "#1b9ebb", "#1b62bb", "#1b25bb", "#4c1bbb",
+            "#891bbb", "#bb1bb2", "#bb1b76", "#bb1b3a",
+        ]
     } else {
         vec![
-            "bright-cyan",
-            "bright-magenta",
-            "bright-green",
-            "bright-yellow",
-            "bright-blue",
-            "bright-red",
+            "#e7846e", "#e7b26e", "#e7df6e", "#c2e76e",
+            "#95e76e", "#6ee775", "#6ee7a3", "#6ee7d0",
+            "#6ed1e7", "#6ea4e7", "#6e76e7", "#946ee7",
+            "#c16ee7", "#e76ee0", "#e76eb3", "#e76e85",
         ]
     }
 }
