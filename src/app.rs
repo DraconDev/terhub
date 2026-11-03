@@ -1054,7 +1054,7 @@ impl App {
             if !rec.handle.is_empty() || rec.agent.is_empty() {
                 continue;
             }
-            let handle = mint_handle(&used, &rec.agent, &rec.session);
+            let handle = mint_handle(&used, &rec.agent);
             used.insert(handle.clone());
             self.native_agents[i].handle = handle;
         }

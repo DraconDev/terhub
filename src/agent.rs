@@ -226,7 +226,7 @@ pub struct AgentRecord {
     /// That prompt's text, capped (empty = none yet).
     #[serde(default)]
     pub last_prompt: String,
-    /// Stable local name (`@pi-wez`), minted once by the daemon, empty
+    /// Stable local name (`@pi`), minted once by the daemon, empty
     /// until then. Survives pane churn inside the session; fleet rows
     /// never carry one (handles are local-only).
     #[serde(default)]
