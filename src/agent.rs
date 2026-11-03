@@ -1912,9 +1912,9 @@ mod tests {
 
     #[test]
     fn strip_legacy_handles_rewrites_only_old_mint() {
-        let rec = |agent: &str, session: &str, handle: &str| {
-            let mut r = AgentRecord {
-                pane: String::new(),
+        let mk = |pane: &str, agent: &str, session: &str, handle: &str| {
+            AgentRecord {
+                pane: pane.to_string(),
                 agent: agent.to_string(),
                 state: AgentState::Working,
                 source: Source::Hook,
@@ -1939,24 +1939,28 @@ mod tests {
                 bell: false,
                 bell_reason: String::new(),
                 stuck_base: None,
-            };
-            r.pane = handle.to_string() + session;
-            r
+            }
         };
         let mut reg = HashMap::new();
         // Old mint, bare and suffixed: both go.
-        reg.insert("%1".to_string(), rec("pi", "wez", "@pi-wez"));
-        reg.insert("%2".to_string(), rec("pi", "wez", "@pi-wez-2"));
+        reg.insert("%1".to_string(), mk("%1", "pi", "wez", "@pi-wez"));
+        reg.insert("%2".to_string(), mk("%2", "pi", "wez", "@pi-wez-2"));
         // Old mint with a slugged session.
-        reg.insert("%3".to_string(), rec("claude", "My Project!", "@claude-my-project"));
-        reg.insert("%4".to_string(), rec("claude", "My Project!", "@claude-my-project-2"));
+        reg.insert(
+            "%3".to_string(),
+            mk("%3", "claude", "My Project!", "@claude-my-project"),
+        );
+        reg.insert(
+            "%4".to_string(),
+            mk("%4", "claude", "My Project!", "@claude-my-project-2"),
+        );
         // Not the old mint: sessionless (new), a bare session, and a
         // hand-set name that merely starts alike — all keep.
-        reg.insert("%5".to_string(), rec("pi", "wez", "@pi"));
-        reg.insert("%6".to_string(), rec("pi", "", "@pi-2"));
-        reg.insert("%7".to_string(), rec("claude", "s", "@claude-s-custom"));
+        reg.insert("%5".to_string(), mk("%5", "pi", "wez", "@pi"));
+        reg.insert("%6".to_string(), mk("%6", "pi", "", "@pi-2"));
+        reg.insert("%7".to_string(), mk("%7", "claude", "s", "@claude-s-custom"));
         // Old mint shape but the suffix isn't digits: keep.
-        reg.insert("%8".to_string(), rec("pi", "wez", "@pi-wez-two"));
+        reg.insert("%8".to_string(), mk("%8", "pi", "wez", "@pi-wez-two"));
         assert_eq!(strip_legacy_handles(&mut reg), 4);
         assert_eq!(reg["%1"].handle, "");
         assert_eq!(reg["%2"].handle, "");
@@ -1967,13 +1971,14 @@ mod tests {
         assert_eq!(reg["%7"].handle, "@claude-s-custom");
         assert_eq!(reg["%8"].handle, "@pi-wez-two");
         // After stripping, ensure_handles re-mints sessionless against
-        // the surviving set: @pi and @pi-2 stay taken, so the four
-        // cleared records take @pi-3..@pi-6 in pane order.
+        // the surviving set, in sorted pane order: @pi and @pi-2 stay
+        // taken, so the two pi records take @pi-3/@pi-4 and the two
+        // claude records take @claude/@claude-2.
         ensure_handles(&mut reg);
         assert_eq!(reg["%1"].handle, "@pi-3");
-        assert_eq!(reg["%3"].handle, "@claude-2");
-        assert_eq!(reg["%4"].handle, "@claude-3");
-        // Agent-less records were never stripped nor minted.
+        assert_eq!(reg["%2"].handle, "@pi-4");
+        assert_eq!(reg["%3"].handle, "@claude");
+        assert_eq!(reg["%4"].handle, "@claude-2");
     }
 
     #[test]
@@ -2013,11 +2018,11 @@ mod tests {
         }
         ensure_handles(&mut reg);
         // Sorted panes mint in order: lowest pane takes the bare handle.
-        assert_eq!(reg["%1"].handle, "@pi-wez");
-        assert_eq!(reg["%9"].handle, "@pi-wez-2");
+        assert_eq!(reg["%1"].handle, "@pi");
+        assert_eq!(reg["%9"].handle, "@pi-2");
         // Re-runs never re-mint: handles are stable for the record's life.
         ensure_handles(&mut reg);
-        assert_eq!(reg["%1"].handle, "@pi-wez");
+        assert_eq!(reg["%1"].handle, "@pi");
         // Agent-less records stay handle-less.
         reg.insert(
             "%2".to_string(),
