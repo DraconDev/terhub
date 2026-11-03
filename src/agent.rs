@@ -304,16 +304,11 @@ pub fn slug_handle_part(s: &str) -> String {
     out
 }
 
-/// Mint a handle (`@agent-session`, `-2`/`-3`… on collision) against the
-/// used set. An empty session mints bare `@agent`.
-pub fn mint_handle(used: &std::collections::HashSet<String>, agent: &str, session: &str) -> String {
+/// Mint a handle (`@agent`, `-2`/`-3`… on collision) against the
+/// used set.
+pub fn mint_handle(used: &std::collections::HashSet<String>, agent: &str) -> String {
     let agent = slug_handle_part(agent);
-    let session = slug_handle_part(session);
-    let base = if session.is_empty() {
-        format!("@{agent}")
-    } else {
-        format!("@{agent}-{session}")
-    };
+    let base = format!("@{agent}");
     if !used.contains(&base) {
         return base;
     }
