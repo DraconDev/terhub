@@ -1902,16 +1902,78 @@ mod tests {
     fn handles_mint_stable_and_suffixed() {
         use std::collections::HashSet;
         let used: HashSet<String> = HashSet::new();
-        assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez");
-        assert_eq!(mint_handle(&used, "pi", ""), "@pi");
-        assert_eq!(
-            mint_handle(&used, "claude", "My Project!"),
-            "@claude-my-project"
-        );
-        let mut used: HashSet<String> = ["@pi-wez".to_string()].into_iter().collect();
-        assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez-2");
-        used.insert("@pi-wez-2".to_string());
-        assert_eq!(mint_handle(&used, "pi", "wez"), "@pi-wez-3");
+        assert_eq!(mint_handle(&used, "pi"), "@pi");
+        assert_eq!(mint_handle(&used, "My Agent!"), "@my-agent");
+        let mut used: HashSet<String> = ["@pi".to_string()].into_iter().collect();
+        assert_eq!(mint_handle(&used, "pi"), "@pi-2");
+        used.insert("@pi-2".to_string());
+        assert_eq!(mint_handle(&used, "pi"), "@pi-3");
+    }
+
+    #[test]
+    fn strip_legacy_handles_rewrites_only_old_mint() {
+        let rec = |agent: &str, session: &str, handle: &str| {
+            let mut r = AgentRecord {
+                pane: String::new(),
+                agent: agent.to_string(),
+                state: AgentState::Working,
+                source: Source::Hook,
+                summary: String::new(),
+                session: session.to_string(),
+                window: String::new(),
+                command: String::new(),
+                updated_at: 0,
+                state_since: 0,
+                cpu_ticks: 0,
+                cpu_still_since: 0,
+                agent_start: 0,
+                last_turn_secs: 0,
+                screen_hash: 0,
+                quiet_since: 0,
+                last_prompt_at: 0,
+                last_prompt: String::new(),
+                handle: handle.to_string(),
+                model: String::new(),
+                ctx_pct: None,
+                reg_pid: 0,
+                bell: false,
+                bell_reason: String::new(),
+                stuck_base: None,
+            };
+            r.pane = handle.to_string() + session;
+            r
+        };
+        let mut reg = HashMap::new();
+        // Old mint, bare and suffixed: both go.
+        reg.insert("%1".to_string(), rec("pi", "wez", "@pi-wez"));
+        reg.insert("%2".to_string(), rec("pi", "wez", "@pi-wez-2"));
+        // Old mint with a slugged session.
+        reg.insert("%3".to_string(), rec("claude", "My Project!", "@claude-my-project"));
+        reg.insert("%4".to_string(), rec("claude", "My Project!", "@claude-my-project-2"));
+        // Not the old mint: sessionless (new), a bare session, and a
+        // hand-set name that merely starts alike — all keep.
+        reg.insert("%5".to_string(), rec("pi", "wez", "@pi"));
+        reg.insert("%6".to_string(), rec("pi", "", "@pi-2"));
+        reg.insert("%7".to_string(), rec("claude", "s", "@claude-s-custom"));
+        // Old mint shape but the suffix isn't digits: keep.
+        reg.insert("%8".to_string(), rec("pi", "wez", "@pi-wez-two"));
+        assert_eq!(strip_legacy_handles(&mut reg), 4);
+        assert_eq!(reg["%1"].handle, "");
+        assert_eq!(reg["%2"].handle, "");
+        assert_eq!(reg["%3"].handle, "");
+        assert_eq!(reg["%4"].handle, "");
+        assert_eq!(reg["%5"].handle, "@pi");
+        assert_eq!(reg["%6"].handle, "@pi-2");
+        assert_eq!(reg["%7"].handle, "@claude-s-custom");
+        assert_eq!(reg["%8"].handle, "@pi-wez-two");
+        // After stripping, ensure_handles re-mints sessionless against
+        // the surviving set: @pi and @pi-2 stay taken, so the four
+        // cleared records take @pi-3..@pi-6 in pane order.
+        ensure_handles(&mut reg);
+        assert_eq!(reg["%1"].handle, "@pi-3");
+        assert_eq!(reg["%3"].handle, "@claude-2");
+        assert_eq!(reg["%4"].handle, "@claude-3");
+        // Agent-less records were never stripped nor minted.
     }
 
     #[test]
