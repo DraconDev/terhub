@@ -1360,6 +1360,16 @@ fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
             path.display()
         );
     }
+    // One-shot migration off the session-bearing handle scheme
+    // (`@agent-session`) from before handles dropped the session:
+    // clear the old mint so the records re-mint sessionless. Only an
+    // exact match of what the old mint produced is touched — anything
+    // else in the column is the user's or a newer build's.
+    let stripped = crate::agent::strip_legacy_handles(&mut out);
+    if stripped > 0 {
+        crate::agent::ensure_handles(&mut out);
+        eprintln!("terhubd: rewrote {stripped} session-bearing handle(s) to the sessionless scheme");
+    }
     out
 }
 
