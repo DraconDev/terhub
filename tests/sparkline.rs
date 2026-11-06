@@ -16,6 +16,7 @@ fn make_manifest(done_pat: &str) -> CompiledManifest {
     CompiledManifest::compile(&Manifest {
         agent: "x".to_string(),
         commands: vec!["x".to_string()],
+        tail: None,
         working: vec!["loading".to_string()],
         waiting: vec!["^❯".to_string()],
         error: vec![],
