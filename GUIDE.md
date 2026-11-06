@@ -476,8 +476,9 @@ Per pane it merges three signals:
    lost; only the label decays.
    Each `0` disables its flip. Fresh hooks are never second-guessed this
    way.
-3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse
-   match the pane's command and recent screen text. The freshest matching
+3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse/
+   opencode match the pane's command and recent screen text. The freshest
+   matching
    line decides, so current output overrides stale scrollback; `waiting`/
    `error` on screen win over the process state. Harness dashboards (muxa,
    terhub's own TUI) skip screen classification — they name agents
@@ -492,6 +493,23 @@ Per pane it merges three signals:
    A record with no supporting evidence for 30
    minutes is dropped rather than shown. Idle shells nobody claimed stay
    unclaimed, so plain terminals show no state instead of guessing one.
+
+   **opencode** is read off its status bar, which is a contract worth
+   spelling out: while a request is in flight the footer's left slot
+   renders the shimmer plus `esc interrupt`; when the session is not
+   running the same slot renders the project location (`~/dir:branch`).
+   The interrupt offer is live-only — it is gone the moment the turn
+   ends — so it is safe to read as `working`, and the footer chrome
+   (`ctrl+p commands`) is the "nothing is running" marker. Without this,
+   every opencode pane read `working` forever: the process tree proved
+   an agent was there, no manifest claimed the screen, and the
+   shimmering footer kept the screen hash changing, so the quiet clock
+   never reached its idle threshold either. What the manifest cannot
+   see is opencode's *permission* dialog: it renders above the footer,
+   and the fresher footer line wins the verdict, so a blocked-on-you
+   opencode still reads `working`. Needs-you detection for opencode
+   wants the session events (`session.idle`, `session.status`,
+   `permission.updated`), not the screen.
 
 The table's `Src` column tells you which signal each row stands on.
 
