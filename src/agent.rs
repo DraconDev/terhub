@@ -1198,7 +1198,18 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // manifest is also tried over screens whose command
             // matched nothing, so a loose pattern here would claim
             // other agents' panes.
-            idle_fallback: vec!["ctrl\\+p commands".to_string()],
+            idle_fallback: vec![
+                "ctrl\\+p commands".to_string(),
+                // The composer's gradient bar (a `╹` and a run of `▀`).
+                // It is opencode's signature and it survives a narrow
+                // pane, where the footer sheds everything but the
+                // location. Both markers are chrome: the bar is drawn
+                // whether or not a request is running, so it only ever
+                // says "this is an opencode composer", and the
+                // interrupt offer on the footer line is what says
+                // "running".
+                "╹▀".to_string(),
+            ],
             waiting_unless: vec![],
             busy: vec![],
             // No phase: the footer's chrome line is noise as a
