@@ -1131,6 +1131,81 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "goal · working".to_string(),
             ],
         },
+        Manifest {
+            // opencode (sst/opencode) TUI. Its status bar is the
+            // contract, and it is a good one: while a request is in
+            // flight the footer's left slot renders the shimmer
+            // spinner plus "esc interrupt"; when the session is not
+            // running the same slot renders the project location
+            // (`~/dir:branch`). The footer is therefore the one line
+            // that says "a turn is running" — and unlike a spinner
+            // frame it is live-only: it is gone the moment the turn
+            // ends, so it cannot pin a finished pane as busy the way
+            // a chrome line would.
+            //
+            // Without this manifest every opencode pane read
+            // `working` forever. The process tree proved an agent was
+            // there, no manifest claimed the screen, and the
+            // shimmering footer kept the screen hash changing — so
+            // the quiet clock never reached its idle threshold
+            // either. The fix is the footer's own two states: the
+            // interrupt offer means working, the footer chrome
+            // (which is present in both states) means the session is
+            // not running.
+            agent: "opencode".to_string(),
+            commands: vec!["opencode".to_string()],
+            working: vec![
+                // The footer's interrupt offer. "esc interrupt" is the
+                // resting shape; one esc press turns it into "esc
+                // again to interrupt". Both mean "a request is in
+                // flight", so both are working evidence — the
+                // second one especially, since an operator who just
+                // pressed esc is still waiting on the agent.
+                "esc( again)?( to)? interrupt".to_string(),
+            ],
+            // No `waiting`: opencode's permission dialog ("Permission
+            // required") renders *above* the footer, and the freshest
+            // line wins — the footer's interrupt offer is below it,
+            // so the dialog cannot take the verdict. Guessing with a
+            // `waiting` pattern would only add a false "needs you"
+            // to any transcript that mentions the phrase. Needs-you
+            // detection for opencode wants the session events, not
+            // the screen.
+            waiting: vec![],
+            error: vec![
+                // Capital E only: lowercase "an error:" is prose.
+                "\\b(?-i:E)rror:".to_string(),
+                "something went wrong".to_string(),
+                "traceback".to_string(),
+            ],
+            limited: vec![
+                "rate limit".to_string(),
+                "usage limit".to_string(),
+                "quota".to_string(),
+                "\\b429\\b".to_string(),
+            ],
+            done: vec![],
+            idle: vec![],
+            // The footer's own chrome: the command-palette hint that
+            // sits in every opencode status bar, busy or not. It is
+            // the *only* line that is always there, so it is what an
+            // idle opencode pane can be recognised by. It is chrome,
+            // hence `idle_fallback` and not `working`: the busy
+            // footer carries the interrupt offer on the same line,
+            // and within one line working outranks chrome.
+            //
+            // The chrome is deliberately opencode-specific: this
+            // manifest is also tried over screens whose command
+            // matched nothing, so a loose pattern here would claim
+            // other agents' panes.
+            idle_fallback: vec!["ctrl\\+p commands".to_string()],
+            waiting_unless: vec![],
+            busy: vec![],
+            // No phase: the footer's chrome line is noise as a
+            // summary (a row of spinner glyphs), and a working row
+            // with no phase simply shows no summary.
+            phase: vec![],
+        },
     ]
 }
 
@@ -3351,6 +3426,117 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         ] {
             assert_eq!(s.display_label(), s.label(), "{s:?} has two names");
         }
+    }
+
+    /// The opencode TUI's status bar, in the two shapes it takes.
+    /// Left slot: shimmer + interrupt offer while a request is in
+    /// flight, project location when the session is not running.
+    const OPENCODE_FOOTER_CHROME: &str =
+        "  ~/Dev/terhub:main    79.7K (8%)  ctrl+p commands    …/terhub:main";
+    const OPENCODE_FOOTER_BUSY: &str =
+        "   ⬝⬝⬝■■■ esc interrupt    479.6K (46%)  ctrl+p commands    ~/Dev/terhub:main";
+
+    /// An opencode screen: the composer box, the model line, the
+    /// gradient bar and the status bar, exactly as the TUI draws it.
+    fn opencode_screen(footer: &str) -> String {
+        let mut s = String::from(
+            "  \u{2503}\n  \u{2503}\n  \u{2503}\n  \u{2503}  Build auto \u{b7} Crouton Alpha Free Default / OpenCode \u{b7} max\n",
+        );
+        s.push_str(footer);
+        s.push('\n');
+        s
+    }
+
+    #[test]
+    fn opencode_idle_footer_reads_idle() {
+        let m = compiled();
+        // The opencode status bar without the interrupt offer: the
+        // session is not running, so the pane is idle. Before the
+        // opencode manifest every such pane read `working` forever.
+        let screen = opencode_screen(OPENCODE_FOOTER_CHROME);
+        assert_eq!(
+            classify_screen(&m, "opencode", &screen, false, false),
+            hit(
+                Some("opencode"),
+                AgentState::Idle,
+                "~/Dev/terhub:main 79.7K (8%) ctrl+p commands …/terhub:main"
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_busy_footer_reads_working() {
+        let m = compiled();
+        // The same bar, busy: the interrupt offer sits on the same
+        // line as the chrome, and working outranks chrome within one
+        // line.
+        let screen = opencode_screen(OPENCODE_FOOTER_BUSY);
+        assert_eq!(
+            classify_screen(&m, "opencode", &screen, false, false),
+            hit(
+                Some("opencode"),
+                AgentState::Working,
+                "⬝⬝⬝■■■ esc interrupt 479.6K (46%) ctrl+p commands ~/Dev/terhub:main"
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_armed_interrupt_offer_is_still_working() {
+        let m = compiled();
+        // One esc press turns the offer into "esc again to interrupt".
+        // The agent is still running, so the pane must not read idle.
+        let screen = opencode_screen(
+            "   ⬝⬝⬝■■■ esc again to interrupt    479.6K (46%)  ctrl+p commands    ~/Dev/terhub:main",
+        );
+        assert_eq!(
+            classify_screen(&m, "opencode", &screen, false, false),
+            hit(
+                Some("opencode"),
+                AgentState::Working,
+                "⬝⬝⬝■■■ esc again to interrupt 479.6K (46%) ctrl+p commands ~/Dev/terhub:main"
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_stale_interrupt_offer_does_not_pin_working() {
+        let m = compiled();
+        // The transcript can mention the offer ("press esc interrupt to
+        // cancel"). The footer is the fresher line, so the pane reads
+        // idle — a stale mention is history, not a live turn.
+        let mut screen = String::from("  press esc interrupt to cancel the run\n");
+        screen.push_str(&opencode_screen(OPENCODE_FOOTER_CHROME));
+        assert_eq!(
+            classify_screen(&m, "opencode", &screen, false, false),
+            hit(
+                Some("opencode"),
+                AgentState::Idle,
+                "~/Dev/terhub:main 79.7K (8%) ctrl+p commands …/terhub:main"
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_chrome_does_not_claim_other_agents() {
+        let m = compiled();
+        // The chrome pattern is opencode-specific on purpose: this
+        // manifest is also tried over screens whose command matched
+        // nothing, so a loose pattern here would claim other agents'
+        // panes.
+        assert_eq!(
+            classify_screen(&m, "node", "⠋ Working… (esc to interrupt)\n", false, false),
+            hit(
+                Some("claude"),
+                AgentState::Working,
+                "⠋ Working… (esc to interrupt)"
+            )
+        );
+        // pi's own footer is not opencode's.
+        assert_eq!(
+            classify_screen(&m, "pi", "── ⠦ Working ──\n", false, false),
+            hit(Some("pi"), AgentState::Working, "── ⠦ Working ──")
+        );
     }
 
     #[test]
