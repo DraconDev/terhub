@@ -1215,15 +1215,13 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 // pressed esc is still waiting on the agent.
                 "esc( again)?( to)? interrupt".to_string(),
             ],
-            // No `waiting`: opencode's permission dialog ("Permission
-            // required") renders *above* the footer, and the freshest
-            // line wins — the footer's interrupt offer is below it,
-            // so the dialog cannot take the verdict. Guessing with a
-            // `waiting` pattern would only add a false "needs you"
-            // to any transcript that mentions the phrase. Needs-you
-            // detection for opencode wants the session events, not
-            // the screen.
-            waiting: vec![],
+            // opencode's question picker. It replaces the composer
+            // (the status bar goes with it), so nothing below it can
+            // outvote the verdict: the agent is blocked on the human
+            // and the picker line is the proof. The question text
+            // sits above the options, so the summary carries the
+            // question, not the key hints.
+            waiting: vec!["↑↓ select".to_string()],
             error: vec![
                 // Capital E only: lowercase "an error:" is prose.
                 "\\b(?-i:E)rror:".to_string(),
@@ -1397,6 +1395,7 @@ fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
         || lower.contains("type something")
         || lower.contains("↑↓ navigate")
         || lower.contains("enter select")
+        || lower.contains("enter submit")
         || lower.contains("escape/ctrl+c cancel")
         || is_choice_line(wait_line);
     if !menu_marker {
@@ -1425,6 +1424,12 @@ fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
 fn is_choice_line(line: &str) -> bool {
     let line = line.trim_start();
     let line = line.strip_prefix("❯ ").unwrap_or(line);
+    // A boxed line: opencode draws its question picker inside the
+    // composer's `┃` border, so the option number sits behind the
+    // border, not at the start of the line.
+    let line = line
+        .trim_start_matches(['┃', '│', '|', '┃'])
+        .trim_start();
     let digits = line.chars().take_while(char::is_ascii_digit).count();
     (digits > 0 && line[digits..].starts_with(". "))
         || line.starts_with("Type something.")
@@ -3613,6 +3618,23 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
                 Some("opencode"),
                 AgentState::Idle,
                 "…/dev/main shift+tab agents ctrl+p comma"
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_question_picker_reads_waiting_with_the_question() {
+        let m = compiled();
+        // opencode's question picker: the composer is replaced by the
+        // question, so nothing sits below it to outvote the verdict.
+        // The summary must be the question, not the key hints.
+        let screen = "  ┃  Which lane should I switch to?\n  ┃\n  ┃  1. Use Agnes\n  ┃     Set .env.local primary to Agnes\n  ┃  2. Use MiniMax\n  ┃     Paid, uses Token Plan quota.\n  ┃\n  ┃  ↑↓ select  enter submit  esc dismiss\n  ┃\n";
+        assert_eq!(
+            classify_screen(&m, "opencode", screen, false, false),
+            hit(
+                Some("opencode"),
+                AgentState::Waiting,
+                "┃ Which lane should I switch to?"
             )
         );
     }
