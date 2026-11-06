@@ -3511,6 +3511,19 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn opencode_narrow_footer_still_reads_idle() {
+        let m = compiled();
+        // A narrow pane sheds the footer down to the bare location, so
+        // the chrome hint is gone. The composer's gradient bar is not:
+        // it is opencode's signature and it is always there.
+        let screen = "  ┃\n  ┃ Ask anything...\n  ┃\n  ╹▀▀▀▀\n /tmp\n";
+        assert_eq!(
+            classify_screen(&m, "opencode", screen, false, false),
+            hit(Some("opencode"), AgentState::Idle, "╹▀▀▀▀")
+        );
+    }
+
+    #[test]
     fn opencode_stale_interrupt_offer_does_not_pin_working() {
         let m = compiled();
         // The transcript can mention the offer ("press esc interrupt to
