@@ -654,7 +654,7 @@ impl CompiledManifest {
         // failure sitting far up the scrollback is history, not
         // something that needs the operator now. With the default
         // tail this is the whole window, so nothing changes.
-        let fresh_from = all_lines.len().saturating_sub(DEFAULT_TAIL);
+        let fresh_from = tail.len().saturating_sub(DEFAULT_TAIL);
         // The veto scans the whole capture, not just the verdict tail:
         // tall status regions (task lists, goal panels) can push the
         // live-task line above the freshest 15 while the prompt stays
