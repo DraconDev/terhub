@@ -4302,6 +4302,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
     fn lossy_compile_skips_broken_manifest() {
         let mut manifests = builtin_manifests();
         manifests.push(Manifest {
+            tail: None,
             agent: "broken".to_string(),
             commands: vec![],
             working: vec!["([".to_string()],
