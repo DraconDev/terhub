@@ -444,7 +444,7 @@ Each is small and independently verifiable. Pick them off together:
 | T-33 | Per-task git worktrees | L | medium | RESEARCH #12/#14 |
 | T-34 | More backends (rmux, herdr) | L | low | RESEARCH #23; the parity matrix in `GUIDE.md:827` is where the answer gets recorded |
 | T-35 | Agent messaging / mailbox, work model | XL | low | RESEARCH #21/#22; a second product, not an increment |
-| T-39 | opencode needs-you from session events, not the screen | M | medium | The screen manifest reads opencode's status bar, so working/idle is exact, but the *permission* dialog renders above the footer and the fresher footer line wins — a blocked-on-you opencode still reads `working`. opencode's server publishes `session.idle`, `session.status` and `permission.updated`; an opencode plugin (`~/.config/opencode/plugins/`) pushing them through `terhub hook` would close it. The plugin needs the pane id: `TMUX_PANE` is inherited from the TUI, but a shared `opencode serve` would report the wrong pane. |
+| T-39 | opencode needs-you from session events, not the screen | M | medium | The screen manifest reads opencode's status bar, so working/idle is exact, and opencode's *question picker* (it replaces the composer) reads as `question`. What the screen cannot show is opencode's *permission* dialog: it renders above the footer, and the fresher footer line wins, so a blocked-on-you opencode still reads `working`. opencode's server publishes `session.idle`, `session.status` and `permission.updated`; an opencode plugin (`~/.config/opencode/plugins/`) pushing them through `terhub hook` would close it. The plugin needs the pane id: `TMUX_PANE` is inherited from the TUI, but a shared `opencode serve` would report the wrong pane. |
 
 ---
 

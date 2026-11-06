@@ -504,10 +504,16 @@ Per pane it merges three signals:
    every opencode pane read `working` forever: the process tree proved
    an agent was there, no manifest claimed the screen, and the
    shimmering footer kept the screen hash changing, so the quiet clock
-   never reached its idle threshold either. What the manifest cannot
-   see is opencode's *permission* dialog: it renders above the footer,
-   and the fresher footer line wins the verdict, so a blocked-on-you
-   opencode still reads `working`. Needs-you detection for opencode
+   never reached its idle threshold either. Two shapes of opencode
+   screen need more than the default verdict window: a *fresh*
+   session draws its logo where the transcript will grow, so the
+   composer — and the status line that answers the question — sits far
+   above the bottom edge of a tall pane; and opencode's *question
+   picker* replaces the composer entirely, which is how a
+   blocked-on-you opencode reads as `question` (the question text
+   above the options, not the key hints). The one thing the screen
+   cannot show is opencode's *permission* dialog: it renders above the
+   footer, and the fresher footer line wins the verdict. That one
    wants the session events (`session.idle`, `session.status`,
    `permission.updated`), not the screen.
 
@@ -539,6 +545,10 @@ idle_fallback = ["enter send"]
 waiting_unless = ["esc to interrupt"]
 busy = ["background task running"]
 phase = ["working on it"]
+# How many lines of the capture the verdict is read from (default 15).
+# Raise it only if your agent draws its live state far from the bottom
+# edge of the pane — opencode's composer does, in a fresh session.
+# tail = 60
 ```
 
 Patterns are case-insensitive regexes; within one line the most specific
@@ -579,6 +589,15 @@ approve prompt plus a live agent process reads as that agent waiting,
 while the same prompt with no process behind it claims nobody. A manifest
 with a broken regex is skipped with a warning instead of killing the
 daemon.
+
+`tail` widens the window the verdict is read from — the default is the
+freshest 15 lines, which is where a status line and the message above it
+live. Raise it for an agent whose live state does not sit at the bottom
+edge of the pane (opencode's composer, in a fresh session, is anchored
+to the top of a tall pane). A wider window never widens what counts as
+*needing you*: the `error`, `limited` and `waiting` markers are still
+read from the freshest 15 lines only, so an old failure sitting in the
+scrollback stays history instead of turning into a red row.
 
 When the detector misses an agent entirely (unknown binary, odd
 wrapping), pin it by hand instead of writing a manifest:
