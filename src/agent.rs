@@ -3588,6 +3588,53 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn opencode_composer_above_the_bottom_edge_reads_idle() {
+        let m = compiled();
+        // A fresh opencode session anchors its composer to the top of
+        // a tall pane: the logo sits where the transcript will grow,
+        // and only blank rows and the app's bottom bar follow. The
+        // verdict still has to come from the composer, so this
+        // manifest reads further up than the default window.
+        let mut screen = String::new();
+        for _ in 0..20 {
+            screen.push('\n');
+        }
+        screen.push_str("  ┃\n");
+        screen.push_str("  ┃  Build auto · Crouton Alpha Free Default / OpenCode · max\n");
+        screen.push_str("  ╹▀▀▀▀▀▀▀▀\n");
+        screen.push_str(" …/dev/main  shift+tab agents  ctrl+p comma\n");
+        for _ in 0..15 {
+            screen.push('\n');
+        }
+        screen.push_str("  ⊙ 2 MCP /mcps\n");
+        assert_eq!(
+            classify_screen(&m, "opencode", &screen, false, false),
+            hit(
+                Some("opencode"),
+                AgentState::Idle,
+                "…/dev/main shift+tab agents ctrl+p comma"
+            )
+        );
+    }
+
+    #[test]
+    fn opencode_old_error_stays_history() {
+        let m = compiled();
+        // The deep window must not turn an old failure into a red row:
+        // the need markers are read from the fresh window only, so an
+        // error from the top of the scrollback is history.
+        let mut screen = String::from("Error: build failed\n");
+        for _ in 0..20 {
+            screen.push_str("filler\n");
+        }
+        screen.push_str(" …/dev/main  ctrl+p comm\n");
+        assert_eq!(
+            classify_screen(&m, "opencode", &screen, false, false),
+            hit(Some("opencode"), AgentState::Idle, "…/dev/main ctrl+p comm")
+        );
+    }
+
+    #[test]
     fn opencode_stale_interrupt_offer_does_not_pin_working() {
         let m = compiled();
         // The transcript can mention the offer ("press esc interrupt to
