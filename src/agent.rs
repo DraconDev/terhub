@@ -3526,11 +3526,9 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // panes.
         assert_eq!(
             classify_screen(&m, "node", "⠋ Working… (esc to interrupt)\n", false, false),
-            hit(
-                Some("claude"),
-                AgentState::Working,
-                "⠋ Working… (esc to interrupt)"
-            )
+            // Anonymous: the screen never names an agent, and no
+            // manifest claims the command.
+            hit(None, AgentState::Working, "⠋ Working… (esc to interrupt)")
         );
         // pi's own footer is not opencode's.
         assert_eq!(
