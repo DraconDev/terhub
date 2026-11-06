@@ -1375,6 +1375,13 @@ fn is_question_text(summary: &str) -> bool {
 fn screen_question_summary(line: &str) -> String {
     const MAX: usize = 80;
     let flat = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    // A boxed question (opencode draws its picker inside the
+    // composer's border) carries the border into the summary; the
+    // question is what the operator has to read.
+    let flat = flat
+        .trim_start_matches(['┃', '│', '|'])
+        .trim_start()
+        .to_string();
     if flat.chars().count() <= MAX {
         return flat;
     }
@@ -3634,7 +3641,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
             hit(
                 Some("opencode"),
                 AgentState::Waiting,
-                "┃ Which lane should I switch to?"
+                "Which lane should I switch to?"
             )
         );
     }
