@@ -1195,7 +1195,16 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // (which is present in both states) means the session is
             // not running.
             agent: "opencode".to_string(),
-            tail: None,
+            // A fresh opencode session draws its logo where the
+            // transcript will grow, so the composer — and the status
+            // line that says whether a request is running — sits far
+            // above the bottom edge of a tall pane, with only blank
+            // rows and the app's own bottom bar below it. The status
+            // line is the only honest answer there, so the verdict is
+            // read from further up than the default window. The
+            // need markers stay in the fresh window, so an old error
+            // in the scrollback cannot turn this into a red row.
+            tail: Some(60),
             commands: vec!["opencode".to_string()],
             working: vec![
                 // The footer's interrupt offer. "esc interrupt" is the
@@ -1242,7 +1251,12 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // matched nothing, so a loose pattern here would claim
             // other agents' panes.
             idle_fallback: vec![
-                "ctrl\\+p commands".to_string(),
+                // The footer's command-palette hint. The pattern is
+                // deliberately a prefix ("ctrl+p comm"), not the whole
+                // word: opencode truncates the hint when the pane is
+                // narrow ("ctrl+p comma"), and the truncated form is
+                // still the same line.
+                "ctrl\\+p comm".to_string(),
                 // The composer's gradient bar (a `╹` and a run of `▀`).
                 // It is opencode's signature and it survives a narrow
                 // pane, where the footer sheds everything but the
@@ -2626,6 +2640,7 @@ mod tests {
         // the bell is the only "look at me" evidence on a screen that
         // shows a finished turn and nothing else.
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
             working: vec!["loading".to_string()],
@@ -2669,6 +2684,7 @@ mod tests {
         // rings the bell when a subagent finishes, and reading that as
         // "needs you" pinned busy panes in `waiting` forever.
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
             working: vec!["loading".to_string()],
@@ -2711,6 +2727,7 @@ mod tests {
         // (not Waiting) — every `nvim` / `fzf` / REPL is parked
         // but not asking the human a question.
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
             working: vec!["loading".to_string()],
@@ -2755,6 +2772,7 @@ mod tests {
         // A manifest that moved its completion banner to `done:`
         // must classify a matching screen as `Done`, not `Idle`.
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
             working: vec![],
@@ -2787,6 +2805,7 @@ mod tests {
         // the manifest has a chrome box), never `Done`. A regression
         // here would silently mark every default-builtin pane Done.
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
             working: vec!["loading".to_string()],
@@ -2819,6 +2838,7 @@ mod tests {
         // `done:` still works — its `idle:` patterns promote matches
         // to `Done`, the same verdict a `done:` list would give.
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "x".to_string(),
             commands: vec!["x".to_string()],
             working: vec![],
@@ -3227,6 +3247,7 @@ mod tests {
     #[test]
     fn veto_without_working_line_yields_no_verdict() {
         let m = CompiledManifest::compile(&Manifest {
+            tail: None,
             agent: "v".to_string(),
             commands: vec!["v".to_string()],
             working: vec![],
