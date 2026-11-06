@@ -3533,7 +3533,12 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // pi's own footer is not opencode's.
         assert_eq!(
             classify_screen(&m, "pi", "── ⠦ Working ──\n", false, false),
-            hit(Some("pi"), AgentState::Working, "── ⠦ Working ──")
+            Some(ScreenHit {
+                agent: Some("pi".to_string()),
+                state: AgentState::Working,
+                summary: "── ⠦ Working ──".to_string(),
+                phase: Some("── ⠦ Working ──".to_string()),
+            })
         );
     }
 
