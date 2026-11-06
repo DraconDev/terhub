@@ -494,6 +494,10 @@ pub fn is_shell_command(cmd: &str) -> bool {
 // Manifests
 // ---------------------------------------------------------------------------
 
+/// Lines of the capture the verdict is read from, unless a manifest
+/// asks for a deeper window (`Manifest::tail`).
+pub const DEFAULT_TAIL: usize = 15;
+
 /// Screen patterns for one agent family (TOML-serializable).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Manifest {
@@ -501,6 +505,24 @@ pub struct Manifest {
     /// Pane-command substrings (case-insensitive) identifying this agent.
     #[serde(default)]
     pub commands: Vec<String>,
+    /// How many lines of the capture the verdict is read from.
+    ///
+    /// The default ([`DEFAULT_TAIL`]) is the freshest slice of the
+    /// screen: enough to hold a status line and the message above it,
+    /// and no more, so old scrollback can never outvote the current
+    /// screen. Raise it for an agent whose live state does not sit at
+    /// the bottom edge — opencode's composer is anchored to the top of
+    /// a tall pane (a fresh session draws its logo where the
+    /// transcript will grow), leaving its status line dozens of lines
+    /// above the bottom. That status line is the only honest "am I
+    /// working" answer there, so it is worth reading that far.
+    ///
+    /// A deeper window never widens what counts as *needing you*: the
+    /// error/quota/waiting markers are still read from the freshest
+    /// [`DEFAULT_TAIL`] lines only, so an old failure sitting in the
+    /// scrollback stays history.
+    #[serde(default)]
+    pub tail: Option<usize>,
     #[serde(default)]
     pub working: Vec<String>,
     #[serde(default)]
@@ -557,6 +579,8 @@ pub struct Manifest {
 pub struct CompiledManifest {
     pub agent: String,
     pub commands: Vec<String>,
+    /// Lines of the capture the verdict is read from.
+    tail: usize,
     working: Vec<Regex>,
     waiting: Vec<Regex>,
     error: Vec<Regex>,
@@ -586,6 +610,7 @@ impl CompiledManifest {
         Ok(CompiledManifest {
             agent: m.agent.clone(),
             commands: m.commands.iter().map(|c| c.to_lowercase()).collect(),
+            tail: m.tail.unwrap_or(DEFAULT_TAIL).max(1),
             working: compile_all(&m.agent, "working", &m.working)?,
             waiting: compile_all(&m.agent, "waiting", &m.waiting)?,
             error: compile_all(&m.agent, "error", &m.error)?,
@@ -620,9 +645,16 @@ impl CompiledManifest {
     /// cleaned for the Summary column.
     pub fn classify(&self, screen: &str) -> Option<(AgentState, String, Option<String>)> {
         let all_lines: Vec<&str> = screen.lines().collect();
-        let mut tail: Vec<&str> = all_lines.iter().rev().take(15).copied().collect();
+        let mut tail: Vec<&str> = all_lines.iter().rev().take(self.tail).copied().collect();
         tail.reverse();
         let tail_offset = all_lines.len().saturating_sub(tail.len());
+        // The fresh window: the only lines a "needs you" marker
+        // (error, quota, waiting) may be read from. A manifest with a
+        // deep tail still honours those markers only here — an old
+        // failure sitting far up the scrollback is history, not
+        // something that needs the operator now. With the default
+        // tail this is the whole window, so nothing changes.
+        let fresh_from = all_lines.len().saturating_sub(DEFAULT_TAIL);
         // The veto scans the whole capture, not just the verdict tail:
         // tall status regions (task lists, goal panels) can push the
         // live-task line above the freshest 15 while the prompt stays
@@ -659,14 +691,18 @@ impl CompiledManifest {
             if is_work {
                 work = Some(i);
             }
-            if self.limited.iter().any(|r| r.is_match(line)) && is_quota_wall(line) {
+            // A need marker only counts inside the fresh window (see
+            // `fresh_from`): a deep tail must not turn old scrollback
+            // into a red row.
+            let fresh = i >= fresh_from;
+            if fresh && self.limited.iter().any(|r| r.is_match(line)) && is_quota_wall(line) {
                 hit = Some((AgentState::Limited, i));
                 limited_at = Some(i);
                 need = true;
-            } else if self.error.iter().any(|r| r.is_match(line)) {
+            } else if fresh && self.error.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Error, i));
                 need = true;
-            } else if self.waiting.iter().any(|r| r.is_match(line)) {
+            } else if fresh && self.waiting.iter().any(|r| r.is_match(line)) {
                 hit = Some((AgentState::Waiting, i));
                 if !is_prompt_chrome(line) {
                     asked_at = Some(i);
@@ -810,6 +846,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
     vec![
         Manifest {
             agent: "claude".to_string(),
+            tail: None,
             commands: vec!["claude".to_string(), "claude-code".to_string()],
             working: vec![
                 "esc to interrupt".to_string(),
@@ -846,6 +883,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
         },
         Manifest {
             agent: "codex".to_string(),
+            tail: None,
             commands: vec!["codex".to_string()],
             working: vec![
                 "esc to interrupt".to_string(),
@@ -875,6 +913,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
         },
         Manifest {
             agent: "gemini".to_string(),
+            tail: None,
             // `agy` is a Gemini-frontend CLI (screens footer "Gemini X
             // Flash"): pinning the command keeps quota/waiting screens on
             // the gemini manifest even when they name other models (the
@@ -937,6 +976,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // the prompt alone never proves waiting: an interrupt offer
             // anywhere in the tail vetoes the prompt verdict.
             agent: "muse".to_string(),
+            tail: None,
             commands: vec!["muse".to_string()],
             working: vec![
                 "esc to interrupt".to_string(),
@@ -975,6 +1015,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // counts stay Tasks-anchored: bare "failed" would fire on prose
             // like "SPEC-200 failed".
             agent: "minimax-code".to_string(),
+            tail: None,
             commands: vec!["minimax-code".to_string(), "minimax".to_string()],
             working: vec![
                 "esc stop".to_string(),
@@ -1060,6 +1101,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // `waiting` verdict came from claude's `^❯` happening to
             // match, which is luck, not a contract.
             agent: "pi".to_string(),
+            tail: None,
             commands: vec!["pi".to_string()],
             working: vec![
                 // Live spinner bar (`── ⠦ Working ──`).
@@ -1153,6 +1195,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // (which is present in both states) means the session is
             // not running.
             agent: "opencode".to_string(),
+            tail: None,
             commands: vec!["opencode".to_string()],
             working: vec![
                 // The footer's interrupt offer. "esc interrupt" is the
@@ -3592,6 +3635,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     fn bad_regex_rejected() {
         let m = Manifest {
             agent: "x".to_string(),
+            tail: None,
             commands: vec![],
             working: vec!["([".to_string()],
             waiting: vec![],
