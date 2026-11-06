@@ -3640,6 +3640,22 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn a_need_marker_in_a_long_screen_still_counts() {
+        let m = compiled();
+        // The fresh window is the last 15 lines whatever the screen's
+        // length: a failure at the bottom is still a failure.
+        let mut screen = String::new();
+        for i in 0..30 {
+            screen.push_str(&format!("filler {i}\n"));
+        }
+        screen.push_str("Error: connection reset\n");
+        assert_eq!(
+            classify_screen(&m, "codex", &screen, false, false),
+            hit(Some("codex"), AgentState::Error, "Error: connection reset")
+        );
+    }
+
+    #[test]
     fn opencode_old_error_stays_history() {
         let m = compiled();
         // The deep window must not turn an old failure into a red row:
