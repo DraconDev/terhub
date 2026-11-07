@@ -976,7 +976,8 @@ fn render_selector(
 fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
     use crate::agent::AgentState;
     match state {
-        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited => {
+        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
+        | AgentState::Looping => {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         }
         // Done: quiet dim-green check — finished, not waiting, not
