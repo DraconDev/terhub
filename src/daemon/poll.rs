@@ -892,10 +892,11 @@ pub(crate) fn merge_record_owned(
     };
     // Waiting/error/limited rows show the prompt (or error) line that
     // tripped the classifier — the text you must read to act. Idle and
-    // Done rows show the completion line, for the same reason. Refreshed
+    // Done rows show the completion line, for the same reason.
+    // Looping rows show the line that is repeating. Refreshed
     // every poll; the clock above still decides notifications. Working
     // rows stay summary-free: spinner text is noise, not information.
-    if matches!(state, Waiting | Error | Limited | Idle | Done)
+    if matches!(state, Waiting | Error | Limited | Looping | Idle | Done)
         && let Some(hit) = screen.as_ref()
         && !hit.summary.is_empty()
     {
