@@ -813,7 +813,7 @@ impl CompiledManifest {
                 hit = Some((AgentState::Idle, fi));
             }
         }
-        hit.map(|(state, i)| {
+        let verdict = hit.map(|(state, i)| {
             let mut line = tail[i];
             // A blocking questionnaire is still the canonical `waiting`
             // state on the wire, but when we can see the actual prompt,
@@ -854,7 +854,38 @@ impl CompiledManifest {
             }
             let phase = phase.map(|pi| screen_summary_line(tail[pi]));
             (state, screen_summary_line(line), phase)
-        })
+        });
+        // One state is not a line: repetition is a property of the
+        // whole capture (the same error, the same command, over and
+        // over — the scrollback's own evidence that the agent is
+        // stuck re-doing something), so it is checked here, after the
+        // freshest-line verdict is known.
+        //
+        // It replaces a working/idle/error verdict: a pane whose
+        // screen prints `Error: 400: ...` ten times is not merely an
+        // error (one failure is news; the same one ten times is a
+        // loop) and it is certainly not `working` or `idle`, which is
+        // what it read before this check existed. It does not replace
+        // a question (the human's answer is the more urgent thing)
+        // nor a quota wall ("wait for the reset" is the more useful
+        // verdict), and its own summary is the repeated line, so the
+        // operator sees *what* is repeating.
+        if let Some(repeating) = repeated_content(screen) {
+            let strong = verdict
+                .as_ref()
+                .is_some_and(|(state, summary, _)| {
+                    matches!(state, AgentState::Limited)
+                        || state.display_label_for(summary) == "question"
+                });
+            if !strong {
+                return Some((
+                    AgentState::Looping,
+                    format!("repeating: {}", screen_summary_line(&repeating)),
+                    verdict.map(|(_, _, phase)| phase).unwrap_or(None),
+                ));
+            }
+        }
+        verdict
     }
 }
 
@@ -1454,7 +1485,11 @@ fn digits_normalized(flat: &str) -> String {
 /// freshest copy, so the operator reads the latest instance).
 pub fn repeated_content(screen: &str) -> Option<String> {
     use std::collections::HashMap;
-    let mut seen: HashMap<String, (String, u32)> = HashMap::new();
+    // Count and display text for every normal form seen; the *freshest*
+    // literal form is what the operator reads, so it overwrites the
+    // stored one as later lines arrive.
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    let mut freshest: HashMap<String, String> = HashMap::new();
     let mut best: Option<(String, u32)> = None;
     for line in screen.lines() {
         let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1462,16 +1497,17 @@ pub fn repeated_content(screen: &str) -> Option<String> {
             continue;
         }
         let key = digits_normalized(&flat);
-        let entry = seen.entry(key).or_insert_with(|| (flat.clone(), 0));
-        entry.0 = flat;
-        entry.1 += 1;
-        if entry.1 >= REPEAT_OCCURRENCES
-            && best.as_ref().is_none_or(|( Display::Best, )| entry.1 > 0)
-        {
-            best = Some((entry.0.clone(), entry.1));
+        let count = counts.entry(key.clone()).or_insert(0);
+        *count += 1;
+        freshest.insert(key, flat);
+        if *count >= REPEAT_OCCURRENCES && best.as_ref().is_none_or(|(_, n)| *count > *n) {
+            // `best` tracks the line with the most earlier occurrences;
+            // the display text is the freshest literal form of that
+            // line, read back at the end.
+            best = Some((key, *count));
         }
     }
-    best.map(|(line, _)| line)
+    best.map(|(key, _)| freshest.get(&key).cloned().unwrap_or_default())
 }
 
 /// Whether a summary is an actual question text suitable for the
