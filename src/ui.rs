@@ -977,10 +977,11 @@ fn render_selector(
 fn state_style(state: crate::agent::AgentState, pal: &Palette) -> Style {
     use crate::agent::AgentState;
     match state {
-        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
-        | AgentState::Looping => {
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-        }
+        AgentState::Waiting
+        | AgentState::Error
+        | AgentState::Stuck
+        | AgentState::Limited
+        | AgentState::Looping => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         // Done: quiet dim-green check — finished, not waiting, not
         // alarming. Shares the working hue so a finished task still
         // reads as "complete and good" instead of "fallen silent".
@@ -1053,17 +1054,13 @@ fn agent_palette(cfg: &crate::config::AppConfig) -> Vec<&str> {
     }
     if cfg.palette() == "light" {
         vec![
-            "#bb381b", "#bb741b", "#bbb11b", "#8abb1b",
-            "#4ebb1b", "#1bbb24", "#1bbb60", "#1bbb9d",
-            "#1b9ebb", "#1b62bb", "#1b25bb", "#4c1bbb",
-            "#891bbb", "#bb1bb2", "#bb1b76", "#bb1b3a",
+            "#bb381b", "#bb741b", "#bbb11b", "#8abb1b", "#4ebb1b", "#1bbb24", "#1bbb60", "#1bbb9d",
+            "#1b9ebb", "#1b62bb", "#1b25bb", "#4c1bbb", "#891bbb", "#bb1bb2", "#bb1b76", "#bb1b3a",
         ]
     } else {
         vec![
-            "#e7846e", "#e7b26e", "#e7df6e", "#c2e76e",
-            "#95e76e", "#6ee775", "#6ee7a3", "#6ee7d0",
-            "#6ed1e7", "#6ea4e7", "#6e76e7", "#946ee7",
-            "#c16ee7", "#e76ee0", "#e76eb3", "#e76e85",
+            "#e7846e", "#e7b26e", "#e7df6e", "#c2e76e", "#95e76e", "#6ee775", "#6ee7a3", "#6ee7d0",
+            "#6ed1e7", "#6ea4e7", "#6e76e7", "#946ee7", "#c16ee7", "#e76ee0", "#e76eb3", "#e76e85",
         ]
     }
 }

@@ -1375,7 +1375,9 @@ fn load_registry(path: &Path) -> HashMap<String, AgentRecord> {
     let stripped = crate::agent::strip_legacy_handles(&mut out);
     if stripped > 0 {
         crate::agent::ensure_handles(&mut out);
-        eprintln!("terhubd: rewrote {stripped} session-bearing handle(s) to the sessionless scheme");
+        eprintln!(
+            "terhubd: rewrote {stripped} session-bearing handle(s) to the sessionless scheme"
+        );
     }
     out
 }

@@ -2281,11 +2281,19 @@ fn hook_loop_summary_promotes_a_working_hook() {
     );
     // A question on the screen is still the more urgent thing: it
     // never promotes to looping.
-    let question = screen_hit(Some("pi"), AgentState::Waiting, "Which lane should I switch to?");
+    let question = screen_hit(
+        Some("pi"),
+        AgentState::Waiting,
+        "Which lane should I switch to?",
+    );
     assert_eq!(hook_loop_summary(&working, question.as_ref()), None);
     // No agent match — the repeat belongs to somebody else — and no
     // other state (an idle record carries through the idle promotion).
-    let other = screen_hit(Some("claude"), AgentState::Looping, "repeating: Error: 400: x");
+    let other = screen_hit(
+        Some("claude"),
+        AgentState::Looping,
+        "repeating: Error: 400: x",
+    );
     assert_eq!(hook_loop_summary(&working, other.as_ref()), None);
     let mut idle = working.clone();
     idle.state = AgentState::Idle;
@@ -2313,7 +2321,10 @@ fn a_looping_screen_promotes_a_hook_idle_row() {
         hook_idle_promotion(&rec, looping.as_ref(), Some("pi"), 100).expect("promotion");
     assert_eq!(state, AgentState::Looping);
     assert_eq!(since, 100);
-    assert_eq!(summary, "repeating: Error: 400: {\"message\":\"Provider returned error\"}");
+    assert_eq!(
+        summary,
+        "repeating: Error: 400: {\"message\":\"Provider returned error\"}"
+    );
 }
 
 #[test]
@@ -2372,7 +2383,11 @@ fn long_untouched_question_never_decays_to_idle() {
         DONE_IDLE_SECS,
     )
     .expect("no record");
-    assert_eq!(rec.state, AgentState::Waiting, "a real question decayed to idle");
+    assert_eq!(
+        rec.state,
+        AgentState::Waiting,
+        "a real question decayed to idle"
+    );
     assert_eq!(rec.display_label(), "question");
     assert!(rec.state.needs_attention());
     // The question text survives, so the row answers "what is it

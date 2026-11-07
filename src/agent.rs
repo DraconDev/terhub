@@ -382,7 +382,9 @@ pub fn ensure_handles(registry: &mut std::collections::HashMap<String, AgentReco
 /// is rewritten on every load. The rewrite is deterministic, so the
 /// assignment comes back the same each time — it just isn't the
 /// no-op the other records get.
-pub fn strip_legacy_handles(registry: &mut std::collections::HashMap<String, AgentRecord>) -> usize {
+pub fn strip_legacy_handles(
+    registry: &mut std::collections::HashMap<String, AgentRecord>,
+) -> usize {
     let mut stale: Vec<String> = Vec::new();
     for (pane, r) in registry.iter() {
         if r.handle.is_empty() || r.agent.is_empty() {
@@ -664,7 +666,11 @@ impl CompiledManifest {
     /// visible area, and it only feeds the repetition check's smaller
     /// bar (see `repeated_content`); pass 0 when it is unknown, which
     /// counts the whole capture again.
-    pub fn classify(&self, screen: &str, visible: usize) -> Option<(AgentState, String, Option<String>)> {
+    pub fn classify(
+        &self,
+        screen: &str,
+        visible: usize,
+    ) -> Option<(AgentState, String, Option<String>)> {
         let all_lines: Vec<&str> = screen.lines().collect();
         let mut tail: Vec<&str> = all_lines.iter().rev().take(self.tail).copied().collect();
         tail.reverse();
@@ -876,12 +882,10 @@ impl CompiledManifest {
         // verdict), and its own summary is the repeated line, so the
         // operator sees *what* is repeating.
         if let Some(repeating) = repeated_content(screen, visible) {
-            let strong = verdict
-                .as_ref()
-                .is_some_and(|(state, summary, _)| {
-                    matches!(state, AgentState::Limited)
-                        || state.display_label_for(summary) == "question"
-                });
+            let strong = verdict.as_ref().is_some_and(|(state, summary, _)| {
+                matches!(state, AgentState::Limited)
+                    || state.display_label_for(summary) == "question"
+            });
             if !strong {
                 return Some((
                     AgentState::Looping,
@@ -1445,8 +1449,7 @@ fn is_chrome_line(flat: &str) -> bool {
     // A collapsed-output marker (`... (5 earlier lines, ctrl+o to
     // expand)`, `+1707 …`): the TUI's own bookkeeping, there because
     // the transcript is long, not because the agent says it.
-    flat.starts_with("...")
-        && (flat.contains("earlier lines") || flat.contains("more lines"))
+    flat.starts_with("...") && (flat.contains("earlier lines") || flat.contains("more lines"))
 }
 
 /// Whether a content line counts as something to loop on: it must be a
@@ -1518,8 +1521,8 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
         *count += 1;
         let raw = flat.clone();
         fresh.insert(key.clone(), raw);
-        let live = *count >= REPEAT_OCCURRENCES
-            || (*count >= REPEAT_OCCURRENCES_VISIBLE && i >= boundary);
+        let live =
+            *count >= REPEAT_OCCURRENCES || (*count >= REPEAT_OCCURRENCES_VISIBLE && i >= boundary);
         if live && best.as_ref().is_none_or(|(_, n)| *count > *n) {
             // `best` holds the *normal* form of the most-repeated line;
             // the display text is the freshest literal form, kept above
@@ -1609,9 +1612,7 @@ fn is_choice_line(line: &str) -> bool {
     // A boxed line: opencode draws its question picker inside the
     // composer's `┃` border, so the option number sits behind the
     // border, not at the start of the line.
-    let line = line
-        .trim_start_matches(['┃', '│', '|', '┃'])
-        .trim_start();
+    let line = line.trim_start_matches(['┃', '│', '|', '┃']).trim_start();
     let digits = line.chars().take_while(char::is_ascii_digit).count();
     (digits > 0 && line[digits..].starts_with(". "))
         || line.starts_with("Type something.")
@@ -1984,12 +1985,14 @@ pub fn classify_screen_owned(
     let clean = strip_tip_lines(screen);
     let screen = clean.as_str();
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
-        let hit = m.classify(screen, visible).map(|(state, summary, phase)| ScreenHit {
-            agent: Some(m.agent.clone()),
-            state,
-            summary,
-            phase,
-        });
+        let hit = m
+            .classify(screen, visible)
+            .map(|(state, summary, phase)| ScreenHit {
+                agent: Some(m.agent.clone()),
+                state,
+                summary,
+                phase,
+            });
         return park_annotate(bell_override(hit, bell), parked);
     }
     let flat = screen.to_lowercase();
@@ -2261,34 +2264,32 @@ mod tests {
 
     #[test]
     fn strip_legacy_handles_rewrites_only_old_mint() {
-        let mk = |pane: &str, agent: &str, session: &str, handle: &str| {
-            AgentRecord {
-                pane: pane.to_string(),
-                agent: agent.to_string(),
-                state: AgentState::Working,
-                source: Source::Hook,
-                summary: String::new(),
-                session: session.to_string(),
-                window: String::new(),
-                command: String::new(),
-                updated_at: 0,
-                state_since: 0,
-                cpu_ticks: 0,
-                cpu_still_since: 0,
-                agent_start: 0,
-                last_turn_secs: 0,
-                screen_hash: 0,
-                quiet_since: 0,
-                last_prompt_at: 0,
-                last_prompt: String::new(),
-                handle: handle.to_string(),
-                model: String::new(),
-                ctx_pct: None,
-                reg_pid: 0,
-                bell: false,
-                bell_reason: String::new(),
-                stuck_base: None,
-            }
+        let mk = |pane: &str, agent: &str, session: &str, handle: &str| AgentRecord {
+            pane: pane.to_string(),
+            agent: agent.to_string(),
+            state: AgentState::Working,
+            source: Source::Hook,
+            summary: String::new(),
+            session: session.to_string(),
+            window: String::new(),
+            command: String::new(),
+            updated_at: 0,
+            state_since: 0,
+            cpu_ticks: 0,
+            cpu_still_since: 0,
+            agent_start: 0,
+            last_turn_secs: 0,
+            screen_hash: 0,
+            quiet_since: 0,
+            last_prompt_at: 0,
+            last_prompt: String::new(),
+            handle: handle.to_string(),
+            model: String::new(),
+            ctx_pct: None,
+            reg_pid: 0,
+            bell: false,
+            bell_reason: String::new(),
+            stuck_base: None,
         };
         let mut reg = HashMap::new();
         // Old mint, bare and suffixed: both go.
@@ -2307,7 +2308,10 @@ mod tests {
         // hand-set name that merely starts alike — all keep.
         reg.insert("%5".to_string(), mk("%5", "pi", "wez", "@pi"));
         reg.insert("%6".to_string(), mk("%6", "pi", "", "@pi-2"));
-        reg.insert("%7".to_string(), mk("%7", "claude", "s", "@claude-s-custom"));
+        reg.insert(
+            "%7".to_string(),
+            mk("%7", "claude", "s", "@claude-s-custom"),
+        );
         // Old mint shape but the suffix isn't digits: keep.
         reg.insert("%8".to_string(), mk("%8", "pi", "wez", "@pi-wez-two"));
         assert_eq!(strip_legacy_handles(&mut reg), 4);
@@ -3270,7 +3274,9 @@ mod tests {
         // chrome is present here exactly as on a finished pane, which
         // is why the manifest claims no working/idle patterns at all.
         assert_ne!(
-            pi_manifest().classify(PI_WORKING_SCREEN, 0).map(|(s, _, _)| s),
+            pi_manifest()
+                .classify(PI_WORKING_SCREEN, 0)
+                .map(|(s, _, _)| s),
             Some(AgentState::Waiting),
             "working screen must not read as waiting"
         );
@@ -3880,12 +3886,18 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         assert_eq!(AgentState::Looping.label(), "looping");
         assert_eq!(AgentState::Looping.display_label(), "looping");
         // Label and parse round-trip: whatever we render, we can read.
-        assert_eq!(AgentState::parse(AgentState::Looping.label()), Some(AgentState::Looping));
+        assert_eq!(
+            AgentState::parse(AgentState::Looping.label()),
+            Some(AgentState::Looping)
+        );
         // A loop is the operator's problem to solve, like a hang.
         assert!(AgentState::Looping.needs_attention());
         // A legacy client cannot read `looping`; the daemon projects it
         // to the nearest attention state (never a quiet one).
-        assert_eq!(crate::daemon::legacy_state(AgentState::Looping), AgentState::Stuck);
+        assert_eq!(
+            crate::daemon::legacy_state(AgentState::Looping),
+            AgentState::Stuck
+        );
     }
 
     #[test]
@@ -3980,7 +3992,9 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // parking is a cleared conversation, not an active loop.
         let mut screen = String::new();
         for _ in 0..3 {
-            screen.push_str("Claim submitted — audit pending (nonterminal; the final verdict posts later)\n");
+            screen.push_str(
+                "Claim submitted — audit pending (nonterminal; the final verdict posts later)\n",
+            );
             screen.push_str("Quick summary while it settles:\n");
             screen.push('\n');
         }
@@ -4011,14 +4025,20 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
             screen.push_str(&format!("├─ why: main model unknown — 400: attempt {i}\n"));
             screen.push_str(err);
             screen.push('\n');
-            screen.push_str("Main model recovery: retrying openrouter/stealth/crouton-alpha (same-model)\n");
+            screen.push_str(
+                "Main model recovery: retrying openrouter/stealth/crouton-alpha (same-model)\n",
+            );
         }
         screen.push_str("  ── ⠼ Working ───────────────────────────────────────────\n");
         screen.push_str("~/Dev/dracon-strategy:main\n");
         let hit = classify_screen(&m, "pi", &screen, false, false).expect("hit");
         assert_eq!(hit.state, AgentState::Looping);
         assert_eq!(hit.agent.as_deref(), Some("pi"));
-        assert!(hit.summary.starts_with("repeating: Error: 400"), "{}", hit.summary);
+        assert!(
+            hit.summary.starts_with("repeating: Error: 400"),
+            "{}",
+            hit.summary
+        );
     }
 
     #[test]
@@ -4043,7 +4063,10 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         let hit = classify_screen(&m, "pi", &screen, false, false).expect("hit");
         assert_eq!(hit.state, AgentState::Waiting, "{}", hit.summary);
         assert_eq!(hit.state.display_label_for(&hit.summary), "question");
-        assert_eq!(hit.summary, "When you pick a different music theme, what actually happens?");
+        assert_eq!(
+            hit.summary,
+            "When you pick a different music theme, what actually happens?"
+        );
     }
 
     #[test]

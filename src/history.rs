@@ -1271,10 +1271,11 @@ impl TimelineView {
 fn state_style(state: AgentState) -> ratatui::style::Style {
     use ratatui::style::{Color, Modifier, Style};
     match state {
-        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
-        | AgentState::Looping => {
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-        }
+        AgentState::Waiting
+        | AgentState::Error
+        | AgentState::Stuck
+        | AgentState::Limited
+        | AgentState::Looping => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         // Done: quiet green check — finished, not waiting, never
         // alarming. The history view doesn't have access to the
         // user's palette, so it falls back to the same light-green

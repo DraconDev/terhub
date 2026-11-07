@@ -705,7 +705,10 @@ pub(crate) fn hook_question_summary<'a>(
 /// Fires only on `Working` — a hook `waiting` row is already
 /// attention (a question or an error), and a hook `idle` row is
 /// handled by [`hook_idle_promotion`]. Returns the summary to show.
-pub(crate) fn hook_loop_summary<'a>(rec: &AgentRecord, screen_hit: Option<&'a ScreenHit>) -> Option<&'a str> {
+pub(crate) fn hook_loop_summary<'a>(
+    rec: &AgentRecord,
+    screen_hit: Option<&'a ScreenHit>,
+) -> Option<&'a str> {
     if rec.source != Source::Hook || rec.state != AgentState::Working {
         return None;
     }
@@ -1035,8 +1038,7 @@ pub(crate) fn merge_record_owned(
     // questions" failure. So the decay spares what the screen says is a
     // question; the threshold and the rest of the rule are unchanged.
     let is_question = screen.as_ref().is_some_and(|hit| {
-        hit.state == AgentState::Waiting
-            && hit.state.display_label_for(&hit.summary) == "question"
+        hit.state == AgentState::Waiting && hit.state.display_label_for(&hit.summary) == "question"
     });
     if final_state == Waiting
         && waiting_idle_secs > 0
