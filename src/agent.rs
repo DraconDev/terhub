@@ -3835,6 +3835,163 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn looping_state_parses_and_labels() {
+        assert_eq!(AgentState::parse("looping"), Some(AgentState::Looping));
+        assert_eq!(AgentState::parse("REPEATING"), Some(AgentState::Looping));
+        assert_eq!(AgentState::Looping.label(), "looping");
+        assert_eq!(AgentState::Looping.display_label(), "looping");
+        // Label and parse round-trip: whatever we render, we can read.
+        assert_eq!(AgentState::parse(AgentState::Looping.label()), Some(AgentState::Looping));
+        // A loop is the operator's problem to solve, like a hang.
+        assert!(AgentState::Looping.needs_attention());
+        // A legacy client cannot read `looping`; the daemon projects it
+        // to the nearest attention state (never a quiet one).
+        assert_eq!(crate::daemon::legacy_state(AgentState::Looping), AgentState::Stuck);
+    }
+
+    #[test]
+    fn a_repeated_error_line_is_looping() {
+        // The model-recovery loop: the same provider error printed
+        // once per retry cycle while the pane reads plain idle.
+        let err = "Error: 400: {\"message\":\"Provider returned error\",\"code\":400,\"metadata\"}";
+        let mut screen = String::new();
+        for i in 0..5 {
+            screen.push_str(&format!("├─ why: main model unknown — 400: attempt {i}\n"));
+            screen.push_str(err);
+            screen.push('\n');
+            screen.push_str("Main model recovery: retrying openrouter/stealth/crouton-alpha\n");
+        }
+        screen.push_str("  ── ⠼ Working ──\n");
+        screen.push_str("~/Dev/dracon-strategy:main\n");
+        assert_eq!(
+            repeated_content(&screen).map(|s| screen_summary_line(&s)),
+            Some("Error: 400: {\"message\":\"Provider returned error\",\"code\":400,\"metadata\"…".to_string())
+        );
+    }
+
+    #[test]
+    fn a_repeated_command_line_is_looping() {
+        // The audit agent re-running the same verification sweep: the
+        // same command line, over and over, instead of advancing.
+        let mut screen = String::new();
+        for _ in 0..4 {
+            screen.push_str("$ cd extensions/standalones/g2a-helper && grep -o \"fixed in\" findings.md | sort | uniq\n");
+            screen.push_str("  fixed in fdc1262079\n");
+        }
+        screen.push_str("── ⠋ Working ──\n");
+        assert!(repeated_content(&screen).is_some());
+    }
+
+    #[test]
+    fn a_retry_counter_is_one_line_not_many() {
+        // `Retrying (3/15) in 60s`, `Retrying (4/15) in 59s`: the
+        // counter changes and the timer counts down, but the line is
+        // the same.
+        let screen = "phase one\nRetrying (3/15) in 60s\nphase two\nRetrying (4/15) in 59s\nphase three\nRetrying (5/15) in 58s\n";
+        assert_eq!(repeated_content(screen).as_deref(), Some("Retrying (5/15) in 58s"));
+    }
+
+    #[test]
+    fn two_repeats_are_not_a_loop() {
+        // Two instances is a coincidence (a table row, a reused
+        // command). Three is a loop.
+        let screen = "Error: 400: provider returned error code 400\nwork\nError: 400: provider returned error code 400\n";
+        assert_eq!(repeated_content(screen), None);
+    }
+
+    #[test]
+    fn a_repeated_prose_line_is_not_a_loop() {
+        // An audit note that an agent wrote three times before
+        // parking is a cleared conversation, not an active loop.
+        let mut screen = String::new();
+        for _ in 0..3 {
+            screen.push_str("Claim submitted — audit pending (nonterminal; the final verdict posts later)\n");
+            screen.push_str("Quick summary while it settles:\n");
+            screen.push_str("\n");
+        }
+        assert_eq!(repeated_content(&screen), None);
+    }
+
+    #[test]
+    fn chrome_and_collapse_markers_do_not_count() {
+        // Box art, rules, separators and collapsed-output markers are
+        // the TUI's bookkeeping, there because the transcript is long.
+        let mut screen = String::new();
+        for _ in 0..4 {
+            screen.push_str("├───────────────────────────────┼───────────────────────────\n");
+            screen.push_str("... (5 earlier lines, ctrl+o to expand)\n");
+            screen.push_str("── ⠼ Working ────────────────────────\n");
+        }
+        assert_eq!(repeated_content(&screen), None);
+    }
+
+    #[test]
+    fn pi_loop_verdict_wins_over_working_and_idle() {
+        let m = compiled();
+        // A pi pane whose scrollback has ten of the same error and a
+        // live spinner: looping, not working.
+        let err = "Error: 400: {\"message\":\"Provider returned error\",\"code\":400}";
+        let mut screen = String::from("pi TUI\n");
+        for i in 0..4 {
+            screen.push_str(&format!("├─ why: main model unknown — 400: attempt {i}\n"));
+            screen.push_str(err);
+            screen.push('\n');
+            screen.push_str("Main model recovery: retrying openrouter/stealth/crouton-alpha (same-model)\n");
+        }
+        screen.push_str("  ── ⠼ Working ───────────────────────────────────────────\n");
+        screen.push_str("~/Dev/dracon-strategy:main\n");
+        let hit = classify_screen(&m, "pi", &screen, false, false).expect("hit");
+        assert_eq!(hit.state, AgentState::Looping);
+        assert_eq!(hit.agent.as_deref(), Some("pi"));
+        assert!(hit.summary.starts_with("repeating: Error: 400"), "{}", hit.summary);
+    }
+
+    #[test]
+    fn a_question_outranks_a_loop() {
+        // A blocked question is more urgent than the loop behind it:
+        // the human's answer is what unsticks the pane.
+        let m = compiled();
+        let mut screen = String::from("pi TUI\n");
+        let err = "Error: 400: {\"message\":\"Provider returned error\",\"code\":400}";
+        for i in 0..4 {
+            screen.push_str(&format!("Error: 400: attempt {i}\n"));
+            screen.push_str(err);
+            screen.push('\n');
+        }
+        screen.push_str("  ❯ 1. Moves, music stays same (Recommended)\n");
+        screen.push_str("  ❯ 2. Doesn't move at all\n");
+        screen.push_str("  ❯ 3. No music anywhere on Sound\n");
+        screen.push_str("Enter to select · ↑/↓ to navigate\n");
+        let hit = classify_screen(&m, "pi", &screen, false, false).expect("hit");
+        assert_eq!(hit.state, AgentState::Waiting);
+        assert_eq!(hit.state.display_label_for(&hit.summary), "question");
+    }
+
+    #[test]
+    fn a_quota_wall_outranks_a_loop() {
+        // A quota wall is actionable (wait for the reset); the loop
+        // behind it is the same fact restated.
+        let m = compiled();
+        let mut screen = String::from("claude TUI\n");
+        for i in 0..4 {
+            screen.push_str(&format!("Error: attempt {i}: rate limit reached\n"));
+        }
+        screen.push_str("❯ Try asking me to build something\n");
+        let hit = classify_screen(&m, "claude", &screen, false, false).expect("hit");
+        assert_eq!(hit.state, AgentState::Limited);
+    }
+
+    #[test]
+    fn a_single_failure_is_an_error_not_a_loop() {
+        // One failure is news. The loop verdict needs the same thing
+        // three times.
+        let m = compiled();
+        let screen = "pi TUI\nError: 400: {\"message\":\"Provider returned error\",\"code\":400}\n── ⠼ Working ──\n";
+        let hit = classify_screen(&m, "pi", screen, false, false).expect("hit");
+        assert_eq!(hit.state, AgentState::Working);
+    }
+
+    #[test]
     fn opencode_stale_interrupt_offer_does_not_pin_working() {
         let m = compiled();
         // The transcript can mention the offer ("press esc interrupt to
