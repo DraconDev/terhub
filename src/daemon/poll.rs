@@ -13,7 +13,7 @@ use super::{Tunables, lock_registry, log_entry};
 use super::{DONE_IDLE_SECS, QUIET_IDLE_SECS, WAITING_IDLE_SECS};
 use crate::agent::{
     AgentRecord, AgentState, CompiledManifest, HookEvent, ScreenHit, Source, apply_event_to,
-    classify_screen, is_harness_command, is_shell_command, now_unix,
+    classify_screen_owned, is_harness_command, is_shell_command, now_unix,
 };
 use crate::attend::detect_all_transitions;
 use crate::history;
@@ -1356,12 +1356,17 @@ pub(crate) fn poll_sync_with(
             None
         } else {
             screen.as_deref().and_then(|s| {
-                classify_screen(
+                classify_screen_owned(
                     manifests,
                     &pane.command,
                     s,
                     pane.bell,
                     crate::proc::parked_in_tty_read(pane.pid),
+                    // The pane's visible height: the capture is the
+                    // visible area plus scrollback, and the repetition
+                    // check's smaller bar only counts repeats whose
+                    // freshest copy is still on screen.
+                    pane.height as usize,
                 )
             })
         };

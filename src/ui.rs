@@ -792,6 +792,7 @@ fn selector_segments(
         Some(
             AgentState::Waiting
             | AgentState::Stuck
+            | AgentState::Looping
             | AgentState::Error
             | AgentState::Limited
             | AgentState::Working,

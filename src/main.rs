@@ -760,7 +760,7 @@ fn cmd_hook(
 ) -> i32 {
     let Some(state) = AgentState::parse(state) else {
         eprintln!(
-            "terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)"
+            "terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|looping|unknown)"
         );
         return 1;
     };
@@ -815,7 +815,7 @@ fn cmd_register(pane: &str, agent: &str, pid: Option<u32>, state: &str) -> i32 {
     }
     let Some(state) = AgentState::parse(state) else {
         eprintln!(
-            "terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|unknown)"
+            "terhub: bad state '{state}' (working|waiting|error|idle|stuck|limited|quota|looping|unknown)"
         );
         return 1;
     };

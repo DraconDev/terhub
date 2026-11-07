@@ -2263,6 +2263,124 @@ fn hook_summary_is_enriched_and_working_hook_promoted_for_a_question() {
 }
 
 #[test]
+fn hook_loop_summary_promotes_a_working_hook() {
+    // A turn the hook claims as working that is in fact re-doing the
+    // same thing is stronger evidence than the hook's claim: the row
+    // must read `looping` with the repeated line, like the question
+    // promotes a working hook to waiting.
+    let mut working = carried("pi", AgentState::Working, 0, 0, 10);
+    working.source = Source::Hook;
+    let looping = screen_hit(
+        Some("pi"),
+        AgentState::Looping,
+        "repeating: Error: 400: {\"message\":\"Provider returned error\"}",
+    );
+    assert_eq!(
+        hook_loop_summary(&working, looping.as_ref()),
+        Some("repeating: Error: 400: {\"message\":\"Provider returned error\"}")
+    );
+    // A question on the screen is still the more urgent thing: it
+    // never promotes to looping.
+    let question = screen_hit(Some("pi"), AgentState::Waiting, "Which lane should I switch to?");
+    assert_eq!(hook_loop_summary(&working, question.as_ref()), None);
+    // No agent match — the repeat belongs to somebody else — and no
+    // other state (an idle record carries through the idle promotion).
+    let other = screen_hit(Some("claude"), AgentState::Looping, "repeating: Error: 400: x");
+    assert_eq!(hook_loop_summary(&working, other.as_ref()), None);
+    let mut idle = working.clone();
+    idle.state = AgentState::Idle;
+    assert_eq!(hook_loop_summary(&idle, looping.as_ref()), None);
+    // A manual pin is never promoted: the human named that agent.
+    let mut manual = working.clone();
+    manual.source = Source::Manual;
+    assert_eq!(hook_loop_summary(&manual, looping.as_ref()), None);
+}
+
+#[test]
+fn a_looping_screen_promotes_a_hook_idle_row() {
+    // `agent_end` fires when the main turn ends, but a retry loop
+    // keeps printing the same error after it. The promotion carries
+    // the repeat, so the stranded loop reads `looping`, not `idle`.
+    let mut rec = carried("pi", AgentState::Idle, 0, 0, 10);
+    rec.source = Source::Hook;
+    rec.summary = "response finished".to_string();
+    let looping = screen_hit(
+        Some("pi"),
+        AgentState::Looping,
+        "repeating: Error: 400: {\"message\":\"Provider returned error\"}",
+    );
+    let (state, since, summary) =
+        hook_idle_promotion(&rec, looping.as_ref(), Some("pi"), 100).expect("promotion");
+    assert_eq!(state, AgentState::Looping);
+    assert_eq!(since, 100);
+    assert_eq!(summary, "repeating: Error: 400: {\"message\":\"Provider returned error\"}");
+}
+
+#[test]
+fn a_looping_screen_verdict_survives_the_merge() {
+    // The process tree says an agent is there; the screen says it
+    // repeats the same thing. The verdict must win over the default
+    // `working`, and the repeated line rides along as the summary.
+    let rec = merge_record(
+        None,
+        false,
+        screen_hit(
+            Some("pi"),
+            AgentState::Looping,
+            "repeating: Error: 400: {\"message\":\"Provider returned error\"}",
+        ),
+        Some(("pi", 500)),
+        &test_pane(),
+        100,
+        300,
+    )
+    .expect("looping screen verdict claims the pane");
+    assert_eq!(rec.state, AgentState::Looping);
+    assert_eq!(rec.source, Source::Proc);
+    assert_eq!(
+        rec.summary,
+        "repeating: Error: 400: {\"message\":\"Provider returned error\"}"
+    );
+    assert!(rec.state.needs_attention());
+}
+
+#[test]
+fn long_untouched_question_never_decays_to_idle() {
+    // The waiting→idle decay is for *prompts* (a bare `>` nobody
+    // touches). An explicit question — a blocking picker with the
+    // question and numbered options — is not a prompt: the agent is
+    // stopped and only the human unsticks it, so the question must
+    // stay visible no matter how long it has sat.
+    let now = 100_000;
+    let mut old = carried("pi", AgentState::Waiting, 500, now - 4, now - 5_000);
+    old.quiet_since = now - (WAITING_IDLE_SECS + 3_600);
+    let rec = merge_record_owned(
+        Some(&old),
+        false,
+        screen_hit(
+            Some("pi"),
+            AgentState::Waiting,
+            "Which lane should I switch to?",
+        ),
+        Some(("pi", 500, 100)),
+        &test_pane(),
+        false,
+        now,
+        STUCK_SECS,
+        QUIET_IDLE_SECS,
+        WAITING_IDLE_SECS,
+        DONE_IDLE_SECS,
+    )
+    .expect("no record");
+    assert_eq!(rec.state, AgentState::Waiting, "a real question decayed to idle");
+    assert_eq!(rec.display_label(), "question");
+    assert!(rec.state.needs_attention());
+    // The question text survives, so the row answers "what is it
+    // asking?" however long it has waited.
+    assert_eq!(rec.summary, "Which lane should I switch to?");
+}
+
+#[test]
 fn idle_verdict_keeps_its_completion_line() {
     // Done rows show what finished ("✓ Todo list…"), like waiting
     // rows show the plea — not a blank. And a done screen beats a

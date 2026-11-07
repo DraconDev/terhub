@@ -659,7 +659,12 @@ impl CompiledManifest {
     /// activity is stale scrollback, not done-ness).
     /// Freshest matching line wins; the returned summary is that line,
     /// cleaned for the Summary column.
-    pub fn classify(&self, screen: &str) -> Option<(AgentState, String, Option<String>)> {
+    ///
+    /// `visible` is how many of the capture's last lines are the pane's
+    /// visible area, and it only feeds the repetition check's smaller
+    /// bar (see `repeated_content`); pass 0 when it is unknown, which
+    /// counts the whole capture again.
+    pub fn classify(&self, screen: &str, visible: usize) -> Option<(AgentState, String, Option<String>)> {
         let all_lines: Vec<&str> = screen.lines().collect();
         let mut tail: Vec<&str> = all_lines.iter().rev().take(self.tail).copied().collect();
         tail.reverse();
@@ -870,7 +875,7 @@ impl CompiledManifest {
         // nor a quota wall ("wait for the reset" is the more useful
         // verdict), and its own summary is the repeated line, so the
         // operator sees *what* is repeating.
-        if let Some(repeating) = repeated_content(screen) {
+        if let Some(repeating) = repeated_content(screen, visible) {
             let strong = verdict
                 .as_ref()
                 .is_some_and(|(state, summary, _)| {
@@ -1403,8 +1408,17 @@ pub fn screen_summary_line(line: &str) -> String {
 }
 
 /// How many times the same line must appear in one screen before the
-/// pane reads as repeating it.
-const REPEAT_OCCURRENCES: u32 = 3;
+/// pane reads as repeating it. Four or more times anywhere in the
+/// capture is a loop: the scrollback only stays that full of the same
+/// line while the agent is still in it.
+const REPEAT_OCCURRENCES: u32 = 4;
+
+/// ...or three times, with the newest occurrence inside the region of
+/// the capture the pane is displaying right now rather than in the
+/// scrollback behind it. A slower loop is not in as much of a hurry to
+/// repeat, but its freshest copy is on the screen, not the product of
+/// an earlier round of work that has since finished.
+const REPEAT_OCCURRENCES_VISIBLE: u32 = 3;
 
 /// The shortest line worth treating as content: anything shorter is
 /// chrome (`… (3 earlier lines)`, a box border, a token counter).
@@ -1475,23 +1489,26 @@ fn digits_normalized(flat: &str) -> String {
 }
 
 /// The line this screen is repeating, if any: the same error or the
-/// same command printed [`REPEAT_OCCURRENCES`] times or more in the
-/// capture. The agent is not progressing — it is doing the same thing
-/// again and getting the same result (a provider 400-loop is the live
-/// shape: model-recovery retries print the same error line every
-/// cycle while the pane reads plain `idle`).
+/// same command printed over and over — the agent is not progressing,
+/// it is doing the same thing again and getting the same result (a
+/// provider 400-loop is the live shape: model-recovery retries print
+/// the same error line every cycle while the pane reads plain `idle`).
+///
+/// `visible` is how many of the capture's last lines are the pane's
+/// visible area (the rest is scrollback). It only matters for the
+/// smaller of the two bars, see [`REPEAT_OCCURRENCES_VISIBLE`].
 ///
 /// Returns the *display* form of the most repeated line (the
 /// freshest copy, so the operator reads the latest instance).
-pub fn repeated_content(screen: &str) -> Option<String> {
+pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
     use std::collections::HashMap;
-    // Count and display text for every normal form seen; the *freshest*
-    // literal form is what the operator reads, so it overwrites the
-    // stored one as later lines arrive.
+    // Count and freshest literal form for every normal form seen.
     let mut counts: HashMap<String, u32> = HashMap::new();
-    let mut freshest: HashMap<String, String> = HashMap::new();
+    let mut fresh: HashMap<String, String> = HashMap::new();
+    let total = screen.lines().count();
+    let boundary = total.saturating_sub(visible);
     let mut best: Option<(String, u32)> = None;
-    for line in screen.lines() {
+    for (i, line) in screen.lines().enumerate() {
         let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
         if flat.chars().count() < REPEAT_MIN_LEN || is_chrome_line(&flat) || !is_repeatable(&flat) {
             continue;
@@ -1499,15 +1516,18 @@ pub fn repeated_content(screen: &str) -> Option<String> {
         let key = digits_normalized(&flat);
         let count = counts.entry(key.clone()).or_insert(0);
         *count += 1;
-        if *count >= REPEAT_OCCURRENCES && best.as_ref().is_none_or(|(_, n)| *count > *n) {
+        let raw = flat.clone();
+        fresh.insert(key.clone(), raw);
+        let live = *count >= REPEAT_OCCURRENCES
+            || (*count >= REPEAT_OCCURRENCES_VISIBLE && i >= boundary);
+        if live && best.as_ref().is_none_or(|(_, n)| *count > *n) {
             // `best` holds the *normal* form of the most-repeated line;
-            // the display text is the freshest literal form, kept in
-            // `freshest` and read back at the end.
+            // the display text is the freshest literal form, kept above
+            // and read back at the end.
             best = Some((key.clone(), *count));
         }
-        freshest.insert(key, flat);
     }
-    best.map(|(key, _)| freshest.get(&key).cloned().unwrap_or_default())
+    best.map(|(key, _)| fresh.get(&key).cloned().unwrap_or_default())
 }
 
 /// Whether a summary is an actual question text suitable for the
@@ -1917,6 +1937,25 @@ pub fn classify_screen(
     bell: bool,
     parked: bool,
 ) -> Option<ScreenHit> {
+    classify_screen_owned(manifests, command, screen, bell, parked, 0)
+}
+
+/// The same classifier with the pane's visible height: how many of
+/// the capture's last lines are actually on the screen. Only feeds
+/// the repetition check's smaller bar — anything above the
+/// boundary is scrollback, and a repeat that stopped there ended
+/// when the round of work finished.
+///
+/// `0` means "unknown" and counts the whole capture again, so callers
+/// without a pane (previews, tests) are not gated by staleness.
+pub fn classify_screen_owned(
+    manifests: &[CompiledManifest],
+    command: &str,
+    screen: &str,
+    bell: bool,
+    parked: bool,
+    visible: usize,
+) -> Option<ScreenHit> {
     // Bell evidence is layered on top of pattern matching, not in
     // place of it. We append a synthetic line `🔔 bell` to the
     // capture when the kernel flag fired; any manifest `waiting:`
@@ -1945,7 +1984,7 @@ pub fn classify_screen(
     let clean = strip_tip_lines(screen);
     let screen = clean.as_str();
     if let Some(m) = manifests.iter().find(|m| m.matches_command(command)) {
-        let hit = m.classify(screen).map(|(state, summary, phase)| ScreenHit {
+        let hit = m.classify(screen, visible).map(|(state, summary, phase)| ScreenHit {
             agent: Some(m.agent.clone()),
             state,
             summary,
@@ -1955,7 +1994,7 @@ pub fn classify_screen(
     }
     let flat = screen.to_lowercase();
     for m in manifests {
-        if let Some((state, summary, phase)) = m.classify(screen) {
+        if let Some((state, summary, phase)) = m.classify(screen, visible) {
             let agent = flat
                 .contains(m.agent.to_lowercase().as_str())
                 .then(|| m.agent.clone());
@@ -2955,7 +2994,7 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            m.classify("Summary\nall tasks passed · 0 failed\n")
+            m.classify("Summary\nall tasks passed · 0 failed\n", 0)
                 .unwrap()
                 .0,
             AgentState::Done
@@ -2988,7 +3027,7 @@ mod tests {
         })
         .unwrap();
         let state = m
-            .classify("Summary\nall tasks passed · 0 failed\n")
+            .classify("Summary\nall tasks passed · 0 failed\n", 0)
             .map(|(s, _, _)| s);
         assert_ne!(
             state,
@@ -3021,7 +3060,7 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            m.classify("Summary\nall tasks passed · 0 failed\n")
+            m.classify("Summary\nall tasks passed · 0 failed\n", 0)
                 .unwrap()
                 .0,
             AgentState::Done,
@@ -3165,7 +3204,7 @@ mod tests {
         // summary are specific: this pane is asking this question, not
         // merely waiting in the abstract.
         let hit = pi_manifest()
-            .classify(PI_QUESTION_SCREEN)
+            .classify(PI_QUESTION_SCREEN, 0)
             .expect("question menu must classify");
         assert_eq!(hit.0, AgentState::Waiting, "{hit:?}");
         assert_eq!(hit.1, "What should I work on in football-forever?");
@@ -3189,7 +3228,7 @@ mod tests {
             "↑↓ navigate   enter select   escape/ctrl+c cancel\n",
         );
         let hit = pi_manifest()
-            .classify(screen)
+            .classify(screen, 0)
             .expect("decision picker must classify");
         assert_eq!(hit.0, AgentState::Waiting);
         assert_eq!(
@@ -3202,7 +3241,7 @@ mod tests {
         // stale picker text must not keep the pane in question.
         let screen = format!("{screen}── ⠙ Working ──\n");
         assert_eq!(
-            pi_manifest().classify(&screen).map(|hit| hit.0),
+            pi_manifest().classify(&screen, 0).map(|hit| hit.0),
             Some(AgentState::Working)
         );
     }
@@ -3215,7 +3254,7 @@ mod tests {
             "{question}\n❯ 1. Continue with the recommended plan\n  2. Pause and ask for more context\nEnter to select · ↑/↓ to navigate\n"
         );
         let hit = pi_manifest()
-            .classify(&screen)
+            .classify(&screen, 0)
             .expect("question menu must classify");
         assert_eq!(hit.0, AgentState::Waiting);
         assert!(
@@ -3231,7 +3270,7 @@ mod tests {
         // chrome is present here exactly as on a finished pane, which
         // is why the manifest claims no working/idle patterns at all.
         assert_ne!(
-            pi_manifest().classify(PI_WORKING_SCREEN).map(|(s, _, _)| s),
+            pi_manifest().classify(PI_WORKING_SCREEN, 0).map(|(s, _, _)| s),
             Some(AgentState::Waiting),
             "working screen must not read as waiting"
         );
@@ -3244,7 +3283,7 @@ mod tests {
         // a pattern that fires on live traffic fails here.
         assert_ne!(
             pi_manifest()
-                .classify(PI_FINISHED_SCREEN)
+                .classify(PI_FINISHED_SCREEN, 0)
                 .map(|(s, _, _)| s),
             Some(AgentState::Waiting),
             "finished screen must not read as waiting"
@@ -3257,13 +3296,13 @@ mod tests {
         // text rather than a menu, so it needs its own list.
         let m = pi_manifest();
         assert_eq!(
-            m.classify("Error: 429 rate limit reached, try again later\n")
+            m.classify("Error: 429 rate limit reached, try again later\n", 0)
                 .unwrap()
                 .0,
             AgentState::Limited
         );
         assert_eq!(
-            m.classify("upstream quota exceeded for this account\n")
+            m.classify("upstream quota exceeded for this account\n", 0)
                 .unwrap()
                 .0,
             AgentState::Limited
@@ -3429,7 +3468,7 @@ mod tests {
             phase: vec![],
         })
         .unwrap();
-        assert_eq!(m.classify("busy doing things\n❯\n"), None);
+        assert_eq!(m.classify("busy doing things\n❯\n", 0), None);
     }
 
     #[test]
@@ -3853,7 +3892,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     fn a_repeated_error_line_is_looping() {
         // The model-recovery loop: the same provider error printed
         // once per retry cycle while the pane reads plain idle.
-        let err = "Error: 400: {\"message\":\"Provider returned error\",\"code\":400,\"metadata\"}";
+        let err = "Error: 400: {\"message\":\"Provider returned error\",\"code\":400}";
         let mut screen = String::new();
         for i in 0..5 {
             screen.push_str(&format!("├─ why: main model unknown — 400: attempt {i}\n"));
@@ -3864,8 +3903,8 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         screen.push_str("  ── ⠼ Working ──\n");
         screen.push_str("~/Dev/dracon-strategy:main\n");
         assert_eq!(
-            repeated_content(&screen).map(|s| screen_summary_line(&s)),
-            Some("Error: 400: {\"message\":\"Provider returned error\",\"code\":400,\"metadata\"…".to_string())
+            repeated_content(&screen, 0),
+            Some("Error: 400: {\"message\":\"Provider returned error\",\"code\":400}".to_string())
         );
     }
 
@@ -3879,16 +3918,17 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
             screen.push_str("  fixed in fdc1262079\n");
         }
         screen.push_str("── ⠋ Working ──\n");
-        assert!(repeated_content(&screen).is_some());
+        assert!(repeated_content(&screen, 0).is_some());
     }
 
     #[test]
-    fn a_retry_counter_is_one_line_not_many() {
-        // `Retrying (3/15) in 60s`, `Retrying (4/15) in 59s`: the
-        // counter changes and the timer counts down, but the line is
-        // the same.
+    fn a_retry_banner_alone_is_not_a_loop() {
+        // A retry banner is how healthy recovery looks: the counter
+        // changes, and the line is a status banner, not a result or a
+        // command. The loop detection belongs to the errors behind
+        // the retries, not the banner itself.
         let screen = "phase one\nRetrying (3/15) in 60s\nphase two\nRetrying (4/15) in 59s\nphase three\nRetrying (5/15) in 58s\n";
-        assert_eq!(repeated_content(screen).as_deref(), Some("Retrying (5/15) in 58s"));
+        assert_eq!(repeated_content(screen, 0), None);
     }
 
     #[test]
@@ -3896,7 +3936,42 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         // Two instances is a coincidence (a table row, a reused
         // command). Three is a loop.
         let screen = "Error: 400: provider returned error code 400\nwork\nError: 400: provider returned error code 400\n";
-        assert_eq!(repeated_content(screen), None);
+        assert_eq!(repeated_content(screen, 0), None);
+    }
+
+    #[test]
+    fn a_slow_repeat_still_counts_when_it_is_on_screen() {
+        // Three copies of the same line with the newest one in the
+        // visible area: a slower loop that has not rushed to four yet.
+        let err = "Error: 400: {\"message\":\"Provider returned error\",\"code\":400}";
+        let mut screen = String::new();
+        for _ in 0..3 {
+            screen.push_str(err);
+            screen.push('\n');
+            screen.push_str("working on it\n");
+        }
+        assert!(repeated_content(&screen, 8).is_some());
+    }
+
+    #[test]
+    fn three_repeats_in_the_scrollback_do_not_count() {
+        // The same line three times, all of it in the scrollback of a
+        // finished round of work: the verdict belongs to the pane's
+        // current screen, not to yesterday's loop.
+        let cmd = "$ cd extensions/standalones/g2a-helper && grep -o \"fixed in\" findings.md | sort | uniq";
+        let mut screen = String::new();
+        for _ in 0..3 {
+            screen.push_str(cmd);
+            screen.push('\n');
+            screen.push_str("member of the audit loop\n");
+        }
+        // The visible area is the very bottom of the screen: every
+        // copy sits above it, in the scrollback where earlier rounds
+        // of work leave their evidence.
+        assert_eq!(repeated_content(&screen, 1), None);
+        // The same three copies, with the whole capture visible, are
+        // the loop.
+        assert!(repeated_content(&screen, 100).is_some());
     }
 
     #[test]
@@ -3907,9 +3982,9 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         for _ in 0..3 {
             screen.push_str("Claim submitted — audit pending (nonterminal; the final verdict posts later)\n");
             screen.push_str("Quick summary while it settles:\n");
-            screen.push_str("\n");
+            screen.push('\n');
         }
-        assert_eq!(repeated_content(&screen), None);
+        assert_eq!(repeated_content(&screen, 0), None);
     }
 
     #[test]
@@ -3922,7 +3997,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
             screen.push_str("... (5 earlier lines, ctrl+o to expand)\n");
             screen.push_str("── ⠼ Working ────────────────────────\n");
         }
-        assert_eq!(repeated_content(&screen), None);
+        assert_eq!(repeated_content(&screen, 0), None);
     }
 
     #[test]
@@ -3958,13 +4033,17 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
             screen.push_str(err);
             screen.push('\n');
         }
+        screen.push_str("  When you pick a different music theme, what actually happens?\n");
         screen.push_str("  ❯ 1. Moves, music stays same (Recommended)\n");
         screen.push_str("  ❯ 2. Doesn't move at all\n");
         screen.push_str("  ❯ 3. No music anywhere on Sound\n");
         screen.push_str("Enter to select · ↑/↓ to navigate\n");
+        // The loop evidence is really here; the question must win anyway.
+        assert!(repeated_content(&screen, 0).is_some());
         let hit = classify_screen(&m, "pi", &screen, false, false).expect("hit");
-        assert_eq!(hit.state, AgentState::Waiting);
+        assert_eq!(hit.state, AgentState::Waiting, "{}", hit.summary);
         assert_eq!(hit.state.display_label_for(&hit.summary), "question");
+        assert_eq!(hit.summary, "When you pick a different music theme, what actually happens?");
     }
 
     #[test]
@@ -3976,9 +4055,11 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         for i in 0..4 {
             screen.push_str(&format!("Error: attempt {i}: rate limit reached\n"));
         }
-        screen.push_str("❯ Try asking me to build something\n");
+        screen.push_str("❯\n");
+        // The loop evidence is really here; the wall must win anyway.
+        assert!(repeated_content(&screen, 0).is_some());
         let hit = classify_screen(&m, "claude", &screen, false, false).expect("hit");
-        assert_eq!(hit.state, AgentState::Limited);
+        assert_eq!(hit.state, AgentState::Limited, "{}", hit.summary);
     }
 
     #[test]

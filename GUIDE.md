@@ -62,10 +62,13 @@ from scripts. First run creates `~/.config/terhub/config.toml` with defaults.
   them; pane ids look like `%69`.
 - **Agent** is anything running in a pane that behaves like a coding agent
   (claude, codex, gemini, pi, …). terhub tracks each agent pane in one of
-  nine wire states: `working`, `waiting` (needs you; shown as **question**
+  ten wire states: `working`, `waiting` (needs you; shown as **question**
   when a question or decision picker is visible), `error` (needs you),
   `idle`, `done` (finished — a completion banner was seen; never needs
-  you), `stuck` (needs you: no CPU for 10+ minutes), `limited` (needs
+  you), `stuck` (needs you: no CPU for 10+ minutes), `looping` (needs
+  you: the same error or the same command, over and over, instead of
+  making progress — a provider 400-loop, a re-run verification sweep),
+  `limited` (needs
   you: quota/rate wall, paused until reset — never a crash; the table
   shows it as **quota**, the JSON keeps `limited`), `paused` (you
   stopped it — never needs you), `unknown`.
@@ -473,7 +476,22 @@ Per pane it merges three signals:
    deliberate — a completion banner is positive evidence that the turn
    ended, where a frozen screen is a guess that has to wait out a false
    positive — and the summary is kept, so the completion itself is not
-   lost; only the label decays.
+   lost; only the label decays. A **question** never decays at all: a
+   blocking picker is an explicit panel the agent is stopped on, and
+   the only way the pane unsticks is the operator answering — retiring
+   it after some minutes of quiet would silently hide a question that
+   is still open (a question pending for hours read as `idle` while its
+   own text sat in the Summary column). So the decay only ever retires
+   bare prompts.
+   The last signal is repetition: when one screen prints the *same*
+   error or the *same* command three or more times — `Error: 400:
+   {"message":"Provider returned error"...` once per retry cycle, or a
+   verification command re-run by an audit loop — the row reads
+   `looping` (needs you) with that line as its summary. An agent in a
+   loop is busy, re-doing work that never lands, so the quiet clock and
+   the CPU clock both look healthy; the repetition is the only thing
+   that says it is stuck. A repeated sentence (a note rewritten before
+   parking) is not a loop — only commands and failures count.
    Each `0` disables its flip. Fresh hooks are never second-guessed this
    way.
 3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse/
@@ -662,13 +680,14 @@ terhub hook --agent claude --pane %1 --state waiting --summary "Approve plan?"
 terhub hook --agent pi --pane %2 --state working --prompt "fix the parser"
 ```
 
-- `--state` accepts `working|waiting|error|idle|stuck|limited|paused|unknown`
+- `--state` accepts `working|waiting|error|idle|stuck|limited|paused|looping|unknown`
   (`quota` is an alias for `limited`; every human-facing surface prints
   `quota`, the JSON keeps `limited` so older clients still decode it)
   plus aliases: `work/busy/running/start`, `wait/input/attention/blocked/
   needs-input/stop`, `failed/fail`, `done/complete/completed`, `hung`,
-  `limit/quota/capped`, `paused/stopped/frozen/suspended`.
-  `start`/`stop` match the lifecycle states that spawning harnesses emit.
+  `limit/quota/capped`, `paused/stopped/frozen/suspended`,
+  `repeating/repeat`. `start`/`stop` match the lifecycle states that
+  spawning harnesses emit.
 - `--pane` is the pane id (`%N`); inside tmux, `$TMUX_PANE` has it.
 - `--summary` is free text shown in peek/status and matchable by rules.
 - `--prompt` records what the user asked: it lands in the prompt ledger
