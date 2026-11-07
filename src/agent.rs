@@ -1371,6 +1371,109 @@ pub fn screen_summary_line(line: &str) -> String {
     flat.chars().take(MAX.saturating_sub(1)).collect::<String>() + "…"
 }
 
+/// How many times the same line must appear in one screen before the
+/// pane reads as repeating it.
+const REPEAT_OCCURRENCES: u32 = 3;
+
+/// The shortest line worth treating as content: anything shorter is
+/// chrome (`… (3 earlier lines)`, a box border, a token counter).
+const REPEAT_MIN_LEN: usize = 20;
+
+/// Whether a (whitespace-collapsed) line is terminal chrome rather
+/// than content the agent wrote: box-drawing, rules, separators, and
+/// the collapsed-output markers TUIs print over their own `…` blocks.
+///
+/// Chrome is what a repeated line must never be: a diff-stat block
+/// repeats a border glyph legitimately, and an audit note that an
+/// agent rewrote three times before parking is a cleared conversation,
+/// not a loop. Both are excluded, and the exclusion is what the loop
+/// check means by "the same thing".
+fn is_chrome_line(flat: &str) -> bool {
+    if flat.is_empty() {
+        return true;
+    }
+    // No letters at all: borders, rules, the gradient bar, spinner
+    // runs and token counters are drawn shapes, not content.
+    if !flat.chars().any(char::is_alphabetic) {
+        return true;
+    }
+    // A collapsed-output marker (`... (5 earlier lines, ctrl+o to
+    // expand)`, `+1707 …`): the TUI's own bookkeeping, there because
+    // the transcript is long, not because the agent says it.
+    flat.starts_with("...")
+        && (flat.contains("earlier lines") || flat.contains("more lines"))
+}
+
+/// Whether a content line counts as something to loop on: it must be a
+/// command the agent ran or a failure it hit. A repeated sentence
+/// (an audit note, a table row, a file listing) is ordinary content;
+/// a repeated command or error is an agent doing the same thing again
+/// and getting the same result.
+fn is_repeatable(flat: &str) -> bool {
+    let lower = flat.to_ascii_lowercase();
+    flat.starts_with("$ ")
+        || flat.starts_with("> ")
+        || lower.contains("error:")
+        || lower.contains("failed")
+        || lower.contains("failure:")
+        || lower.contains("fatal:")
+        || lower.contains("rate limit")
+        || lower.contains("usage limit")
+        || lower.contains("quota")
+}
+
+/// Collapse a run of digits to `#`, so `Retrying (3/15) in 60s` and
+/// `Retrying (4/15) in 59s` are the same line. Misleading on its own,
+/// but only ever applied to lines that are already error/command-shaped,
+/// where the digits are a counter and the counter is not the content.
+fn digits_normalized(flat: &str) -> String {
+    let mut out = String::with_capacity(flat.len());
+    let mut in_digits = false;
+    for c in flat.chars() {
+        if c.is_ascii_digit() {
+            if !in_digits {
+                out.push('#');
+            }
+            in_digits = true;
+        } else {
+            out.push(c);
+            in_digits = false;
+        }
+    }
+    out
+}
+
+/// The line this screen is repeating, if any: the same error or the
+/// same command printed [`REPEAT_OCCURRENCES`] times or more in the
+/// capture. The agent is not progressing — it is doing the same thing
+/// again and getting the same result (a provider 400-loop is the live
+/// shape: model-recovery retries print the same error line every
+/// cycle while the pane reads plain `idle`).
+///
+/// Returns the *display* form of the most repeated line (the
+/// freshest copy, so the operator reads the latest instance).
+pub fn repeated_content(screen: &str) -> Option<String> {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, (String, u32)> = HashMap::new();
+    let mut best: Option<(String, u32)> = None;
+    for line in screen.lines() {
+        let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        if flat.chars().count() < REPEAT_MIN_LEN || is_chrome_line(&flat) || !is_repeatable(&flat) {
+            continue;
+        }
+        let key = digits_normalized(&flat);
+        let entry = seen.entry(key).or_insert_with(|| (flat.clone(), 0));
+        entry.0 = flat;
+        entry.1 += 1;
+        if entry.1 >= REPEAT_OCCURRENCES
+            && best.as_ref().is_none_or(|( Display::Best, )| entry.1 > 0)
+        {
+            best = Some((entry.0.clone(), entry.1));
+        }
+    }
+    best.map(|(line, _)| line)
+}
+
 /// Whether a summary is an actual question text suitable for the
 /// human-facing `question` tag. The wire state remains `waiting`.
 fn is_question_summary(summary: &str) -> bool {
