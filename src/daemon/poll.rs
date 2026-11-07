@@ -697,6 +697,30 @@ pub(crate) fn hook_question_summary<'a>(
     Some(hit.summary.as_str())
 }
 
+/// A hook `working` row with a looping screen is worth promoting just
+/// as a hook row with a question is: the turn the hook claims is
+/// re-doing the same thing, not progressing. The repeated line is the
+/// summary, so the row reads what is repeating.
+///
+/// Fires only on `Working` — a hook `waiting` row is already
+/// attention (a question or an error), and a hook `idle` row is
+/// handled by [`hook_idle_promotion`]. Returns the summary to show.
+pub(crate) fn hook_loop_summary<'a>(rec: &AgentRecord, screen_hit: Option<&'a ScreenHit>) -> Option<&'a str> {
+    if rec.source != Source::Hook || rec.state != AgentState::Working {
+        return None;
+    }
+    let hit = screen_hit?;
+    if hit.state != AgentState::Looping
+        || !hit
+            .agent
+            .as_ref()
+            .is_some_and(|agent| agent.eq_ignore_ascii_case(&rec.agent))
+    {
+        return None;
+    }
+    Some(hit.summary.as_str())
+}
+
 pub(crate) fn hook_idle_promotion(
     rec: &AgentRecord,
     screen_hit: Option<&ScreenHit>,
@@ -707,9 +731,18 @@ pub(crate) fn hook_idle_promotion(
         return None;
     }
     let hit = screen_hit?;
+    // `looping` belongs here: a hook `agent_end` can say `response
+    // finished` while the screen keeps printing the same error —
+    // the recovery loop the hook made invisible. Without it the
+    // promotion stops at the loop verdict and the row reads idle
+    // while its scrollback shows the same failure ten times.
     if !matches!(
         hit.state,
-        AgentState::Working | AgentState::Waiting | AgentState::Error | AgentState::Limited
+        AgentState::Working
+            | AgentState::Waiting
+            | AgentState::Error
+            | AgentState::Limited
+            | AgentState::Looping
     ) {
         return None;
     }
@@ -816,7 +849,7 @@ pub(crate) fn merge_record_owned(
     waiting_idle_secs: u64,
     done_idle_secs: u64,
 ) -> Option<AgentRecord> {
-    use AgentState::{Done, Error, Idle, Limited, Waiting, Working};
+    use AgentState::{Done, Error, Idle, Limited, Looping, Waiting, Working};
     let (agent, state, source) = match (proc_hit, screen.as_ref()) {
         // A done screen beats a live process: finished agents keep their
         // REPL open. (Stale banners can't pin this: freshest-line-wins
@@ -825,6 +858,7 @@ pub(crate) fn merge_record_owned(
             if hit.state == Waiting
                 || hit.state == Error
                 || hit.state == Limited
+                || hit.state == Looping
                 || hit.state == Idle
                 || hit.state == Done =>
         {
@@ -1390,6 +1424,24 @@ pub(crate) fn poll_sync_with(
                     r.last_turn_secs = now.saturating_sub(r.state_since);
                     r.state_since = now;
                     r.state = AgentState::Waiting;
+                    r.stuck_base = None;
+                }
+                r.summary = summary.to_string();
+            }
+            // A stuck-repeating pane whose turn `turn_start` still
+            // claims *as well as* the question above, and for the same
+            // reason: the screen's repeated error or command is
+            // stronger evidence than the hook's claim of work. The
+            // repeat rides the summary, so the row names what is
+            // repeating. Manual pins are exempt for the same reason as
+            // every other promotion. Runs after the question so a
+            // question always keeps priority — the human's answer is
+            // the more urgent thing than the loop.
+            if let Some(summary) = hook_loop_summary(&r, screen_hit.as_ref()) {
+                if r.state == AgentState::Working {
+                    r.last_turn_secs = now.saturating_sub(r.state_since);
+                    r.state_since = now;
+                    r.state = AgentState::Looping;
                     r.stuck_base = None;
                 }
                 r.summary = summary.to_string();

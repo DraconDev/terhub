@@ -1499,13 +1499,13 @@ pub fn repeated_content(screen: &str) -> Option<String> {
         let key = digits_normalized(&flat);
         let count = counts.entry(key.clone()).or_insert(0);
         *count += 1;
-        freshest.insert(key, flat);
         if *count >= REPEAT_OCCURRENCES && best.as_ref().is_none_or(|(_, n)| *count > *n) {
-            // `best` tracks the normal form with the most occurrences;
-            // the display text is the freshest literal form of that
-            // line, read back through `freshest` at the end.
-            best = Some((digits_normalized(&flat), *count));
+            // `best` holds the *normal* form of the most-repeated line;
+            // the display text is the freshest literal form, kept in
+            // `freshest` and read back at the end.
+            best = Some((key.clone(), *count));
         }
+        freshest.insert(key, flat);
     }
     best.map(|(key, _)| freshest.get(&key).cloned().unwrap_or_default())
 }
