@@ -473,6 +473,13 @@ impl TryFrom<WireRequest> for Request {
 pub fn legacy_state(state: AgentState) -> AgentState {
     match state {
         AgentState::Paused => AgentState::Idle,
+        // A loop needs the human, which the legacy vocabulary can
+        // express: it outranks everything below it. `stuck` is the
+        // closest legacy spelling of "busy but not progressing"
+        // (there is no `looping` in the old vocabulary), and — like
+        // `stuck` — it is attention, so it must never silently become
+        // a quiet state.
+        AgentState::Looping => AgentState::Stuck,
         AgentState::Unknown => AgentState::Unknown,
         AgentState::Working => AgentState::Working,
         AgentState::Waiting => AgentState::Waiting,

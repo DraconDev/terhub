@@ -1099,6 +1099,9 @@ pub fn stats(spans: &[Span], since: Option<u64>, group: GroupBy) -> Vec<StatsRow
             AgentState::Working => row.work += dur,
             AgentState::Waiting => row.wait += dur,
             AgentState::Error | AgentState::Stuck | AgentState::Limited => row.err += dur,
+            // A loop is error-shaped time: the agent is re-doing work
+            // that never lands, so it burns time without progressing.
+            AgentState::Looping => row.err += dur,
             AgentState::Done => row.done += dur,
             // A paused agent is deliberate, not an error and not work:
             // the time counts as idle, because nothing was burning.
@@ -1268,7 +1271,8 @@ impl TimelineView {
 fn state_style(state: AgentState) -> ratatui::style::Style {
     use ratatui::style::{Color, Modifier, Style};
     match state {
-        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited => {
+        AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
+        | AgentState::Looping => {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         }
         // Done: quiet green check — finished, not waiting, never

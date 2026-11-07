@@ -324,6 +324,7 @@ fn state_rank_of(state: crate::agent::AgentState) -> u8 {
     match state {
         AgentState::Waiting => 0,
         AgentState::Stuck => 1,
+        AgentState::Looping => 1,
         AgentState::Error => 2,
         AgentState::Limited => 3,
         AgentState::Working => 4,

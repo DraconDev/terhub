@@ -33,6 +33,15 @@ pub enum AgentState {
     /// a paused agent reads as a hung one and terhub escalates the
     /// alarm it caused. Never attention: nobody is needed to thaw it.
     Paused,
+    /// The agent is repeating the same thing: the same error, the same
+    /// command, the same request, over and over, instead of making
+    /// progress (a provider 400-loop, a re-run verification command,
+    /// an unanswered question asked again). Distinct from `Stuck` —
+    /// this one is *busy*, re-doing work that never lands; and from
+    /// `Error` — one failure is news, the same one ten times is a
+    /// loop. Needs the human: it will burn tokens until someone stops
+    /// it.
+    Looping,
 }
 
 /// Forward-compatible decode: a state name this build does not know
@@ -67,6 +76,7 @@ impl AgentState {
             "stuck" | "hung" => Some(AgentState::Stuck),
             "limited" | "limit" | "quota" | "capped" => Some(AgentState::Limited),
             "paused" | "stopped" | "frozen" | "suspended" => Some(AgentState::Paused),
+            "looping" | "repeating" | "repeat" => Some(AgentState::Looping),
             "unknown" => Some(AgentState::Unknown),
             _ => None,
         }
@@ -88,6 +98,7 @@ impl AgentState {
             AgentState::Stuck => "stuck",
             AgentState::Limited => "limited",
             AgentState::Paused => "paused",
+            AgentState::Looping => "looping",
         }
     }
 
@@ -129,7 +140,11 @@ impl AgentState {
     pub fn needs_attention(self) -> bool {
         matches!(
             self,
-            AgentState::Waiting | AgentState::Error | AgentState::Stuck | AgentState::Limited
+            AgentState::Waiting
+                | AgentState::Error
+                | AgentState::Stuck
+                | AgentState::Limited
+                | AgentState::Looping
         )
     }
 }
@@ -420,6 +435,7 @@ pub fn turn_ended(from: AgentState, to: AgentState) -> bool {
             AgentState::Waiting
                 | AgentState::Error
                 | AgentState::Limited
+                | AgentState::Looping
                 | AgentState::Idle
                 | AgentState::Done
         )
