@@ -989,7 +989,25 @@ pub(crate) fn merge_record_owned(
     // silence a question. The summary is kept — it is the question you
     // would have come back to read — and being stable it does not feed
     // the quiet clock.
-    if final_state == Waiting && waiting_idle_secs > 0 && quiet_for >= waiting_idle_secs {
+    //
+    // An explicit question is not a prompt. It is a blocking picker
+    // with a question and numbered options: the agent is stopped and
+    // the only way the pane unsticks is for the human to answer. Letting
+    // it decay to `idle` would silently retire a question that is still
+    // open (a question pending for hours read as idle, the summary
+    // keeping the text but the state — and therefore the badge, the
+    // count and `attend` — calm), which is exactly the "not showing
+    // questions" failure. So the decay spares what the screen says is a
+    // question; the threshold and the rest of the rule are unchanged.
+    let is_question = screen.as_ref().is_some_and(|hit| {
+        hit.state == AgentState::Waiting
+            && hit.state.display_label_for(&hit.summary) == "question"
+    });
+    if final_state == Waiting
+        && waiting_idle_secs > 0
+        && quiet_for >= waiting_idle_secs
+        && !is_question
+    {
         final_state = Idle;
         since = match carried {
             Some(o) if o.state == Idle => o.state_since,
