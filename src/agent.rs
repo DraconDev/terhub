@@ -1509,7 +1509,11 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
     let total = screen.lines().count();
     // The second half of the visible area. `visible == 0` means there
     // is no pane behind this screen — the whole capture is visible.
-    let within = if visible == 0 { total } else { visible.min(total) };
+    let within = if visible == 0 {
+        total
+    } else {
+        visible.min(total)
+    };
     let boundary = total.saturating_sub(within / 2);
     let mut best: Option<(String, u32)> = None;
     for (i, line) in screen.lines().enumerate() {
@@ -3957,7 +3961,8 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         for _ in 0..7 {
             screen.push_str(err);
             screen.push('\n');
-            screen.push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
+            screen
+                .push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
         }
         for i in 0..33 {
             screen.push_str(&format!("work character row {i} with work and more work\n"));
@@ -3981,7 +3986,8 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         for _ in 0..4 {
             screen.push_str(err);
             screen.push('\n');
-            screen.push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
+            screen
+                .push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
         }
         assert_eq!(
             repeated_content(&screen, 50),
