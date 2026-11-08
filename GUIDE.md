@@ -491,7 +491,11 @@ Per pane it merges three signals:
    loop is busy, re-doing work that never lands, so the quiet clock and
    the CPU clock both look healthy; the repetition is the only thing
    that says it is stuck. A repeated sentence (a note rewritten before
-   parking) is not a loop — only commands and failures count.
+   parking) is not a loop — only commands and failures count. The
+   newest copy also has to be in the second half of what the pane
+   displays: the same line ten times in the scrollback of a finished
+   session is old evidence, not a live loop, and the pane stays idle
+   with it still on screen.
    Each `0` disables its flip. Fresh hooks are never second-guessed this
    way.
 3. **Screen patterns** — built-in manifests for claude/codex/gemini/muse/
