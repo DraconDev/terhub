@@ -4083,10 +4083,7 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
             screen.push_str(second);
             screen.push('\n');
         }
-        assert_eq!(
-            repeated_content(&screen, 0),
-            Some(first.to_string())
-        );
+        assert_eq!(repeated_content(&screen, 0), Some(first.to_string()));
     }
 
     #[test]
