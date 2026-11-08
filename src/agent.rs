@@ -3947,6 +3947,49 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn an_old_run_of_errors_is_history_not_a_loop() {
+        // The tabmon shapes: the same error printed seven times while
+        // the pane was busy, then the work finished — the completion
+        // text and the `glla: IDLE` close-out now sit below them. The
+        // verdict belongs to what the pane is doing *now*.
+        let err = "Error: Request timed out.";
+        let mut screen = String::new();
+        for _ in 0..7 {
+            screen.push_str(err);
+            screen.push('\n');
+            screen.push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
+        }
+        for i in 0..33 {
+            screen.push_str(&format!("work character row {i} with work and more work\n"));
+        }
+        screen.push_str("1,448 tests green, typecheck clean, fresh zip rebuilt.\n");
+        // A 50-row pane: the visible area is the capture's last 50
+        // lines, whose second half is the last 25 — the timeouts are
+        // all above it.
+        assert_eq!(repeated_content(&screen, 50), None);
+    }
+
+    #[test]
+    fn a_recent_run_of_errors_is_a_loop() {
+        // The same errors, but the loop is happening at the bottom of
+        // the screen, right now.
+        let err = "Error: Request timed out.";
+        let mut screen = String::new();
+        for i in 0..33 {
+            screen.push_str(&format!("work character row {i} with work and more work\n"));
+        }
+        for _ in 0..4 {
+            screen.push_str(err);
+            screen.push('\n');
+            screen.push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
+        }
+        assert_eq!(
+            repeated_content(&screen, 50),
+            Some("Error: Request timed out.".to_string())
+        );
+    }
+
+    #[test]
     fn two_repeats_are_not_a_loop() {
         // Two instances is a coincidence (a table row, a reused
         // command). Three is a loop.
