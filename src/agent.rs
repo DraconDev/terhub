@@ -1419,6 +1419,36 @@ pub fn screen_summary_line(line: &str) -> String {
 /// of work, not the loop the user is in now.
 const REPEAT_OCCURRENCES: u32 = 3;
 
+/// How far consecutive copies of a repeated line may sit apart before
+/// they stop being one live streak. A provider retry usually prints
+/// the same error again within a few lines; a copy tens of lines later
+/// is instead an old line being encountered a second time. This is
+/// the lease on a repeated line: one fresh copy in the second half of
+/// the screen can repopulate an already-live streak, but it cannot,
+/// by itself, revive a finished one. A new loop must earn a fresh
+/// three-copy streak.
+const REPEAT_STREAK_GAP_LINES: usize = 8;
+
+/// Whether one line's occurrence indexes form a currently live
+/// streak: at least three copies, no gap between consecutive copies
+/// longer than the lease window, and the live copy in the second half
+/// of what the pane displays.
+fn is_live_repetition(positions: &[usize], boundary: usize) -> bool {
+    let mut streak = 0u32;
+    let mut previous: Option<usize> = None;
+    for &position in positions {
+        streak = match previous {
+            Some(p) if position.saturating_sub(p) <= REPEAT_STREAK_GAP_LINES => streak + 1,
+            _ => 1,
+        };
+        previous = Some(position);
+        if streak >= REPEAT_OCCURRENCES && position >= boundary {
+            return true;
+        }
+    }
+    false
+}
+
 /// The shortest line worth treating as content: anything shorter is
 /// chrome (`… (3 earlier lines)`, a box border, a token counter).
 const REPEAT_MIN_LEN: usize = 20;
@@ -1503,8 +1533,11 @@ fn digits_normalized(flat: &str) -> String {
 /// freshest copy, so the operator reads the latest instance).
 pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
     use std::collections::HashMap;
-    // Count and freshest literal form for every normal form seen.
-    let mut counts: HashMap<String, u32> = HashMap::new();
+    // Positions and freshest literal form for every normal form seen.
+    // A candidate is judged by the one placed last on the screen, not
+    // by every historical copy in the capture; counting stale copies
+    // into a lease would let a long-finished run look current again.
+    let mut positions: HashMap<String, Vec<usize>> = HashMap::new();
     let mut fresh: HashMap<String, String> = HashMap::new();
     let total = screen.lines().count();
     // The second half of the visible area. `visible == 0` means there
@@ -1515,39 +1548,22 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
         visible.min(total)
     };
     let boundary = total.saturating_sub(within / 2);
-    let mut best: Option<(String, u32)> = None;
-    let mut last_live: Option<(String, u32)> = None;
     for (i, line) in screen.lines().enumerate() {
         let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
         if flat.chars().count() < REPEAT_MIN_LEN || is_chrome_line(&flat) || !is_repeatable(&flat) {
             continue;
         }
         let key = digits_normalized(&flat);
-        let count = counts.entry(key.clone()).or_insert(0);
-        *count += 1;
-        let raw = flat.clone();
-        fresh.insert(key.clone(), raw);
-        if *count >= REPEAT_OCCURRENCES && i >= boundary {
-            // The line still loops on screen. Remember the *most
-            // recent* such line, not the most repeated: a real loop
-            // runs until the screen last showed it, while the
-            // most-repeated streak in the file is the argument that
-            // made it count, not the one that is still current.
-            last_live = Some((key.clone(), *count));
-            if best.as_ref().is_none_or(|(_, n)| *count > *n) {
-                best = Some((key.clone(), *count));
-            }
-        }
+        positions.entry(key.clone()).or_default().push(i);
+        fresh.insert(key, flat);
     }
-    // A line qualifies if it has enough copies; the *answer* is the
-    // most recently live one. Otherwise a busy pane whose scrollback
-    // has an old streak would still read `looping` once a single
-    // fresh copy of a different line landed below the boundary.
-    let answer = match (best, last_live) {
-        (Some((_, n)), Some((key, _))) if n >= REPEAT_OCCURRENCES => Some(key),
-        _ => None,
-    };
-    answer.map(|key| fresh.get(&key).cloned().unwrap_or_default())
+    // Promote only the most frequent currently live answer. A stale
+    // candidate must not win merely because it was observed last.
+    positions
+        .into_iter()
+        .filter(|(_, p)| is_live_repetition(p, boundary))
+        .max_by(|(_, a), (_, b)| a.len().cmp(&b.len()))
+        .map(|(key, _)| fresh.get(&key).cloned().unwrap_or_default())
 }
 
 /// Whether a summary is an actual question text suitable for the
