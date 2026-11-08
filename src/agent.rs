@@ -1498,8 +1498,11 @@ fn digits_normalized(flat: &str) -> String {
 /// the same error line every cycle while the pane reads plain `idle`).
 ///
 /// `visible` is how many of the capture's last lines are the pane's
-/// visible area (the rest is scrollback). It only matters for the
-/// smaller of the two bars, see [`REPEAT_OCCURRENCES_VISIBLE`].
+/// visible area (the rest is scrollback). The freshest copy of the
+/// repeated line must be in that area's second half: a copy anywhere
+/// above it is the story of an earlier round of work, not of the one
+/// the pane is in now. Passing 0 means the whole capture counts as
+/// visible.
 ///
 /// Returns the *display* form of the most repeated line (the
 /// freshest copy, so the operator reads the latest instance).
@@ -1509,7 +1512,10 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
     let mut counts: HashMap<String, u32> = HashMap::new();
     let mut fresh: HashMap<String, String> = HashMap::new();
     let total = screen.lines().count();
-    let boundary = total.saturating_sub(visible);
+    // The second half of the visible area. `visible == 0` means there
+    // is no pane behind this screen — the whole capture is visible.
+    let within = if visible == 0 { total } else { visible.min(total) };
+    let boundary = total.saturating_sub(within / 2);
     let mut best: Option<(String, u32)> = None;
     for (i, line) in screen.lines().enumerate() {
         let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1521,8 +1527,10 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
         *count += 1;
         let raw = flat.clone();
         fresh.insert(key.clone(), raw);
-        let live =
-            *count >= REPEAT_OCCURRENCES || (*count >= REPEAT_OCCURRENCES_VISIBLE && i >= boundary);
+        // Only a copy at or below the boundary is fresh evidence: the
+        // same line higher up is an earlier round of work whose
+        // verdict the screen has since superseded.
+        let live = *count >= REPEAT_OCCURRENCES && i >= boundary;
         if live && best.as_ref().is_none_or(|(_, n)| *count > *n) {
             // `best` holds the *normal* form of the most-repeated line;
             // the display text is the freshest literal form, kept above
