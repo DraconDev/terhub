@@ -1411,18 +1411,13 @@ pub fn screen_summary_line(line: &str) -> String {
     flat.chars().take(MAX.saturating_sub(1)).collect::<String>() + "…"
 }
 
-/// How many times the same line must appear in one screen before the
-/// pane reads as repeating it. Four or more times anywhere in the
-/// capture is a loop: the scrollback only stays that full of the same
-/// line while the agent is still in it.
-const REPEAT_OCCURRENCES: u32 = 4;
-
-/// ...or three times, with the newest occurrence inside the region of
-/// the capture the pane is displaying right now rather than in the
-/// scrollback behind it. A slower loop is not in as much of a hurry to
-/// repeat, but its freshest copy is on the screen, not the product of
-/// an earlier round of work that has since finished.
-const REPEAT_OCCURRENCES_VISIBLE: u32 = 3;
+/// How many times the same error or command line must appear in one
+/// screen before the pane reads as repeating it. Three copies deep,
+/// with the newest one in the second half of what the pane is
+/// displaying right now: fewer than that, and the pane is not looping
+/// yet; older than that, and it is the scrollback of an earlier round
+/// of work, not the loop the user is in now.
+const REPEAT_OCCURRENCES: u32 = 3;
 
 /// The shortest line worth treating as content: anything shorter is
 /// chrome (`… (3 earlier lines)`, a box border, a token counter).
