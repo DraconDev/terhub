@@ -4071,6 +4071,9 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
         let first = "Error: 400: first repeated provider failure for this agent";
         let second = "Error: 400: second repeated provider failure for this agent";
         let mut screen = String::new();
+        for i in 0..4 {
+            screen.push_str(&format!("opening work row {i} with some more work\n"));
+        }
         for _ in 0..4 {
             screen.push_str(first);
             screen.push('\n');
