@@ -1516,6 +1516,7 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
     };
     let boundary = total.saturating_sub(within / 2);
     let mut best: Option<(String, u32)> = None;
+    let mut last_live: Option<(String, u32)> = None;
     for (i, line) in screen.lines().enumerate() {
         let flat: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
         if flat.chars().count() < REPEAT_MIN_LEN || is_chrome_line(&flat) || !is_repeatable(&flat) {
@@ -1526,18 +1527,27 @@ pub fn repeated_content(screen: &str, visible: usize) -> Option<String> {
         *count += 1;
         let raw = flat.clone();
         fresh.insert(key.clone(), raw);
-        // Only a copy at or below the boundary is fresh evidence: the
-        // same line higher up is an earlier round of work whose
-        // verdict the screen has since superseded.
-        let live = *count >= REPEAT_OCCURRENCES && i >= boundary;
-        if live && best.as_ref().is_none_or(|(_, n)| *count > *n) {
-            // `best` holds the *normal* form of the most-repeated line;
-            // the display text is the freshest literal form, kept above
-            // and read back at the end.
-            best = Some((key.clone(), *count));
+        if *count >= REPEAT_OCCURRENCES && i >= boundary {
+            // The line still loops on screen. Remember the *most
+            // recent* such line, not the most repeated: a real loop
+            // runs until the screen last showed it, while the
+            // most-repeated streak in the file is the argument that
+            // made it count, not the one that is still current.
+            last_live = Some((key.clone(), *count));
+            if best.as_ref().is_none_or(|(_, n)| *count > *n) {
+                best = Some((key.clone(), *count));
+            }
         }
     }
-    best.map(|(key, _)| fresh.get(&key).cloned().unwrap_or_default())
+    // A line qualifies if it has enough copies; the *answer* is the
+    // most recently live one. Otherwise a busy pane whose scrollback
+    // has an old streak would still read `looping` once a single
+    // fresh copy of a different line landed below the boundary.
+    let answer = match (best, last_live) {
+        (Some((_, n)), Some((key, _))) if n >= REPEAT_OCCURRENCES => Some(key),
+        _ => None,
+    };
+    answer.map(|key| fresh.get(&key).cloned().unwrap_or_default())
 }
 
 /// Whether a summary is an actual question text suitable for the
