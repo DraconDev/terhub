@@ -4022,6 +4022,71 @@ Error ID: 7b3ba3a4-9e9a-47ae-857b-b174b08a0214-229\n\
     }
 
     #[test]
+    fn a_lone_fresh_copy_cannot_revive_a_finished_run() {
+        // The tabmon shape again, plus a later isolated hit in the
+        // live half of the pane. Three old copies started the run;
+        // the isolated copy after 33 work rows does not continue
+        // that streak, so it cannot make the finished run live again.
+        let err = "Error: Request timed out.";
+        let mut screen = String::new();
+        for _ in 0..3 {
+            screen.push_str(err);
+            screen.push('\n');
+            screen
+                .push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
+        }
+        for i in 0..33 {
+            screen.push_str(&format!("work character row {i} with work and more work\n"));
+        }
+        screen.push_str(err);
+        screen.push('\n');
+        assert_eq!(repeated_content(&screen, 50), None);
+    }
+
+    #[test]
+    fn a_new_streak_can_restart_a_loop() {
+        // The contrary case: only a fresh, tight three-copy streak is
+        // enough to declare a loop. Historical copies of the same
+        // line are not needed, and they do not let one new copy act
+        // as the whole streak.
+        let err = "Error: Request timed out.";
+        let mut screen = String::new();
+        for i in 0..33 {
+            screen.push_str(&format!("work character row {i} with work and more work\n"));
+        }
+        for _ in 0..4 {
+            screen.push_str(err);
+            screen.push('\n');
+            screen
+                .push_str("glla: provider error (Request timed out.) — retrying automatically.\n");
+        }
+        assert_eq!(
+            repeated_content(&screen, 50),
+            Some("Error: Request timed out.".to_string())
+        );
+    }
+
+    #[test]
+    fn the_most_frequent_live_line_is_the_repeated_answer() {
+        let first = "Error: 400: first repeated provider failure for this agent";
+        let second = "Error: 400: second repeated provider failure for this agent";
+        let mut screen = String::new();
+        for _ in 0..4 {
+            screen.push_str(first);
+            screen.push('\n');
+        }
+        screen.push_str("plain work explaining the current task\n");
+        for _ in 0..3 {
+            screen.push_str(second);
+            screen.push('\n');
+        }
+        assert_eq!(
+            repeated_content(&screen, 0),
+            Some(first.to_string())
+        );
+    }
+
+    #[test]
     fn two_repeats_are_not_a_loop() {
         // Two instances is a coincidence (a table row, a reused
         // command). Three is a loop.
