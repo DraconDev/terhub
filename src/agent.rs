@@ -785,7 +785,20 @@ impl CompiledManifest {
         // A vetoed prompt is an input box under a live task, not a plea:
         // fall back to the freshest working line, or no verdict at all
         // (the caller pairs that with process evidence, or drops it).
-        if veto && matches!(hit, Some((AgentState::Waiting, _))) {
+        //
+        // The veto is only for *chrome*, which is what the rule was
+        // written for: a bare `❯`/`>` sits under a live spinner and
+        // says nothing. A waiting line that carries words is a real
+        // plea, and it can legitimately sit on a screen that also
+        // offers the interrupt — muse draws its blocking question
+        // picker with a footer reading `Enter to select … Esc to
+        // interrupt`, so an unscoped veto silently converted "blocked
+        // on the operator" into "working" (exactly the failure this
+        // classifier exists to prevent).
+        if veto
+            && let Some((AgentState::Waiting, wi)) = hit
+            && is_prompt_chrome(tail[wi])
+        {
             hit = work.map(|i| (AgentState::Working, i));
         }
         // A busy line is a veto for the quiet verdicts. A `done` banner
@@ -1028,9 +1041,19 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
         },
         Manifest {
-            // muse keeps its `❯` input box visible under a live task, so
-            // the prompt alone never proves waiting: an interrupt offer
-            // anywhere in the tail vetoes the prompt verdict.
+            // muse keeps its `❯` input box visible under a live task *and*
+            // after the turn ends, so the composer can never be the
+            // verdict: it is chrome. What actually says something is the
+            // interrupt offer (`esc to interrupt`) on the live spinner,
+            // the `◆ Worked for <dur> · <time>` turn-completion banner,
+            // and the structured-question picker (`Request user input`
+            // with numbered options and an `Enter to select …` footer).
+            //
+            // The picker is why the interrupt offer cannot be an
+            // unscoped veto here: muse prints `Esc to interrupt` in the
+            // picker footer too, so a waiting verdict on a footer that
+            // carries words is a real plea (the veto now only fires on
+            // bare chrome — see `classify`).
             agent: "muse".to_string(),
             tail: None,
             commands: vec!["muse".to_string()],
@@ -1041,15 +1064,38 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏".to_string(),
             ],
             waiting: vec![
-                "^❯".to_string(),
+                // The blocking question picker's footer. It is muse's
+                // own "stopped on you" shape: the numbered options sit
+                // above it, the composer is still drawn below it.
+                "enter to select".to_string(),
+                "↑/↓ to move".to_string(),
+                "tab for an optional note".to_string(),
                 "\\[y/n\\]".to_string(),
                 "press enter to send".to_string(),
             ],
+            done: vec![
+                // The turn-completion banner. A finished muse screen has
+                // nothing else: the composer coming back is quiet, not
+                // done, and it is also there mid-task.
+                "^◆ Worked for".to_string(),
+            ],
             idle: vec![],
-            idle_fallback: vec![],
+            // The composer (`❯`, sometimes carrying a placeholder hint
+            // like "Ask to monitor a running build…"): chrome, present
+            // under a live task and after it, so it only names a quiet
+            // pane — never `waiting`. Everything above wins: a spinner,
+            // a picker footer, the completion banner.
+            idle_fallback: vec!["^❯".to_string()],
             waiting_unless: vec!["esc to interrupt".to_string()],
-            busy: vec![],
-            phase: vec![],
+            // Muse's own background-task rows, drawn under the composer
+            // while a watcher or a background shell is still alive:
+            //
+            //   `└ ◈ Re-run nix profile upgrade  running   1h 25m 03s`
+            //
+            // The turn that started it has ended, the work has not —
+            // the exact case `busy` exists for.
+            busy: vec!["^\\s*└\\s.*\\brunning\\b".to_string()],
+            phase: vec!["^\\s*└\\s.*\\brunning\\b".to_string()],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
                 "traceback".to_string(),
@@ -1642,6 +1688,10 @@ fn question_from_menu(lines: &[&str], waiting_at: usize) -> Option<String> {
 fn is_choice_line(line: &str) -> bool {
     let line = line.trim_start();
     let line = line.strip_prefix("❯ ").unwrap_or(line);
+    // muse marks the *selected* option with `⟩`, the others with plain
+    // indentation, so the picked line carries the caret instead of a
+    // leading number.
+    let line = line.strip_prefix("⟩ ").unwrap_or(line);
     // A boxed line: opencode draws its question picker inside the
     // composer's `┃` border, so the option number sits behind the
     // border, not at the start of the line.
