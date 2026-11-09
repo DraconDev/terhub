@@ -3514,18 +3514,114 @@ mod tests {
     }
 
     #[test]
-    fn prompt_without_live_task_is_waiting() {
+    fn finished_muse_turn_reads_done_not_waiting() {
         let m = compiled();
-        // Settled muse: completed lines carry no interrupt offer, so the
-        // bare prompt reads waiting.
-        let screen = "◆ Ran 2 commands · stuff · 28s · ctrl+o\n───\n❯\n";
+        // Settled muse: the turn-completion banner is the honest "my
+        // turn ended" signal. It must not read `waiting` — the composer
+        // below it is chrome, drawn under a live task as well, and
+        // `waiting` is the badge that means "blocked on you".
+        let screen = "◆ Worked for 25m 21s · 7:42 PM · 9/Nov\n───\n❯\n";
         assert_eq!(
             classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen, false, false),
             hit(
                 Some("muse"),
-                AgentState::Waiting,
-                "◆ Ran 2 commands · stuff · 28s · ctrl+o"
+                AgentState::Done,
+                "◆ Worked for 25m 21s · 7:42 PM · 9/Nov"
             )
+        );
+        // A composer carrying a rotating placeholder hint is the same
+        // chrome: still no plea, so still no `waiting`.
+        let screen = "───\n❯ /resume reopens a past session (--last for the latest)\n───\n  muse-spark-1.3 · max · ~/Dev/x · YOLO\n";
+        assert_eq!(
+            classify_screen(&m, "muse-bin-1.4.2-R4684.1", screen, false, false),
+            None,
+            "the composer hint is chrome, not a plea"
+        );
+    }
+
+    #[test]
+    fn muse_question_picker_reads_question_despite_the_interrupt_footer() {
+        let m = compiled();
+        // Live shape: muse's structured-question picker draws its own
+        // footer — `Enter to select · ↑/↓ to move · Tab for an optional
+        // note · Esc to interrupt`. The `Esc to interrupt` offer is
+        // also muse's working marker, so an unscoped `waiting_unless`
+        // veto silently turned the blocked pane into `working` and the
+        // operator never saw the question.
+        let screen = concat!(
+            "◈ Request user input Workspace — running (1h 50m 31s)\n",
+            "\n",
+            "  The remaining premium-pass work is in browser-extensions-shared, outside this workspace. How should I proceed?\n",
+            "\n",
+            "  ⟩ 1. Switch workspace (Recommended)  You reopen with browser-extensions-shared as root; I continue the premium pass there.\n",
+            "    2. Stay here, escalate             I try to work cross-workspace from here; writes may be denied and need approval.\n",
+            "\n",
+            "  Enter to select · ↑/↓ to move · Tab for an optional note · Esc to interrupt\n",
+            "\n",
+            "─────\n",
+            "❯\n",
+            "─────\n",
+            "  muse-spark-1.3 · max · ~/Dev/x · YOLO\n",
+        );
+        let hit = classify_screen(&m, "muse-bin-1.4.14-R7309.1", screen, false, false)
+            .expect("a blocked muse pane must classify");
+        assert_eq!(hit.agent.as_deref(), Some("muse"));
+        assert_eq!(hit.state, AgentState::Waiting, "{hit:?}");
+        assert_eq!(
+            hit.state.display_label_for(&hit.summary),
+            "question",
+            "the row must read `question`, not `working`: {hit:?}"
+        );
+        assert_eq!(
+            hit.summary,
+            "The remaining premium-pass work is in browser-extensions-shared, outside this workspace. How should I proceed?"
+        );
+    }
+
+    #[test]
+    fn muse_permission_card_reads_waiting() {
+        let m = compiled();
+        // The approval card is a second blocking shape: the agent is
+        // stopped until the operator picks a lane.
+        let screen = concat!(
+            "  Run shell command?\n",
+            "    rm -rf node_modules && bun install\n",
+            "  1. Allow once\n",
+            "  2. Reject once\n",
+            "  3. Allow for this session\n",
+            "  4. Block for this session\n",
+            "─────\n",
+            "❯\n",
+        );
+        let got = classify_screen(&m, "muse-bin-1.4.14-R7309.1", screen, false, false)
+            .expect("the approval card must classify");
+        assert_eq!(got.state, AgentState::Waiting, "{got:?}");
+    }
+
+    #[test]
+    fn muse_background_task_row_reads_working_with_its_phase() {
+        let m = compiled();
+        // The agent's own turn ended (`Worked for …` banner) but its
+        // background watcher is still alive: the busy row below the
+        // composer says the work did not.
+        let screen = concat!(
+            "◆ Worked for 7m 04s · 6:58 PM · 9/Nov\n",
+            "─────\n",
+            "❯ Ask to monitor a running build or log and get pinged on changes\n",
+            "─────\n",
+            "main · ↓ to select\n",
+            "└ ◈ Wait for nix profile upgrade to finish  watching   2h 26m 41s\n",
+            "  muse-spark-1.3 · max · ~/Dev/empire · YOLO\n",
+        );
+        let got = classify_screen(&m, "muse-bin-1.4.14-R7309.1", screen, false, false)
+            .expect("a pane with a live background task must classify");
+        assert_eq!(got.state, AgentState::Working, "{got:?}");
+        assert!(
+            got.phase
+                .as_deref()
+                .unwrap_or_default()
+                .contains("nix profile upgrade"),
+            "phase should name the running task: {got:?}"
         );
     }
 
