@@ -540,6 +540,28 @@ Per pane it merges three signals:
    wants the session events (`session.idle`, `session.status`,
    `permission.updated`), not the screen.
 
+   **muse** is the mirror image: it keeps its `❯` composer on screen
+   under a live task *and* at rest, so the composer is chrome and never
+   the verdict — reading it as `waiting` made every finished muse pane
+   badge "needs you" until the 30-minute decay. What muse does publish
+   is three live-only shapes, and the manifest reads exactly those:
+   the spinner's `esc to interrupt` offer means `working`; a
+   background-task row under the composer
+   (`└ ◈ Wait for nix profile upgrade  watching  2h 26m 41s`, or
+   `running`) is `busy` — the turn ended, the work did not, and its
+   text becomes the Summary; and the `◆ Worked for <dur> · <time>` line
+   is the turn-completion banner, so a settled pane reads `done`. The
+   two blocking shapes are the structured-question picker
+   (`Request user input` with numbered options and an
+   `Enter to select · ↑/↓ to move · Tab for an optional note · Esc to
+   interrupt` footer) and the approval card (`Allow once` /
+   `Reject once` / `Allow for this session`). Both read `waiting`,
+   and the picker's summary is the question itself, so the row reads
+   `question`. That picker footer is *why* the interrupt offer cannot
+   be an unscoped veto: muse prints `Esc to interrupt` there too, so a
+   waiting verdict on a line that carries words is a real plea, and
+   only bare prompt chrome is vetoed.
+
 The table's `Src` column tells you which signal each row stands on.
 
 Every agent record also carries a **handle**: a stable local name minted
