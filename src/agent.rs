@@ -1070,6 +1070,13 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "enter to select".to_string(),
                 "↑/↓ to move".to_string(),
                 "tab for an optional note".to_string(),
+                // The permission card ("Allow once / Reject once /
+                // Allow for this session"): the card's own labels are the
+                // plea, and the agent is stopped on the operator exactly
+                // like the question picker above.
+                "allow once".to_string(),
+                "reject once".to_string(),
+                "always allow".to_string(),
                 "\\[y/n\\]".to_string(),
                 "press enter to send".to_string(),
             ],
@@ -1080,12 +1087,14 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "^◆ Worked for".to_string(),
             ],
             idle: vec![],
-            // The composer (`❯`, sometimes carrying a placeholder hint
-            // like "Ask to monitor a running build…"): chrome, present
-            // under a live task and after it, so it only names a quiet
-            // pane — never `waiting`. Everything above wins: a spinner,
-            // a picker footer, the completion banner.
-            idle_fallback: vec!["^❯".to_string()],
+            // No `idle_fallback`: muse's composer (`❯`, bare or carrying a
+            // rotating hint) is drawn under a live task *and* at rest, so it
+            // says nothing about whose turn it is. It used to sit in
+            // `waiting`, which made every finished muse pane read "needs you"
+            // until the 30-minute decay — the false alarm this manifest must
+            // not raise. Finish detection stays with the `Worked for` banner
+            // above and the quiet clock.
+            idle_fallback: vec![],
             waiting_unless: vec!["esc to interrupt".to_string()],
             // Muse's own background-task rows, drawn under the composer
             // while a watcher or a background shell is still alive:
