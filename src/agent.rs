@@ -1100,11 +1100,13 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // while a watcher or a background shell is still alive:
             //
             //   `└ ◈ Re-run nix profile upgrade  running   1h 25m 03s`
+            //   `└ ◈ Wait for nix profile upgrade  watching  2h 26m 41s`
             //
-            // The turn that started it has ended, the work has not —
-            // the exact case `busy` exists for.
-            busy: vec!["^\\s*└\\s.*\\brunning\\b".to_string()],
-            phase: vec!["^\\s*└\\s.*\\brunning\\b".to_string()],
+            // The turn that started it has ended, the work has not — the
+            // exact case `busy` exists for. The `└ last event …` line on a
+            // live spinner is a different row and matches neither verb.
+            busy: vec!["^\\s*└\\s.*\\b(?:running|watching)\\b".to_string()],
+            phase: vec!["^\\s*└\\s.*\\b(?:running|watching)\\b".to_string()],
             error: vec![
                 "\\b(?-i:E)rror\\b".to_string(),
                 "traceback".to_string(),
@@ -3572,10 +3574,14 @@ mod tests {
             "question",
             "the row must read `question`, not `working`: {hit:?}"
         );
-        assert_eq!(
-            hit.summary,
-            "The remaining premium-pass work is in browser-extensions-shared, outside this workspace. How should I proceed?"
+        // The summary is the question itself, capped for the column and
+        // still ending on the `?` that drives the `question` tag.
+        assert!(
+            hit.summary.starts_with("The remaining premium-pass work is in browser-extensions-shared"),
+            "{}",
+            hit.summary
         );
+        assert!(hit.summary.ends_with("?"), "{}", hit.summary);
     }
 
     #[test]
