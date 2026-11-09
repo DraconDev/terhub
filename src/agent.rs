@@ -1107,7 +1107,6 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "quota".to_string(),
                 "\\b429\\b".to_string(),
             ],
-            done: vec![],
         },
         Manifest {
             // The "Message · Enter send" box only returns when the turn is
