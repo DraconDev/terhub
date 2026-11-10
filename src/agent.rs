@@ -1071,12 +1071,17 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "↑/↓ to move".to_string(),
                 "tab for an optional note".to_string(),
                 // The permission card ("Allow once / Reject once /
-                // Allow for this session"): the card's own labels are the
-                // plea, and the agent is stopped on the operator exactly
-                // like the question picker above.
-                "allow once".to_string(),
-                "reject once".to_string(),
-                "always allow".to_string(),
+                // Allow for this session / Block for this session"): the
+                // card's own option labels are the plea, and the agent is
+                // stopped on the operator exactly like the question picker
+                // above. Anchored to the start of a line (with the option
+                // number the card prints) so prose that merely mentions
+                // "allow once" cannot raise a false alarm.
+                "^\\s*(?:\\d+\\.\\s*)?allow once\\b".to_string(),
+                "^\\s*(?:\\d+\\.\\s*)?reject once\\b".to_string(),
+                "^\\s*(?:\\d+\\.\\s*)?always allow\\b".to_string(),
+                "^\\s*(?:\\d+\\.\\s*)?allow for this session\\b".to_string(),
+                "^\\s*(?:\\d+\\.\\s*)?block for this session\\b".to_string(),
                 "\\[y/n\\]".to_string(),
                 "press enter to send".to_string(),
             ],
@@ -3602,6 +3607,16 @@ mod tests {
         let got = classify_screen(&m, "muse-bin-1.4.14-R7309.1", screen, false, false)
             .expect("the approval card must classify");
         assert_eq!(got.state, AgentState::Waiting, "{got:?}");
+        // Prose that merely mentions the labels is not a card: a
+        // transcript line about approving something must not raise a
+        // needs-you alarm.
+        let prose = "  I will allow once the audit finishes, then rerun it.\n─────\n❯\n";
+        assert_ne!(
+            classify_screen(&m, "muse-bin-1.4.14-R7309.1", prose, false, false)
+                .map(|h| h.state),
+            Some(AgentState::Waiting),
+            "prose must not read as a permission card"
+        );
     }
 
     #[test]
