@@ -3582,7 +3582,8 @@ mod tests {
         // The summary is the question itself, capped for the column and
         // still ending on the `?` that drives the `question` tag.
         assert!(
-            hit.summary.starts_with("The remaining premium-pass work is in browser-extensions-shared"),
+            hit.summary
+                .starts_with("The remaining premium-pass work is in browser-extensions-shared"),
             "{}",
             hit.summary
         );
@@ -3612,8 +3613,7 @@ mod tests {
         // needs-you alarm.
         let prose = "  I will allow once the audit finishes, then rerun it.\n─────\n❯\n";
         assert_ne!(
-            classify_screen(&m, "muse-bin-1.4.14-R7309.1", prose, false, false)
-                .map(|h| h.state),
+            classify_screen(&m, "muse-bin-1.4.14-R7309.1", prose, false, false).map(|h| h.state),
             Some(AgentState::Waiting),
             "prose must not read as a permission card"
         );
