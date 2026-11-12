@@ -5263,6 +5263,35 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         apply_event_to(&mut reg, &ev2, 300);
         assert_eq!(reg["%1"].state_since, 300);
     }
+    #[test]
+    fn claude_background_shell_reads_working() {
+        let m = compiled();
+        let screen = concat!(
+            "✻ Brewed for 6s · done 19:39 · 1 shell still running\n",
+            "────────────────────────────────────────────────────────────────────────────────\n",
+            "❯ \n",
+            "────────────────────────────────────────────────────────────────────────────────\n",
+            "  Opus 5.5 · ctx 2% · $0.12\n",
+            "  ⏵⏵ bypass permissions on · 1 shell\n",
+        );
+        let got = classify_screen(&m, "claude", screen, false, false)
+            .expect("claude background shell must classify");
+        assert_eq!(got.agent.as_deref(), Some("claude"));
+        assert_eq!(got.state, AgentState::Working, "{got:?}");
+    }
+
+    #[test]
+    fn claude_footer_shell_count_reads_working() {
+        let m = compiled();
+        let screen = concat!(
+            "❯ \n",
+            "  ⏵⏵ bypass permissions on · 2 shells\n",
+        );
+        let got = classify_screen(&m, "claude", screen, false, false)
+            .expect("claude footer shell count must classify");
+        assert_eq!(got.state, AgentState::Working, "{got:?}");
+    }
+
 }
 
 #[cfg(test)]
