@@ -5264,22 +5264,6 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         assert_eq!(reg["%1"].state_since, 300);
     }
     #[test]
-    fn claude_permission_card_probe() {
-        let m = compiled();
-        let screen = concat!(
-            "  Run shell command?\n",
-            "    rm -rf node_modules && bun install\n",
-            "  1. Allow once\n",
-            "  2. Reject once\n",
-            "  3. Allow for this session\n",
-            "  4. Block for this session\n",
-            "─────\n",
-            "❯\n",
-        );
-        let got = classify_screen(&m, "claude", screen, false, false);
-        println!("PROBE: {got:?}");
-    }
-    #[test]
     fn claude_background_shell_reads_working() {
         let m = compiled();
         let screen = concat!(
