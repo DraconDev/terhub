@@ -1425,8 +1425,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                     .to_string(),
             ],
             waiting_unless: vec![],
-            // Vibe renders its live interrupt hint above the composer and usage footer.
-            busy: vec![r"^\s*[⠀-⣿].*\bEsc/Ctrl\+C to interrupt\)\s*$".to_string()],
+            // Vibe can put queue controls after the live interrupt hint.
+            busy: vec![r"^\s*[⠀-⣿].*\bEsc/Ctrl\+C to interrupt\)".to_string()],
             phase: vec![],
         },
     ]
@@ -3546,10 +3546,14 @@ mod tests {
             "~/project      usage ▏      0% · ctx █▉     126k/400k\n",
         );
         let working = format!("⠋⠁ Generating… (3m56s Esc/Ctrl+C to interrupt)\n{composer}");
+        let working_with_queue = format!(
+            "⣠ Running command… (15m33s Esc/Ctrl+C to interrupt)     Ctrl+X to navigate · ≡ 2/7\n{composer}"
+        );
         let permission = "Permission for the bash tool\n1. Allow once\n2. Reject\n";
         for (screen, state) in [
             (composer, AgentState::Idle),
             (working.as_str(), AgentState::Working),
+            (working_with_queue.as_str(), AgentState::Working),
             (permission, AgentState::Waiting),
         ] {
             let got = classify_screen(&m, "vibe-rs", screen, true, false).unwrap();
