@@ -33,7 +33,11 @@ const AGENT_BINS: &[&str] = &[
     "tabnine",
     "copilot",
     "minimax-code",
+    "vibe",
 ];
+
+/// The bundled terminal binary shares the launcher's agent identity.
+const AGENT_BIN_ALIASES: &[(&str, &str)] = &[("vibe-rs", "vibe")];
 
 /// Versioned wrapper stems (lowercase). Match a program basename that is
 /// exactly the stem or the stem plus a version suffix (digit-first, or a
@@ -698,18 +702,28 @@ fn is_python_argv0(argv0: &str) -> bool {
 /// around it. The distinction matters when asking "is the agent
 /// stopped?" — a frozen wrapper says nothing about the agent under it.
 fn is_agent_bin(comm: &str) -> bool {
-    let base = proc_base(comm);
-    AGENT_BINS.iter().any(|b| *b == base)
+    agent_bin(&proc_base(comm)).is_some()
+}
+
+fn agent_bin(name: &str) -> Option<&'static str> {
+    AGENT_BINS
+        .iter()
+        .find(|b| **b == name)
+        .copied()
+        .or_else(|| {
+            AGENT_BIN_ALIASES
+                .iter()
+                .find_map(|(bin, agent)| (*bin == name).then_some(*agent))
+        })
 }
 
 fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
-    let find_bin = |name: &str| AGENT_BINS.iter().find(|b| **b == name).copied();
-    if let Some(agent) = find_bin(&proc_base(comm)) {
+    if let Some(agent) = agent_bin(&proc_base(comm)) {
         return Some(agent);
     }
     let mut tokens = cmdline.split([' ', '\0', '\t']).filter(|t| !t.is_empty());
     let argv0 = tokens.next().unwrap_or("");
-    if let Some(agent) = find_bin(&proc_base(argv0)) {
+    if let Some(agent) = agent_bin(&proc_base(argv0)) {
         return Some(agent);
     }
     let rest: Vec<&str> = tokens.collect();
@@ -726,7 +740,7 @@ fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
             {
                 let module = proc_base(next);
                 let stem = module.split('.').next().unwrap_or(&module);
-                if let Some(agent) = find_bin(stem).or_else(|| find_bin(&module)) {
+                if let Some(agent) = agent_bin(stem).or_else(|| agent_bin(&module)) {
                     return Some(agent);
                 }
             }
@@ -736,7 +750,7 @@ fn match_proc(comm: &str, cmdline: &str) -> Option<&'static str> {
         if !tok.contains('/') {
             continue;
         }
-        if let Some(agent) = find_bin(&proc_base(tok)) {
+        if let Some(agent) = agent_bin(&proc_base(tok)) {
             return Some(agent);
         }
     }

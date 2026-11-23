@@ -1409,6 +1409,26 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             // with no phase simply shows no summary.
             phase: vec![],
         },
+        Manifest {
+            agent: "vibe".to_string(),
+            tail: None,
+            commands: vec!["vibe".to_string()],
+            working: vec![],
+            waiting: vec![r"^\s*Permission for the \S+ tool\b".to_string()],
+            error: vec![],
+            limited: vec![],
+            done: vec![],
+            idle: vec![],
+            idle_fallback: vec![
+                r"\busage [▏-█]+\s+\d+%\s+·\s+ctx [▏-█]+".to_string(),
+                r"^─{4,} .+ · (?:default|accept edits|plan mode)(?: · auto-approve)? ─*$"
+                    .to_string(),
+            ],
+            waiting_unless: vec![],
+            // Vibe renders its live interrupt hint above the composer and usage footer.
+            busy: vec![r"^\s*[⠀-⣿].*\bEsc/Ctrl\+C to interrupt\)\s*$".to_string()],
+            phase: vec![],
+        },
     ]
 }
 

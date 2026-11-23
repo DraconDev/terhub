@@ -764,7 +764,7 @@ pub struct SpawnProfile {
 
 /// Builtin agents offered when the user defines no `[[profile]]`.
 pub fn builtin_profiles() -> Vec<SpawnProfile> {
-    ["claude", "codex", "pi", "gemini", "muse"]
+    ["claude", "codex", "pi", "gemini", "muse", "vibe"]
         .into_iter()
         .map(|a| SpawnProfile {
             name: a.to_string(),
