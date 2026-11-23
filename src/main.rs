@@ -786,6 +786,15 @@ fn cmd_hook(
     } else {
         summary.unwrap_or("").to_string()
     };
+    let (state, summary) = if state == AgentState::Waiting
+        && terhub::proc::canonical_agent(agent) == "claude"
+        && summary_stdin
+        && terhub::hooks::claude_idle_notification(&stdin_text, &summary)
+    {
+        (AgentState::Idle, "response finished".to_string())
+    } else {
+        (state, summary)
+    };
     let prompt = if prompt_stdin {
         terhub::hooks::stdin_prompt(&stdin_text)
     } else {

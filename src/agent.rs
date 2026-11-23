@@ -928,11 +928,10 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "·\\s*\\d+\\s*shell\\b".to_string(),
             ],
             waiting: vec![
-                "^❯".to_string(),
-                "try asking".to_string(),
                 "do you want to proceed".to_string(),
                 "\\bapprove\\b".to_string(),
                 "enter to confirm".to_string(),
+                "enter to select".to_string(),
                 "\\[y/n\\]".to_string(),
             ],
             error: vec![
@@ -949,7 +948,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
             done: vec![],
             idle: vec![],
-            idle_fallback: vec![],
+            idle_fallback: vec![r"^\s*❯\s*(?:try asking .*)?$".to_string()],
             waiting_unless: vec![
                 "esc to interrupt".to_string(),
                 "shell still running".to_string(),
@@ -958,6 +957,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                 "·\\s*\\d+\\s*shell\\b".to_string(),
             ],
             busy: vec![
+                "esc to interrupt".to_string(),
                 "shell still running".to_string(),
                 "shells still running".to_string(),
                 "bypass permissions on.*shell".to_string(),
@@ -2178,10 +2178,13 @@ fn bell_override(hit: Option<ScreenHit>, bell: bool) -> Option<ScreenHit> {
             // — a bell during a crashed agent is redundant noise.
             // Working is kept too: the screen says the agent is busy,
             // and the bell cannot argue with that.
-            if matches!(
-                h.state,
-                AgentState::Waiting | AgentState::Idle | AgentState::Done
-            ) {
+            // Claude can ring on completion while showing its normal input box.
+            if !(h.agent.as_deref() == Some("claude") && h.state == AgentState::Idle)
+                && matches!(
+                    h.state,
+                    AgentState::Waiting | AgentState::Idle | AgentState::Done
+                )
+            {
                 h.state = AgentState::Waiting;
                 h.summary = format!("🔔 {}", h.summary);
             }
@@ -5283,15 +5286,11 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
     #[test]
     fn claude_footer_shell_count_reads_working() {
         let m = compiled();
-        let screen = concat!(
-            "❯ \n",
-            "  ⏵⏵ bypass permissions on · 2 shells\n",
-        );
+        let screen = concat!("❯ \n", "  ⏵⏵ bypass permissions on · 2 shells\n",);
         let got = classify_screen(&m, "claude", screen, false, false)
             .expect("claude footer shell count must classify");
         assert_eq!(got.state, AgentState::Working, "{got:?}");
     }
-
 }
 
 #[cfg(test)]

@@ -1390,6 +1390,14 @@ pub(crate) fn poll_sync_with(
             && !replaced_by_live_agent
         {
             let mut r = rec.clone();
+            if r.source == Source::Hook
+                && r.agent == "claude"
+                && r.state == AgentState::Waiting
+                && r.summary == crate::hooks::CLAUDE_IDLE_NOTIFICATION
+            {
+                r.state = AgentState::Idle;
+                r.summary = "response finished".to_string();
+            }
             // A hook `idle` is defeasible: pi's `agent_end` fires when
             // the main turn ends, but retry loops, detached audit
             // workers, and background subagents keep going after it

@@ -9,6 +9,19 @@ use std::path::{Path, PathBuf};
 /// Marker identifying our hook entries (uninstall matches on this).
 pub const MARKER: &str = "terhub hook";
 const BACKUP_SUFFIX: &str = ".terhub-bak";
+pub(crate) const CLAUDE_IDLE_NOTIFICATION: &str = "Claude is waiting for your input";
+
+/// Claude sends this notification after a completed turn sits at the input box.
+pub fn claude_idle_notification(raw: &str, summary: &str) -> bool {
+    match serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| v["notification_type"].as_str().map(str::to_owned))
+        .as_deref()
+    {
+        Some(kind) => kind == "idle_prompt",
+        None => summary == CLAUDE_IDLE_NOTIFICATION,
+    }
+}
 
 /// Parse a hook-stdin summary: a JSON `{"message": ...}` wins, else the
 /// first raw line. Capped so a chatty hook can't flood the ledger.
