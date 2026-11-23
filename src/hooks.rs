@@ -14,7 +14,10 @@ pub(crate) const CLAUDE_IDLE_NOTIFICATION: &str = "Claude is waiting for your in
 /// Claude sends this notification after a completed turn sits at the input box.
 pub fn claude_idle_notification(raw: &str, summary: &str) -> bool {
     let payload = serde_json::from_str::<serde_json::Value>(raw).ok();
-    match payload.as_ref().and_then(|v| v["notification_type"].as_str()) {
+    match payload
+        .as_ref()
+        .and_then(|v| v["notification_type"].as_str())
+    {
         Some(kind) => kind == "idle_prompt",
         None => summary == CLAUDE_IDLE_NOTIFICATION,
     }

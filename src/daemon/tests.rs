@@ -647,6 +647,38 @@ fn builtin_compiled() -> Vec<crate::agent::CompiledManifest> {
 }
 
 #[test]
+fn poll_recovers_legacy_claude_idle_notification() {
+    let dir = std::env::temp_dir().join(format!("terhub-poll-claude-idle-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    fake_tmux_file_screen(&dir, 999_999_999, "claude");
+    let tmux = crate::tmux::Tmux::test(dir.join("tmux"));
+    let manifests = builtin_compiled();
+    let now = now_unix();
+    let mut old = hook_record(now);
+    old.pane = "%50".to_string();
+    old.agent = "claude".to_string();
+    old.state = AgentState::Waiting;
+    old.summary = crate::hooks::CLAUDE_IDLE_NOTIFICATION.to_string();
+    std::fs::write(
+        dir.join("screen.txt"),
+        "✻ Churned for 1m 4s · done 19:12\n─────\n❯\n─────\n",
+    )
+    .unwrap();
+    let prev = HashMap::from([(old.pane.clone(), old.clone())]);
+    let (next, _, _, _, _) = poll_sync_with(&tmux, prev, &manifests, Tunables::default());
+    assert_eq!(next["%50"].state, AgentState::Idle);
+    assert_eq!(next["%50"].state_since, old.state_since);
+    assert_eq!(next["%50"].summary, "response finished");
+
+    old.summary = "Claude needs your permission".to_string();
+    std::fs::write(dir.join("screen.txt"), "Do you want to proceed? [y/n]\n").unwrap();
+    let prev = HashMap::from([(old.pane.clone(), old)]);
+    let (next, _, _, _, _) = poll_sync_with(&tmux, prev, &manifests, Tunables::default());
+    assert_eq!(next["%50"].state, AgentState::Waiting);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn digit_only_error_step_keeps_hash_but_resets_quiet() {
     // "Error: 1 failed" → "Error: 2 failed": digit-fuzzing hides the
     // step from the screen hash (same hash), but the changed summary

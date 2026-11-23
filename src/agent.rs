@@ -5141,11 +5141,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         let screen = "◆ docs + gate + install\n──────────\n❯\n";
         assert_eq!(
             classify_screen(&m, "claude", screen, false, false),
-            hit(
-                Some("claude"),
-                AgentState::Idle,
-                "◆ docs + gate + install"
-            )
+            hit(Some("claude"), AgentState::Idle, "◆ docs + gate + install")
         );
         // Nothing textual above: keep the thin line, honestly.
         let screen = "──────────\n❯\n";
