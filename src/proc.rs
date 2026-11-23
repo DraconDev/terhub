@@ -1391,6 +1391,19 @@ mod tests {
     }
 
     #[test]
+    fn vibe_launcher_and_terminal_binary_share_the_agent_identity() {
+        assert_eq!(match_proc("vibe", ""), Some("vibe"));
+        assert_eq!(match_proc("vibe-rs", ""), Some("vibe"));
+        assert_eq!(
+            match_proc("python", "python /opt/mistral-vibe/bin/vibe"),
+            Some("vibe")
+        );
+        assert!(is_agent_bin("vibe-rs"));
+        assert_eq!(canonical_agent("/opt/vibe-rs"), "vibe");
+        assert_eq!(match_proc("vibe-rs-helper", ""), None);
+    }
+
+    #[test]
     fn nearest_agent_wins() {
         // Deep codex under the first child, shallow pi under the second:
         // breadth-first finds pi despite the higher pid.

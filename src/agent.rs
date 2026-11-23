@@ -1420,7 +1420,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             done: vec![],
             idle: vec![],
             idle_fallback: vec![
-                r"\busage [▏-█]+\s+\d+%\s+·\s+ctx [▏-█]+".to_string(),
+                r"\busage [▀-▟]+\s+\d+%\s+·\s+ctx [▀-▟]+".to_string(),
                 r"^─{4,} .+ · (?:default|accept edits|plan mode)(?: · auto-approve)? ─*$"
                     .to_string(),
             ],
@@ -2198,8 +2198,9 @@ fn bell_override(hit: Option<ScreenHit>, bell: bool) -> Option<ScreenHit> {
             // — a bell during a crashed agent is redundant noise.
             // Working is kept too: the screen says the agent is busy,
             // and the bell cannot argue with that.
-            // Claude can ring on completion while showing its normal input box.
-            if !(h.agent.as_deref() == Some("claude") && h.state == AgentState::Idle)
+            // Claude and Vibe can ring on completion while showing their input box.
+            if !(matches!(h.agent.as_deref(), Some("claude" | "vibe"))
+                && h.state == AgentState::Idle)
                 && matches!(
                     h.state,
                     AgentState::Waiting | AgentState::Idle | AgentState::Done
@@ -3533,6 +3534,28 @@ mod tests {
                 "⠋ Working… (esc to interrupt)"
             )
         );
+    }
+
+    #[test]
+    fn vibe_screen_distinguishes_composer_work_and_permission() {
+        let m = compiled();
+        let composer = concat!(
+            "──────── DeepSeek V4.1 Flash[max] · accept edits · auto-approve ─\n",
+            ">\n",
+            "──────────────────────────────────────────────────────────────\n",
+            "~/project      usage ▏      0% · ctx █▉     126k/400k\n",
+        );
+        let working = format!("⠋⠁ Generating… (3m56s Esc/Ctrl+C to interrupt)\n{composer}");
+        let permission = "Permission for the bash tool\n1. Allow once\n2. Reject\n";
+        for (screen, state) in [
+            (composer, AgentState::Idle),
+            (working.as_str(), AgentState::Working),
+            (permission, AgentState::Waiting),
+        ] {
+            let got = classify_screen(&m, "vibe-rs", screen, true, false).unwrap();
+            assert_eq!(got.agent.as_deref(), Some("vibe"));
+            assert_eq!(got.state, state, "{got:?}");
+        }
     }
 
     #[test]
