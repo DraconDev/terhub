@@ -13,11 +13,8 @@ pub(crate) const CLAUDE_IDLE_NOTIFICATION: &str = "Claude is waiting for your in
 
 /// Claude sends this notification after a completed turn sits at the input box.
 pub fn claude_idle_notification(raw: &str, summary: &str) -> bool {
-    match serde_json::from_str::<serde_json::Value>(raw)
-        .ok()
-        .and_then(|v| v["notification_type"].as_str().map(str::to_owned))
-        .as_deref()
-    {
+    let payload = serde_json::from_str::<serde_json::Value>(raw).ok();
+    match payload.as_ref().and_then(|v| v["notification_type"].as_str()) {
         Some(kind) => kind == "idle_prompt",
         None => summary == CLAUDE_IDLE_NOTIFICATION,
     }
@@ -491,6 +488,22 @@ mod tests {
         assert_eq!(stdin_summary(&long).len(), 200);
         let msg = format!(r#"{{"message": "{}"}}"#, "y".repeat(500));
         assert_eq!(stdin_summary(&msg).len(), 200);
+    }
+
+    #[test]
+    fn claude_idle_notification_distinguishes_completion_from_permission() {
+        assert!(claude_idle_notification(
+            r#"{"notification_type":"idle_prompt","message":"Ready"}"#,
+            "Ready"
+        ));
+        assert!(claude_idle_notification(
+            CLAUDE_IDLE_NOTIFICATION,
+            CLAUDE_IDLE_NOTIFICATION
+        ));
+        assert!(!claude_idle_notification(
+            r#"{"notification_type":"permission_prompt"}"#,
+            CLAUDE_IDLE_NOTIFICATION
+        ));
     }
 
     #[test]

@@ -3470,7 +3470,7 @@ mod tests {
             .map(CompiledManifest::compile)
             .collect::<Result<Vec<_>>>()
             .unwrap();
-        let screen = "claude assistant\n❯ Try asking me to build something\n";
+        let screen = "claude assistant\nDo you want to proceed? [y/n]\n";
         let hit = classify_screen(&manifests, "crush", screen, false, false)
             .expect("unknown agent must still classify via fallback");
         assert_eq!(hit.state, AgentState::Waiting);
@@ -3480,15 +3480,24 @@ mod tests {
     #[test]
     fn claude_waiting_screen() {
         let m = compiled();
-        let screen = "…\n❯ Try asking me to build something\n";
-        assert_eq!(
-            classify_screen(&m, "claude", screen, false, false),
-            hit(
-                Some("claude"),
-                AgentState::Waiting,
-                "❯ Try asking me to build something"
-            )
-        );
+        let screen = "Do you want to proceed? [y/n]\n─────\n❯\n";
+        let got = classify_screen(&m, "claude", screen, false, false).unwrap();
+        assert_eq!(got.state, AgentState::Waiting);
+        assert!(got.summary.contains("Do you want to proceed?"));
+    }
+
+    #[test]
+    fn claude_completion_prompt_stays_idle_with_or_without_a_bell() {
+        let m = compiled();
+        for screen in [
+            "✻ Crunched for 41m 40s · done 19:14\n─────\n❯\n─────\n",
+            "❯ Try asking me to build something\n",
+        ] {
+            for bell in [false, true] {
+                let got = classify_screen(&m, "claude", screen, bell, false).unwrap();
+                assert_eq!(got.state, AgentState::Idle, "{got:?}");
+            }
+        }
     }
 
     #[test]
@@ -5128,13 +5137,13 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
     #[test]
     fn bare_prompt_borrows_context_line() {
         let m = compiled();
-        // Empty prompt: the task line above, not the box rule, not "❯".
+        // Keep the context above an empty prompt in the summary.
         let screen = "◆ docs + gate + install\n──────────\n❯\n";
         assert_eq!(
             classify_screen(&m, "claude", screen, false, false),
             hit(
                 Some("claude"),
-                AgentState::Waiting,
+                AgentState::Idle,
                 "◆ docs + gate + install"
             )
         );
@@ -5142,7 +5151,7 @@ esc to cancel  Gemini 3.8 Flash · high · 1 task(s) · /tasks
         let screen = "──────────\n❯\n";
         assert_eq!(
             classify_screen(&m, "claude", screen, false, false),
-            hit(Some("claude"), AgentState::Waiting, "❯")
+            hit(Some("claude"), AgentState::Idle, "❯")
         );
     }
 
