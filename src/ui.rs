@@ -2195,6 +2195,17 @@ mod tests {
     }
 
     #[test]
+    fn window_counts_ignore_session_links() {
+        let pane = Pane::test("%1", "chat", "pi");
+        let mut linked = pane.clone();
+        linked.session = "recovered".to_string();
+        let mut panes = vec![pane, linked];
+        assert_eq!(window_pane_counts(&panes).get("@0"), Some(&1));
+        panes.push(Pane::test("%2", "chat", "bash"));
+        assert_eq!(window_pane_counts(&panes).get("@0"), Some(&2));
+    }
+
+    #[test]
     fn pane_cell_id_keeps_tmux_and_strips_namespaces() {
         // tmux ids pass through untouched.
         assert_eq!(pane_cell_id("%12"), "%12");

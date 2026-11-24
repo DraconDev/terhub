@@ -400,6 +400,46 @@ fn app_with_panes() -> App {
 }
 
 #[test]
+fn linked_panes_appear_once_in_all_and_in_each_session() {
+    use crate::agent::AgentState;
+
+    let mut app = app_with_panes();
+    app.set_sessions(vec![Session::test("a"), Session::test("recovered")]);
+    let mut linked = app.panes[0].clone();
+    linked.session = "recovered".to_string();
+    app.panes.push(linked);
+    let mut remote = remote_pane();
+    remote.id = "dev:%1".to_string();
+    app.panes.push(remote);
+    app.agents
+        .insert("%1".to_string(), record("%1", "pi", AgentState::Waiting, 1));
+
+    app.refresh_filtered();
+    assert_eq!(app.filtered.len(), 3);
+    assert!(app.filtered.iter().any(|p| p.id == "dev:%1"));
+    assert_eq!(app.all_pane_counts(), (3, 1));
+    assert_eq!(app.visible_needy(), 1);
+    let counts = app.session_counts();
+    assert_eq!(counts.get("a"), Some(&(2, 1)));
+    assert_eq!(counts.get("recovered"), Some(&(1, 1)));
+
+    app.filter = "recovered".to_string();
+    app.refresh_filtered();
+    assert_eq!(app.filtered.len(), 1);
+    assert_eq!(app.filtered[0].id, "%1");
+    assert_eq!(app.filtered[0].session, "recovered");
+
+    app.filter.clear();
+    app.select(1);
+    app.refresh_filtered();
+    assert_eq!(app.filtered.len(), 2);
+    app.select(2);
+    app.refresh_filtered();
+    assert_eq!(app.filtered.len(), 1);
+    assert_eq!(app.filtered[0].id, "%1");
+}
+
+#[test]
 fn session_worst_picks_neediest_state() {
     use crate::agent::AgentState;
     let mut app = app_with_panes();
