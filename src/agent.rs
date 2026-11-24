@@ -1422,7 +1422,11 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             tail: None,
             commands: vec!["vibe".to_string()],
             working: vec![],
-            waiting: vec![r"^\s*Permission for the \S+ tool\b".to_string()],
+            waiting: vec![
+                r"^\s*Permission for the \S+ tool\b".to_string(),
+                r"^\s*[⠀-⣿]+\s+User input required(?:…|\.\.\.)".to_string(),
+                r"^\s*│\s+↑↓/jk navigate\s+Enter select\s+Esc cancel\s*│\s*$".to_string(),
+            ],
             error: vec![],
             limited: vec![],
             done: vec![],
@@ -3562,6 +3566,7 @@ mod tests {
         let background_rail = format!("Ctrl+X to navigate · ▪ 2 tasks · ≡ 4/4\n{composer}");
         let compact_background_rail = format!("▪ 2\n{composer}");
         let empty_background_rail = format!("Ctrl+X to navigate · ▪ 0 tasks · ≡ 4/4\n{composer}");
+        let question_with_tasks = "⠖  User input required… (11m48s Esc/Ctrl+C to interrupt)     Ctrl+X to navigate · ▪ 1 task\n│ ↑↓/jk navigate  Enter select  Esc cancel │\n";
         let permission = "Permission for the bash tool\n1. Allow once\n2. Reject\n";
         for (screen, state) in [
             (composer, AgentState::Idle),
@@ -3571,6 +3576,7 @@ mod tests {
             (background_rail.as_str(), AgentState::Working),
             (compact_background_rail.as_str(), AgentState::Working),
             (empty_background_rail.as_str(), AgentState::Idle),
+            (question_with_tasks, AgentState::Waiting),
             (permission, AgentState::Waiting),
         ] {
             let got = classify_screen(&m, "vibe-rs", screen, true, false).unwrap();
