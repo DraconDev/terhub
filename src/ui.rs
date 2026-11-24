@@ -1,6 +1,6 @@
 //! ratatui rendering for the hub. `render` returns the screen areas occupied by
 //! the session rows and pane rows so the event loop can map mouse clicks.
-use crate::app::{App, Focus, Mode, SortKey, is_quiet_shell};
+use crate::app::{App, Focus, Mode, SortKey, is_quiet_shell, unique_panes};
 use crate::tmux::Pane;
 use ansi_to_tui::IntoText;
 use ratatui::{
@@ -704,7 +704,7 @@ fn hover_style() -> Style {
 /// `:[N]` suffix and `*` mark — both are noise in single-pane windows.
 fn window_pane_counts(panes: &[Pane]) -> HashMap<&str, usize> {
     let mut counts = HashMap::new();
-    for p in panes {
+    for p in unique_panes(panes) {
         // Native/fleet rows carry no window id: each is its own
         // terminal tab, not a pane of a shared window. Counting the
         // empty key would give every such tab a bogus `:[0]` suffix
@@ -801,11 +801,11 @@ fn selector_segments(
     };
     let counts = app.session_counts();
     let mut rows = Vec::with_capacity(app.sessions.len() + 1);
-    let total_needy = app.attention_count();
+    let (total, total_needy) = app.all_pane_counts();
     let all_counts = if total_needy > 0 {
-        format!("({}·{}!)", app.panes.len(), total_needy)
+        format!("({total}·{total_needy}!)")
     } else {
-        format!("({})", app.panes.len())
+        format!("({total})")
     };
     rows.push((
         "".to_string(),

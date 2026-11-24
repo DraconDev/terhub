@@ -11,7 +11,7 @@ use crate::config::{AppConfig, key_matches};
 use crate::daemon;
 use crate::tmux::{Pane, Session, Tmux};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 mod commands;
@@ -135,6 +135,15 @@ pub fn is_remote_pane(id: &str) -> bool {
 /// True for native terminal rows (Konsole/kitty/WezTerm tabs).
 pub fn is_native_pane(id: &str) -> bool {
     crate::native::is_native_id(id)
+}
+
+/// tmux reports one row per session link. The full pane id identifies
+/// the terminal across those links and includes the namespace for foreign rows.
+pub(crate) fn unique_panes<'a>(
+    panes: impl IntoIterator<Item = &'a Pane>,
+) -> impl Iterator<Item = &'a Pane> {
+    let mut seen = HashSet::new();
+    panes.into_iter().filter(move |p| seen.insert(p.id.as_str()))
 }
 
 /// Backend fetch failures stay one status line: first line, capped.
@@ -1222,21 +1231,23 @@ impl App {
         }
     }
 
-    /// Total needy panes for the "All" sidebar count. Iterates over
-    /// [`Self::panes`] (not [`Self::agents`]) so orphan agent records —
-    /// daemon snapshots that still carry a pane id the live pane list
-    /// no longer knows about — can never push the count past
-    /// `panes.len()`. Mirrors `session_counts` / `visible_needy`: every
-    /// other needy count in the UI is bounded by a row we render.
+    /// Total needy panes for the All tab.
     pub fn attention_count(&self) -> usize {
-        self.panes
-            .iter()
-            .filter(|p| {
-                self.agents
-                    .get(&p.id)
-                    .is_some_and(|a| a.state.needs_attention())
-            })
-            .count()
+        self.all_pane_counts().1
+    }
+
+    /// Unfiltered pane and attention counts for the All tab. Only live
+    /// pane ids contribute, so linked rows and orphan agents count once and zero respectively.
+    pub(crate) fn all_pane_counts(&self) -> (usize, usize) {
+        let mut total = 0;
+        let mut needy = 0;
+        for p in unique_panes(&self.panes) {
+            total += 1;
+            if self.agents.get(&p.id).is_some_and(|a| a.state.needs_attention()) {
+                needy += 1;
+            }
+        }
+        (total, needy)
     }
 
     /// Needy panes among the visible (session- and text-filtered) rows, for
@@ -1276,17 +1287,15 @@ impl App {
         self.hover = None;
         let keep = self.selected_pane().map(|p| p.id.clone());
         let session = self.side_session().map(|s| s.name.clone());
-        self.filtered = match session {
-            None => self.panes.clone(),
-            // Foreign rows (fleet + native) live under All only, even if a
-            // tmux session ever shares their display name.
-            Some(name) => self
-                .panes
-                .iter()
-                .filter(|p| p.session == name && !is_remote_pane(&p.id))
-                .cloned()
-                .collect(),
-        };
+        // Foreign rows live under All even if their display name matches
+        // a tmux session.
+        let mut rows: Vec<&Pane> = self
+            .panes
+            .iter()
+            .filter(|p| {
+                session.as_ref().is_none_or(|name| p.session == *name && !is_remote_pane(&p.id))
+            })
+            .collect();
         if !self.exclude.is_empty() {
             // Standing filter: multi-token, NOT-OR combined. Each
             // token's leading `!` is stripped (the on-disk form
@@ -1300,8 +1309,7 @@ impl App {
                 .collect();
             let token_refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
             let agents = &self.agents;
-            self.filtered
-                .retain(|p| pane_matches_excludes(p, agents.get(&p.id), &token_refs));
+            rows.retain(|p| pane_matches_excludes(p, agents.get(&p.id), &token_refs));
         }
         if !self.filter.is_empty() {
             // Live find: multi-token, OR-combined, with per-token
@@ -1314,9 +1322,11 @@ impl App {
                 .collect();
             let token_refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
             let agents = &self.agents;
-            self.filtered
-                .retain(|p| pane_matches_include(p, agents.get(&p.id), &token_refs));
+            rows.retain(|p| pane_matches_include(p, agents.get(&p.id), &token_refs));
         }
+        // Search each session link before picking a row, so a search for
+        // either session can still find a shared pane.
+        self.filtered = unique_panes(rows).cloned().collect();
         self.hidden_quiet = 0;
         if self.hide_quiet_shells {
             let now = crate::agent::now_unix();
