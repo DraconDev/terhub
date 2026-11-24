@@ -956,18 +956,26 @@ pub(crate) fn merge_record_owned(
         }
         _ => None,
     };
-    if let Some((stuck_since, stuck_summary)) = stuck_gate_trip(
-        final_state,
-        &StuckGate {
-            has_proc: proc_hit.is_some(),
-            still,
-            quiet_for,
-            now,
-            stuck_secs,
-            quiet_idle_secs,
-            prev_stuck_since,
-        },
-    ) {
+    // Vibe's phase patterns identify live background tasks. Its foreground
+    // process and display can both sit still while those tasks run.
+    let vibe_background_work = agent == "vibe"
+        && screen.as_ref().is_some_and(|hit| {
+            hit.agent.as_deref() == Some("vibe") && hit.state == Working && hit.phase.is_some()
+        });
+    if !vibe_background_work
+        && let Some((stuck_since, stuck_summary)) = stuck_gate_trip(
+            final_state,
+            &StuckGate {
+                has_proc: proc_hit.is_some(),
+                still,
+                quiet_for,
+                now,
+                stuck_secs,
+                quiet_idle_secs,
+                prev_stuck_since,
+            },
+        )
+    {
         final_state = AgentState::Stuck;
         since = stuck_since;
         summary = stuck_summary;
@@ -978,7 +986,11 @@ pub(crate) fn merge_record_owned(
     // what lands a finished pane on `Idle`. The order is deliberate:
     // gate first (so a recently-frozen hang escalates before the
     // demotion can mask it), then promotion.
-    if final_state == Working && quiet_idle_secs > 0 && quiet_for >= quiet_idle_secs {
+    if final_state == Working
+        && !vibe_background_work
+        && quiet_idle_secs > 0
+        && quiet_for >= quiet_idle_secs
+    {
         final_state = Idle;
         since = match carried {
             Some(o) if o.state == Idle => o.state_since,

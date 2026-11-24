@@ -912,6 +912,14 @@ impl CompiledManifest {
 }
 
 pub fn builtin_manifests() -> Vec<Manifest> {
+    let vibe_background_tasks = vec![
+        r"^\s*◷ Waiting for [1-9]\d* background tasks?(?:…|\.\.\.)".to_string(),
+        // The status rail uses ▪ for live tasks and can omit the noun in narrow panes.
+        r"(?:^\s*| {2,}| · )▪ [1-9]\d*(?: tasks?)?(?:\s+·|\s*$)".to_string(),
+    ];
+    let mut vibe_busy = vibe_background_tasks.clone();
+    // Vibe can put queue controls after the live interrupt hint.
+    vibe_busy.push(r"^\s*[⠀-⣿].*\bEsc/Ctrl\+C to interrupt\)".to_string());
     vec![
         Manifest {
             agent: "claude".to_string(),
@@ -1425,9 +1433,8 @@ pub fn builtin_manifests() -> Vec<Manifest> {
                     .to_string(),
             ],
             waiting_unless: vec![],
-            // Vibe can put queue controls after the live interrupt hint.
-            busy: vec![r"^\s*[⠀-⣿].*\bEsc/Ctrl\+C to interrupt\)".to_string()],
-            phase: vec![],
+            busy: vibe_busy,
+            phase: vibe_background_tasks,
         },
     ]
 }
@@ -3549,11 +3556,21 @@ mod tests {
         let working_with_queue = format!(
             "⣠ Running command… (15m33s Esc/Ctrl+C to interrupt)     Ctrl+X to navigate · ≡ 2/7\n{composer}"
         );
+        let background_wait = format!(
+            "◷ Waiting for 1 background task… (9m27s Esc/Ctrl+C to interrupt) · send a message to steer     Ctrl+X to navigate · ▪ 1 task\n{composer}"
+        );
+        let background_rail = format!("Ctrl+X to navigate · ▪ 2 tasks · ≡ 4/4\n{composer}");
+        let compact_background_rail = format!("▪ 2\n{composer}");
+        let empty_background_rail = format!("Ctrl+X to navigate · ▪ 0 tasks · ≡ 4/4\n{composer}");
         let permission = "Permission for the bash tool\n1. Allow once\n2. Reject\n";
         for (screen, state) in [
             (composer, AgentState::Idle),
             (working.as_str(), AgentState::Working),
             (working_with_queue.as_str(), AgentState::Working),
+            (background_wait.as_str(), AgentState::Working),
+            (background_rail.as_str(), AgentState::Working),
+            (compact_background_rail.as_str(), AgentState::Working),
+            (empty_background_rail.as_str(), AgentState::Idle),
             (permission, AgentState::Waiting),
         ] {
             let got = classify_screen(&m, "vibe-rs", screen, true, false).unwrap();
