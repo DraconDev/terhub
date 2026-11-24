@@ -143,7 +143,9 @@ pub(crate) fn unique_panes<'a>(
     panes: impl IntoIterator<Item = &'a Pane>,
 ) -> impl Iterator<Item = &'a Pane> {
     let mut seen = HashSet::new();
-    panes.into_iter().filter(move |p| seen.insert(p.id.as_str()))
+    panes
+        .into_iter()
+        .filter(move |p| seen.insert(p.id.as_str()))
 }
 
 /// Backend fetch failures stay one status line: first line, capped.
@@ -1236,14 +1238,18 @@ impl App {
         self.all_pane_counts().1
     }
 
-    /// Unfiltered pane and attention counts for the All tab. Only live
-    /// pane ids contribute, so linked rows and orphan agents count once and zero respectively.
+    /// Unfiltered pane and attention counts for the All tab.
+    /// Each live pane id contributes at most once.
     pub(crate) fn all_pane_counts(&self) -> (usize, usize) {
         let mut total = 0;
         let mut needy = 0;
         for p in unique_panes(&self.panes) {
             total += 1;
-            if self.agents.get(&p.id).is_some_and(|a| a.state.needs_attention()) {
+            if self
+                .agents
+                .get(&p.id)
+                .is_some_and(|a| a.state.needs_attention())
+            {
                 needy += 1;
             }
         }
@@ -1286,15 +1292,13 @@ impl App {
     pub fn refresh_filtered(&mut self) {
         self.hover = None;
         let keep = self.selected_pane().map(|p| p.id.clone());
-        let session = self.side_session().map(|s| s.name.clone());
+        let session = self.side_session().map(|s| s.name.as_str());
         // Foreign rows live under All even if their display name matches
         // a tmux session.
         let mut rows: Vec<&Pane> = self
             .panes
             .iter()
-            .filter(|p| {
-                session.as_ref().is_none_or(|name| p.session == *name && !is_remote_pane(&p.id))
-            })
+            .filter(|p| session.is_none_or(|name| p.session == name && !is_remote_pane(&p.id)))
             .collect();
         if !self.exclude.is_empty() {
             // Standing filter: multi-token, NOT-OR combined. Each
