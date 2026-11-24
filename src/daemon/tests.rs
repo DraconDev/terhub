@@ -1087,6 +1087,35 @@ fn quiet_idle_below_threshold_stays_working() {
 }
 
 #[test]
+fn vibe_background_work_stays_working_through_foreground_stillness() {
+    let now = 100_000;
+    let mut old = carried("vibe", AgentState::Working, 500, now - 2_000, now - 2_000);
+    let manifests = builtin_compiled();
+    let screen = crate::agent::classify_screen(
+        &manifests,
+        "vibe-rs",
+        "Ctrl+X to navigate · ▪ 2 tasks\n",
+        false,
+        false,
+    );
+    for quiet_for in [STUCK_SECS + 1, QUIET_IDLE_SECS + 1] {
+        old.quiet_since = now - quiet_for;
+        let rec = merge_record(
+            Some(&old),
+            false,
+            screen.clone(),
+            Some(("vibe", 500)),
+            &test_pane(),
+            now,
+            STUCK_SECS,
+        )
+        .expect("live Vibe process");
+        assert_eq!(rec.state, AgentState::Working);
+        assert!(rec.summary.contains("2 tasks"));
+    }
+}
+
+#[test]
 fn quiet_idle_zero_disables_the_flip() {
     let now = 100_000;
     let mut old = carried("pi", AgentState::Working, 500, now - 4, now - 900);
