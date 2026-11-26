@@ -795,7 +795,8 @@ fn selector_segments(
             | AgentState::Looping
             | AgentState::Error
             | AgentState::Limited
-            | AgentState::Working,
+            | AgentState::Working
+            | AgentState::Paused,
         ) => worst,
         _ => None,
     };

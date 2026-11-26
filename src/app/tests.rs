@@ -455,6 +455,14 @@ fn session_worst_picks_neediest_state() {
         .insert("%2".to_string(), record("%2", "pi", AgentState::Waiting, 1));
     assert_eq!(app.session_worst(Some("a")), Some(AgentState::Waiting));
     assert_eq!(app.session_worst(None), Some(AgentState::Waiting));
+
+    // A parked pane remains visible in the aggregate even when another
+    // pane in the same session is still working.
+    app.agents
+        .insert("%2".to_string(), record("%2", "pi", AgentState::Paused, 1));
+    app.agents
+        .insert("%1".to_string(), record("%1", "pi", AgentState::Working, 1));
+    assert_eq!(app.session_worst(Some("a")), Some(AgentState::Paused));
 }
 
 #[test]

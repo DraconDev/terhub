@@ -338,11 +338,13 @@ fn state_rank_of(state: crate::agent::AgentState) -> u8 {
         AgentState::Looping => 1,
         AgentState::Error => 2,
         AgentState::Limited => 3,
-        AgentState::Working => 4,
-        AgentState::Done => 5,
-        // Paused is deliberate: nobody is needed to thaw it, so it
-        // sorts with the quiet states rather than with the needy ones.
-        AgentState::Paused => 6,
+        // A deliberately parked pane is worth surfacing above ordinary
+        // work in the session indicator. It is quiet, but it is still an
+        // explicit operator decision that should not disappear behind a
+        // different pane's working state.
+        AgentState::Paused => 4,
+        AgentState::Working => 5,
+        AgentState::Done => 6,
         AgentState::Idle => 7,
         AgentState::Unknown => 8,
     }
