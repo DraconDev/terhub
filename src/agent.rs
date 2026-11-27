@@ -920,6 +920,14 @@ pub fn builtin_manifests() -> Vec<Manifest> {
     let mut vibe_busy = vibe_background_tasks.clone();
     // Vibe can put queue controls after the live interrupt hint.
     vibe_busy.push(r"^\s*[⠀-⣿].*\bEsc/Ctrl\+C to interrupt\)".to_string());
+    let codex_work = vec![
+        // Codex's live status row, not any occurrence of the word
+        // "working" in transcript prose. Both the bordered spinner and
+        // the newer bullet row use this shape; the interrupt offer is
+        // also accepted for tool phases such as "Calling tools".
+        r"^\s*(?:[•●◈*]\s*)?(?:[⠀-⣿]\s*)?(?:Working|Thinking|Generating)(?:…|\.\.\.)?(?:\s*\([^)]*\bEsc(?:/Ctrl\+C)? to interrupt\))?\s*$".to_string(),
+        r"^\s*(?:[•●◈*]\s*)?(?:[⠀-⣿]\s*)?[^\n]{0,80}\([^)]*\bEsc(?:/Ctrl\+C)? to interrupt\)\s*$".to_string(),
+    ];
     vec![
         Manifest {
             agent: "claude".to_string(),
@@ -982,11 +990,7 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             agent: "codex".to_string(),
             tail: None,
             commands: vec!["codex".to_string()],
-            working: vec![
-                "esc to interrupt".to_string(),
-                "working".to_string(),
-                "⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏".to_string(),
-            ],
+            working: codex_work.clone(),
             waiting: vec![
                 "^❯".to_string(),
                 "would you like".to_string(),
@@ -1003,9 +1007,20 @@ pub fn builtin_manifests() -> Vec<Manifest> {
             ],
             done: vec![],
             idle: vec![],
-            idle_fallback: vec![],
-            waiting_unless: vec![],
-            busy: vec![],
+            // A live Codex process is not itself proof of a running
+            // turn: the REPL stays open after "Worked for ...". Its
+            // returned composer is the idle evidence. Without it the
+            // proc fallback showed finished sessions as working until
+            // the fifteen-minute screen-quiet timeout.
+            idle_fallback: vec![
+                r"^\s*›\s*Ask Codex to do anything\s*$".to_string(),
+                r"^\s*← for agents · \? for shortcuts\s*$".to_string(),
+            ],
+            // The composer remains visible during a turn, so a real
+            // status row above it must veto the idle chrome. Keep this
+            // as specific as `working`: transcript prose is not busy.
+            waiting_unless: codex_work.clone(),
+            busy: codex_work,
             phase: vec![],
         },
         Manifest {
@@ -3785,6 +3800,71 @@ mod tests {
         })
         .unwrap();
         assert_eq!(m.classify("busy doing things\n❯\n", 0), None);
+    }
+
+    #[test]
+    fn codex_returned_composer_is_idle_immediately() {
+        let m = compiled();
+        // Captured from finished Codex panes: the process and composer
+        // stay alive after the turn. The old proc fallback called these
+        // working for up to fifteen minutes.
+        for screen in [
+            "• Implemented the redesign.\n  Worked for 29m 5s · 4:11 AM\n\n› Ask Codex to do anything\n\n  GPT-6.2-Sol medium · ~/Dev/browser-extensions-shared · Audit Tabmon\n  ← for agents · ? for shortcuts\n",
+            "• The audit found no files changed.\n  Worked for 1h 7m 40s · 4:05 AM\n\n› Ask Codex to do anything\n\n  GPT-6.2-Sol medium · ~/Dev/browser-extensions-shared · audit\n  ← for agents · ? for shortcuts\n",
+        ] {
+            assert_eq!(
+                classify_screen(&m, "codex", screen, false, false),
+                hit(
+                    Some("codex"),
+                    AgentState::Idle,
+                    "← for agents · ? for shortcuts"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn codex_idle_composer_beats_stale_working_prose() {
+        let m = compiled();
+        let screen = "• The goal is working through the remaining checks.\n• Ran the working-tree audit\n  Worked for 20s · 4:05 AM\n\n› Ask Codex to do anything\n  ← for agents · ? for shortcuts\n";
+        assert_eq!(
+            classify_screen(&m, "codex", screen, false, false),
+            hit(
+                Some("codex"),
+                AgentState::Idle,
+                "← for agents · ? for shortcuts"
+            )
+        );
+    }
+
+    #[test]
+    fn codex_live_status_vetoes_the_visible_idle_composer() {
+        let m = compiled();
+        for status in [
+            "• Working (12s · esc to interrupt)",
+            "⠋ Working… (esc to interrupt)",
+            "◈ Calling tools (27m · esc to interrupt)",
+        ] {
+            let screen = format!(
+                "{status}\n› Ask Codex to do anything\n  ← for agents · ? for shortcuts\n"
+            );
+            assert_eq!(
+                classify_screen(&m, "codex", &screen, false, false),
+                hit(Some("codex"), AgentState::Working, status)
+            );
+        }
+    }
+
+    #[test]
+    fn codex_transcript_prose_is_not_working_evidence() {
+        let m = compiled();
+        for screen in [
+            "• Working on the docs is the next step.\n",
+            "• The working tree is clean.\n",
+            "⠋ A spinner in quoted output\n",
+        ] {
+            assert_eq!(classify_screen(&m, "codex", screen, false, false), None);
+        }
     }
 
     #[test]
